@@ -12,3 +12,12 @@ A tiny pixel-art endless runner. You stole the cat's mouse "just for fun". She d
 New players get an interactive tutorial after the intro (replay it any time via HOW TO PLAY).
 
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
+
+## Install as an app (PWA)
+
+The game is an installable Progressive Web App and works offline.
+
+- **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
+- **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
+
+When releasing a new version, bump `CACHE` in `sw.js` and `VERSION` in `index.html`.

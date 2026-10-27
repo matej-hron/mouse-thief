@@ -3,17 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="Pixel-art endless runner: you stole the cat's mouse just for fun. She did not find it funny. Run.">
 <meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mouse Thief">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Mouse Thief</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  /* probe for the phone's notch / rounded corners (read from JS) */
+  #safe { position: fixed; visibility: hidden; pointer-events: none;
+          padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
+<div id="safe"></div>
 <script>
 'use strict';
 /* ==========================================================================
@@ -304,12 +315,17 @@ function resize() {
   const cw = window.innerWidth, ch = window.innerHeight;
   screenCanvas.width = Math.round(cw * dpr); screenCanvas.height = Math.round(ch * dpr);
   screenCanvas.style.width = cw + 'px'; screenCanvas.style.height = ch + 'px';
-  let scale = ch / H;
-  W = clamp(Math.round(cw / scale), MIN_W, MAX_W);
-  if (W * scale > cw) scale = cw / W;              // portrait phones: letterbox
+  // keep the game inside the safe area (notch / home indicator) when running full screen
+  const cs = getComputedStyle(document.getElementById('safe'));
+  const sl = parseFloat(cs.paddingLeft) || 0, sr = parseFloat(cs.paddingRight) || 0;
+  const st = parseFloat(cs.paddingTop) || 0, sb = parseFloat(cs.paddingBottom) || 0;
+  const aw = cw - sl - sr, ah = ch - st - sb;
+  let scale = ah / H;
+  W = clamp(Math.round(aw / scale), MIN_W, MAX_W);
+  if (W * scale > aw) scale = aw / W;              // portrait phones: letterbox
   buf.width = W; buf.height = H;
   ctx.imageSmoothingEnabled = false;
-  view = { scale: scale * dpr, ox: Math.round((cw - W * scale) / 2 * dpr), oy: Math.round((ch - H * scale) / 2 * dpr), dpr, portrait: ch > cw * 1.1 };
+  view = { scale: scale * dpr, ox: Math.round((sl + (aw - W * scale) / 2) * dpr), oy: Math.round((st + (ah - H * scale) / 2) * dpr), dpr, portrait: ch > cw * 1.1 };
   skyGrad = ctx.createLinearGradient(0, 0, 0, H);
   skyGrad.addColorStop(0, PAL.skyTop); skyGrad.addColorStop(0.7, PAL.skyBot); skyGrad.addColorStop(1, PAL.skyLow);
 }
@@ -2097,6 +2113,20 @@ const Intro = {
 /* --------------------------------------------------------------------------
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
+// --- installable app (PWA) -------------------------------------------------
+const VERSION = '1.2.0';
+let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+window.addEventListener('appinstalled', () => { installPrompt = null; });
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+function installApp() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  installPrompt.userChoice.finally(() => { installPrompt = null; });
+}
+
 function go(s) {
   state = s; UI.focus = 0;
   if (s === 'menu' || s === 'shop' || s === 'scores' || s === 'settings') Music.play('menu');
@@ -2136,6 +2166,8 @@ function drawMenu() {
   if (UI.button('scores', bx, 153, bw, 23, 'HIGH SCORE')) go('scores');
   if (UI.button('settings', bx, 180, bw, 23, 'SETTINGS')) go('settings');
   drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.paper, 1, 'center');
+  drawText('V' + VERSION, W - 6, H - 8, '#555', 1, 'right');
+  if (installPrompt && UI.button('install', 8, 8, 92, 18, 'INSTALL APP', { size: 1, accent: '#2f9a5a' })) installApp();
   if (view.portrait) drawText('ROTATE YOUR PHONE FOR A BIGGER VIEW', W / 2, 66, PAL.inkSoft, 1, 'center');
 }
 

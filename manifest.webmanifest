@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Mouse Thief",
+  "short_name": "Mouse Thief",
+  "description": "Pixel-art endless runner: you stole the cat's mouse just for fun. She did not find it funny. Run.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0d0b13",
+  "theme_color": "#0d0b13",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
