@@ -13,6 +13,17 @@ New players get an interactive tutorial after the intro (replay it any time via 
 
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
 
+## Multiplayer
+
+MULTIPLAYER → CREATE GAME gives you a 4-letter code; your friend picks JOIN WITH A CODE and types it.
+One of you is the thief, the other is the cat (swap any time). All abilities are free, limited only by cooldowns:
+
+- Thief: jump / slide as usual, 1 FREEZE · 2 SPEED BOOST · 3 SHIELD
+- Cat: tap / Space POUNCE · 1 SPRINT · 2 TRAP (spikes pop up ahead of the thief) · 3 ROAR (stops him for a moment)
+
+Devices connect through the free PeerJS server and then talk directly (WebRTC). The thief's device runs the game,
+so jumping never lags. Online play needs an internet connection.
+
 ## Install as an app (PWA)
 
 The game is an installable Progressive Web App and works offline.
