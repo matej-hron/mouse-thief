@@ -2338,7 +2338,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -2377,18 +2377,69 @@ function netEmit() { return Net.live && Net.role === 'thief' && state === 'run' 
 const Net = {
   peer: null, conn: null, live: false, isHost: false, role: 'thief', code: '',
   screen: 'home', msg: '', ev: [], byId: new Map(), timer: 0,
+  log: [], t0: 0, showLog: false, ice: null, iceT: 0, copiedT: -9,   // connection log, shown under DETAILS
+
+  // --- connection log (what went wrong, for the DETAILS screen) ------------
+  startLog(what) {
+    this.log = []; this.t0 = performance.now(); this.ice = null;
+    const nc = navigator.connection;
+    this.note(what + ' (V' + VERSION + ')');
+    this.note((navigator.onLine ? 'ONLINE' : 'OFFLINE') + (nc && nc.type ? ', ' + nc.type : '') + (nc && nc.effectiveType ? ', ' + nc.effectiveType : '') +
+              ', RELAYS: ' + (TURN_SERVERS.length ? 'OWN + PEERJS' : 'PEERJS ONLY'));
+  },
+  note(s) {
+    this.log.push(((performance.now() - this.t0) / 1000).toFixed(1) + 'S ' + s);
+    if (this.log.length > 80) this.log.shift();
+  },
+  // Watch the WebRTC side of a link: which routes each phone found and whether any relay answered.
+  watchIce(c) {
+    const pc = c.peerConnection;
+    if (!pc) return;
+    const NAMES = { host: 'LOCAL', srflx: 'PUBLIC', prflx: 'PUBLIC', relay: 'RELAY' };
+    const count = list => ['host', 'srflx', 'relay'].map(t => NAMES[t] + ' ' + (list[t] || 0)).join(', ');
+    const mine = {}, errs = new Set();
+    pc.addEventListener('icecandidate', e => {
+      if (e.candidate) { const t = e.candidate.type || (/ typ (\w+)/.exec(e.candidate.candidate) || [])[1]; mine[t] = (mine[t] || 0) + 1; }
+      else this.note('MY ROUTES: ' + count(mine));
+    });
+    pc.addEventListener('icecandidateerror', e => {
+      const k = e.errorCode + ' ' + (e.url || e.address || '');
+      if (errs.has(k) || errs.size > 6) return;
+      errs.add(k); this.note('ICE SERVER ERROR ' + k + (e.errorText ? ' ' + e.errorText : ''));
+    });
+    pc.addEventListener('iceconnectionstatechange', () => {
+      this.note('ICE ' + pc.iceConnectionState + (pc.iceConnectionState === 'failed' && this.ice ? ' - ' + this.ice : ''));
+    });
+    // the connection is closed as soon as it fails, so keep a fresh summary of what was tried
+    clearInterval(this.iceT);
+    this.iceT = setInterval(() => {
+      if (pc.connectionState === 'closed' || this.live) { clearInterval(this.iceT); return; }
+      pc.getStats().then(r => {
+        const ours = {}, theirs = {}; let pairs = 0, failed = 0;
+        r.forEach(st => {
+          if (st.type === 'local-candidate') ours[st.candidateType] = (ours[st.candidateType] || 0) + 1;
+          else if (st.type === 'remote-candidate') theirs[st.candidateType] = (theirs[st.candidateType] || 0) + 1;
+          else if (st.type === 'candidate-pair') { pairs++; if (st.state === 'failed') failed++; }
+        });
+        this.ice = 'ROUTES MINE: ' + count(ours) + ' / FRIEND: ' + count(theirs) + ' - PAIRS TRIED ' + pairs + ', FAILED ' + failed;
+      }).catch(() => { /* closed meanwhile */ });
+    }, 1000);
+  },
 
   loadLib() {
     if (window.Peer) return Promise.resolve();
     const tryUrl = i => new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = PEERJS_URLS[i]; s.onload = res;
-      s.onerror = () => (i + 1 < PEERJS_URLS.length ? tryUrl(i + 1).then(res, rej) : rej());
+      s.src = PEERJS_URLS[i]; s.onload = () => { this.note('PEERJS LOADED FROM ' + new URL(s.src).host); res(); };
+      s.onerror = () => {
+        this.note('COULD NOT LOAD ' + new URL(s.src).host);
+        if (i + 1 < PEERJS_URLS.length) tryUrl(i + 1).then(res, rej); else rej();
+      };
       document.head.appendChild(s);
     });
     return tryUrl(0);
   },
-  fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; sfx('deny'); },
+  fail(msg) { if (this.ice) this.note(this.ice); this.reset(); this.screen = 'error'; this.msg = msg; sfx('deny'); },
   errText(e) {
     if (e && e.type === 'peer-unavailable') return 'NO GAME WITH THAT CODE.';
     if (e && (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error')) return "CAN'T REACH THE GAME SERVER. CHECK YOUR INTERNET.";
@@ -2397,13 +2448,14 @@ const Net = {
     return 'SOMETHING WENT WRONG. TRY AGAIN.';
   },
   reset() {
-    clearTimeout(this.timer);
+    clearTimeout(this.timer); clearInterval(this.iceT); this.showLog = false;
     try { if (this.peer) this.peer.destroy(); } catch (_) { /* already gone */ }
     this.peer = null; this.conn = null; this.live = false; this.code = ''; this.screen = 'home'; this.ev = [];
   },
 
   async host(role) {
     this.reset(); this.role = role; this.isHost = true;
+    this.startLog('HOST AS ' + role);
     this.screen = 'connecting'; this.msg = 'CREATING A GAME';
     try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
     const open = attempt => {
@@ -2411,15 +2463,20 @@ const Net = {
       for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
       const peer = new Peer(PEER_PREFIX + code, PEER_OPTS);
       this.peer = peer;
-      peer.on('open', () => { this.code = code; this.screen = 'hosting'; this.msg = ''; });
+      peer.on('open', id => { this.note('GAME SERVER OK, ID ' + id); this.code = code; this.screen = 'hosting'; this.msg = ''; });
       peer.on('connection', c => {
+        this.note('FRIEND KNOCKING (' + c.peer + ')');
         if (this.live) { c.close(); return; }
         if (this.conn) try { this.conn.close(); } catch (_) { /* already gone */ }   // a friend's earlier attempt that never got through
         this.msg = ''; this.bind(c);
       });
       // the phone dropped off the game server (e.g. the app was in the background while sharing the code): get back on
-      peer.on('disconnected', () => { if (this.peer === peer && !peer.destroyed) peer.reconnect(); });
+      peer.on('disconnected', () => {
+        if (this.peer !== peer || peer.destroyed) return;
+        this.note('LOST THE GAME SERVER, RECONNECTING'); peer.reconnect();
+      });
       peer.on('error', e => {
+        this.note('SERVER ERROR ' + e.type + ': ' + e.message);
         if (e.type === 'unavailable-id' && attempt < 3) { peer.destroy(); open(attempt + 1); }   // code taken, roll another
         else if (e.type === 'network' && this.screen === 'hosting') { /* reconnecting, see 'disconnected' */ }
         else if (!this.live) this.fail(this.errText(e));
@@ -2429,14 +2486,19 @@ const Net = {
   },
   async join(code) {
     this.reset(); this.isHost = false;
+    this.startLog('JOIN ' + code);
     this.screen = 'connecting'; this.msg = 'CONNECTING TO ' + code;
     try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
     const peer = new Peer(PEER_OPTS);
     this.peer = peer;
-    peer.on('open', () => this.bind(peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' })));
-    peer.on('error', e => { if (!this.live) this.fail(this.errText(e)); });
+    peer.on('open', id => { this.note('GAME SERVER OK, ID ' + id); this.bind(peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' })); });
+    peer.on('error', e => { this.note('SERVER ERROR ' + e.type + ': ' + e.message); if (!this.live) this.fail(this.errText(e)); });
     // the code was right (otherwise the server says so right away) but the phones couldn't link up
-    this.timer = setTimeout(() => { if (!this.live && this.screen === 'connecting') this.fail("COULDN'T REACH YOUR FRIEND'S PHONE. TRY BOTH ON THE SAME WI-FI."); }, 25000);
+    this.timer = setTimeout(() => {
+      if (this.live || this.screen !== 'connecting') return;
+      this.note('GAVE UP AFTER 25S');
+      this.fail("COULDN'T REACH YOUR FRIEND'S PHONE. TRY BOTH ON THE SAME WI-FI.");
+    }, 25000);
   },
   joinTyped() {
     const code = codeInput.value.toUpperCase();
@@ -2444,16 +2506,20 @@ const Net = {
   },
   bind(c) {
     this.conn = c;
+    this.note('LINKING WITH ' + c.peer);
+    this.watchIce(c);
     c.on('open', () => {
+      this.note('LINK OPEN');
       clearTimeout(this.timer);
       this.live = true; this.screen = 'lobby'; sfx('buy');
       if (this.isHost) this.send({ t: 'hello', role: this.role, v: VERSION });
     });
     c.on('data', m => this.onData(m));
-    c.on('close', () => this.lost());
+    c.on('close', () => { this.note('LINK CLOSED'); this.lost(); });
     c.on('error', e => {
+      this.note('LINK ERROR ' + e.type + ': ' + e.message);
       if (this.live || this.conn !== c) return;        // a dropped message is not a disconnect; 'close' handles that
-      if (this.isHost) { this.conn = null; this.msg = "YOUR FRIEND COULDN'T CONNECT. TRY THE SAME WI-FI."; }
+      if (this.isHost) { if (this.ice) this.note(this.ice); this.conn = null; this.msg = "YOUR FRIEND COULDN'T CONNECT. TRY THE SAME WI-FI."; }
       else this.fail(this.errText(e));
     });
   },
@@ -2703,6 +2769,29 @@ codeInput.addEventListener('input', () => {
   codeInput.value = codeInput.value.toUpperCase().split('').filter(ch => CODE_CHARS.includes(ch)).join('').slice(0, 4);
 });
 
+// The DETAILS screen: the connection log, newest lines at the bottom, plus a COPY button.
+function wrapText(str, maxW) {
+  const out = [];
+  let line = '';
+  for (const word of String(str).toUpperCase().split(' ')) {
+    const next = line ? line + ' ' + word : word;
+    if (line && textWidth(next) > maxW) { out.push(line); line = '  ' + word; } else line = next;
+  }
+  out.push(line);
+  return out;
+}
+function drawNetLog() {
+  drawText(Net.msg, W / 2, 34, '#e01e1e', 1, 'center');
+  const lines = Net.log.flatMap(l => wrapText(l, W - 24)), top = 46, rows = Math.floor((H - 36 - top) / 7);
+  lines.slice(-rows).forEach((l, i) => drawText(l, 12, top + i * 7, PAL.ink, 1));
+  const bw = 120, y = H - 28;
+  if (UI.button('logback', W / 2 - bw - 4, y, bw, 22, 'BACK') || UI.back) Net.showLog = false;
+  if (UI.button('logcopy', W / 2 + 4, y, bw, 22, menuT - Net.copiedT < 1.5 ? 'COPIED!' : 'COPY', { accent: '#2f9a5a' })) {
+    const text = ['Mouse Thief ' + VERSION, navigator.userAgent, Net.msg, ...Net.log].join('\n');
+    try { navigator.clipboard.writeText(text).then(() => { Net.copiedT = menuT; }, () => sfx('deny')); } catch (_) { sfx('deny'); }
+  }
+}
+
 function drawMP() {
   bgLight();
   drawText('MULTIPLAYER', W / 2, 12, PAL.ink, 4, 'center');
@@ -2711,6 +2800,7 @@ function drawMP() {
     if (UI.button('mpback', bx, y, bw, 22, label) || UI.back) { if (Net.screen === 'home') go('menu'); else { Net.reset(); } }
   };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
+  if (Net.showLog) { drawNetLog(); return; }
   switch (Net.screen) {
     case 'home':
       drawText('PLAY ONLINE WITH A FRIEND: ONE IS THE THIEF,', W / 2, 44, PAL.inkSoft, 1, 'center');
@@ -2738,6 +2828,7 @@ function drawMP() {
       drawText('WAITING FOR YOUR FRIEND' + dots, W / 2, 160, PAL.inkSoft, 1, 'center');
       if (Net.msg) drawText(Net.msg, W / 2, 172, '#e01e1e', 1, 'center');
       back(190, 'CANCEL');
+      if (Net.msg && UI.button('details', bx, 216, bw, 18, 'DETAILS')) Net.showLog = true;
       break;
     case 'join': {
       drawText("TYPE YOUR FRIEND'S CODE", W / 2, 44, PAL.ink, 2, 'center');
@@ -2766,6 +2857,7 @@ function drawMP() {
     case 'error':
       drawText(Net.msg, W / 2, 90, '#e01e1e', 1, 'center');
       back(130, 'OK');
+      if (Net.log.length && UI.button('details', bx, 160, bw, 22, 'DETAILS')) Net.showLog = true;
       break;
   }
 }
