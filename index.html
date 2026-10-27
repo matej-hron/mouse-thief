@@ -793,7 +793,10 @@ screenCanvas.addEventListener('pointercancel', e => endPointer(e, true));
 screenCanvas.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (playing() && !run.mp) setPaused(true); if (Sound.ctx) Sound.ctx.suspend(); }
-  else if (Sound.ctx) Sound.ctx.resume();
+  else {
+    if (Sound.ctx) Sound.ctx.resume();
+    if (Net.peer && Net.peer.disconnected && !Net.peer.destroyed) Net.peer.reconnect();   // back from sharing the room code
+  }
 });
 
 /* --------------------------------------------------------------------------
@@ -2335,7 +2338,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -2357,6 +2360,16 @@ function installApp() {
 const PEERJS_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
                      'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'];
 const PEER_PREFIX = 'mouse-thief-room-';
+// Phones on mobile data (or behind strict routers) can't reach each other directly and need a
+// relay (TURN) server in between. PeerJS's free public relays are often down, so add a TURN
+// account of your own to TURN_SERVERS (e.g. metered.ca's free plan) to make those connections work.
+const TURN_SERVERS = [];
+const ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+  ...TURN_SERVERS,
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+];
+const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';   // no I/O/Q/0/1: easy to mix up in pixel font
 // True on the device that runs a multiplayer round: its events get mirrored to the friend.
 function netEmit() { return Net.live && Net.role === 'thief' && state === 'run' && run && run.mp && !run.view; }
@@ -2379,6 +2392,7 @@ const Net = {
   errText(e) {
     if (e && e.type === 'peer-unavailable') return 'NO GAME WITH THAT CODE.';
     if (e && (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error')) return "CAN'T REACH THE GAME SERVER. CHECK YOUR INTERNET.";
+    if (e && e.type === 'negotiation-failed') return "COULDN'T REACH YOUR FRIEND'S PHONE. TRY BOTH ON THE SAME WI-FI.";
     if (e && e.type === 'browser-incompatible') return "THIS BROWSER CAN'T PLAY ONLINE.";
     return 'SOMETHING WENT WRONG. TRY AGAIN.';
   },
@@ -2395,12 +2409,19 @@ const Net = {
     const open = attempt => {
       let code = '';
       for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-      const peer = new Peer(PEER_PREFIX + code, { debug: 0 });
+      const peer = new Peer(PEER_PREFIX + code, PEER_OPTS);
       this.peer = peer;
-      peer.on('open', () => { this.code = code; this.screen = 'hosting'; });
-      peer.on('connection', c => { if (this.conn) { c.close(); return; } this.bind(c); });
+      peer.on('open', () => { this.code = code; this.screen = 'hosting'; this.msg = ''; });
+      peer.on('connection', c => {
+        if (this.live) { c.close(); return; }
+        if (this.conn) try { this.conn.close(); } catch (_) { /* already gone */ }   // a friend's earlier attempt that never got through
+        this.msg = ''; this.bind(c);
+      });
+      // the phone dropped off the game server (e.g. the app was in the background while sharing the code): get back on
+      peer.on('disconnected', () => { if (this.peer === peer && !peer.destroyed) peer.reconnect(); });
       peer.on('error', e => {
         if (e.type === 'unavailable-id' && attempt < 3) { peer.destroy(); open(attempt + 1); }   // code taken, roll another
+        else if (e.type === 'network' && this.screen === 'hosting') { /* reconnecting, see 'disconnected' */ }
         else if (!this.live) this.fail(this.errText(e));
       });
     };
@@ -2410,11 +2431,12 @@ const Net = {
     this.reset(); this.isHost = false;
     this.screen = 'connecting'; this.msg = 'CONNECTING TO ' + code;
     try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
-    const peer = new Peer({ debug: 0 });
+    const peer = new Peer(PEER_OPTS);
     this.peer = peer;
     peer.on('open', () => this.bind(peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' })));
     peer.on('error', e => { if (!this.live) this.fail(this.errText(e)); });
-    this.timer = setTimeout(() => { if (!this.live && this.screen === 'connecting') this.fail("COULDN'T CONNECT. CHECK THE CODE AND TRY AGAIN."); }, 15000);
+    // the code was right (otherwise the server says so right away) but the phones couldn't link up
+    this.timer = setTimeout(() => { if (!this.live && this.screen === 'connecting') this.fail("COULDN'T REACH YOUR FRIEND'S PHONE. TRY BOTH ON THE SAME WI-FI."); }, 25000);
   },
   joinTyped() {
     const code = codeInput.value.toUpperCase();
@@ -2429,7 +2451,11 @@ const Net = {
     });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
-    c.on('error', () => this.lost());
+    c.on('error', e => {
+      if (this.live || this.conn !== c) return;        // a dropped message is not a disconnect; 'close' handles that
+      if (this.isHost) { this.conn = null; this.msg = "YOUR FRIEND COULDN'T CONNECT. TRY THE SAME WI-FI."; }
+      else this.fail(this.errText(e));
+    });
   },
   lost() {
     if (!this.live) return;
@@ -2710,6 +2736,7 @@ function drawMP() {
       drawText('TELL YOUR FRIEND: MULTIPLAYER > JOIN WITH A CODE', W / 2, 124, PAL.ink, 1, 'center');
       drawText('YOU ARE ' + (Net.role === 'cat' ? 'THE CAT' : 'THE THIEF'), W / 2, 140, Net.role === 'cat' ? '#e01e1e' : PAL.goldDark, 2, 'center');
       drawText('WAITING FOR YOUR FRIEND' + dots, W / 2, 160, PAL.inkSoft, 1, 'center');
+      if (Net.msg) drawText(Net.msg, W / 2, 172, '#e01e1e', 1, 'center');
       back(190, 'CANCEL');
       break;
     case 'join': {
