@@ -16,13 +16,20 @@ Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub
 ## Multiplayer
 
 MULTIPLAYER → CREATE GAME gives you a 4-letter code; your friend picks JOIN WITH A CODE and types it.
-One of you is the thief, the other is the cat (swap any time). All abilities are free, limited only by cooldowns:
+Pick a mode when creating the game (and change it any time in the lobby). All abilities are free, limited only by cooldowns.
+
+**Thief vs cat:** one of you is the thief, the other is the cat (swap any time). The thief wins by surviving 60 seconds.
 
 - Thief: jump / slide as usual, 1 FREEZE · 2 SPEED BOOST · 3 SHIELD
 - Cat: tap / Space POUNCE · 1 SPRINT · 2 TRAP (spikes pop up ahead of the thief) · 3 ROAR (stops him for a moment)
 
-Devices connect through the free PeerJS server and then talk directly (WebRTC). The thief's device runs the game,
-so jumping never lags. Online play needs an internet connection.
+**Race of two thieves:** you both run the same roofs (built from a shared seed), each chased by your own cat.
+Your friend shows up as the blue thief. Whoever survives longer wins.
+
+Devices connect through the free PeerJS server and then talk directly (WebRTC). In thief vs cat the thief's device
+runs the game, so jumping never lags; the cat's screen draws it ~0.1 s late and interpolates, so it moves smoothly.
+In a race each phone runs its own thief. Online play needs an internet connection, and both phones must run the
+same version (the game checks).
 
 ## Install as an app (PWA)
 

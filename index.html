@@ -98,10 +98,20 @@ const PAL = {
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
-const rand = (a, b) => a + Math.random() * (b - a);
+let rng = Math.random;            // swapped for a seeded one while building a race level (see Level.next)
+const rand = (a, b) => a + rng() * (b - a);
 const randi = (a, b) => Math.floor(rand(a, b + 1));
-const chance = p => Math.random() < p;
-const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const chance = p => rng() < p;
+const pick = arr => arr[Math.floor(rng() * arr.length)];
+// Small seeded random generator: both phones in a race build the same level from the same seed.
+function mulberry32(a) {
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 const easeOut = t => 1 - (1 - t) * (1 - t);
 function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
 function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'); }
@@ -485,7 +495,7 @@ const PLAYER_POSES = {
           '..##########.', '.############', '#############', '.##.....####.'],
 };
 const MOUSE_ROWS = ['......pp..', '...ggggpg.', 't.gggggge.', 'tggggggggn', '...g...g..'];
-const SPR = {};
+const SPR = {}, SPR2 = {};
 (function buildSprites() {
   const pal = { '#': '#000', 'r': '#ff2424', 'p': '#ff7aa2' };
   for (const k in PLAYER_POSES) {
@@ -493,6 +503,8 @@ const SPR = {};
     const eyes = [];
     rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'r') eyes.push([x, y]); }));
     SPR[k] = { plain, rim: outlineSprite(plain, PAL.rimPlayer), eyes, w: plain.width, h: plain.height };
+    const friend = makeSprite(rows, { '#': '#1d3f8f', 'r': '#4dff9a', 'p': '#ff7aa2' });     // the friend in a race
+    SPR2[k] = { plain: friend, rim: outlineSprite(friend, '#9fc3ff'), eyes: [], w: friend.width, h: friend.height };
   }
   const m = makeSprite(MOUSE_ROWS, { g: '#9b9b9b', p: '#e7a3ad', e: '#111', n: '#e7a3ad', t: '#7a7a7a' });
   SPR.mouse = { plain: m, rim: outlineSprite(m, '#3a3348'), w: m.width, h: m.height, eyes: [] };
@@ -836,6 +848,7 @@ const isOneWay = s => s.type === 'plat' || s.type === 'mover' || (s.type === 'cr
 const Level = {
   solids: [], hazards: [], genX: 0, gy: 190, count: 0, last: '', seen: {}, group: 0,
   nextId: 0, outbox: [],      // multiplayer: every new object gets an id and is queued for the friend's screen
+  rng: null,                  // race: seeded generator, so both phones get the same level
   reset() {
     this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0;
     this.ground(-600, 1200, this.gy);
@@ -868,17 +881,26 @@ const Level = {
     }
     return n * 16;
   },
-  speedEstimate() { return RUN.baseSpeed * Math.min(RUN.maxSpeedMul, 1 + (run.time + 2) * RUN.speedGrowth); },
+  // How far into the run we are, for difficulty. A race can't use the clock (each phone builds
+  // chunks at its own moment), so it uses the time a thief needs to get this far instead.
+  clock() {
+    if (!this.rng) return run.time;
+    const { baseSpeed: v0, speedGrowth: g, maxSpeedMul: m } = RUN;
+    const dist = Math.max(0, this.genX - 60 - 480), tCap = (m - 1) / g, dCap = v0 * (tCap + g * tCap * tCap / 2);
+    return dist < dCap ? (Math.sqrt(1 + 2 * g * dist / v0) - 1) / g : tCap + (dist - dCap) / (v0 * m);
+  },
+  speedEstimate() { return RUN.baseSpeed * Math.min(RUN.maxSpeedMul, 1 + (this.clock() + 2) * RUN.speedGrowth); },
   ensure(toX) {
     if (run.tutorial) return;                 // the tutorial uses a hand-built level
-    const d = clamp(run.time / 200, 0, 1);
-    while (this.genX < toX) this.next(d);
+    while (this.genX < toX) this.next(clamp(this.clock() / 200, 0, 1));
   },
   prune(minX) {
     this.solids = this.solids.filter(s => s.x + s.w + Math.abs(s.ax || 0) > minX && s.y < H + 100);
     this.hazards = this.hazards.filter(z => z.x + z.w > minX);
   },
   next(d) {
+    const prevRng = rng;
+    if (this.rng) rng = this.rng;
     const v = this.speedEstimate();
     const kind = this.pick(d);
     this['p_' + kind](d, v);
@@ -886,6 +908,7 @@ const Level = {
     const rest = Math.round(lerp(112, 56, d) + rand(0, 64));   // breathing room after every chunk
     this.ground(this.genX, rest, this.gy);
     this.genX += rest;
+    rng = prevRng;
   },
   pick(d) {
     const tutorial = ['gap', 'spikes', 'block', 'bar'];
@@ -897,7 +920,7 @@ const Level = {
       ['mover', d > 0.18 ? 0.6 : 0], ['tower', d > 0.22 ? 0.5 : 0], ['ledge', d > 0.28 ? 0.5 : 0],
       ['popgap', d > 0.38 ? 0.45 : 0], ['spikebed', d > 0.42 ? 0.5 : 0],
     ].filter(([k, w]) => w > 0 && k !== this.last);
-    let r = Math.random() * table.reduce((a, o) => a + o[1], 0);
+    let r = rng() * table.reduce((a, o) => a + o[1], 0);
     for (const [k, w] of table) { r -= w; if (r <= 0) return k; }
     return 'flat';
   },
@@ -1292,6 +1315,7 @@ const DEATH_LINES = {
 };
 
 // Multiplayer: everything is unlocked, limited only by cooldowns (seconds).
+const MP_ESCAPE = 60;     // thief vs cat: survive this long and the thief wins
 const MP_THIEF = [
   { id: 'freeze', cd: 20, st: { dur: 3 } },
   { id: 'boost', cd: 10, st: { dur: 2 } },
@@ -1309,7 +1333,8 @@ function newRun(opts = {}) {
   const mp = !!opts.mp;
   run = {
     tutorial: !!opts.tutorial, tut: null, ui: {},
-    mp, view: !!opts.view, countdown: mp ? 3.5 : 0, netLost: false, leaveArm: 0,
+    mp, view: !!opts.view, race: !!opts.race, countdown: mp ? 3.5 : 0, netLost: false, leaveArm: 0, won: false,
+    buf: [], ghost: { buf: [], done: false, time: 0 },   // multiplayer: friend's positions waiting to be drawn
     catAbil: CAT_MOVES.map(m => ({ id: m.id, cd: 0, cdMax: m.cd })), catCd: CAT_MOVES.map(() => 0),
     time: 0, points: 0, pointT: 0, anger: 0, phase: 'play', paused: false, deathT: 0, overT: 0, cause: '', line: '',
     camX: 0, shake: 0, flash: 0, flashColor: '#ff2020', danger: 0, beatT: 0, fadeT: 0.5, startT: 1.2,
@@ -1326,6 +1351,7 @@ function newRun(opts = {}) {
     run.abil = MP_THIEF.map(m => ({ id: m.id, def: ABIL[m.id], st: m.st, uses: Infinity, cd: 0, cdMax: m.cd }));
     Level.outbox = []; Level.nextId = 0;
   }
+  Level.rng = opts.seed !== undefined ? mulberry32(opts.seed) : null;
   if (run.view) { Level.solids = []; Level.hazards = []; Net.byId.clear(); }   // the friend's device sends the level
   else Level.reset();
   if (run.tutorial) { run.tut = { steps: Tutorial.build(), idx: 0, cp: 60, info: null, freeze: null, freezeT: 0, nudge: 0 }; run.hintT = 0; }
@@ -1513,9 +1539,17 @@ function killPlayer(cause) {
   Music.stop();
   Input.clear();
 }
+// Multiplayer round won without getting caught: the thief escaped (vs cat) or outlasted the friend (race).
+function endMpRound(cause, line) {
+  const R = run;
+  R.phase = 'over'; R.overT = 0; R.cause = cause; R.line = line; R.won = true;
+  if (R.race) Net.send({ t: 'done', r: Net.round, tm: R.time });
+  Music.stop(); sfx('buy'); UI.focus = 0;
+}
 function finishRun() {
   const R = run, d = Save.data;
   R.phase = 'over'; R.overT = 0;
+  if (R.race) Net.send({ t: 'done', r: Net.round, tm: R.time });
   if (R.mp) { sfx('gameover'); UI.focus = 0; return; }   // friendly matches don't touch your records
   d.runs++;
   R.newBest = R.time > d.bestTime;
@@ -1567,6 +1601,8 @@ function updateRun(dt) {
     return;
   }
   R.time += dt;
+  if (R.mp && !R.race && R.time >= MP_ESCAPE) return endMpRound('escaped', 'HE GOT AWAY WITH THE MOUSE.');
+  if (R.race && R.ghost.done && R.time > R.ghost.time + 1) return endMpRound('won', 'YOU OUTLASTED YOUR FRIEND!');
   for (const a of R.abil) if (a.cd > 0) a.cd = Math.max(0, a.cd - dt);
   for (const m of R.catAbil) if (m.cd > 0) m.cd = Math.max(0, m.cd - dt);
   const lvl = Math.floor(R.time / RUN.angerEvery);
@@ -1764,14 +1800,14 @@ function drawRunCat(camX) {
   const R = run, c = R.cat, p = R.player;
   const frozen = R.frozenT > 0;
   const near = R.phase === 'dying' && p.x - c.x < 30;
-  const over = R.phase === 'over';
+  const over = R.phase === 'over', caught = over && R.cause !== 'escaped' && R.cause !== 'won';
   const o = {
     t: frozen ? 0 : c.anim,
     pose: over ? 'stand' : near || c.pounceT > 0 ? 'pounce' : (c.onGround || frozen ? 'run' : 'pounce'),
     eyes: frozen ? 'frozen' : over ? 'closed' : (R.danger > 0.6 || c.rageT > 0 || R.phase === 'dying') ? 'rage' : 'normal',
     scream: !frozen && !over && (c.rageT > 0 || R.phase === 'dying'),
     puff: !over && (R.anger > 0 || R.phase === 'dying'),
-    hold: over,
+    hold: caught,
     outline: frozen ? '#bff3ff' : PAL.rimCat,
   };
   if (frozen) o.pose = 'stand';
@@ -1782,7 +1818,7 @@ function drawRunCat(camX) {
     ctx.fillRect(bx + 6, by + 2, 4, 1); ctx.fillRect(bx + 6, by + 3, 1, 3);
     drawText(R.frozenT.toFixed(1), bx + CAT_W / 2, by - 12, '#bff3ff', 1, 'center', '#000');
   }
-  if (over) {                             // she got her mouse back
+  if (caught) {                           // she got her mouse back
     drawMouse(c.x - camX - 9, c.y - 22, false, true);
     const ht = R.overT % 1.2;
     drawText('♥', c.x - camX - 6, c.y - 46 - ht * 12, '#ff6b9a', 1, 'center');
@@ -1815,7 +1851,12 @@ function drawHUD() {
   else if (R.mp) {
     drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
     const cat = Net.role === 'cat';
-    drawText(cat ? 'YOU: THE CAT' : 'YOU: THE THIEF', 8, 30, cat ? '#ff6b6b' : PAL.gold, 1, 'left', '#000');
+    if (R.race) drawText(raceStatus(R), 8, 30, '#7fe0a8', 1, 'left', '#000');
+    else {
+      drawText(cat ? 'YOU: THE CAT' : 'YOU: THE THIEF', 8, 30, cat ? '#ff6b6b' : PAL.gold, 1, 'left', '#000');
+      const left = Math.max(0, Math.ceil(MP_ESCAPE - R.time));
+      drawText((cat ? 'CATCH HIM IN ' : 'SURVIVE ') + left + 'S', 8, 40, left <= 10 && Math.floor(menuT * 4) % 2 ? '#fff' : '#ffd23f', 1, 'left', '#000');
+    }
   } else {
     drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
     drawText('★ ' + R.points, 8, 30, PAL.gold, 2, 'left', '#000');
@@ -1992,14 +2033,15 @@ function drawGameOverMP() {
   const R = run, k = clamp(R.overT / 0.35, 0, 1), cat = Net.role === 'cat';
   ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
   const pw = 300, ph = 170, { px, py } = drawPanel(pw, ph, k);
-  shakyText(cat ? 'YOU GOT HIM!' : 'SHE GOT YOU!', W / 2, py + 12, cat ? PAL.green : '#e01e1e', 4, R.overT < 0.6 ? 1.2 : 0);
+  const esc = R.cause === 'escaped', good = cat !== esc;     // the cat won, or the thief escaped
+  shakyText(esc ? (cat ? 'HE GOT AWAY!' : 'YOU ESCAPED!') : (cat ? 'YOU GOT HIM!' : 'SHE GOT YOU!'), W / 2, py + 12, good ? PAL.green : '#e01e1e', 4, R.overT < 0.6 ? 1.2 : 0);
   drawText(R.line, W / 2, py + 38, PAL.inkSoft, 1, 'center');
   const rows = [[cat ? 'HE SURVIVED' : 'YOU SURVIVED', fmtTime(R.time)], ['CAT SPEED', 'X' + catMult().toFixed(2)]];
   rows.forEach(([a, b], i) => {
     drawText(a, px + 26, py + 58 + i * 18, PAL.ink, 2);
     drawText(b, px + pw - 26, py + 58 + i * 18, PAL.ink, 2, 'right');
   });
-  drawText(cat ? 'NOW SWAP AND TRY TO ESCAPE HER!' : 'SWAP ROLES AND GET REVENGE!', W / 2, py + 104, '#e01e1e', 1, 'center');
+  drawText(good ? (cat ? 'NOW SWAP AND TRY TO ESCAPE HER!' : 'NOW SWAP AND TRY TO CATCH HIM!') : 'SWAP ROLES AND GET REVENGE!', W / 2, py + 104, '#e01e1e', 1, 'center');
   if (R.overT < 0.5) return;
   if (!Net.live) { if (UI.button('menu', Math.round(W / 2 - 50), py + ph - 34, 100, 24, 'MENU') || UI.back) { Net.reset(); go('menu'); } return; }
   const bw = 88, by = py + ph - 34, gx = Math.round(W / 2 - (bw * 3 + 16) / 2);
@@ -2008,9 +2050,54 @@ function drawGameOverMP() {
   if (UI.button('leave', gx + (bw + 8) * 2, by, bw, 24, 'LEAVE') || UI.back) { Net.leave(); go('menu'); }
 }
 
+// Race: how the friend is doing, for the HUD.
+function raceStatus(R) {
+  const g = R.ghost;
+  if (g.done) return R.time > g.time ? 'FRIEND IS OUT. YOU WIN!' : 'FRIEND OUT AT ' + fmtTime(g.time) + '. BEAT IT!';
+  if (!g.p) return 'RACE!';
+  const m = Math.round((g.p.x - R.player.x) / 16);
+  return m > 0 ? 'FRIEND ' + m + 'M AHEAD' : m < 0 ? 'FRIEND ' + (-m) + 'M BEHIND' : 'FRIEND RIGHT HERE';
+}
+// Race: the friend's thief (blue, green eyes), drawn from their position updates.
+function drawGhost(camX) {
+  const g = run.ghost;
+  if (!netSample(g.buf, g.p || (g.p = {}))) return;
+  const p = g.p, pose = playerPose(p), sx = Math.round(p.x - camX), sy = Math.round(p.y);
+  if (sx < -12 || sx > W + 4) {            // off screen: point at them
+    const right = sx > W;
+    drawText(right ? 'FRIEND >' : '< FRIEND', right ? W - 6 : 6, Math.round(clamp(sy, 50, H - 40)), '#7fe0a8', 1, right ? 'right' : 'left', '#000');
+    return;
+  }
+  ctx.globalAlpha = 0.9;
+  drawSprite(SPR2[pose] || SPR2.stand, pose === 'slide' ? sx - 2 : sx - 1, sy, false, true);
+  if (!p.dead) drawMouse(sx, sy - 5 + (pose === 'run2' ? 1 : 0), false, true);
+  ctx.globalAlpha = 1;
+  drawText('FRIEND', sx + 4, sy - 14, '#7fe0a8', 1, 'center', '#000');
+}
+function drawGameOverRace() {
+  const R = run, g = R.ghost, k = clamp(R.overT / 0.35, 0, 1), waiting = !g.done && !R.won, win = R.won || (g.done && R.time > g.time);
+  ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
+  const pw = 300, ph = 170, { px, py } = drawPanel(pw, ph, k);
+  shakyText(waiting ? "YOU'RE OUT!" : win ? 'YOU WIN!' : 'FRIEND WINS!', W / 2, py + 12, waiting || !win ? '#e01e1e' : PAL.green, 4, R.overT < 0.6 ? 1.2 : 0);
+  drawText(R.line, W / 2, py + 38, PAL.inkSoft, 1, 'center');
+  const tenths = t => fmtTime(t) + '.' + Math.floor(t * 10 % 10);     // close finishes need the tenths
+  const rows = [['YOU', tenths(R.time)], ['FRIEND', (waiting ? 'RUNNING ' : '') + tenths(g.time)]];
+  rows.forEach(([a, b], i) => {
+    drawText(a, px + 26, py + 58 + i * 18, PAL.ink, 2);
+    drawText(b, px + pw - 26, py + 58 + i * 18, PAL.ink, 2, 'right');
+  });
+  if (waiting) drawText('YOUR FRIEND IS STILL RUNNING' + '.'.repeat(1 + Math.floor(menuT * 3) % 3), W / 2, py + 104, '#e01e1e', 1, 'center');
+  if (R.overT < 0.5) return;
+  if (!Net.live) { if (UI.button('menu', Math.round(W / 2 - 50), py + ph - 34, 100, 24, 'MENU') || UI.back) { Net.reset(); go('menu'); } return; }
+  const bw = 88, by = py + ph - 34, gx = Math.round(W / 2 - (bw * 3 + 16) / 2);
+  if (!waiting && UI.button('rematch', gx, by, bw, 24, 'REMATCH', { accent: '#e01e1e' })) Net.requestRound();
+  if (!waiting && UI.button('lobby', gx + bw + 8, by, bw, 24, 'LOBBY', { accent: '#2f9a5a' })) { go('mp'); Net.screen = 'lobby'; }
+  if (UI.button('leave', gx + (bw + 8) * 2, by, bw, 24, 'LEAVE') || UI.back) { Net.leave(); go('menu'); }
+}
+
 function drawGameOver() {
   const R = run, d = Save.data;
-  if (R.mp) return drawGameOverMP();
+  if (R.mp) return R.race ? drawGameOverRace() : drawGameOverMP();
   const k = clamp(R.overT / 0.35, 0, 1);
   ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
   const pw = 290, ph = 178, { px, py } = drawPanel(pw, ph, k);
@@ -2042,6 +2129,7 @@ function drawRun() {
   drawSolids(camX);
   drawHazards(camX);
   drawParticles(camX);
+  if (R.race) drawGhost(camX);
   if (R.phase === 'over') { drawRunPlayer(camX); drawRunCat(camX); }
   else { drawRunCat(camX); drawRunPlayer(camX); }
   drawPopups(camX);
@@ -2060,9 +2148,14 @@ function drawRun() {
     const cat = Net.role === 'cat';
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 56, W, 96);
     shakyText(String(Math.ceil(R.countdown)), W / 2, 64, '#fff', 6, 1);
-    drawText(cat ? 'YOU ARE THE CAT' : 'YOU ARE THE THIEF', W / 2, 104, cat ? '#ff6b6b' : PAL.gold, 2, 'center', '#000');
-    drawText(cat ? (Input.touch ? 'TAP TO POUNCE. SPRINT, TRAP AND ROAR TO CATCH HIM!' : 'SPACE: POUNCE   1: SPRINT   2: TRAP   3: ROAR')
-                 : 'RUN! USE FREEZE, BOOST AND SHIELD TO ESCAPE!', W / 2, 122, '#fff', 1, 'center', '#000');
+    if (R.race) {
+      drawText('RACE! SAME ROOFS, TWO THIEVES', W / 2, 104, '#7fe0a8', 2, 'center', '#000');
+      drawText('YOUR FRIEND IS THE BLUE THIEF. WHOEVER SURVIVES LONGER WINS!', W / 2, 122, '#fff', 1, 'center', '#000');
+    } else {
+      drawText(cat ? 'YOU ARE THE CAT' : 'YOU ARE THE THIEF', W / 2, 104, cat ? '#ff6b6b' : PAL.gold, 2, 'center', '#000');
+      drawText(cat ? (Input.touch ? 'CATCH HIM IN ' + MP_ESCAPE + 'S! TAP TO POUNCE. SPRINT, TRAP, ROAR.' : 'CATCH HIM IN ' + MP_ESCAPE + 'S!  SPACE: POUNCE  1: SPRINT  2: TRAP  3: ROAR')
+                   : 'SURVIVE ' + MP_ESCAPE + ' SECONDS! FREEZE, BOOST AND SHIELD HELP.', W / 2, 122, '#fff', 1, 'center', '#000');
+    }
   } else if (R.startT > 0 && R.phase === 'play' && !R.tutorial) {
     const k = 1.2 - R.startT;
     if (k > 0.1) shakyText(R.mp ? 'GO!' : 'RUN!', W / 2, 90, '#fff', 6, 1);
@@ -2338,7 +2431,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.3.3';
+const VERSION = '1.4.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -2372,10 +2465,44 @@ const ICE_SERVERS = [
 const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';   // no I/O/Q/0/1: easy to mix up in pixel font
 // True on the device that runs a multiplayer round: its events get mirrored to the friend.
-function netEmit() { return Net.live && Net.role === 'thief' && state === 'run' && run && run.mp && !run.view; }
+function netEmit() { return Net.live && Net.role === 'thief' && state === 'run' && run && run.mp && !run.view && !run.race; }
+// True while racing: my thief's position goes to the friend's screen.
+function raceEmit() { return Net.live && state === 'run' && run && run.race && run.phase !== 'over'; }
+
+// Positions from the friend's phone arrive unevenly, so they are drawn NET_DELAY ms late,
+// interpolated between the two updates around that moment: smooth instead of jumpy.
+const NET_DELAY = 100;
+function netPush(buf, st, d) { buf.push({ st, d }); if (buf.length > 60) buf.shift(); }
+function netPick(buf) {
+  if (!buf.length) return null;
+  const rt = performance.now() - Net.clockOff - NET_DELAY;
+  let i = buf.length - 1;
+  while (i >= 0 && buf[i].st > rt) i--;
+  if (i < 0) return { a: buf[0], b: buf[0], k: 0 };
+  if (i === buf.length - 1) return { a: buf[i], b: buf[i], k: 0 };
+  const a = buf[i], b = buf[i + 1];
+  return { a, b, k: b.st > a.st ? (rt - a.st) / (b.st - a.st) : 1 };
+}
+// Player as sent over the network: [x, y, h, vy, flags, anim, hangT, invuln].
+function packPlayer(p) {
+  const r1 = v => Math.round(v * 10) / 10;
+  const f = (p.onGround ? 1 : 0) | (p.touchWall ? 2 : 0) | (p.sliding ? 4 : 0) | (p.dead ? 8 : 0) | (p.blocked ? 16 : 0) | (p.shield ? 32 : 0) | (p.stunT > 0 ? 64 : 0);
+  return [r1(p.x), r1(p.y), p.h, Math.round(p.vy), f, Math.round(p.anim * 1000) / 1000, r1(p.hangT), r1(p.invuln)];
+}
+function unpackPlayer(t, a, b, k) {
+  const [, , h, vy, f, anim, hangT, invuln] = a;
+  Object.assign(t, { x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), h, vy, anim, hangT, invuln, onGround: !!(f & 1), touchWall: !!(f & 2),
+                     sliding: !!(f & 4), dead: !!(f & 8), blocked: !!(f & 16), shield: !!(f & 32), stunT: f & 64 ? 1 : 0 });
+}
+function netSample(buf, t) {
+  const s = netPick(buf);
+  if (s) unpackPlayer(t, s.a.d, s.b.d, s.k);
+  return !!s;
+}
 
 const Net = {
   peer: null, conn: null, live: false, isHost: false, role: 'thief', code: '',
+  mode: 'cat', round: 0, clockOff: Infinity,   // mode: 'cat' (thief vs cat) or 'race' (two thieves)
   screen: 'home', msg: '', ev: [], byId: new Map(), timer: 0,
   log: [], t0: 0, showLog: false, ice: null, iceT: 0, copiedT: -9,   // connection log, shown under DETAILS
 
@@ -2453,9 +2580,9 @@ const Net = {
     this.peer = null; this.conn = null; this.live = false; this.code = ''; this.screen = 'home'; this.ev = [];
   },
 
-  async host(role) {
-    this.reset(); this.role = role; this.isHost = true;
-    this.startLog('HOST AS ' + role);
+  async host(role, mode) {
+    this.reset(); this.role = role; this.mode = mode; this.isHost = true;
+    this.startLog('HOST ' + (mode === 'race' ? 'A RACE' : 'AS ' + role));
     this.screen = 'connecting'; this.msg = 'CREATING A GAME';
     try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
     const open = attempt => {
@@ -2512,7 +2639,8 @@ const Net = {
       this.note('LINK OPEN');
       clearTimeout(this.timer);
       this.live = true; this.screen = 'lobby'; sfx('buy');
-      if (this.isHost) this.send({ t: 'hello', role: this.role, v: VERSION });
+      this.send({ t: 'ver', v: VERSION });
+      if (this.isHost) this.send({ t: 'hello', role: this.role, mode: this.mode, v: VERSION });
     });
     c.on('data', m => this.onData(m));
     c.on('close', () => { this.note('LINK CLOSED'); this.lost(); });
@@ -2538,15 +2666,30 @@ const Net = {
 
   // --- roles & rounds ----------------------------------------------------
   swap(tell) { this.role = this.role === 'thief' ? 'cat' : 'thief'; if (tell) this.send({ t: 'swap' }); },
-  requestRound() { if (this.role === 'thief') startMpRound(); else this.send({ t: 'req' }); },
+  setMode(m, tell) { this.mode = m; if (tell) this.send({ t: 'mode', m }); },
+  requestRound() {
+    if (this.mode === 'race') { if (this.isHost) startRace(); else this.send({ t: 'req' }); }
+    else if (this.role === 'thief') startMpRound(); else this.send({ t: 'req' });
+  },
+  noteClock(st) { const off = performance.now() - st; if (off < this.clockOff) this.clockOff = off; },   // fastest delivery seen
   swapAndPlay() { this.swap(true); this.requestRound(); },
   act(id) { sfx('click'); this.send({ t: 'act', a: id }); },
 
   onData(m) {
     switch (m.t) {
-      case 'hello': this.role = m.role === 'thief' ? 'cat' : 'thief'; break;
+      case 'ver':
+        if (m.v !== VERSION) this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD THE GAME ON BOTH PHONES.');
+        break;
+      case 'hello': this.role = m.role === 'thief' ? 'cat' : 'thief'; this.mode = m.mode || 'cat'; break;
       case 'swap': this.swap(false); break;
-      case 'req': if (this.role === 'thief') startMpRound(); break;
+      case 'mode': this.setMode(m.m, false); break;
+      case 'req': if (this.mode === 'race') { if (this.isHost) startRace(); } else if (this.role === 'thief') startMpRound(); break;
+      case 'race': this.round = m.r; startRaceRound(m.seed); break;
+      case 'g':
+        if (!run || !run.race || m.r !== this.round) break;
+        this.noteClock(m.st); netPush(run.ghost.buf, m.st, m.p); run.ghost.time = m.tm;
+        break;
+      case 'done': if (run && run.race && m.r === this.round) { run.ghost.done = true; run.ghost.time = m.tm; } break;
       case 'round': startViewRound(); break;
       case 'act': catMove(m.a); break;
       case 's': applySnap(m); break;
@@ -2556,8 +2699,7 @@ const Net = {
 
   // Thief's device → cat's device, every frame: positions, timers, new level pieces, effects.
   sendSnap() {
-    const R = run, p = R.player, c = R.cat, r1 = v => Math.round(v * 10) / 10;
-    const f = (p.onGround ? 1 : 0) | (p.touchWall ? 2 : 0) | (p.sliding ? 4 : 0) | (p.dead ? 8 : 0) | (p.blocked ? 16 : 0) | (p.shield ? 32 : 0) | (p.stunT > 0 ? 64 : 0);
+    const R = run, c = R.cat, r1 = v => Math.round(v * 10) / 10;
     const dyn = [], x0 = R.camX - 120, x1 = R.camX + W + 200;
     for (const s of Level.solids) {
       if (s.x > x1 || s.x + s.w < x0) continue;
@@ -2567,8 +2709,8 @@ const Net = {
     }
     for (const z of Level.hazards) if (z.pop && z.x < x1 && z.x + z.w > x0) dyn.push(['h' + z.id, z.state, Math.round(z.t * 1000) / 1000]);
     this.send({
-      t: 's', tm: R.time, ph: R.phase, cd: R.countdown, oT: R.overT, ca: R.cause, li: R.line,
-      p: [r1(p.x), r1(p.y), p.h, Math.round(p.vy), f, Math.round(p.anim * 1000) / 1000, r1(p.hangT), r1(p.invuln)],
+      t: 's', st: Math.round(performance.now()), tm: R.time, ph: R.phase, cd: R.countdown, oT: R.overT, ca: R.cause, li: R.line,
+      p: packPlayer(R.player),
       c: [r1(c.x), r1(c.y), Math.round(c.vy), c.onGround ? 1 : 0, Math.round(c.anim * 1000) / 1000, r1(c.rageT), r1(c.pounceT)],
       an: R.anger, g: R.gain, dz: Math.round(R.danger * 1000) / 1000, fz: r1(R.frozenT), bo: r1(R.boostT),
       sh: r1(R.shake), fl: Math.round(R.flash * 100) / 100, fc: R.flashColor, bn: R.banner,
@@ -2576,16 +2718,34 @@ const Net = {
       add: Level.outbox.splice(0), dyn, ev: this.ev.splice(0),
     });
   },
+  // Race: my thief, every frame, for the friend's screen.
+  sendGhost() { this.send({ t: 'g', r: this.round, st: Math.round(performance.now()), tm: run.time, p: packPlayer(run.player) }); },
 };
 
 function startMpRound() {
+  Net.clockOff = Infinity;
   state = 'run'; UI.focus = 0;       // set first: level pieces created by newRun are queued for the friend
   newRun({ mp: true });
   Net.send({ t: 'round' });
   Music.stop(); Music.play('chase');
 }
 function startViewRound() {
+  Net.clockOff = Infinity;
   newRun({ mp: true, view: true });
+  state = 'run'; UI.focus = 0;
+  Music.stop(); Music.play('chase');
+}
+// Race: the host picks the level (a seed) and both phones start on it.
+function startRace() {
+  if (state === 'run' && run && run.race && run.phase !== 'over') return;   // already racing
+  const seed = Math.floor(Math.random() * 2147483647);
+  Net.round++;
+  Net.send({ t: 'race', seed, r: Net.round });
+  startRaceRound(seed);
+}
+function startRaceRound(seed) {
+  Net.clockOff = Infinity;
+  newRun({ mp: true, race: true, seed });
   state = 'run'; UI.focus = 0;
   Music.stop(); Music.play('chase');
 }
@@ -2595,11 +2755,7 @@ function applySnap(m) {
   if (!R || !R.view || state !== 'run') return;
   if (R.countdown > 0 && m.cd <= 0) R.startT = 0.8;
   R.time = m.tm; R.phase = m.ph; R.countdown = m.cd; R.overT = m.oT; R.cause = m.ca; R.line = m.li;
-  const [x, y, h, vy, f, anim, hangT, invuln] = m.p;
-  Object.assign(R.player, { x, y, h, vy, anim, hangT, invuln, onGround: !!(f & 1), touchWall: !!(f & 2), sliding: !!(f & 4),
-                            dead: !!(f & 8), blocked: !!(f & 16), shield: !!(f & 32), stunT: f & 64 ? 1 : 0 });
-  const [cx, cy, cvy, cg, canim, rageT, pounceT] = m.c;
-  Object.assign(R.cat, { x: cx, y: cy, vy: cvy, onGround: !!cg, anim: canim, rageT, pounceT });
+  Net.noteClock(m.st); netPush(R.buf, m.st, [m.p, m.c]);     // positions are drawn a bit later, smoothly (updateView)
   R.anger = m.an; R.gain = m.g; R.danger = m.dz; R.frozenT = m.fz; R.boostT = m.bo;
   R.shake = Math.max(R.shake, m.sh); R.flash = Math.max(R.flash, m.fl); R.flashColor = m.fc; R.banner = m.bn; R.catCd = m.cc;
   for (const [k, o] of m.add) { (k === 's' ? Level.solids : Level.hazards).push(o); Net.byId.set(k + o.id, o); }
@@ -2624,6 +2780,12 @@ function updateView(dt) {
   R.shake = Math.max(0, R.shake - dt * 12); R.flash = Math.max(0, R.flash - dt); R.fadeT = Math.max(0, R.fadeT - dt);
   R.startT = Math.max(0, R.startT - dt);
   if (R.banner) R.banner.t -= dt;
+  const s = netPick(R.buf);
+  if (s) {
+    unpackPlayer(R.player, s.a.d[0], s.b.d[0], s.k);
+    const [, cy, cvy, cg, canim, rageT, pounceT] = s.a.d[1];
+    Object.assign(R.cat, { x: lerp(s.a.d[1][0], s.b.d[1][0], s.k), y: lerp(cy, s.b.d[1][1], s.k), vy: cvy, onGround: !!cg, anim: canim, rageT, pounceT });
+  }
   updateFx(dt);
   updateCamera(dt);
   Level.updateMovers(R.time);
@@ -2748,9 +2910,9 @@ function drawScores() {
 
 // Big character portraits for the multiplayer screens.
 function drawRolePortrait(role, cx, feetY, label, sub) {
-  if (role === 'thief') {
+  if (role === 'thief' || role === 'friend') {
     ctx.save(); ctx.translate(Math.round(cx - 15), feetY - 57); ctx.scale(3, 3);
-    ctx.drawImage(SPR.stand.plain, 0, 0); ctx.drawImage(SPR.mouse.plain, 0, -5);
+    ctx.drawImage((role === 'friend' ? SPR2 : SPR).stand.plain, 0, 0); ctx.drawImage(SPR.mouse.plain, 0, -5);
     ctx.restore();
   } else {
     ctx.save(); ctx.translate(Math.round(cx - 56), feetY - 76); ctx.scale(2, 2);
@@ -2803,8 +2965,8 @@ function drawMP() {
   if (Net.showLog) { drawNetLog(); return; }
   switch (Net.screen) {
     case 'home':
-      drawText('PLAY ONLINE WITH A FRIEND: ONE IS THE THIEF,', W / 2, 44, PAL.inkSoft, 1, 'center');
-      drawText('THE OTHER IS THE CAT. ALL ABILITIES ARE FREE!', W / 2, 54, PAL.inkSoft, 1, 'center');
+      drawText('PLAY ONLINE WITH A FRIEND: THIEF VS CAT,', W / 2, 44, PAL.inkSoft, 1, 'center');
+      drawText('OR A RACE OF TWO THIEVES. ALL ABILITIES ARE FREE!', W / 2, 54, PAL.inkSoft, 1, 'center');
       if (UI.button('create', bx, 74, bw, 24, 'CREATE GAME', { accent: '#e01e1e' })) Net.screen = 'create';
       if (UI.button('join', bx, 106, bw, 24, 'JOIN WITH A CODE', { accent: '#2f9a5a' })) { Net.screen = 'join'; codeInput.value = ''; }
       drawRolePortrait('thief', W / 2 - 150, 196, '', '');
@@ -2815,16 +2977,18 @@ function drawMP() {
       drawText('WHO DO YOU WANT TO BE?', W / 2, 42, PAL.ink, 2, 'center');
       drawRolePortrait('thief', W / 2 - 90, 130, 'THE THIEF', 'RUN, JUMP, ESCAPE');
       drawRolePortrait('cat', W / 2 + 90, 130, 'THE CAT', 'POUNCE, TRAP, CATCH');
-      if (UI.button('bethief', W / 2 - 150, 166, 120, 22, "I'M THE THIEF")) Net.host('thief');
-      if (UI.button('becat', W / 2 + 30, 166, 120, 22, "I'M THE CAT", { accent: '#e01e1e' })) Net.host('cat');
-      back(204);
+      if (UI.button('bethief', W / 2 - 150, 166, 120, 22, "I'M THE THIEF")) Net.host('thief', 'cat');
+      if (UI.button('becat', W / 2 + 30, 166, 120, 22, "I'M THE CAT", { accent: '#e01e1e' })) Net.host('cat', 'cat');
+      if (UI.button('berace', bx, 192, bw, 20, 'OR: RACE OF TWO THIEVES', { accent: '#2f9a5a' })) Net.host('thief', 'race');
+      back(216);
       break;
     case 'hosting':
       drawText('YOUR GAME CODE', W / 2, 44, PAL.inkSoft, 2, 'center');
       drawText(Net.code, W / 2 + 3, 66, '#e01e1e', 9, 'center');
       drawText(Net.code, W / 2, 63, PAL.ink, 9, 'center');
       drawText('TELL YOUR FRIEND: MULTIPLAYER > JOIN WITH A CODE', W / 2, 124, PAL.ink, 1, 'center');
-      drawText('YOU ARE ' + (Net.role === 'cat' ? 'THE CAT' : 'THE THIEF'), W / 2, 140, Net.role === 'cat' ? '#e01e1e' : PAL.goldDark, 2, 'center');
+      if (Net.mode === 'race') drawText('RACE OF TWO THIEVES', W / 2, 140, PAL.green, 2, 'center');
+      else drawText('YOU ARE ' + (Net.role === 'cat' ? 'THE CAT' : 'THE THIEF'), W / 2, 140, Net.role === 'cat' ? '#e01e1e' : PAL.goldDark, 2, 'center');
       drawText('WAITING FOR YOUR FRIEND' + dots, W / 2, 160, PAL.inkSoft, 1, 'center');
       if (Net.msg) drawText(Net.msg, W / 2, 172, '#e01e1e', 1, 'center');
       back(190, 'CANCEL');
@@ -2844,14 +3008,20 @@ function drawMP() {
       back(190, 'CANCEL');
       break;
     case 'lobby': {
-      const me = Net.role, friend = me === 'cat' ? 'thief' : 'cat';
-      drawText('CONNECTED!', W / 2, 40, PAL.green, 2, 'center');
-      drawRolePortrait(me, W / 2 - 90, 128, 'YOU', me === 'cat' ? 'THE CAT' : 'THE THIEF');
-      drawRolePortrait(friend, W / 2 + 90, 128, 'FRIEND', friend === 'cat' ? 'THE CAT' : 'THE THIEF');
-      drawText('VS', W / 2, 96, '#e01e1e', 3, 'center');
-      if (UI.button('start', W / 2 - 150, 166, 140, 22, 'START!', { accent: '#e01e1e' })) Net.requestRound();
-      if (UI.button('swaproles', W / 2 + 10, 166, 140, 22, 'SWAP ROLES', { accent: '#2f9a5a' })) { Net.swap(true); sfx('click'); }
-      if (UI.button('mpleave', bx, 204, bw, 22, 'LEAVE') || UI.back) { Net.leave(); Net.screen = 'home'; }
+      const race = Net.mode === 'race', me = Net.role, friend = race ? 'friend' : me === 'cat' ? 'thief' : 'cat';
+      drawText('CONNECTED!', W / 2, 36, PAL.green, 2, 'center');
+      drawRolePortrait(race ? 'thief' : me, W / 2 - 90, 124, 'YOU', race ? 'THIEF' : me === 'cat' ? 'THE CAT' : 'THE THIEF');
+      drawRolePortrait(friend, W / 2 + 90, 124, 'FRIEND', race ? 'BLUE THIEF' : friend === 'cat' ? 'THE CAT' : 'THE THIEF');
+      drawText('VS', W / 2, 92, '#e01e1e', 3, 'center');
+      if (race) { if (UI.button('start', bx, 162, bw, 22, 'START THE RACE!', { accent: '#e01e1e' })) Net.requestRound(); }
+      else {
+        if (UI.button('start', W / 2 - 150, 162, 140, 22, 'START!', { accent: '#e01e1e' })) Net.requestRound();
+        if (UI.button('swaproles', W / 2 + 10, 162, 140, 22, 'SWAP ROLES', { accent: '#2f9a5a' })) { Net.swap(true); sfx('click'); }
+      }
+      if (UI.button('mode', bx, 190, bw, 20, race ? 'MODE: RACE (TAP TO CHANGE)' : 'MODE: THIEF VS CAT (TAP TO CHANGE)', { size: 1 })) {
+        Net.setMode(race ? 'cat' : 'race', true); sfx('click');
+      }
+      if (UI.button('mpleave', bx, 216, bw, 20, 'LEAVE') || UI.back) { Net.leave(); Net.screen = 'home'; }
       break;
     }
     case 'error':
@@ -2930,6 +3100,7 @@ function frame(now) {
   }
   if (state !== 'mp') codeInput.style.display = 'none';
   if (netEmit()) Net.sendSnap();
+  else if (raceEmit()) Net.sendGhost();
   UI.end();
   blit();
   requestAnimationFrame(frame);
