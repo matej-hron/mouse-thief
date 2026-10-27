@@ -105,7 +105,7 @@ const Save = {
   data: null,
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
-             sound: true, music: true, intro: true, shake: true };
+             sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false };
   },
   load() {
     let d = {};
@@ -608,8 +608,9 @@ function drawIcon(name, x, y, scale = 1, alpha = 1) {
 const Input = {
   jumpQ: 0, releaseQ: 0, slideQ: 0,      // queued presses consumed by the physics step
   gestures: new Map(),                   // active touch pointers
+  held: { jump: false, slide: false },   // on-screen touch buttons currently pressed
   touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches),
-  clear() { this.jumpQ = this.releaseQ = this.slideQ = 0; this.gestures.clear(); },
+  clear() { this.jumpQ = this.releaseQ = this.slideQ = 0; this.gestures.clear(); this.held.jump = this.held.slide = false; },
   // A touch becomes a jump on release, on a swipe up, or after being held 90ms.
   // Waiting a moment lets a swipe down become a slide instead of a jump.
   update() {
@@ -660,6 +661,7 @@ const UI = {
 };
 
 function playing() { return state === 'run' && run && run.phase === 'play' && !run.paused; }
+const touchButtonsOn = () => Input.touch && Save.data.touchButtons;
 
 function toLogical(e) {
   const r = screenCanvas.getBoundingClientRect();
@@ -695,7 +697,14 @@ screenCanvas.addEventListener('pointerdown', e => {
   UI.mx = x; UI.my = y; UI.kbNav = false;
   if (state === 'intro') { Intro.skip(); return; }
   if (playing()) {
-    for (const r of run.hudRects) if (x >= r.x - 3 && x < r.x + r.w + 3 && y >= r.y - 3 && y < r.y + r.h + 3) { r.act(); return; }
+    for (const r of run.hudRects) {
+      const pad = r.pad || 3;
+      if (x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad) {
+        r.down();
+        if (r.up) Input.gestures.set(e.pointerId, { hud: r, decided: true });   // hold-able button: release it later
+        return;
+      }
+    }
     if (e.pointerType === 'mouse') {           // mouse: jump right away, release cuts the jump short
       Input.jumpQ++;
       Input.gestures.set(e.pointerId, { decided: true, held: true });
@@ -721,6 +730,7 @@ function endPointer(e, cancelled) {
   const g = Input.gestures.get(e.pointerId);
   if (g) {
     Input.gestures.delete(e.pointerId);
+    if (g.hud) { g.hud.up(); return; }
     if (!g.decided && !cancelled) Input.jumpQ++;   // quick tap
     else if (g.held) Input.releaseQ++;
     return;
@@ -794,7 +804,11 @@ const Level = {
     return n * 16;
   },
   speedEstimate() { return RUN.baseSpeed * Math.min(RUN.maxSpeedMul, 1 + (run.time + 2) * RUN.speedGrowth); },
-  ensure(toX) { const d = clamp(run.time / 200, 0, 1); while (this.genX < toX) this.next(d); },
+  ensure(toX) {
+    if (run.tutorial) return;                 // the tutorial uses a hand-built level
+    const d = clamp(run.time / 200, 0, 1);
+    while (this.genX < toX) this.next(d);
+  },
   prune(minX) {
     this.solids = this.solids.filter(s => s.x + s.w + Math.abs(s.ax || 0) > minX && s.y < H + 100);
     this.hazards = this.hazards.filter(z => z.x + z.w > minX);
@@ -985,7 +999,7 @@ const P_H = 19, P_SLIDE_H = 10;
 function makePlayer() {
   return { x: 60, y: Level.gy - P_H, w: 8, h: P_H, vx: RUN.baseSpeed, vy: 0, onGround: true, ground: null,
            jumpsLeft: 1, coyote: 0, jumpBuf: 0, slideReq: 0, sliding: false, slideT: 0, fastFall: false, slideOnLand: false,
-           touchWall: false, wjCool: 0, invuln: 0, shield: false, hangT: 0, dead: false, deathY: 0, anim: 0, blocked: false };
+           touchWall: false, wjCool: 0, invuln: 0, noCut: 0, shield: false, hangT: 0, dead: false, deathY: 0, anim: 0, blocked: false };
 }
 function playerSpeed() {
   return RUN.baseSpeed * Math.min(RUN.maxSpeedMul, 1 + run.time * RUN.speedGrowth) * (run.boostT > 0 ? RUN.boostMul : 1);
@@ -1012,7 +1026,7 @@ function land(p, s) { p.y = s.y - p.h; p.vy = 0; p.onGround = true; p.ground = s
 function updatePlayer(dt) {
   const p = run.player;
   p.anim += dt;
-  p.jumpBuf -= dt; p.slideReq -= dt; p.coyote -= dt; p.wjCool -= dt; p.invuln -= dt;
+  p.jumpBuf -= dt; p.slideReq -= dt; p.coyote -= dt; p.wjCool -= dt; p.invuln -= dt; p.noCut -= dt;
   while (Input.jumpQ > 0) { Input.jumpQ--; p.jumpBuf = PHYS.jumpBuffer; }
   let released = false;
   while (Input.releaseQ > 0) { Input.releaseQ--; released = true; }
@@ -1047,7 +1061,7 @@ function updatePlayer(dt) {
       sfx('djump'); ring(p.x + 4, p.y + p.h, '#cfc4ee');
     }
   }
-  if (released && p.vy < -160) p.vy *= 0.5;   // short hop when the jump is released early
+  if (released && p.vy < -200 && !(p.noCut > 0)) p.vy *= 0.6;   // shorter hop when the jump is released early
 
   // auto-run + gravity
   const target = playerSpeed();
@@ -1174,6 +1188,11 @@ function updateCat(dt) {
   c.x += spd * dt;
   const gap = p.x - c.x;
   if (!frozen && gap > RUN.maxGap) c.x += (gap - RUN.maxGap) * Math.min(1, dt * 6);   // rubber band
+  if (run.tutorial) {                          // tutorial: she can come close, but never catches you
+    const demo = run.tut.info && run.tut.info.demo;
+    if (demo) c.x += (p.x - 30 - c.x) * Math.min(1, dt * 2.5);
+    c.x = Math.min(c.x, p.x - (demo ? 30 : 75));
+  }
   if (frozen) return;
 
   const under = catTopAt(c.x - 40, c.x - 4);
@@ -1183,7 +1202,7 @@ function updateCat(dt) {
     if (ahead === null) {                       // pit ahead: leap across it
       const w = Math.min(400, nextSolidX(c.x) - c.x);
       const air = (w + 30) / Math.max(spd, 80);
-      c.vy = -Math.min(700, PHYS.gravity * air / 2); c.onGround = false;
+      c.vy = -Math.min(480, PHYS.gravity * air / 2); c.onGround = false;   // cartoon physics keeps her up anyway
     } else if (ahead < c.y - 3) {               // wall ahead: jump onto it
       c.vy = -Math.sqrt(2 * PHYS.gravity * (c.y - ahead + 8)); c.onGround = false;
     }
@@ -1207,9 +1226,10 @@ const DEATH_LINES = {
   ledge: ['THE ROOF LEFT BEFORE YOU DID.'],
 };
 
-function newRun() {
+function newRun(opts = {}) {
   const gainTier = tierOf('slow');
   run = {
+    tutorial: !!opts.tutorial, tut: null, ui: {},
     time: 0, points: 0, pointT: 0, anger: 0, phase: 'play', paused: false, deathT: 0, overT: 0, cause: '', line: '',
     camX: 0, shake: 0, flash: 0, flashColor: '#ff2020', danger: 0, beatT: 0, fadeT: 0.5, startT: 1.2,
     particles: [], popups: [], banner: null, hudRects: [], newBest: false, trollAt: -99, lastTroll: '',
@@ -1221,6 +1241,7 @@ function newRun() {
     }),
   };
   Level.reset();
+  if (run.tutorial) { run.tut = { steps: Tutorial.build(), idx: 0, cp: 60, info: null, freeze: null, freezeT: 0, nudge: 0 }; run.hintT = 0; }
   run.player = makePlayer();
   run.cat = makeCat();
   run.camX = run.player.x - W * 0.36;
@@ -1228,11 +1249,16 @@ function newRun() {
   Input.clear();
   Music.bpmBoost = 0;
 }
-function startRun() {
-  newRun();
+function startRun(opts) {
+  newRun(opts);
   state = 'run'; UI.focus = 0;
   Music.stop(); Music.play('chase');
   sfx('go');
+}
+const startTutorial = () => startRun({ tutorial: true });
+function finishTutorial() {
+  Save.data.tutorialDone = true; Save.save();
+  startRun();
 }
 function setPaused(v) {
   if (!run || run.phase !== 'play') return;
@@ -1328,6 +1354,7 @@ function rescueFromPit(p) {
 function trapHit(cause) {
   const p = run.player;
   if (run.phase !== 'play') return;
+  if (run.tutorial) { Tutorial.respawn(); return; }
   if (p.shield) {
     p.shield = false; p.invuln = 1.2;
     sfx('shieldPop'); ring(p.x + 4, p.y + 9, '#58e0a0'); ring(p.x + 4, p.y + 9, '#d8fff0');
@@ -1400,9 +1427,10 @@ function updateRun(dt) {
   // --- playing
   R.time += dt;
   const lvl = Math.floor(R.time / RUN.angerEvery);
-  if (lvl > R.anger) { R.anger = lvl; angerEvent(); }
+  if (lvl > R.anger && !R.tutorial) { R.anger = lvl; angerEvent(); }
+  if (R.tutorial && Tutorial.update(dt)) return;   // finished: a real run just started
 
-  R.pointT += dt;
+  if (!R.tutorial) R.pointT += dt;
   if (R.pointT >= RUN.pointEvery) {
     R.pointT -= RUN.pointEvery;
     const g = R.doubleT > 0 ? 2 : 1;
@@ -1640,9 +1668,12 @@ function drawCatHead(x, y) {
 function drawHUD() {
   const R = run, hud = [];
   R.hudRects = hud;
-  drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
-  drawText('★ ' + R.points, 8, 30, PAL.gold, 2, 'left', '#000');
-  if (R.doubleT > 0) drawText('2X ' + Math.ceil(R.doubleT) + 'S', 14 + textWidth('★ ' + R.points, 2) + 8, 30, Math.floor(menuT * 4) % 2 ? '#ffc83a' : '#fff', 2, 'left', '#000');
+  if (R.tutorial) drawText('TUTORIAL', 8, 10, PAL.gold, 2, 'left', '#000');
+  else {
+    drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
+    drawText('★ ' + R.points, 8, 30, PAL.gold, 2, 'left', '#000');
+    if (R.doubleT > 0) drawText('2X ' + Math.ceil(R.doubleT) + 'S', 14 + textWidth('★ ' + R.points, 2) + 8, 30, Math.floor(menuT * 4) % 2 ? '#ffc83a' : '#fff', 2, 'left', '#000');
+  }
 
   // cat speed + danger meter
   const mw = 140, mx = Math.round(W / 2 - mw / 2 + 8), my = 22;
@@ -1655,18 +1686,38 @@ function drawHUD() {
   ctx.fillRect(mx, my, Math.round(mw * R.danger), 8);
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(mx, my, Math.round(mw * R.danger), 1);
   if (R.danger > 0.7) drawText('DANGER!', mx + mw / 2, my + 13, blink ? '#ff4040' : '#fff', 1, 'center', '#000');
+  R.ui.meter = { x: mx - 21, y: my - 4, w: mw + 23, h: 16 };
 
-  // pause button
-  const pb = { x: W - 30, y: 8, w: 22, h: 22, act: () => setPaused(true) };
-  ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(pb.x, pb.y, pb.w, pb.h);
-  ctx.fillStyle = '#cfc4ee'; ctx.fillRect(pb.x, pb.y, pb.w, 1); ctx.fillRect(pb.x, pb.y + pb.h - 1, pb.w, 1); ctx.fillRect(pb.x, pb.y, 1, pb.h); ctx.fillRect(pb.x + pb.w - 1, pb.y, 1, pb.h);
+  // pause button (+ skip button during the tutorial)
+  const pb = { x: W - 30, y: 8, w: 22, h: 22, down: () => setPaused(true) };
+  hudFrame(pb, false);
   ctx.fillRect(pb.x + 7, pb.y + 6, 3, 10); ctx.fillRect(pb.x + 12, pb.y + 6, 3, 10);
   hud.push(pb);
+  if (R.tutorial) {
+    const sk = { x: W - 30 - 70, y: 8, w: 64, h: 22, down: finishTutorial };
+    hudFrame(sk, false);
+    drawText('SKIP >>', sk.x + sk.w / 2, sk.y + 9, '#cfc4ee', 1, 'center');
+    hud.push(sk);
+  }
+
+  // big on-screen JUMP / SLIDE buttons for touch screens (tap anywhere / swipe still work too)
+  const touchUI = touchButtonsOn();
+  if (touchUI) {
+    const sl = { x: 8, y: H - 56, w: 56, h: 48, pad: 8,
+                 down: () => { Input.slideQ++; Input.held.slide = true; }, up: () => { Input.held.slide = false; } };
+    const jp = { x: W - 64, y: H - 56, w: 56, h: 48, pad: 8,
+                 down: () => { Input.jumpQ++; Input.held.jump = true; }, up: () => { Input.held.jump = false; } };   // taps always give a full jump
+    drawTouchButton(sl, '↓', 'SLIDE', Input.held.slide);
+    drawTouchButton(jp, '↑', 'JUMP', Input.held.jump);
+    hud.push(sl, jp);
+    R.ui.slide = sl; R.ui.jump = jp;
+  }
 
   // equipped ability buttons
-  const bs = 34, n = R.abil.length;
+  const bs = 34, n = R.abil.length, right = touchUI ? W - 74 : W - 8;
+  R.ui.abil = n ? { x: right - n * (bs + 6), y: H - bs - (touchUI ? 15 : 8), w: n * (bs + 6) - 6, h: bs } : null;
   R.abil.forEach((a, i) => {
-    const x = W - 8 - (n - i) * (bs + 6), y = H - bs - 8;
+    const x = right - (n - i) * (bs + 6), y = R.ui.abil.y;
     const act = abilityActive(a);
     const usable = !a.def.passive && a.uses > 0 && act <= 0;
     ctx.fillStyle = 'rgba(13,11,19,0.78)'; ctx.fillRect(x, y, bs, bs);
@@ -1678,7 +1729,7 @@ function drawHUD() {
     if (a.def.passive) drawText('ON', x + bs - 2, y + bs - 8, a.def.color, 1, 'right', '#000');
     else drawText(String(a.uses), x + bs - 3, y + bs - 9, a.uses > 0 ? '#fff' : '#777', 1, 'right', '#000');
     if (act > 0 && a.id !== 'shield') { ctx.fillStyle = a.def.color; ctx.fillRect(x + 2, y + bs - 4, Math.round((bs - 4) * act), 2); }
-    hud.push({ x, y, w: bs, h: bs, act: () => useAbility(i) });
+    hud.push({ x, y, w: bs, h: bs, down: () => useAbility(i) });
   });
 
   if (R.hintT > 0 && R.phase === 'play') {
@@ -1686,9 +1737,20 @@ function drawHUD() {
     ctx.globalAlpha = a;
     const lines = Input.touch ? ['TAP: JUMP (TAP AGAIN IN THE AIR: DOUBLE JUMP)', 'SWIPE DOWN: SLIDE.  TAP NEAR A WALL: WALL-JUMP']
                               : ['SPACE / ↑: JUMP, DOUBLE JUMP, WALL-JUMP', '↓: SLIDE   1-3: ABILITIES   P: PAUSE'];
-    lines.forEach((l, i) => drawText(l, 8, H - 26 + i * 9, '#fff', 1, 'left', '#000'));
+    lines.forEach((l, i) => drawText(l, touchUI ? 72 : 8, H - (touchUI ? 76 : 26) + i * 9, '#fff', 1, 'left', '#000'));
     ctx.globalAlpha = 1;
   }
+}
+function hudFrame(r, lit) {
+  ctx.fillStyle = lit ? 'rgba(207,196,238,0.45)' : 'rgba(13,11,19,0.6)'; ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = '#cfc4ee';
+  ctx.fillRect(r.x, r.y, r.w, 1); ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1); ctx.fillRect(r.x, r.y, 1, r.h); ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+}
+function drawTouchButton(r, glyph, label, pressed) {
+  hudFrame(r, pressed);
+  const o = pressed ? 1 : 0;
+  drawText(glyph, r.x + r.w / 2 + o, r.y + 7 + o, '#fff', 4, 'center', '#000');
+  drawText(label, r.x + r.w / 2 + o, r.y + r.h - 11 + o, '#cfc4ee', 1, 'center');
 }
 
 function drawBanner() {
@@ -1707,7 +1769,8 @@ function drawPause() {
   drawText('PAUSED', W / 2, 52, '#fff', 4, 'center', '#000');
   const bw = 160, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('resume', bx, 96, bw, 24, 'RESUME', { theme: 'dark' }) || UI.back) setPaused(false);
-  if (UI.button('restart', bx, 128, bw, 24, 'RESTART', { theme: 'dark' })) startRun();
+  if (run.tutorial) { if (UI.button('skiptut', bx, 128, bw, 24, 'SKIP TUTORIAL', { theme: 'dark' })) finishTutorial(); }
+  else if (UI.button('restart', bx, 128, bw, 24, 'RESTART', { theme: 'dark' })) startRun();
   if (UI.button('quit', bx, 160, bw, 24, 'MENU', { theme: 'dark' })) go('menu');
 }
 
@@ -1759,8 +1822,9 @@ function drawRun() {
   if (R.frozenT > 0) { ctx.fillStyle = 'rgba(140,220,255,0.08)'; ctx.fillRect(0, 0, W, H); }
   if (R.flash > 0) { ctx.globalAlpha = R.flash * 1.2; ctx.fillStyle = R.flashColor; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
   if (R.phase !== 'over') drawHUD();
+  if (R.tutorial && !R.paused) Tutorial.draw(camX);
   drawBanner();
-  if (R.startT > 0 && R.phase === 'play') {
+  if (R.startT > 0 && R.phase === 'play' && !R.tutorial) {
     const k = 1.2 - R.startT;
     if (k > 0.1) shakyText('RUN!', W / 2, 90, '#fff', 6, 1);
   }
@@ -1768,6 +1832,166 @@ function drawRun() {
   else if (R.phase === 'over') drawGameOver();
   if (R.fadeT > 0) { ctx.fillStyle = 'rgba(0,0,0,' + (R.fadeT / 0.5) + ')'; ctx.fillRect(0, 0, W, H); }
 }
+
+/* --------------------------------------------------------------------------
+   10b. TUTORIAL — a hand-built level for new players.
+   At each obstacle the game freezes and shows which button to press; the
+   action unfreezes it. Falling or hitting spikes respawns at a checkpoint,
+   and the cat comes close but never catches you.
+   -------------------------------------------------------------------------- */
+const Tutorial = {
+  // Lays out the level (positions are tuned to the physics) and returns the steps.
+  build() {
+    const L = Level, gy = 190;
+    L.solids = []; L.hazards = []; L.gy = gy; L.genX = 1e9;
+    L.ground(-600, 1240, gy);                                         // start ... gap 1 at 640
+    L.ground(704, 396, gy);                                           // ... gap 2 at 1100 (needs a double jump)
+    L.ground(1200, 1700, gy);                                         // bar, spikes, tower ... fake floor at 2900
+    L.add({ type: 'bar', x: 1400, y: -30, w: 60, h: gy - 13 + 30 });
+    L.spikes(1600, gy, 32);
+    L.add({ type: 'block', x: 2200, y: gy - 120, w: 28, h: 120 });    // too tall without a wall jump
+    L.add({ type: 'fake', x: 2900, y: gy, w: 60, h: H + 60 - gy, state: 0 });
+    L.ground(2960, 3400, gy);
+    return [
+      { at: 0, title: 'YOU RUN BY YOURSELF', sub: 'THE CAT IS RIGHT BEHIND YOU. NEVER STOP!', dur: 2.4 },
+      { at: 626, wait: 'jump', cp: 400, title: 'JUMP!' },
+      { at: 1076, wait: 'jump', cp: 860, title: 'BIG GAP! JUMP...' },
+      { cond: p => !p.onGround && p.vy > -60 && p.x > 1090, pass: 1210, wait: 'djump', title: '...AND JUMP AGAIN IN THE AIR!' },
+      { at: 1370, wait: 'slide', cp: 1250, title: 'SLIDE UNDER IT!' },
+      { at: 1576, wait: 'jump', cp: 1480, title: 'SPIKES! JUMP OVER THEM' },
+      { at: 1720, title: 'TALL WALL AHEAD!', sub: 'JUMP AT IT, THEN JUMP AGAIN WHILE TOUCHING IT', dur: 2.2, cp: 1700 },
+      { cond: p => p.touchWall && !p.onGround, pass: 2232, wait: 'wall', title: 'WALL JUMP!' },
+      { at: 2450, title: 'CAREFUL...', sub: 'NOT EVERYTHING HERE IS WHAT IT SEEMS', dur: 2.0, cp: 2400 },
+      { cond: p => p.hangT > 0, pass: 2970, wait: 'fake', title: 'LOL, A FAKE FLOOR!' },
+      { at: 3100, title: 'THIS BAR IS HOW CLOSE SHE IS', sub: 'WHEN IT FILLS UP, SHE GOT YOU!', dur: 2.8, highlight: 'meter', demo: true, cp: 3050 },
+      { at: 3700, title: 'SHE GETS 20% FASTER EVERY 30S', sub: "SO DON'T GET STUCK ON WALLS!", dur: 2.4 },
+      { at: 4200, title: 'EVERY 5 SECONDS = +1 ★', sub: 'SPEND YOUR ★ IN THE SHOP ON ABILITIES', dur: 2.4, star: true },
+      { at: 4700, title: 'YOUR ABILITIES ARE DOWN HERE', sub: 'abil', dur: 2.4, highlight: 'abil', needAbil: true },
+      { at: 5200, title: "YOU'RE READY!", sub: 'NOW FOR REAL. RUN!', dur: 2.0, end: true },
+    ];
+  },
+
+  // Called every physics step. Returns true when the tutorial has finished.
+  update(dt) {
+    const T = run.tut, p = run.player;
+    T.nudge = Math.max(0, T.nudge - dt);
+    if (T.info) {
+      T.info.t += dt;
+      if (T.info.t >= T.info.dur) { const end = T.info.end; T.info = null; if (end) { finishTutorial(); return true; } }
+    }
+    const s = T.steps[T.idx];
+    if (!s) return false;
+    if (s.pass && p.x > s.pass) { T.idx++; return false; }   // got past it some other way
+    if (!(s.cond ? s.cond(p) : p.x + p.w >= s.at)) return false;
+    T.idx++;
+    if (s.cp != null) T.cp = s.cp;
+    if (s.wait) {
+      T.freeze = s; T.freezeT = 0;
+      Input.jumpQ = Input.slideQ = Input.releaseQ = 0;
+      sfx('popWarn');
+    } else if (!s.needAbil || run.abil.length) {
+      T.info = Object.assign({ t: 0 }, s);
+      if (s.star) { popup('+1', p.x + 4, p.y - 10, PAL.gold, 2, { vy: -40 }); sfx('point'); }
+    }
+    return false;
+  },
+
+  // While frozen, only the right action continues the game.
+  frozenInput(dt) {
+    const T = run.tut, f = T.freeze;
+    T.freezeT += dt;
+    T.nudge = Math.max(0, T.nudge - dt);
+    Input.releaseQ = 0;
+    if (f.wait === 'slide') {
+      if (Input.slideQ > 0) T.freeze = null;
+      else if (Input.jumpQ > 0) { Input.jumpQ = 0; T.nudge = 0.4; sfx('deny'); }
+    } else {
+      if (Input.jumpQ > 0) { T.freeze = null; run.player.noCut = 0.35; }   // always a full jump here
+      else if (Input.slideQ > 0) { Input.slideQ = 0; T.nudge = 0.4; sfx('deny'); }
+    }
+  },
+
+  respawn() {
+    const T = run.tut;
+    this.build();                                           // restores fake floors etc.
+    T.idx = T.steps.findIndex(s => (s.at ?? s.pass) > T.cp);
+    if (T.idx < 0) T.idx = T.steps.length;
+    T.freeze = null; T.info = null;
+    const p = Object.assign(run.player, makePlayer(), { x: T.cp, y: Level.gy - P_H });
+    Object.assign(run.cat, { x: T.cp - 120, y: Level.gy, vy: 0, onGround: true, floor: Level.gy });
+    run.camX = p.x - W * 0.36;
+    run.fadeT = 0.35; run.shake = 4;
+    Input.clear();
+    sfx('hit');
+    popup('OOPS! TRY AGAIN', p.x + 4, p.y - 16, '#ff6b6b', 2, { life: 1.4, vy: -15 });
+  },
+
+  how(wait) {
+    const mode = touchButtonsOn() ? 'btn' : Input.touch ? 'tap' : 'key';
+    const T = {
+      jump:  { btn: 'TAP JUMP (OR TAP ANYWHERE)', tap: 'TAP THE SCREEN', key: 'PRESS SPACE OR ↑' },
+      djump: { btn: 'TAP JUMP AGAIN, IN THE AIR', tap: 'TAP AGAIN, IN THE AIR', key: 'PRESS SPACE AGAIN, IN THE AIR' },
+      wall:  { btn: 'TAP JUMP WHILE ON THE WALL', tap: 'TAP WHILE ON THE WALL', key: 'PRESS SPACE WHILE ON THE WALL' },
+      fake:  { btn: 'QUICK, TAP JUMP!', tap: 'QUICK, TAP THE SCREEN!', key: 'QUICK, PRESS SPACE!' },
+      slide: { btn: 'TAP SLIDE (OR SWIPE DOWN)', tap: 'SWIPE DOWN', key: 'PRESS ↓ OR S' },
+    };
+    return T[wait][mode];
+  },
+
+  // Pulsing frame + bouncing arrow pointing at something on screen.
+  point(r, from = 'above') {
+    if (!r) return;
+    const on = Math.floor(menuT * 4) % 2;
+    ctx.fillStyle = on ? PAL.gold : '#fff';
+    ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, 2); ctx.fillRect(r.x - 3, r.y + r.h + 1, r.w + 6, 2);
+    ctx.fillRect(r.x - 3, r.y - 3, 2, r.h + 6); ctx.fillRect(r.x + r.w + 1, r.y - 3, 2, r.h + 6);
+    const b = Math.round(Math.abs(Math.sin(menuT * 6)) * 4);
+    if (from === 'above') drawText('↓', r.x + r.w / 2, r.y - 22 - b, PAL.gold, 3, 'center', '#000');
+    else drawText('↑', r.x + r.w / 2, r.y + r.h + 6 + b, PAL.gold, 3, 'center', '#000');
+  },
+  keycap(label, cx, y) {
+    const w = textWidth(label, 2) + 18, x = Math.round(cx - w / 2), press = Math.floor(menuT * 2.5) % 2;
+    ctx.fillStyle = '#000'; ctx.fillRect(x + 2, y + 3, w, 20);
+    ctx.fillStyle = PAL.ink; ctx.fillRect(x, y + press, w, 20);
+    ctx.fillStyle = PAL.paper; ctx.fillRect(x + 1, y + 1 + press, w - 2, 18);
+    drawText(label, cx, y + 5 + press, PAL.ink, 2, 'center');
+  },
+
+  draw(camX) {
+    const T = run.tut, p = run.player;
+    if (T.freeze) {
+      const f = T.freeze, wait = f.wait;
+      ctx.fillStyle = 'rgba(8,6,14,0.45)'; ctx.fillRect(0, 0, W, H);
+      const nx = T.nudge > 0 ? Math.round(Math.sin(menuT * 70) * 3) : 0;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 50, W, 56);
+      drawText(f.title, W / 2 + nx, 58, PAL.gold, 3, 'center', '#000');
+      drawText(this.how(wait), W / 2 + nx, 82, '#fff', 2, 'center', '#000');
+      if (T.nudge > 0) drawText(wait === 'slide' ? 'NOT JUMP - SLIDE!' : 'NOT SLIDE - JUMP!', W / 2, 112, '#ff6b6b', 2, 'center', '#000');
+      else if (!Input.touch) this.keycap(wait === 'slide' ? '↓' : 'SPACE', W / 2, 112);
+      if (touchButtonsOn()) this.point(wait === 'slide' ? run.ui.slide : run.ui.jump);
+      // circle the obstacle / the player so it's clear what's going on
+      const px = Math.round(p.x - camX) + 4, py = Math.round(p.y + p.h / 2);
+      ctx.fillStyle = Math.floor(menuT * 4) % 2 ? PAL.gold : '#fff';
+      for (let a = 0; a < 48; a++) { const t = a / 48 * Math.PI * 2; ctx.fillRect(Math.round(px + Math.cos(t) * 20), Math.round(py + Math.sin(t) * 20), 1, 1); }
+      return;
+    }
+    if (T.info) {
+      const i = T.info, k = Math.min(1, i.t / 0.2, (i.dur - i.t) / 0.25);
+      const sub = i.sub === 'abil' ? (Input.touch ? 'TAP ONE TO USE IT' : 'PRESS 1, 2 OR 3 TO USE THEM') : i.sub;
+      ctx.globalAlpha = clamp(k, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 50, W, 40);
+      drawText(i.title, W / 2, 56, i.end ? '#ff6b6b' : PAL.gold, i.end ? 3 : 2, 'center', '#000');
+      drawText(sub, W / 2, i.end ? 78 : 74, '#fff', i.end ? 2 : 1, 'center', '#000');
+      ctx.globalAlpha = 1;
+      if (i.highlight === 'meter') this.point(run.ui.meter, 'below');
+      if (i.highlight === 'abil') this.point(run.ui.abil);
+    }
+    // live nudges while on your own
+    const sx = Math.round(p.x - camX) + 4;
+    if (p.blocked && p.onGround && !p.sliding) drawText('JUMP!', sx, p.y - 26, PAL.gold, 2, 'center', '#000');
+    else if (p.touchWall && !p.onGround) drawText('JUMP AGAIN!', sx, p.y - 26, PAL.gold, 2, 'center', '#000');
+  },
+};
 
 /* --------------------------------------------------------------------------
    11. INTRO CUTSCENE (~10s, skippable)
@@ -1789,7 +2013,7 @@ const Intro = {
     if (this.t >= 10.2) this.finish();
   },
   skip() { if (this.t > 0.25) this.finish(); },
-  finish() { if (state === 'intro') startRun(); },
+  finish() { if (state === 'intro') { if (Save.data.tutorialDone) startRun(); else startTutorial(); } },
   bubble(text, cx, bottom) {
     const w = textWidth(text, 2) + 12, h = 18, x = Math.round(cx - w / 2), y = bottom - h - 4;
     ctx.fillStyle = PAL.ink; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
@@ -1877,7 +2101,11 @@ function go(s) {
   state = s; UI.focus = 0;
   if (s === 'menu' || s === 'shop' || s === 'scores' || s === 'settings') Music.play('menu');
 }
-function playFromMenu() { if (Save.data.intro) Intro.start(); else startRun(); }
+function playFromMenu() {
+  if (Save.data.intro) Intro.start();            // the intro hands over to the tutorial for new players
+  else if (!Save.data.tutorialDone) startTutorial();
+  else startRun();
+}
 
 function bgLight() { ctx.fillStyle = PAL.paper; ctx.fillRect(0, 0, W, H); }
 function wallet(y = 10) {
@@ -1902,11 +2130,12 @@ function drawMenu() {
   drawText('SHE WANTS IT BACK.', W / 2, 58, '#e01e1e', 1, 'center');
   wallet();
   const bw = 160, bx = Math.round(W / 2 - bw / 2);
-  if (UI.button('play', bx, 76, bw, 24, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
-  if (UI.button('shop', bx, 106, bw, 24, 'SHOP')) go('shop');
-  if (UI.button('scores', bx, 136, bw, 24, 'HIGH SCORE')) go('scores');
-  if (UI.button('settings', bx, 166, bw, 24, 'SETTINGS')) go('settings');
-  drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.paper, 1, 'center');
+  if (UI.button('play', bx, 72, bw, 23, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
+  if (UI.button('howto', bx, 99, bw, 23, 'HOW TO PLAY')) startTutorial();
+  if (UI.button('shop', bx, 126, bw, 23, 'SHOP')) go('shop');
+  if (UI.button('scores', bx, 153, bw, 23, 'HIGH SCORE')) go('scores');
+  if (UI.button('settings', bx, 180, bw, 23, 'SETTINGS')) go('settings');
+  drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.paper, 1, 'center');
   if (view.portrait) drawText('ROTATE YOUR PHONE FOR A BIGGER VIEW', W / 2, 66, PAL.inkSoft, 1, 'center');
 }
 
@@ -1986,19 +2215,20 @@ function drawSettings(dt) {
   drawText('SETTINGS', W / 2, 16, PAL.ink, 4, 'center');
   const d = Save.data, bw = 240, bx = Math.round(W / 2 - bw / 2), on = v => v ? 'ON' : 'OFF';
   resetArm = Math.max(0, resetArm - dt);
-  let y = 50;
-  const row = (id, label, fn, o) => { if (UI.button(id, bx, y, bw, 22, label, o)) fn(); y += 28; };
+  let y = 44;
+  const row = (id, label, fn, o) => { if (UI.button(id, bx, y, bw, 21, label, o)) fn(); y += 26; };
   row('snd', 'SOUND: ' + on(d.sound), () => { d.sound = !d.sound; Save.save(); Sound.apply(); sfx('click'); });
   row('mus', 'MUSIC: ' + on(d.music), () => { d.music = !d.music; Save.save(); Sound.apply(); sfx('click'); });
   row('intro', 'INTRO CUTSCENE: ' + on(d.intro), () => { d.intro = !d.intro; Save.save(); sfx('click'); });
   row('shake', 'SCREEN SHAKE: ' + on(d.shake), () => { d.shake = !d.shake; Save.save(); sfx('click'); });
+  row('touchbtn', 'TOUCH BUTTONS: ' + on(d.touchButtons), () => { d.touchButtons = !d.touchButtons; Save.save(); sfx('click'); });
   row('reset', resetArm > 0 ? 'TAP AGAIN TO ERASE ALL' : 'RESET PROGRESS', () => {
     if (resetArm > 0) {
-      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake };
+      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons };
       Save.data = Object.assign(Save.defaults(), keep); Save.save(); resetArm = 0; sfx('hit');
     } else { resetArm = 3; sfx('deny'); }
   }, { accent: '#e01e1e', textColor: '#b03030' });
-  if (UI.button('back', bx, y + 6, bw, 22, 'BACK') || UI.back) go('menu');
+  if (UI.button('back', bx, y + 4, bw, 21, 'BACK') || UI.back) go('menu');
 }
 
 /* --------------------------------------------------------------------------
@@ -2011,8 +2241,9 @@ function frame(now) {
   menuT += dt;
   Input.update();
   if (state === 'run' && run) {
-    if (!run.paused) { acc += dt; while (acc >= STEP) { updateRun(STEP); acc -= STEP; } }
-    else acc = 0;
+    if (run.paused) acc = 0;
+    else if (run.tut && run.tut.freeze) { acc = 0; Tutorial.frozenInput(dt); }   // tutorial waiting for an action
+    else { acc += dt; while (acc >= STEP && !(run.tut && run.tut.freeze)) { updateRun(STEP); acc -= STEP; } }
   } else if (state === 'intro') Intro.update(dt);
 
   UI.begin();
