@@ -1,8 +1,9 @@
 // Mouse Thief service worker: makes the game installable and playable offline.
-// The page is fetched network-first (so new releases show up right away when
-// online), everything else is served from the cache.
+// The page is fetched network-first, skipping the browser's HTTP cache (GitHub
+// Pages lets it keep pages for 10 minutes), so new releases show up right away
+// when online. Everything else is served from the cache.
 // Bump CACHE on every release so old files get cleaned up.
-const CACHE = 'mouse-thief-v1.5.0';
+const CACHE = 'mouse-thief-v1.5.1';
 const ASSETS = [
   './',
   './index.html',
@@ -15,7 +16,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -32,7 +33,7 @@ self.addEventListener('fetch', e => {
 
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
+      fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
         .then(res => {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put('./index.html', copy));

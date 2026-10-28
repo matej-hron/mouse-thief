@@ -881,6 +881,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (playing() && !run.mp) setPaused(true); if (Sound.ctx) Sound.ctx.suspend(); }
   else {
     if (Sound.ctx) Sound.ctx.resume();
+    checkForUpdate();
     if (Net.peer && Net.peer.disconnected && !Net.peer.destroyed) Net.peer.reconnect();   // back from sharing the room code
   }
 });
@@ -2597,12 +2598,22 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+// An installed app can sit in the background for days. When it comes back to the menu, check
+// whether a newer version is online and, if so, reload into it.
+async function checkForUpdate() {
+  if (!location.protocol.startsWith('http') || !navigator.onLine) return;
+  try {
+    const html = await (await fetch('./index.html', { cache: 'no-cache' })).text();
+    const v = (/const VERSION = '([^']+)'/.exec(html) || [])[1];
+    if (v && v !== VERSION && state === 'menu') location.reload();
+  } catch (_) { /* offline: keep playing this version */ }
 }
 function installApp() {
   if (!installPrompt) return;
