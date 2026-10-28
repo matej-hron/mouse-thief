@@ -3,7 +3,7 @@
 // Pages lets it keep pages for 10 minutes), so new releases show up right away
 // when online. Everything else is served from the cache.
 // Bump CACHE on every release so old files get cleaned up.
-const CACHE = 'mouse-thief-v1.5.2';
+const CACHE = 'mouse-thief-v1.5.3';
 const ASSETS = [
   './',
   './index.html',
