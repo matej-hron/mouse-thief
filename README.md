@@ -11,6 +11,11 @@ A tiny pixel-art endless runner. You stole the cat's mouse "just for fun". She d
 
 New players get an interactive tutorial after the intro (replay it any time via HOW TO PLAY).
 
+- **Worlds:** pick where the chase happens: City (night rooftops), Desert, Savanna or Spain.
+- **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
+  (body color, eye color, stripes or spots).
+- **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
+
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
 
 ## Multiplayer

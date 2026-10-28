@@ -48,7 +48,7 @@
      9. Cat AI
     10. Run: scoring, anger, abilities, effects, HUD, game over
     11. Intro cutscene
-    12. Menu screens: main, shop, high score, settings
+    12. Menu screens: main, shop (abilities + skins), skin maker, worlds, settings
     13. Main loop
    ========================================================================== */
 
@@ -94,7 +94,31 @@ const PAL = {
   far: '#2a2240', mid: '#1c1730', ground: '#0d0b13', rim: '#8070b0', rimDark: '#2a2340', shingle: '#1a1524',
   brick: '#1a1526', brickLine: '#2b2340', spike: '#ece6f7', spikeShade: '#a69cc0', window: '#e9c46a',
   rimPlayer: '#9d8fd0', rimCat: '#8b7fb0',
+  plat: '#3e3358', platLeg: '#2a2340', mover: '#5e5384', moverTop: '#d3c8f5', blockBase: '#4a3e66', bar: '#16121f',
+  crumble: '#3b3152', crumbleTop: '#a593d6', crumbleCrack: '#1c1628', fog: 'rgba(13,11,19,0.55)',
 };
+
+// Worlds: same chase, different scenery. Each one overrides the city colors above.
+const WORLDS = [
+  { id: 'city', name: 'CITY', sub: 'NIGHT ROOFTOPS', pal: {} },
+  { id: 'desert', name: 'DESERT', sub: 'SAND, SUN, PYRAMIDS', pal: {
+    skyTop: '#e2703a', skyBot: '#f4b860', skyLow: '#fbdc9a', far: '#d99c58', mid: '#b5703a',
+    ground: '#6e4424', shingle: '#5a361b', rim: '#f0c27a', rimDark: '#8a5a2e', brick: '#a8703c', brickLine: '#7e5028', blockBase: '#5a361b',
+    plat: '#8a5a2e', platLeg: '#5a361b', mover: '#a8703c', moverTop: '#f6d49a', bar: '#3a2414',
+    crumble: '#9a6a3a', crumbleTop: '#f0c27a', crumbleCrack: '#5a361b', fog: 'rgba(110,60,20,0.25)' } },
+  { id: 'savanna', name: 'SAVANNA', sub: 'SUNSET AND ACACIAS', pal: {
+    skyTop: '#b8382a', skyBot: '#f08a3a', skyLow: '#ffc96a', far: '#9a4a2e', mid: '#3a2414',
+    ground: '#4a3018', shingle: '#3a2410', rim: '#a8c84a', rimDark: '#5f7a24', brick: '#6a4524', brickLine: '#4a2e16', blockBase: '#3a2410',
+    plat: '#6a4524', platLeg: '#3a2410', mover: '#8a5a2e', moverTop: '#c8e06a', bar: '#2a1a0c',
+    crumble: '#5a3a1e', crumbleTop: '#a8c84a', crumbleCrack: '#2a1a0c', fog: 'rgba(80,30,10,0.3)' } },
+  { id: 'spain', name: 'SPAIN', sub: 'WHITE TOWNS', pal: {
+    skyTop: '#1f6fc4', skyBot: '#6cb8ee', skyLow: '#bfe2f7', far: '#8a9a4a', mid: '#f2ede2',
+    ground: '#a8402a', shingle: '#7e2c1a', rim: '#f08a5a', rimDark: '#6b2410', brick: '#f4efe4', brickLine: '#d8cfbe', blockBase: '#c9bfa8',
+    plat: '#8a5a2e', platLeg: '#5a361b', mover: '#c06a2a', moverTop: '#ffd29a', bar: '#1d3f8f',
+    crumble: '#b5543a', crumbleTop: '#f0a07a', crumbleCrack: '#5a1a0c', spike: '#5a5a6a', spikeShade: '#2a2a33', fog: 'rgba(255,255,255,0.12)' } },
+];
+const PAL_CITY = Object.assign({}, PAL);
+const worldOf = id => WORLDS.find(w => w.id === id) || WORLDS[0];
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -119,7 +143,7 @@ function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255
 function lerpColor(a, b, t) { const A = hexToRgb(a), B = hexToRgb(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; }
 function overlaps(a, b) { return a.x < b.x + b.w - 0.001 && a.x + a.w > b.x + 0.001 && a.y < b.y + b.h - 0.001 && a.y + a.h > b.y + 0.001; }
 
-let state = 'menu';   // menu | shop | scores | settings | intro | run
+let state = 'menu';   // menu | shop | skinedit | worlds | settings | about | mp | intro | run
 let menuT = 0;        // global animation clock
 let run = null;       // the current run (see section 10)
 
@@ -131,14 +155,18 @@ const Save = {
   data: null,
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
-             sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false };
+             sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false,
+             world: 'city', skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
   },
+  defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
     let d = {};
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { d = {}; }
     this.data = Object.assign(this.defaults(), d);
     if (!this.data.tiers || typeof this.data.tiers !== 'object') this.data.tiers = {};
     if (!Array.isArray(this.data.equipped)) this.data.equipped = [];
+    if (!Array.isArray(this.data.skins)) this.data.skins = ['classic'];
+    this.data.custom = Object.assign(this.defaultCustom(), this.data.custom);
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
@@ -345,11 +373,20 @@ function resize() {
   buf.width = W; buf.height = H;
   ctx.imageSmoothingEnabled = false;
   view = { scale: scale * dpr, ox: Math.round((sl + (aw - W * scale) / 2) * dpr), oy: Math.round((st + (ah - H * scale) / 2) * dpr), dpr, portrait: ch > cw * 1.1 };
+  makeSky();
+}
+function makeSky() {
   skyGrad = ctx.createLinearGradient(0, 0, 0, H);
   skyGrad.addColorStop(0, PAL.skyTop); skyGrad.addColorStop(0.7, PAL.skyBot); skyGrad.addColorStop(1, PAL.skyLow);
 }
+// Switch the scenery colors to the chosen world.
+function applyWorld() {
+  Object.assign(PAL, PAL_CITY, worldOf(Save.data.world).pal);
+  makeSky();
+}
 window.addEventListener('resize', resize);
 resize();
+applyWorld();
 
 function blit() {
   sctx.imageSmoothingEnabled = false;
@@ -495,15 +532,52 @@ const PLAYER_POSES = {
           '..##########.', '.############', '#############', '.##.....####.'],
 };
 const MOUSE_ROWS = ['......pp..', '...ggggpg.', 't.gggggge.', 'tggggggggn', '...g...g..'];
-const SPR = {}, SPR2 = {};
-(function buildSprites() {
-  const pal = { '#': '#000', 'r': '#ff2424', 'p': '#ff7aa2' };
+
+// --- Skins: body color, eye color and an optional pattern (stripes / spots) --
+const SKINS = [
+  { id: 'classic', name: 'CLASSIC', price: 0, body: '#000000', eye: '#ff2424' },
+  { id: 'ghost', name: 'GHOST', price: 40, body: '#eeeeee', eye: '#3a8bff' },
+  { id: 'fire', name: 'FIRE', price: 60, body: '#c0281e', eye: '#ffd23f', pattern: 'stripes', pat: '#ff8a1f' },
+  { id: 'frog', name: 'FROG', price: 60, body: '#3a9a3a', eye: '#111111', pattern: 'spots', pat: '#1f5f1f' },
+  { id: 'tiger', name: 'TIGER', price: 90, body: '#e0782a', eye: '#3fae4a', pattern: 'stripes', pat: '#111111' },
+  { id: 'ice', name: 'ICE', price: 90, body: '#8fe3ff', eye: '#1d3f8f', pattern: 'spots', pat: '#ffffff' },
+  { id: 'gold', name: 'GOLD', price: 200, body: '#e0b030', eye: '#ff2424', pattern: 'spots', pat: '#fff0a0' },
+  { id: 'custom', name: 'MY SKIN', price: 150, custom: true },
+];
+const SKIN_COLORS = ['#111111', '#f2f2f2', '#7a7a7a', '#c0281e', '#ff7aa2', '#e0782a', '#e0b030', '#3fae4a', '#2ad4c4', '#2a7fd4', '#7a3fc4', '#8a5a2b'];
+const PATTERNS = ['none', 'stripes', 'spots'];
+const skinDef = id => id === 'custom' ? Object.assign({ id: 'custom' }, Save.data.custom) : SKINS.find(s => s.id === id) || SKINS[0];
+function lum(h) { const [r, g, b] = hexToRgb(h); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
+
+// All player poses in one skin.
+function buildSkin(skin) {
+  const out = {}, outline = lum(skin.body) > 0.45 ? '#1a1524' : PAL.rimPlayer;
   for (const k in PLAYER_POSES) {
-    const rows = PLAYER_POSES[k], plain = makeSprite(rows, pal);
-    const eyes = [];
-    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'r') eyes.push([x, y]); }));
-    SPR[k] = { plain, rim: outlineSprite(plain, PAL.rimPlayer), eyes, w: plain.width, h: plain.height };
-    const friend = makeSprite(rows, { '#': '#1d3f8f', 'r': '#4dff9a', 'p': '#ff7aa2' });     // the friend in a race
+    const rows = PLAYER_POSES[k], h = rows.length, w = Math.max(...rows.map(r => r.length));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), eyes = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < rows[y].length; x++) {
+      const ch = rows[y][x];
+      let col = null;
+      if (ch === 'r') { col = skin.eye; eyes.push([x, y]); }
+      else if (ch === 'p') col = '#ff7aa2';
+      else if (ch === '#') {
+        col = skin.body;
+        if (skin.pattern === 'stripes' && y % 4 === 2) col = skin.pat;
+        else if (skin.pattern === 'spots' && hash(x * 7 + y * 13) > 0.78) col = skin.pat;
+      }
+      if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); }
+    }
+    out[k] = { plain: c, rim: outlineSprite(c, outline), eyes, w, h, glow: skin.eye };
+  }
+  return out;
+}
+const SPR = {}, SPR2 = {};
+function applySkin() { Object.assign(SPR, buildSkin(skinDef(Save.data.skin))); }
+(function buildSprites() {
+  applySkin();
+  for (const k in PLAYER_POSES) {
+    const friend = makeSprite(PLAYER_POSES[k], { '#': '#1d3f8f', 'r': '#4dff9a', 'p': '#ff7aa2' });     // the friend in a race
     SPR2[k] = { plain: friend, rim: outlineSprite(friend, '#9fc3ff'), eyes: [], w: friend.width, h: friend.height };
   }
   const m = makeSprite(MOUSE_ROWS, { g: '#9b9b9b', p: '#e7a3ad', e: '#111', n: '#e7a3ad', t: '#7a7a7a' });
@@ -517,10 +591,10 @@ function drawSprite(s, x, y, flip, rim) {
   else ctx.drawImage(img, x - o, y - o);
 }
 // Player with soft red glow around the eyes.
-function drawPlayerSprite(pose, x, y, flip, rim) {
-  const s = SPR[pose] || SPR.stand;
+function drawPlayerSprite(pose, x, y, flip, rim, set = SPR) {
+  const s = set[pose] || set.stand;
   drawSprite(s, x, y, flip, rim);
-  ctx.globalAlpha = 0.2; ctx.fillStyle = '#ff2020';
+  ctx.globalAlpha = 0.2; ctx.fillStyle = s.glow || '#ff2020';
   for (const [ex, ey] of s.eyes) {
     const gx = flip ? x + s.w - 1 - ex : x + ex;
     ctx.fillRect(Math.round(gx) - 1, Math.round(y) + ey - 1, 3, 3);
@@ -1063,7 +1137,7 @@ const Level = {
         }
         if (s.state === 1) {
           s.t -= dt;
-          if (s.t <= 0) { s.state = 2; sfx('crumble'); burst(s.x + 8, s.y + 2, 6, '#3b3152', { speed: 80 }); }
+          if (s.t <= 0) { s.state = 2; sfx('crumble'); burst(s.x + 8, s.y + 2, 6, PAL.crumble, { speed: 80 }); }
         } else if (s.state === 2) { s.vy += PHYS.gravity * dt; s.y += s.vy * dt; }
       }
     }
@@ -1377,7 +1451,9 @@ function setPaused(v) {
   if (!run || run.phase !== 'play' || run.mp) return;   // no pausing a game with a friend
   run.paused = v; UI.focus = 0;
   Input.clear();
-  if (v) Music.stop(); else Music.play('chase');
+  if (v) Music.stop();
+  else if (run.tut && run.tut.freeze) Music.play('chase');
+  else { run.countdown = 3; run.resumed = true; sfx('beep'); }   // 3, 2, 1, GO! (music comes back on GO)
 }
 
 // --- effects ---------------------------------------------------------------
@@ -1593,10 +1669,10 @@ function updateRun(dt) {
   }
 
   // --- playing
-  if (R.countdown > 0) {                        // multiplayer: 3, 2, 1, GO!
+  if (R.countdown > 0) {                        // multiplayer start, or back from pause: 3, 2, 1, GO!
     const before = Math.ceil(R.countdown);
     R.countdown -= dt;
-    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; } else if (Math.ceil(R.countdown) !== before) sfx('beep');
+    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play('chase'); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
     updateCamera(dt);
     return;
   }
@@ -1662,8 +1738,95 @@ function drawSkyline(camX, par, bw, minH, maxH, baseY, color, seed, windows) {
     }
   }
 }
+// Rolling hills / dunes: two sine waves, drawn in 2px columns.
+function drawHills(camX, par, baseY, amp, wl, color, seed) {
+  const off = camX * par;
+  ctx.fillStyle = color;
+  for (let x = 0; x < W; x += 2) {
+    const u = x + off;
+    const y = Math.round(baseY - amp * (0.5 + 0.5 * Math.sin(u / wl + seed)) - amp * 0.3 * Math.sin(u / (wl * 0.37) + seed * 2));
+    ctx.fillRect(x, y, 2, H - y);
+  }
+}
+// Things standing on the horizon every `gap` px (pyramids, trees, houses...), scrolling with parallax.
+function eachProp(camX, par, gap, seed, fn) {
+  const off = camX * par, i0 = Math.floor(off / gap) - 2, i1 = i0 + Math.ceil(W / gap) + 4;
+  for (let i = i0; i <= i1; i++) fn(Math.round(i * gap - off + hash(i * 3 + seed) * gap * 0.5), hash(i * 11 + seed), i);
+}
+function drawSun(x, y, r, color, glow) {
+  const disc = rr => { for (let yy = -rr; yy <= rr; yy++) { const hw = Math.floor(Math.sqrt(rr * rr - yy * yy)); ctx.fillRect(x - hw, y + yy, hw * 2 + 1, 1); } };
+  ctx.fillStyle = glow; disc(r + 10); disc(r + 5);
+  ctx.fillStyle = color; disc(r);
+}
 function drawChaseBG(camX) {
   ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, H);
+  const world = Save.data.world;
+  if (world === 'desert') {
+    drawSun(W - 90, 58, 18, '#fff2b0', 'rgba(255,240,180,0.25)');
+    drawHills(camX, 0.08, 175, 30, 70, PAL.far, 1);
+    eachProp(camX, 0.12, 170, 5, (x, r) => {                         // pyramids
+      if (r < 0.45) return;
+      const h = 24 + Math.round(r * 34), by = 182;
+      for (let k = 0; k < h; k++) {
+        ctx.fillStyle = '#c98a48'; ctx.fillRect(x - k, by - h + k, k + 1, 1);
+        ctx.fillStyle = '#a06a34'; ctx.fillRect(x + 1, by - h + k, k, 1);
+      }
+    });
+    drawHills(camX, 0.3, 205, 22, 50, PAL.mid, 4);
+    eachProp(camX, 0.3, 110, 9, (x, r) => {                          // cacti
+      if (r < 0.5) return;
+      const h = 14 + Math.round(r * 12), by = 214;
+      ctx.fillStyle = '#4f6a2a';
+      ctx.fillRect(x, by - h, 3, h);
+      ctx.fillRect(x - 4, by - h + 6, 4, 2); ctx.fillRect(x - 4, by - h + 2, 2, 5);
+      ctx.fillRect(x + 3, by - h + 9, 4, 2); ctx.fillRect(x + 5, by - h + 4, 2, 6);
+    });
+  } else if (world === 'savanna') {
+    drawSun(Math.round(W * 0.62), 128, 30, '#ffdd7a', 'rgba(255,220,120,0.2)');
+    for (let i = 0; i < 4; i++) {                                     // birds
+      const bx = Math.round(((i * 97 + menuT * 14) % (W + 40)) - 20), by = 50 + i * 11 + Math.round(Math.sin(menuT * 2 + i) * 3);
+      ctx.fillStyle = '#3a1a10'; ctx.fillRect(bx - 3, by, 3, 1); ctx.fillRect(bx + 1, by, 3, 1); ctx.fillRect(bx, by + 1, 1, 1);
+    }
+    drawHills(camX, 0.1, 185, 18, 90, PAL.far, 2);
+    eachProp(camX, 0.3, 130, 7, (x, r) => {                          // acacia trees
+      if (r < 0.35) return;
+      const h = 28 + Math.round(r * 18), by = 212, cw = 30 + Math.round(r * 16);
+      ctx.fillStyle = PAL.mid;
+      ctx.fillRect(x, by - h, 3, h);
+      ctx.fillRect(x - 5, by - h + 4, 6, 2); ctx.fillRect(x + 3, by - h + 2, 6, 2);
+      ctx.fillRect(x + 1 - cw / 2, by - h - 4, cw, 4); ctx.fillRect(x + 4 - cw / 2, by - h - 7, cw - 6, 3);
+    });
+    drawHills(camX, 0.4, 218, 8, 40, '#6a4a1a', 6);
+  } else if (world === 'spain') {
+    drawSun(W - 70, 36, 14, '#fff6c0', 'rgba(255,250,200,0.3)');
+    eachProp(camX, 0.05, 150, 3, (x, r, i) => {                      // clouds
+      if (r < 0.5) return;
+      const y = 22 + Math.round(hash(i * 5) * 40);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(x, y, 34, 6); ctx.fillRect(x + 6, y - 4, 16, 4); ctx.fillRect(x + 18, y - 6, 10, 6);
+    });
+    drawHills(camX, 0.1, 170, 30, 80, PAL.far, 3);
+    eachProp(camX, 0.12, 60, 4, (x, r) => {                          // olive trees on the hills
+      if (r < 0.6) return;
+      ctx.fillStyle = '#56682a'; ctx.fillRect(x, 168, 8, 5); ctx.fillRect(x + 3, 173, 2, 4);
+    });
+    eachProp(camX, 0.35, 46, 8, (x, r, i) => {                       // white houses with red roofs
+      const h = 34 + Math.round(r * 30), w = 34, by = 222;
+      ctx.fillStyle = PAL.mid; ctx.fillRect(x, by - h, w, h);
+      ctx.fillStyle = '#c4553a'; ctx.fillRect(x - 2, by - h - 3, w + 4, 3);
+      ctx.fillStyle = '#e07a54'; ctx.fillRect(x - 2, by - h - 3, w + 4, 1);
+      ctx.fillStyle = '#2a5a8a';
+      for (let wy = by - h + 6; wy < by - 8; wy += 10) for (let wx = x + 5; wx < x + w - 5; wx += 10) if (hash(i * 7 + wx + wy) > 0.35) ctx.fillRect(wx, wy, 4, 5);
+      if (r > 0.85) {                                                // church bell tower
+        ctx.fillStyle = PAL.mid; ctx.fillRect(x + 10, by - h - 26, 12, 26);
+        ctx.fillStyle = '#c4553a'; ctx.fillRect(x + 9, by - h - 29, 14, 3); ctx.fillRect(x + 12, by - h - 32, 8, 3);
+        ctx.fillStyle = '#3a3a3a'; ctx.fillRect(x + 14, by - h - 22, 4, 6);
+      }
+    });
+  } else drawCityBG(camX);
+  ctx.fillStyle = PAL.fog; ctx.fillRect(0, H - 24, W, 24);
+}
+function drawCityBG(camX) {
   for (let i = 0; i < 60; i++) {                                     // stars
     const sx = ((hash(i) * W * 3 - camX * 0.03) % W + W) % W, sy = hash(i + 100) * 130;
     ctx.fillStyle = Math.sin(menuT * 2 + i * 1.7) > 0.7 ? '#ffffff' : '#9a8fc0';
@@ -1676,7 +1839,6 @@ function drawChaseBG(camX) {
   ctx.fillStyle = '#d9cda4'; ctx.fillRect(mx - 5, my - 4, 4, 3); ctx.fillRect(mx + 3, my + 4, 3, 3); ctx.fillRect(mx - 2, my + 7, 2, 2);
   drawSkyline(camX, 0.15, 42, 50, 115, 205, PAL.far, 3, true);
   drawSkyline(camX, 0.4, 60, 25, 70, 225, PAL.mid, 11, false);
-  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, H - 24, W, 24);
 }
 function drawRoof(x, y, w, camX, cracked) {
   ctx.fillStyle = PAL.ground; ctx.fillRect(x, y, w, H - y);
@@ -1705,12 +1867,12 @@ function drawSolids(camX) {
           for (let xx = x + (r % 2 ? 4 : 0); xx < x + w; xx += 8) ctx.fillRect(xx, yy - 4, 1, 4);
         }
         ctx.fillStyle = PAL.rim; ctx.fillRect(x - 1, y, w + 2, 2);
-        ctx.fillStyle = '#4a3e66'; ctx.fillRect(x, y + s.h - 2, w, 2);
+        ctx.fillStyle = PAL.blockBase; ctx.fillRect(x, y + s.h - 2, w, 2);
         if (s.hint && run.time < 120) drawText('JUMP ON THE WALL!', x + w / 2, y - 16, '#fff', 1, 'center', '#000');
         break;
       }
       case 'bar': {      // hanging billboard: slide under it
-        ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, w, s.h);
+        ctx.fillStyle = PAL.bar; ctx.fillRect(x, y, w, s.h);
         ctx.fillStyle = '#5d4f86'; ctx.fillRect(x, y, 1, s.h); ctx.fillRect(x + w - 1, y, 1, s.h);
         const by = y + s.h - 5;
         for (let xx = 0; xx < w; xx += 6) { ctx.fillStyle = (xx / 6) % 2 ? '#111' : '#f2c230'; ctx.fillRect(x + xx, by, Math.min(6, w - xx), 5); }
@@ -1719,24 +1881,24 @@ function drawSolids(camX) {
         break;
       }
       case 'plat':
-        ctx.fillStyle = '#3e3358'; ctx.fillRect(x, y, w, s.h);
+        ctx.fillStyle = PAL.plat; ctx.fillRect(x, y, w, s.h);
         ctx.fillStyle = PAL.rim; ctx.fillRect(x, y, w, 1);
-        ctx.fillStyle = '#2a2340'; ctx.fillRect(x + 3, y + s.h, 2, 4); ctx.fillRect(x + w - 5, y + s.h, 2, 4);
+        ctx.fillStyle = PAL.platLeg; ctx.fillRect(x + 3, y + s.h, 2, 4); ctx.fillRect(x + w - 5, y + s.h, 2, 4);
         break;
       case 'mover':
         ctx.fillStyle = 'rgba(200,190,240,0.12)';
         if (s.ay) ctx.fillRect(Math.round(s.bx - camX) + w / 2, Math.round(s.by - s.ay), 1, s.ay * 2 + 8);
         else ctx.fillRect(Math.round(s.bx - s.ax - camX), Math.round(s.by + 4), s.ax * 2 + w, 1);
-        ctx.fillStyle = '#5e5384'; ctx.fillRect(x, y, w, s.h);
-        ctx.fillStyle = '#d3c8f5'; ctx.fillRect(x, y, w, 1);
-        ctx.fillStyle = '#2a2340'; for (let i = 4; i < w; i += 10) ctx.fillRect(x + i, y + 3, 2, 2);
+        ctx.fillStyle = PAL.mover; ctx.fillRect(x, y, w, s.h);
+        ctx.fillStyle = PAL.moverTop; ctx.fillRect(x, y, w, 1);
+        ctx.fillStyle = PAL.platLeg; for (let i = 4; i < w; i += 10) ctx.fillRect(x + i, y + 3, 2, 2);
         break;
       case 'crumble': {
         const jx = s.state === 1 ? (Math.floor(menuT * 60) % 2 ? 1 : -1) : 0;
         if (s.deep) { drawRoof(x + jx, y, w, camX, s.state > 0); break; }
-        ctx.fillStyle = '#3b3152'; ctx.fillRect(x + jx, y, w - 1, s.h);
-        ctx.fillStyle = '#a593d6'; ctx.fillRect(x + jx, y, w - 1, 1);
-        ctx.fillStyle = '#1c1628'; ctx.fillRect(x + jx + 4, y + 2, 1, 3); ctx.fillRect(x + jx + 5, y + 4, 3, 1); ctx.fillRect(x + jx + 10, y + 1, 1, 4);
+        ctx.fillStyle = PAL.crumble; ctx.fillRect(x + jx, y, w - 1, s.h);
+        ctx.fillStyle = PAL.crumbleTop; ctx.fillRect(x + jx, y, w - 1, 1);
+        ctx.fillStyle = PAL.crumbleCrack; ctx.fillRect(x + jx + 4, y + 2, 1, 3); ctx.fillRect(x + jx + 5, y + 4, 3, 1); ctx.fillRect(x + jx + 10, y + 1, 1, 4);
         break;
       }
       case 'invis':
@@ -2144,7 +2306,11 @@ function drawRun() {
   if (R.phase !== 'over') drawHUD();
   if (R.tutorial && !R.paused) Tutorial.draw(camX);
   drawBanner();
-  if (R.mp && R.countdown > 0) {
+  if (!R.mp && R.countdown > 0 && !R.paused) {     // back from pause
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 56, W, 76);
+    shakyText(String(Math.ceil(R.countdown)), W / 2, 64, '#fff', 6, 1);
+    drawText('GET READY!', W / 2, 108, PAL.gold, 2, 'center', '#000');
+  } else if (R.mp && R.countdown > 0) {
     const cat = Net.role === 'cat';
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 56, W, 96);
     shakyText(String(Math.ceil(R.countdown)), W / 2, 64, '#fff', 6, 1);
@@ -2156,9 +2322,9 @@ function drawRun() {
       drawText(cat ? (Input.touch ? 'CATCH HIM IN ' + MP_ESCAPE + 'S! TAP TO POUNCE. SPRINT, TRAP, ROAR.' : 'CATCH HIM IN ' + MP_ESCAPE + 'S!  SPACE: POUNCE  1: SPRINT  2: TRAP  3: ROAR')
                    : 'SURVIVE ' + MP_ESCAPE + ' SECONDS! FREEZE, BOOST AND SHIELD HELP.', W / 2, 122, '#fff', 1, 'center', '#000');
     }
-  } else if (R.startT > 0 && R.phase === 'play' && !R.tutorial) {
+  } else if (R.startT > 0 && R.phase === 'play' && (!R.tutorial || R.resumed)) {
     const k = 1.2 - R.startT;
-    if (k > 0.1) shakyText(R.mp ? 'GO!' : 'RUN!', W / 2, 90, '#fff', 6, 1);
+    if (k > 0.1) shakyText(R.mp || R.resumed ? 'GO!' : 'RUN!', W / 2, 90, '#fff', 6, 1);
   }
   if (R.netLost) drawNetLost();
   else if (R.paused) drawPause();
@@ -2431,7 +2597,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -2795,7 +2961,7 @@ function updateView(dt) {
 
 function go(s) {
   state = s; UI.focus = 0;
-  if (s === 'menu' || s === 'shop' || s === 'scores' || s === 'settings' || s === 'about' || s === 'mp') Music.play('menu');
+  if (s === 'menu' || s === 'shop' || s === 'skinedit' || s === 'worlds' || s === 'settings' || s === 'about' || s === 'mp') Music.play('menu');
 }
 function playFromMenu() {
   if (Save.data.intro) Intro.start();            // the intro hands over to the tutorial for new players
@@ -2830,7 +2996,7 @@ function drawMenu() {
   if (UI.button('mp', bx, 93, bw, 20, 'MULTIPLAYER', { accent: '#2f9a5a' })) { Net.reset(); go('mp'); }
   if (UI.button('howto', bx, 116, bw, 20, 'HOW TO PLAY')) startTutorial();
   if (UI.button('shop', bx, 139, bw, 20, 'SHOP')) go('shop');
-  if (UI.button('scores', bx, 162, bw, 20, 'HIGH SCORE')) go('scores');
+  if (UI.button('worlds', bx, 162, bw, 20, 'WORLDS')) go('worlds');
   if (UI.button('settings', bx, 185, bw, 20, 'SETTINGS')) go('settings');
   drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.paper, 1, 'center');
   drawText('V' + VERSION, W - 6, H - 8, '#555', 1, 'right');
@@ -2859,13 +3025,24 @@ function toggleEquip(a) {
   else { eq.push(a.id); sfx('click'); }
   Save.save();
 }
+let shopTab = 'abil';    // abil | skins
 function drawShop(dt) {
   bgLight();
   drawText('SHOP', 10, 9, PAL.ink, 4);
   wallet(12);
+  if (UI.button('tab_abil', 80, 7, 84, 18, 'ABILITIES', { on: shopTab === 'abil' })) { shopTab = 'abil'; sfx('click'); }
+  if (UI.button('tab_skins', 172, 7, 84, 18, 'SKINS', { on: shopTab === 'skins', accent: '#7a3fc4' })) { shopTab = 'skins'; sfx('click'); }
   shopMsg.t -= dt;
-  if (shopMsg.t > 0) drawText(shopMsg.text, W / 2 + 20, 15, shopMsg.color, 1, 'center');
-  else drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS, W / 2 + 20, 15, PAL.inkSoft, 1, 'center');
+  if (shopTab === 'skins') drawSkinShop();
+  else drawAbilityShop();
+  const msgY = H - 16;
+  if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
+  else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS, W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else drawText('MY SKIN: DESIGN YOUR OWN THIEF!', W / 2, msgY, PAL.inkSoft, 1, 'center');
+  if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
+  if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
+}
+function drawAbilityShop() {
   ABILITIES.forEach((a, i) => {
     const y = 34 + i * 36, tier = tierOf(a.id), eq = Save.data.equipped.includes(a.id);
     ctx.fillStyle = PAL.ink; ctx.fillRect(8, y, W - 16, 32);
@@ -2885,27 +3062,140 @@ function drawShop(dt) {
     if (UI.button('buy_' + a.id, W - 172, y + 6, 80, 20, label, { disabled: tier >= 3, textColor: poor ? '#b03030' : null })) buy(a);
     if (UI.button('eq_' + a.id, W - 86, y + 6, 72, 20, eq ? 'EQUIPPED' : 'EQUIP', { disabled: tier === 0, on: eq, accent: '#2f9a5a' })) toggleEquip(a);
   });
-  if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
-  if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
 }
 
-function drawScores() {
-  bgLight();
-  drawText('HIGH SCORE', W / 2, 16, PAL.ink, 4, 'center');
-  const d = Save.data;
-  const rows = [['BEST TIME', fmtTime(d.bestTime)], ['MOST POINTS IN ONE RUN', '★ ' + d.bestPoints], ['TOTAL POINTS EARNED', '★ ' + d.totalEarned],
-                ['POINTS IN WALLET', '★ ' + d.points], ['TIMES SHE GOT YOU', String(d.runs)]];
-  const x0 = Math.round(W / 2 - 150), x1 = Math.round(W / 2 + 150);
-  rows.forEach(([a, b], i) => {
-    const y = 56 + i * 24;
-    drawText(a, x0, y, PAL.ink, 2);
-    drawText(b, x1, y, i === 0 ? '#e01e1e' : PAL.ink, 2, 'right');
-    ctx.fillStyle = '#cfc8b8';
-    for (let x = x0 + textWidth(a, 2) + 6; x < x1 - textWidth(b, 2) - 6; x += 4) ctx.fillRect(x, y + 8, 2, 1);
+// --- skins -------------------------------------------------------------------
+const skinCache = {};
+function skinSprites(id) {
+  const def = skinDef(id), key = id + JSON.stringify(def);
+  return skinCache[key] || (skinCache[key] = buildSkin(def));
+}
+const ownsSkin = id => Save.data.skins.includes(id);
+function wearSkin(id) {
+  Save.data.skin = id; Save.save(); applySkin(); sfx('click');
+}
+function buySkin(s) {
+  if (Save.data.points < s.price) { sfx('deny'); say('NEED ' + (s.price - Save.data.points) + ' MORE ★', '#e01e1e'); return; }
+  Save.data.points -= s.price;
+  Save.data.skins.push(s.id);
+  Save.data.skin = s.id; Save.save(); applySkin();
+  sfx('buy');
+  if (s.custom) { say('NOW MAKE IT YOURS!', PAL.green); go('skinedit'); }
+  else say(s.name + ' SKIN UNLOCKED!', PAL.green);
+}
+// A thief in the given skin, standing on a dark tile.
+function drawSkinTile(id, x, y, w, h, scale) {
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  const set = skinSprites(id), pose = set.stand;
+  ctx.save(); ctx.translate(Math.round(x + w / 2 - 5 * scale), Math.round(y + h - 3 - 19 * scale)); ctx.scale(scale, scale);
+  ctx.drawImage(pose.rim, -1, -1); ctx.drawImage(SPR.mouse.rim, -1, -6);
+  ctx.restore();
+}
+function drawSkinShop() {
+  const cols = 4, gap = 6, cw = Math.floor((W - 16 - gap * (cols - 1)) / cols), ch = 88;
+  SKINS.forEach((s, i) => {
+    const x = 8 + (i % cols) * (cw + gap), y = 32 + Math.floor(i / cols) * (ch + 4);
+    const owned = ownsSkin(s.id), wearing = Save.data.skin === s.id;
+    ctx.fillStyle = wearing ? '#7a3fc4' : PAL.ink; ctx.fillRect(x, y, cw, ch);
+    ctx.fillStyle = wearing ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+    drawSkinTile(s.id, x + 4, y + 4, cw - 8, 48, 2);
+    if (s.custom && !owned) drawText('?', x + cw / 2, y + 14, '#ffd23f', 4, 'center', '#000');
+    drawText(s.name, x + cw / 2, y + 56, PAL.ink, 1, 'center');
+    const by = y + 66, bw = cw - 8;
+    if (!owned) {
+      const poor = Save.data.points < s.price;
+      if (UI.button('skin_' + s.id, x + 4, by, bw, 18, 'BUY ★' + s.price, { size: 1, textColor: poor ? '#b03030' : null, accent: '#7a3fc4' })) buySkin(s);
+    } else if (s.custom) {
+      const hw = Math.floor((bw - 4) / 2);
+      if (UI.button('skinedit', x + 4, by, hw, 18, 'EDIT', { size: 1, accent: '#2f9a5a' })) { sfx('click'); go('skinedit'); }
+      if (UI.button('skin_custom', x + 8 + hw, by, hw, 18, wearing ? 'ON' : 'USE', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
+    } else if (UI.button('skin_' + s.id, x + 4, by, bw, 18, wearing ? 'WEARING' : 'WEAR', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
   });
-  drawCat(W / 2 + 160, 210, { t: menuT, pose: 'stand', eyes: 'closed', hold: true, outline: '#4a4a4a' });
-  drawMouse(W / 2 + 151, 188, false, false);
-  if (UI.button('back', Math.round(W / 2 - 70), H - 40, 140, 24, 'BACK') || UI.back) go('menu');
+}
+
+// --- skin maker (MY SKIN) -------------------------------------------------------
+function swatch(id, x, y, color, selected) {
+  const hit = UI.button(id, x, y, 14, 14, '');
+  ctx.fillStyle = color; ctx.fillRect(x + 2, y + 2, 10, 10);
+  if (selected) { ctx.fillStyle = '#e01e1e'; ctx.fillRect(x - 1, y + 17, 16, 2); }
+  return hit;
+}
+function editCustom(key, value) {
+  Save.data.custom[key] = value; Save.save();
+  if (Save.data.skin === 'custom') applySkin();
+  sfx('click');
+}
+function drawSkinEditor() {
+  bgLight();
+  drawText('MAKE YOUR SKIN', W / 2, 9, PAL.ink, 3, 'center');
+  const c = Save.data.custom;
+  // big running preview
+  const px = 12, py = 32, pw = 110, ph = 150;
+  ctx.fillStyle = PAL.ink; ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(px, py, pw, ph);
+  ctx.fillStyle = '#3e3358'; ctx.fillRect(px, py + ph - 20, pw, 20);
+  const set = skinSprites('custom'), pose = Math.floor(menuT * 6) % 2 ? 'run1' : 'run2', sc = 5;
+  ctx.save(); ctx.translate(px + Math.round(pw / 2 - 5 * sc), py + ph - 20 - 19 * sc); ctx.scale(sc, sc);
+  ctx.drawImage(set[pose].rim, -1, -1); ctx.drawImage(SPR.mouse.rim, -1, -6 + (pose === 'run2' ? 1 : 0));
+  ctx.restore();
+  // pickers
+  const x0 = px + pw + 14;
+  const row = (label, y, key) => {
+    drawText(label, x0, y, PAL.ink, 1);
+    SKIN_COLORS.forEach((col, i) => { if (swatch('sw_' + key + i, x0 + i * 17, y + 10, col, c[key] === col)) editCustom(key, col); });
+  };
+  row('BODY', 34, 'body');
+  row('EYES', 66, 'eye');
+  drawText('PATTERN', x0, 98, PAL.ink, 1);
+  PATTERNS.forEach((pt, i) => {
+    if (UI.button('pat_' + pt, x0 + i * 70, 108, 64, 16, pt.toUpperCase(), { size: 1, on: c.pattern === pt, accent: '#7a3fc4' })) editCustom('pattern', pt);
+  });
+  if (c.pattern !== 'none') row('PATTERN COLOR', 132, 'pat');
+  drawText('SAVED AUTOMATICALLY. CHANGE IT ANY TIME!', x0, 170, PAL.inkSoft, 1);
+  const bw = 140;
+  if (UI.button('skindone', Math.round(W / 2 - bw / 2), H - 30, bw, 22, 'WEAR IT!', { accent: '#2f9a5a' }) || UI.back) {
+    if (Save.data.skin !== 'custom') { Save.data.skin = 'custom'; Save.save(); applySkin(); }
+    shopTab = 'skins'; sfx('buy'); go('shop');
+  }
+}
+
+// --- worlds -------------------------------------------------------------------
+const worldPreviews = {};
+// Each world's scenery is drawn once into the frame buffer and shrunk into a little card picture.
+function worldPreview(w, pw, ph) {
+  const key = w.id + pw + 'x' + ph;
+  if (worldPreviews[key]) return worldPreviews[key];
+  Object.assign(PAL, PAL_CITY, w.pal); makeSky();
+  const keep = Save.data.world; Save.data.world = w.id;
+  drawChaseBG(400);
+  drawRoof(0, 190, W, 400, false);
+  drawCat(W * 0.42, 190, { t: 0.3, pose: 'run', eyes: 'rage', outline: PAL.rimCat });
+  Save.data.world = keep; applyWorld();
+  const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+  const g = c.getContext('2d'), sw = W * 0.5, sh = sw * ph / pw;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(buf, W * 0.22, H - sh - 6, sw, sh, 0, 0, pw, ph);
+  return (worldPreviews[key] = c);
+}
+function drawWorlds() {
+  const cols = WORLDS.length, gap = 6, cw = Math.floor((W - 16 - gap * (cols - 1)) / cols), ph = 64;
+  const pics = WORLDS.map(w => worldPreview(w, cw - 4, ph));   // before bgLight: they borrow the frame buffer
+  bgLight();
+  drawText('WORLDS', W / 2, 10, PAL.ink, 4, 'center');
+  drawText('PICK WHERE THE CHASE HAPPENS', W / 2, 36, PAL.inkSoft, 1, 'center');
+  WORLDS.forEach((w, i) => {
+    const x = 8 + i * (cw + gap), y = 50, sel = Save.data.world === w.id;
+    ctx.fillStyle = sel ? '#e01e1e' : PAL.ink; ctx.fillRect(x, y, cw, 126);
+    ctx.fillStyle = sel ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(x + 2, y + 2, cw - 4, 122);
+    ctx.drawImage(pics[i], x + 2, y + 2);
+    drawText(w.name, x + cw / 2, y + ph + 8, PAL.ink, 2, 'center');
+    drawText(w.sub, x + cw / 2, y + ph + 24, PAL.inkSoft, 1, 'center');
+    if (UI.button('world_' + w.id, x + 6, y + ph + 36, cw - 12, 18, sel ? 'SELECTED' : 'SELECT', { size: 1, on: sel, accent: '#e01e1e' }) && !sel) {
+      Save.data.world = w.id; Save.save(); applyWorld(); sfx('click');
+    }
+  });
+  if (UI.button('back', 10, H - 30, 100, 22, 'BACK') || UI.back) go('menu');
+  if (UI.button('go', W - 110, H - 30, 100, 22, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
 }
 
 // Big character portraits for the multiplayer screens.
@@ -3091,7 +3381,8 @@ function frame(now) {
   switch (state) {
     case 'menu': drawMenu(); break;
     case 'shop': drawShop(dt); break;
-    case 'scores': drawScores(); break;
+    case 'skinedit': drawSkinEditor(); break;
+    case 'worlds': drawWorlds(); break;
     case 'settings': drawSettings(dt); break;
     case 'about': drawAbout(); break;
     case 'intro': Intro.draw(); break;
