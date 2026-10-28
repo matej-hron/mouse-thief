@@ -2,7 +2,7 @@
 // The page is fetched network-first (so new releases show up right away when
 // online), everything else is served from the cache.
 // Bump CACHE on every release so old files get cleaned up.
-const CACHE = 'mouse-thief-v1.4.0';
+const CACHE = 'mouse-thief-v1.5.0';
 const ASSETS = [
   './',
   './index.html',
