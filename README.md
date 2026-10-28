@@ -13,6 +13,7 @@ New players get an interactive tutorial after the intro (replay it any time via 
 
 - **Worlds:** pick where the chase happens. City (night rooftops) is free; unlock Desert (★150, 8% harder),
   Savanna (★180, 16% harder) and Spain (★210, 24% harder). Harder means a faster cat. Multiplayer is not affected.
+- **Night / day mode** (SETTINGS → MODE): dark menus and the city at night, or light menus and the city by day.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.

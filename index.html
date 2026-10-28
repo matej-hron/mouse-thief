@@ -96,12 +96,25 @@ const PAL = {
   rimPlayer: '#9d8fd0', rimCat: '#8b7fb0',
   plat: '#3e3358', platLeg: '#2a2340', mover: '#5e5384', moverTop: '#d3c8f5', blockBase: '#4a3e66', bar: '#16121f',
   crumble: '#3b3152', crumbleTop: '#a593d6', crumbleCrack: '#1c1628', fog: 'rgba(13,11,19,0.55)',
+  sel: '#e9e1ca', on: '#e3d9bf', disBg: '#ebe6da', disFg: '#aaa496', floor: '#111111', floorText: '#f3efe4', verText: '#555555',
+};
+// Night mode (setting): dark menus and the city at night. Day mode: light menus and the city by day.
+const THEMES = {
+  day: {},
+  night: { paper: '#1a1626', paperHi: '#262036', ink: '#efe9ff', inkSoft: '#9a92b8', goldDark: '#e0a820',
+           sel: '#3a2f5c', on: '#3a2f5c', disBg: '#16121f', disFg: '#5b5275', floor: '#0d0b13', floorText: '#9a92b8', verText: '#6a6288' },
+};
+const CITY_DAY = {
+  skyTop: '#4a9ad8', skyBot: '#9fd0f0', skyLow: '#d8eef8', far: '#8fa3b8', mid: '#6a7a90', window: '#c8dcea',
+  ground: '#3a3f4a', shingle: '#2e323b', rim: '#9aa8bc', rimDark: '#4a5260', brick: '#7a5a4a', brickLine: '#5e4438', blockBase: '#4a3a30',
+  plat: '#5a6070', platLeg: '#3a3f4a', mover: '#6a7a90', moverTop: '#d8e4f0', bar: '#2a2e38',
+  crumble: '#555a66', crumbleTop: '#aab4c4', crumbleCrack: '#2a2e38', fog: 'rgba(255,255,255,0.15)',
 };
 
 // Worlds: same chase, different scenery. Each one overrides the city colors above.
 // They are bought in the WORLDS screen, and each one is 8% harder than the one before: the cat runs faster.
 const WORLDS = [
-  { id: 'city', name: 'CITY', sub: 'NIGHT ROOFTOPS', price: 0, harder: 0, pal: {} },
+  { id: 'city', name: 'CITY', sub: 'NIGHT ROOFTOPS', subDay: 'SUNNY ROOFTOPS', price: 0, harder: 0, pal: {} },
   { id: 'desert', name: 'DESERT', sub: 'SAND, SUN, PYRAMIDS', price: 150, harder: 0.08, pal: {
     skyTop: '#e2703a', skyBot: '#f4b860', skyLow: '#fbdc9a', far: '#d99c58', mid: '#b5703a',
     ground: '#6e4424', shingle: '#5a361b', rim: '#f0c27a', rimDark: '#8a5a2e', brick: '#a8703c', brickLine: '#7e5028', blockBase: '#5a361b',
@@ -120,6 +133,8 @@ const WORLDS = [
 ];
 const PAL_CITY = Object.assign({}, PAL);
 const worldOf = id => WORLDS.find(w => w.id === id) || WORLDS[0];
+const isNight = () => Save.data.night !== false;
+const worldPal = w => w.id === 'city' && !isNight() ? CITY_DAY : w.pal;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -157,7 +172,7 @@ const Save = {
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
              sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false,
-             world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
+             night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
   },
   defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
@@ -384,7 +399,7 @@ function makeSky() {
 }
 // Switch the scenery colors to the chosen world.
 function applyWorld() {
-  Object.assign(PAL, PAL_CITY, worldOf(Save.data.world).pal);
+  Object.assign(PAL, PAL_CITY, worldPal(worldOf(Save.data.world)), THEMES[isNight() ? 'night' : 'day']);
   makeSky();
 }
 window.addEventListener('resize', resize);
@@ -770,9 +785,9 @@ const UI = {
     const dark = o.theme === 'dark';
     const ink = dark ? '#efe9ff' : PAL.ink;
     let bg = dark ? '#1d1830' : PAL.paperHi, fg = ink, bd = ink;
-    if (o.on) bg = dark ? '#3a2f5c' : '#e3d9bf';
+    if (o.on) bg = dark ? '#3a2f5c' : PAL.on;
     if (hot) { bg = o.accent || ink; fg = dark ? '#111' : PAL.paper; bd = bg; }
-    if (o.disabled) { bg = dark ? '#16121f' : '#ebe6da'; fg = dark ? '#5b5275' : '#aaa496'; bd = fg; }
+    if (o.disabled) { bg = dark ? '#16121f' : PAL.disBg; fg = dark ? '#5b5275' : PAL.disFg; bd = fg; }
     if (!hot && !o.disabled) { ctx.fillStyle = bd; ctx.fillRect(x + 2, y + 2, w, h); }   // chunky drop shadow
     const off = hot ? 1 : 0;
     ctx.fillStyle = bd; ctx.fillRect(x + off, y + off, w, h);
@@ -1832,6 +1847,18 @@ function drawChaseBG(camX) {
   ctx.fillStyle = PAL.fog; ctx.fillRect(0, H - 24, W, 24);
 }
 function drawCityBG(camX) {
+  if (!isNight()) {                                                  // daytime: sun and clouds
+    drawSun(W - 80, 42, 14, '#fff6c0', 'rgba(255,250,210,0.35)');
+    eachProp(camX, 0.05, 140, 13, (x, r, i) => {
+      if (r < 0.45) return;
+      const y = 20 + Math.round(hash(i * 9) * 46);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(x, y, 38, 7); ctx.fillRect(x + 6, y - 5, 18, 5); ctx.fillRect(x + 20, y - 8, 12, 8);
+    });
+    drawSkyline(camX, 0.15, 42, 50, 115, 205, PAL.far, 3, true);
+    drawSkyline(camX, 0.4, 60, 25, 70, 225, PAL.mid, 11, false);
+    return;
+  }
   for (let i = 0; i < 60; i++) {                                     // stars
     const sx = ((hash(i) * W * 3 - camX * 0.03) % W + W) % W, sy = hash(i + 100) * 130;
     ctx.fillStyle = Math.sin(menuT * 2 + i * 1.7) > 0.7 ? '#ffffff' : '#9a8fc0';
@@ -2520,11 +2547,11 @@ const Intro = {
   finish() { if (state === 'intro') { if (Save.data.tutorialDone) startRun(); else startTutorial(); } },
   bubble(text, cx, bottom) {
     const w = textWidth(text, 2) + 12, h = 18, x = Math.round(cx - w / 2), y = bottom - h - 4;
-    ctx.fillStyle = PAL.ink; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
     ctx.fillStyle = '#fff'; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = PAL.ink; ctx.fillRect(Math.round(cx) - 2, y + h + 1, 5, 1); ctx.fillRect(Math.round(cx) - 1, y + h + 2, 3, 1); ctx.fillRect(Math.round(cx), y + h + 3, 1, 1);
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(cx) - 2, y + h + 1, 5, 1); ctx.fillRect(Math.round(cx) - 1, y + h + 2, 3, 1); ctx.fillRect(Math.round(cx), y + h + 3, 1, 1);
     ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(cx) - 1, y + h, 3, 1);
-    drawText(text, cx, y + 4, PAL.ink, 2, 'center');
+    drawText(text, cx, y + 4, '#111', 2, 'center');
   },
   draw() {
     const t = this.t;
@@ -2534,8 +2561,8 @@ const Intro = {
     if (this.shake > 0 && Save.data.shake) ctx.translate(Math.round(rand(-1, 1) * this.shake), Math.round(rand(-1, 1) * this.shake));
     if (t > 6.6 && t < 8.2 && Math.floor(t * 12) % 2 === 0) { ctx.fillStyle = 'rgba(255,40,40,0.16)'; ctx.fillRect(-10, -10, W + 20, H + 20); }
     const floorY = 196;
-    ctx.fillStyle = lerpColor(PAL.ink, PAL.ground, dk); ctx.fillRect(-10, floorY, W + 20, H - floorY + 10);
-    const rim = dk > 0.5;
+    ctx.fillStyle = lerpColor(PAL.floor, PAL.ground, dk); ctx.fillRect(-10, floorY, W + 20, H - floorY + 10);
+    const rim = dk > 0.5 || isNight();
 
     // --- the cat
     const stop = Math.round(W * 0.36);
@@ -2549,7 +2576,7 @@ const Intro = {
     else if (t < 8.2) { eyes = 'rage'; puff = t > 6.9; scream = t > 7.0; }
     else if (t < 8.4) { pose = 'crouch'; eyes = 'rage'; puff = true; }
     else { pose = 'run'; eyes = 'rage'; puff = true; }
-    drawCat(catX, floorY, { t, pose, eyes, scream, puff, hold: t < 4.9, outline: lerpColor('#4a4a4a', PAL.rimCat, dk) });
+    drawCat(catX, floorY, { t, pose, eyes, scream, puff, hold: t < 4.9, outline: isNight() ? PAL.rimCat : lerpColor('#4a4a4a', PAL.rimCat, dk) });
     if (t < 4.9) drawMouse(catX - 9, floorY - 22, false, rim);
 
     // --- the thief
@@ -2602,7 +2629,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.5.2';
+const VERSION = '1.5.3';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -2992,15 +3019,16 @@ function wallet(y = 10) {
 // Little looping chase along the menu floor.
 function menuChase(floorY) {
   const span = W + 160, px = ((menuT * 95) % span) - 40, cx = px - 46;
-  drawCat(cx, floorY, { t: menuT, pose: 'run', eyes: 'rage', outline: '#4a4a4a' });
-  drawPlayerSprite(Math.floor(menuT * 12) % 2 ? 'run1' : 'run2', px - 1, floorY - P_H, false, false);
-  drawMouse(px, floorY - P_H - 5, false, false);
+  const night = isNight();
+  drawCat(cx, floorY, { t: menuT, pose: 'run', eyes: 'rage', outline: night ? PAL.rimCat : '#4a4a4a' });
+  drawPlayerSprite(Math.floor(menuT * 12) % 2 ? 'run1' : 'run2', px - 1, floorY - P_H, false, night);
+  drawMouse(px, floorY - P_H - 5, false, night);
 }
 
 function drawMenu() {
   bgLight();
   const floorY = 214;
-  ctx.fillStyle = PAL.ink; ctx.fillRect(0, floorY, W, H - floorY);
+  ctx.fillStyle = PAL.floor; ctx.fillRect(0, floorY, W, H - floorY);
   menuChase(floorY);
   drawText('MOUSE THIEF', W / 2 + 3, 21, '#e01e1e', 6, 'center');
   drawText('MOUSE THIEF', W / 2, 18, PAL.ink, 6, 'center');
@@ -3013,8 +3041,8 @@ function drawMenu() {
   if (UI.button('shop', bx, 139, bw, 20, 'SHOP')) go('shop');
   if (UI.button('worlds', bx, 162, bw, 20, 'WORLDS')) go('worlds');
   if (UI.button('settings', bx, 185, bw, 20, 'SETTINGS')) go('settings');
-  drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.paper, 1, 'center');
-  drawText('V' + VERSION, W - 6, H - 8, '#555', 1, 'right');
+  drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.floorText, 1, 'center');
+  drawText('V' + VERSION, W - 6, H - 8, PAL.verText, 1, 'right');
   if (installPrompt && UI.button('install', 8, 8, 92, 18, 'INSTALL APP', { size: 1, accent: '#2f9a5a' })) installApp();
   if (view.portrait) drawText('ROTATE YOUR PHONE FOR A BIGGER VIEW', W / 2, 66, PAL.inkSoft, 1, 'center');
 }
@@ -3061,7 +3089,7 @@ function drawAbilityShop() {
   ABILITIES.forEach((a, i) => {
     const y = 34 + i * 36, tier = tierOf(a.id), eq = Save.data.equipped.includes(a.id);
     ctx.fillStyle = PAL.ink; ctx.fillRect(8, y, W - 16, 32);
-    ctx.fillStyle = eq ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(9, y + 1, W - 18, 30);
+    ctx.fillStyle = eq ? PAL.sel : PAL.paperHi; ctx.fillRect(9, y + 1, W - 18, 30);
     ctx.fillStyle = '#1d1830'; ctx.fillRect(13, y + 4, 24, 24);
     drawIcon(a.icon, 14, y + 5, 2, tier > 0 ? 1 : 0.45);
     drawText(a.name, 44, y + 6, PAL.ink, 2);
@@ -3112,7 +3140,7 @@ function drawSkinShop() {
     const x = 8 + (i % cols) * (cw + gap), y = 32 + Math.floor(i / cols) * (ch + 4);
     const owned = ownsSkin(s.id), wearing = Save.data.skin === s.id;
     ctx.fillStyle = wearing ? '#7a3fc4' : PAL.ink; ctx.fillRect(x, y, cw, ch);
-    ctx.fillStyle = wearing ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+    ctx.fillStyle = wearing ? PAL.sel : PAL.paperHi; ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
     drawSkinTile(s.id, x + 4, y + 4, cw - 8, 48, 2);
     if (s.custom && !owned) drawText('?', x + cw / 2, y + 14, '#ffd23f', 4, 'center', '#000');
     drawText(s.name, x + cw / 2, y + 56, PAL.ink, 1, 'center');
@@ -3178,9 +3206,9 @@ function drawSkinEditor() {
 const worldPreviews = {};
 // Each world's scenery is drawn once into the frame buffer and shrunk into a little card picture.
 function worldPreview(w, pw, ph) {
-  const key = w.id + pw + 'x' + ph;
+  const key = w.id + (w.id === 'city' && !isNight() ? '-day' : '') + pw + 'x' + ph;
   if (worldPreviews[key]) return worldPreviews[key];
-  Object.assign(PAL, PAL_CITY, w.pal); makeSky();
+  Object.assign(PAL, PAL_CITY, worldPal(w)); makeSky();
   const keep = Save.data.world; Save.data.world = w.id;
   drawChaseBG(400);
   drawRoof(0, 190, W, 400, false);
@@ -3209,7 +3237,7 @@ function drawWorlds(dt) {
   WORLDS.forEach((w, i) => {
     const x = 8 + i * (cw + gap), y = 50, sel = Save.data.world === w.id, owned = Save.data.worlds.includes(w.id);
     ctx.fillStyle = sel ? '#e01e1e' : PAL.ink; ctx.fillRect(x, y, cw, 126);
-    ctx.fillStyle = sel ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(x + 2, y + 2, cw - 4, 122);
+    ctx.fillStyle = sel ? PAL.sel : PAL.paperHi; ctx.fillRect(x + 2, y + 2, cw - 4, 122);
     ctx.drawImage(pics[i], x + 2, y + 2);
     if (!owned) {                                    // locked: dim the picture, show a padlock
       ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(x + 2, y + 2, cw - 4, ph);
@@ -3218,7 +3246,7 @@ function drawWorlds(dt) {
       ctx.fillRect(lx, ly + 8, 14, 11); ctx.fillStyle = '#7a5200'; ctx.fillRect(lx + 6, ly + 11, 2, 5);
     }
     drawText(w.name, x + cw / 2, y + ph + 6, PAL.ink, 2, 'center');
-    drawText(w.sub, x + cw / 2, y + ph + 20, PAL.inkSoft, 1, 'center');
+    drawText(w.subDay && !isNight() ? w.subDay : w.sub, x + cw / 2, y + ph + 20, PAL.inkSoft, 1, 'center');
     drawText(w.harder ? '+' + Math.round(w.harder * 100) + '% HARDER' : 'NORMAL', x + cw / 2, y + ph + 30, w.harder ? '#e01e1e' : PAL.green, 1, 'center');
     const bx = x + 6, by = y + ph + 40, bw = cw - 12;
     if (!owned) {
@@ -3238,11 +3266,12 @@ function drawWorlds(dt) {
 function drawRolePortrait(role, cx, feetY, label, sub) {
   if (role === 'thief' || role === 'friend') {
     ctx.save(); ctx.translate(Math.round(cx - 15), feetY - 57); ctx.scale(3, 3);
-    ctx.drawImage((role === 'friend' ? SPR2 : SPR).stand.plain, 0, 0); ctx.drawImage(SPR.mouse.plain, 0, -5);
+    if (isNight()) { ctx.drawImage((role === 'friend' ? SPR2 : SPR).stand.rim, -1, -1); ctx.drawImage(SPR.mouse.rim, -1, -6); }
+    else { ctx.drawImage((role === 'friend' ? SPR2 : SPR).stand.plain, 0, 0); ctx.drawImage(SPR.mouse.plain, 0, -5); }
     ctx.restore();
   } else {
     ctx.save(); ctx.translate(Math.round(cx - 56), feetY - 76); ctx.scale(2, 2);
-    catShape(ctx, { t: menuT, pose: 'stand', eyes: 'rage', puff: true });
+    drawOutlined(0, 0, CAT_W, CAT_H, isNight() ? PAL.rimCat : null, c => catShape(c, { t: menuT, pose: 'stand', eyes: 'rage', puff: true }));
     ctx.restore();
   }
   drawText(label, cx, feetY + 6, role === 'cat' ? '#e01e1e' : PAL.ink, 2, 'center');
@@ -3364,8 +3393,9 @@ function drawSettings(dt) {
   drawText('SETTINGS', W / 2, 16, PAL.ink, 4, 'center');
   const d = Save.data, bw = 240, bx = Math.round(W / 2 - bw / 2), on = v => v ? 'ON' : 'OFF';
   resetArm = Math.max(0, resetArm - dt);
-  let y = 44;
-  const row = (id, label, fn, o) => { if (UI.button(id, bx, y, bw, 21, label, o)) fn(); y += 26; };
+  let y = 42;
+  const row = (id, label, fn, o) => { if (UI.button(id, bx, y, bw, 19, label, o)) fn(); y += 23; };
+  row('night', 'MODE: ' + (isNight() ? 'NIGHT' : 'DAY'), () => { d.night = !isNight(); Save.save(); applyWorld(); sfx('click'); });
   row('snd', 'SOUND: ' + on(d.sound), () => { d.sound = !d.sound; Save.save(); Sound.apply(); sfx('click'); });
   row('mus', 'MUSIC: ' + on(d.music), () => { d.music = !d.music; Save.save(); Sound.apply(); sfx('click'); });
   row('intro', 'INTRO CUTSCENE: ' + on(d.intro), () => { d.intro = !d.intro; Save.save(); sfx('click'); });
@@ -3373,8 +3403,8 @@ function drawSettings(dt) {
   row('touchbtn', 'TOUCH BUTTONS: ' + on(d.touchButtons), () => { d.touchButtons = !d.touchButtons; Save.save(); sfx('click'); });
   row('reset', resetArm > 0 ? 'TAP AGAIN TO ERASE ALL' : 'RESET PROGRESS', () => {
     if (resetArm > 0) {
-      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons };
-      Save.data = Object.assign(Save.defaults(), keep); Save.save(); resetArm = 0; sfx('hit');
+      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons, night: d.night };
+      Save.data = Object.assign(Save.defaults(), keep); Save.save(); applyWorld(); applySkin(); resetArm = 0; sfx('hit');
     } else { resetArm = 3; sfx('deny'); }
   }, { accent: '#e01e1e', textColor: '#b03030' });
   const hw = (bw - 8) / 2;
