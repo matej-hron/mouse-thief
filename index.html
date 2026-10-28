@@ -99,19 +99,20 @@ const PAL = {
 };
 
 // Worlds: same chase, different scenery. Each one overrides the city colors above.
+// They are bought in the WORLDS screen, and each one is 8% harder than the one before: the cat runs faster.
 const WORLDS = [
-  { id: 'city', name: 'CITY', sub: 'NIGHT ROOFTOPS', pal: {} },
-  { id: 'desert', name: 'DESERT', sub: 'SAND, SUN, PYRAMIDS', pal: {
+  { id: 'city', name: 'CITY', sub: 'NIGHT ROOFTOPS', price: 0, harder: 0, pal: {} },
+  { id: 'desert', name: 'DESERT', sub: 'SAND, SUN, PYRAMIDS', price: 150, harder: 0.08, pal: {
     skyTop: '#e2703a', skyBot: '#f4b860', skyLow: '#fbdc9a', far: '#d99c58', mid: '#b5703a',
     ground: '#6e4424', shingle: '#5a361b', rim: '#f0c27a', rimDark: '#8a5a2e', brick: '#a8703c', brickLine: '#7e5028', blockBase: '#5a361b',
     plat: '#8a5a2e', platLeg: '#5a361b', mover: '#a8703c', moverTop: '#f6d49a', bar: '#3a2414',
     crumble: '#9a6a3a', crumbleTop: '#f0c27a', crumbleCrack: '#5a361b', fog: 'rgba(110,60,20,0.25)' } },
-  { id: 'savanna', name: 'SAVANNA', sub: 'SUNSET AND ACACIAS', pal: {
+  { id: 'savanna', name: 'SAVANNA', sub: 'SUNSET AND ACACIAS', price: 180, harder: 0.16, pal: {
     skyTop: '#b8382a', skyBot: '#f08a3a', skyLow: '#ffc96a', far: '#9a4a2e', mid: '#3a2414',
     ground: '#4a3018', shingle: '#3a2410', rim: '#a8c84a', rimDark: '#5f7a24', brick: '#6a4524', brickLine: '#4a2e16', blockBase: '#3a2410',
     plat: '#6a4524', platLeg: '#3a2410', mover: '#8a5a2e', moverTop: '#c8e06a', bar: '#2a1a0c',
     crumble: '#5a3a1e', crumbleTop: '#a8c84a', crumbleCrack: '#2a1a0c', fog: 'rgba(80,30,10,0.3)' } },
-  { id: 'spain', name: 'SPAIN', sub: 'WHITE TOWNS', pal: {
+  { id: 'spain', name: 'SPAIN', sub: 'WHITE TOWNS', price: 210, harder: 0.24, pal: {
     skyTop: '#1f6fc4', skyBot: '#6cb8ee', skyLow: '#bfe2f7', far: '#8a9a4a', mid: '#f2ede2',
     ground: '#a8402a', shingle: '#7e2c1a', rim: '#f08a5a', rimDark: '#6b2410', brick: '#f4efe4', brickLine: '#d8cfbe', blockBase: '#c9bfa8',
     plat: '#8a5a2e', platLeg: '#5a361b', mover: '#c06a2a', moverTop: '#ffd29a', bar: '#1d3f8f',
@@ -156,7 +157,7 @@ const Save = {
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
              sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false,
-             world: 'city', skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
+             world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
   },
   defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
@@ -167,6 +168,8 @@ const Save = {
     if (!Array.isArray(this.data.equipped)) this.data.equipped = [];
     if (!Array.isArray(this.data.skins)) this.data.skins = ['classic'];
     this.data.custom = Object.assign(this.defaultCustom(), this.data.custom);
+    if (!Array.isArray(this.data.worlds)) this.data.worlds = ['city'];
+    if (!this.data.worlds.includes(this.data.world)) this.data.world = 'city';   // worlds were free in 1.5.0 / 1.5.1
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
@@ -1314,7 +1317,7 @@ function playerPose(p) {
    edge so the threat is always right behind you.
    -------------------------------------------------------------------------- */
 function makeCat() { return { x: 60 - RUN.startGap, y: Level.gy, vy: 0, onGround: true, floor: Level.gy, anim: 0, rageT: 0, pounceT: 0, sprintT: 0 }; }
-function catMult() { return Math.pow(1 + run.gain, run.anger); }
+function catMult() { return run.worldMul * Math.pow(1 + run.gain, run.anger); }
 function catSpeed() { return RUN.baseSpeed * RUN.catRatio * catMult(); }
 
 // highest surface the cat could stand on between x0 and x1
@@ -1415,6 +1418,7 @@ function newRun(opts = {}) {
     camX: 0, shake: 0, flash: 0, flashColor: '#ff2020', danger: 0, beatT: 0, fadeT: 0.5, startT: 1.2,
     particles: [], popups: [], banner: null, hudRects: [], newBest: false, trollAt: -99, lastTroll: '',
     frozenT: 0, boostT: 0, doubleT: 0, hintT: 6,
+    worldMul: mp || opts.tutorial ? 1 : 1 + worldOf(Save.data.world).harder,   // harder worlds: a faster cat (not with a friend)
     gain: Save.data.equipped.includes('slow') && gainTier > 0 ? ABIL.slow.stat(gainTier).gain : RUN.angerGain,
     abil: Save.data.equipped.filter(id => tierOf(id) > 0).map(id => {
       const def = ABIL[id], st = def.stat(tierOf(id));
@@ -2598,7 +2602,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.5.1';
+const VERSION = '1.5.2';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -3188,23 +3192,44 @@ function worldPreview(w, pw, ph) {
   g.drawImage(buf, W * 0.22, H - sh - 6, sw, sh, 0, 0, pw, ph);
   return (worldPreviews[key] = c);
 }
-function drawWorlds() {
+function buyWorld(w) {
+  if (Save.data.points < w.price) { sfx('deny'); say('NEED ' + (w.price - Save.data.points) + ' MORE ★', '#e01e1e'); return; }
+  Save.data.points -= w.price;
+  Save.data.worlds.push(w.id);
+  Save.data.world = w.id; Save.save(); applyWorld();
+  sfx('buy'); say(w.name + ' UNLOCKED!', PAL.green);
+}
+function drawWorlds(dt) {
   const cols = WORLDS.length, gap = 6, cw = Math.floor((W - 16 - gap * (cols - 1)) / cols), ph = 64;
   const pics = WORLDS.map(w => worldPreview(w, cw - 4, ph));   // before bgLight: they borrow the frame buffer
   bgLight();
   drawText('WORLDS', W / 2, 10, PAL.ink, 4, 'center');
+  wallet(12);
   drawText('PICK WHERE THE CHASE HAPPENS', W / 2, 36, PAL.inkSoft, 1, 'center');
   WORLDS.forEach((w, i) => {
-    const x = 8 + i * (cw + gap), y = 50, sel = Save.data.world === w.id;
+    const x = 8 + i * (cw + gap), y = 50, sel = Save.data.world === w.id, owned = Save.data.worlds.includes(w.id);
     ctx.fillStyle = sel ? '#e01e1e' : PAL.ink; ctx.fillRect(x, y, cw, 126);
     ctx.fillStyle = sel ? '#e9e1ca' : PAL.paperHi; ctx.fillRect(x + 2, y + 2, cw - 4, 122);
     ctx.drawImage(pics[i], x + 2, y + 2);
-    drawText(w.name, x + cw / 2, y + ph + 8, PAL.ink, 2, 'center');
-    drawText(w.sub, x + cw / 2, y + ph + 24, PAL.inkSoft, 1, 'center');
-    if (UI.button('world_' + w.id, x + 6, y + ph + 36, cw - 12, 18, sel ? 'SELECTED' : 'SELECT', { size: 1, on: sel, accent: '#e01e1e' }) && !sel) {
+    if (!owned) {                                    // locked: dim the picture, show a padlock
+      ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(x + 2, y + 2, cw - 4, ph);
+      const lx = Math.round(x + cw / 2 - 7), ly = y + 20;
+      ctx.fillStyle = '#ffd23f'; ctx.fillRect(lx + 3, ly, 8, 2); ctx.fillRect(lx + 2, ly + 1, 2, 7); ctx.fillRect(lx + 10, ly + 1, 2, 7);
+      ctx.fillRect(lx, ly + 8, 14, 11); ctx.fillStyle = '#7a5200'; ctx.fillRect(lx + 6, ly + 11, 2, 5);
+    }
+    drawText(w.name, x + cw / 2, y + ph + 6, PAL.ink, 2, 'center');
+    drawText(w.sub, x + cw / 2, y + ph + 20, PAL.inkSoft, 1, 'center');
+    drawText(w.harder ? '+' + Math.round(w.harder * 100) + '% HARDER' : 'NORMAL', x + cw / 2, y + ph + 30, w.harder ? '#e01e1e' : PAL.green, 1, 'center');
+    const bx = x + 6, by = y + ph + 40, bw = cw - 12;
+    if (!owned) {
+      const poor = Save.data.points < w.price;
+      if (UI.button('world_' + w.id, bx, by, bw, 18, 'BUY ★' + w.price, { size: 1, textColor: poor ? '#b03030' : null, accent: '#e01e1e' })) buyWorld(w);
+    } else if (UI.button('world_' + w.id, bx, by, bw, 18, sel ? 'SELECTED' : 'SELECT', { size: 1, on: sel, accent: '#e01e1e' }) && !sel) {
       Save.data.world = w.id; Save.save(); applyWorld(); sfx('click');
     }
   });
+  shopMsg.t -= dt;
+  if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, H - 22, shopMsg.color, 1, 'center');
   if (UI.button('back', 10, H - 30, 100, 22, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 110, H - 30, 100, 22, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
 }
@@ -3393,7 +3418,7 @@ function frame(now) {
     case 'menu': drawMenu(); break;
     case 'shop': drawShop(dt); break;
     case 'skinedit': drawSkinEditor(); break;
-    case 'worlds': drawWorlds(); break;
+    case 'worlds': drawWorlds(dt); break;
     case 'settings': drawSettings(dt); break;
     case 'about': drawAbout(); break;
     case 'intro': Intro.draw(); break;
