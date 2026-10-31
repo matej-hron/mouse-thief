@@ -989,8 +989,10 @@ const Level = {
   nextId: 0, outbox: [],      // multiplayer: every new object gets an id and is queued for the friend's screen
   rng: null,                  // race: seeded generator, so both phones get the same level
   arena: false,               // boss fight coming: only flat roof from here on
+  arenas: [], bossClock: null,  // race: boss arenas are built into the shared level (same spot on both phones)
   reset() {
     this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0; this.arena = false;
+    this.arenas = []; this.bossClock = this.rng ? BOSS.first : null;
     this.ground(-600, 1200, this.gy);
     this.genX = 600;
   },
@@ -1042,7 +1044,7 @@ const Level = {
     const prevRng = rng;
     if (this.rng) rng = this.rng;
     const v = this.speedEstimate();
-    const kind = this.pick(d);
+    const kind = this.bossClock !== null && this.clock() >= this.bossClock ? 'arena' : this.pick(d);
     this['p_' + kind](d, v);
     this.last = kind; this.count++;
     const rest = Math.round(lerp(112, 56, d) + rand(0, 64));   // breathing room after every chunk
@@ -1068,6 +1070,12 @@ const Level = {
 
   // --- chunk patterns --------------------------------------------------------
   p_flat() { const w = randi(96, 192); this.ground(this.genX, w, this.gy); this.genX += w; },
+  p_arena() {     // race: a long flat roof where Bossy Cat will be waiting
+    this.ground(this.genX, 720, this.gy);
+    this.arenas.push(this.genX);
+    this.genX += 720;
+    this.bossClock += BOSS.every;
+  },
   p_gap(d, v) {
     const w = Math.round(v * rand(0.2, lerp(0.34, 0.6, d)));
     let ny = this.gy + pick([-16, 0, 0, 16, 32]);
@@ -1501,6 +1509,7 @@ function newRun(opts = {}) {
     Level.outbox = []; Level.nextId = 0;
   }
   Level.rng = opts.seed !== undefined ? mulberry32(opts.seed) : null;
+  run.seed = opts.seed || 0;
   if (run.view) { Level.solids = []; Level.hazards = []; Net.byId.clear(); }   // the friend's device sends the level
   else Level.reset();
   if (run.tutorial) { run.tut = { steps: Tutorial.build(), idx: 0, cp: 60, info: null, freeze: null, freezeT: 0, nudge: 0 }; run.hintT = 0; }
@@ -1731,11 +1740,20 @@ const Boss = {
   active() { const B = run && run.boss; return !!B && B.st !== 'approach'; },
   update(dt) {
     const R = run;
-    if (R.mp || R.tutorial || R.phase !== 'play') return;
+    if ((R.mp && !R.race) || R.tutorial || R.phase !== 'play') return;
     if (!R.boss) {
-      if (R.time < R.bossAt - 3) return;
-      Level.arena = true;                       // no more obstacles: she gets a flat roof
-      R.boss = { st: 'approach', t: 0, arenaX: Level.genX, gy: Level.gy, hold: false, music: false };
+      let arenaX;
+      if (R.race) {                             // race: the arenas are already in the shared level
+        arenaX = Level.arenas[R.bossCount];
+        if (arenaX === undefined) return;
+      } else {
+        if (R.time < R.bossAt - 3) return;
+        Level.arena = true;                     // no more obstacles: she gets a flat roof
+        arenaX = Level.genX;
+      }
+      // in a race both phones get the same swipes (seeded), so it stays fair
+      const rnd = R.race ? mulberry32(((R.seed >>> 0) + 7919 * (R.bossCount + 1)) >>> 0) : Math.random;
+      R.boss = { st: 'approach', t: 0, arenaX, gy: Level.gy, hold: false, music: false, rnd };
       return;
     }
     const B = R.boss, p = R.player;
@@ -1780,12 +1798,12 @@ const Boss = {
   updateFight(dt) {
     const R = run, B = R.boss, { prog, k } = this.pace();
     B.ft += dt;
-    if ((B.sndT -= dt) <= 0 && !B.atk) { B.sndT = rand(2.5, 4.5); B.mouthT = 0.9; sfx('bossMeow'); }
+    if ((B.sndT -= dt) <= 0 && !B.atk) { B.sndT = 2.5 + Math.random() * 2; B.mouthT = 0.9; sfx('bossMeow'); }
     const a = B.atk;
     if (!a) {
       if (B.ft >= BOSS.fight) return this.win();
       B.next -= dt;
-      if (B.next <= 0 && B.ft < BOSS.fight - 1) this.attack(B.combo ? (B.lastKind === 'low' ? 'high' : 'low') : (chance(0.5) ? 'low' : 'high'), !!B.combo);
+      if (B.next <= 0 && B.ft < BOSS.fight - 1) this.attack(B.combo ? (B.lastKind === 'low' ? 'high' : 'low') : (B.rnd() < 0.5 ? 'low' : 'high'), !!B.combo);
       return;
     }
     a.t += dt;
@@ -1798,8 +1816,8 @@ const Boss = {
       a.ext = 1 - clamp(a.t / 0.24, 0, 1);
       if (a.t >= 0.24) {
         B.atk = null; B.lastKind = a.kind;
-        B.combo = !a.combo && prog > 0.35 && chance(0.25 + 0.2 * prog);   // sometimes a second swipe right after, the other way
-        B.next = B.combo ? 0.2 : (lerp(1.15, 0.6, prog) + rand(0, 0.35)) * k;
+        B.combo = !a.combo && prog > 0.35 && B.rnd() < 0.25 + 0.2 * prog;   // sometimes a second swipe right after, the other way
+        B.next = B.combo ? 0.2 : (lerp(1.15, 0.6, prog) + B.rnd() * 0.35) * k;
         return;
       }
     }
@@ -1830,14 +1848,16 @@ const Boss = {
   win() {
     const R = run, B = R.boss;
     B.st = 'win'; B.t = 0; B.vx = 0; B.vy = 0; B.leapt = false; B.mouthT = 1.2;
-    const bonus = BOSS.reward + 5 * R.bossCount;
-    R.points += bonus; Save.data.points += bonus; Save.data.totalEarned += bonus;
-    Save.data.bossWins = (Save.data.bossWins || 0) + 1; Save.save();
+    const bonus = R.mp ? 0 : BOSS.reward + 5 * R.bossCount;     // a race with a friend doesn't touch your points
+    if (bonus) {
+      R.points += bonus; Save.data.points += bonus; Save.data.totalEarned += bonus;
+      Save.data.bossWins = (Save.data.bossWins || 0) + 1; Save.save();
+    }
     Music.stop(); sfx('bossLose'); sfx('buy');
-    R.banner = { text: 'YOU BEAT BOSSY CAT!', sub: '+' + bonus + ' ★ BONUS', t: 2.6, max: 2.6 };
+    R.banner = { text: 'YOU BEAT BOSSY CAT!', sub: bonus ? '+' + bonus + ' ★ BONUS' : 'NOW RUN!', t: 2.6, max: 2.6 };
     R.flash = 0.2; R.flashColor = '#ffd23f';
     const p = R.player;
-    popup('+' + bonus, p.x + 4, p.y - 12, PAL.gold, 2, { vy: -40, life: 1.4 });
+    if (bonus) popup('+' + bonus, p.x + 4, p.y - 12, PAL.gold, 2, { vy: -40, life: 1.4 });
     for (let i = 0; i < 3; i++) burst(p.x + 4, p.y, 10, i ? '#ffd23f' : '#fff', { speed: 120, vy: -60 });
   },
   updateWin(dt) {
@@ -3021,7 +3041,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });

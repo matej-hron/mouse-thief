@@ -19,7 +19,8 @@ New players get an interactive tutorial after the intro (replay it any time via 
 - **Boss fight:** every now and then the roof turns flat, the run stops and **Bossy Cat** drops in: a huge crowned cat that
   meows, spits and hisses and swishes her tail. Low tail along the roof: **jump**. High tail at head height: **slide**.
   Survive 30 seconds to beat her (+10 ★ bonus, more for every next boss in the same run). First boss after 50 s,
-  then 75 s of running between fights. Not in multiplayer or the tutorial.
+  then 75 s of running between fights. Also in the multiplayer race (same spot and same tail swipes for both thieves,
+  no ★ bonus); not in thief vs cat or the tutorial.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
