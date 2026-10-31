@@ -87,6 +87,15 @@ const RUN = {
   boostMul: 1.7,
 };
 
+// Boss fight (single player): every now and then the run stops and Bossy Cat, a huge cat, attacks with her tail.
+const BOSS = {
+  first: 50,          // seconds into the run of the first fight...
+  every: 75,          // ...and seconds of running between the next ones
+  fight: 30,          // survive this long to win
+  reward: 10,         // bonus points (+5 for every boss beaten before in this run)
+  scale: 3,           // she is the normal cat, three times bigger
+};
+
 const PAL = {
   paper: '#f3efe4', paperHi: '#fbf9f3', ink: '#111111', inkSoft: '#77726a',
   red: '#e01e1e', gold: '#ffd23f', goldDark: '#a87400', green: '#2f9a5a',
@@ -157,6 +166,17 @@ function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s 
 function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'); }
 function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 function lerpColor(a, b, t) { const A = hexToRgb(a), B = hexToRgb(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; }
+// Colors as [r, g, b, a] (from '#rrggbb', 'rgb()' or 'rgba()'), for blending the scenery between day and night.
+function parseCol(c) {
+  if (c[0] === '#') return [...hexToRgb(c), 1];
+  const m = c.match(/[\d.]+/g).map(Number);
+  return [m[0], m[1], m[2], m[3] ?? 1];
+}
+const mixCol = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+function colStr(c) {
+  if (c[3] >= 0.999) return '#' + c.slice(0, 3).map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
+  return 'rgba(' + c.slice(0, 3).map(v => clamp(Math.round(v), 0, 255)).join(',') + ',' + c[3].toFixed(3) + ')';
+}
 function overlaps(a, b) { return a.x < b.x + b.w - 0.001 && a.x + a.w > b.x + 0.001 && a.y < b.y + b.h - 0.001 && a.y + a.h > b.y + 0.001; }
 
 let state = 'menu';   // menu | shop | skinedit | worlds | settings | about | mp | intro | run
@@ -302,6 +322,25 @@ const SFX = {
   pounce: () => { noise(0.18, { freq: 900, sweepTo: 2500, vol: 0.2 }); tone([300, 700], 0.15, { type: 'sawtooth', vol: 0.12 }); },
   roar: () => { tone([180, 120, 90], 0.7, { type: 'sawtooth', vol: 0.25, vib: 30, vibRate: 18 }); noise(0.6, { freq: 400, filter: 'lowpass', vol: 0.3 }); },
   beep: () => tone(660, 0.12, { vol: 0.15 }),
+  // Bossy Cat: she meows, spits and hisses
+  bossMeow: () => {
+    tone([240, 520, 470, 210], 1.1, { type: 'sawtooth', vol: 0.24, vib: 25, vibRate: 7, hold: 0.7 });
+    tone([360, 780, 700, 315], 1.1, { vol: 0.07, vib: 30, vibRate: 7, hold: 0.7 });
+  },
+  bossHiss: () => {
+    noise(0.5, { freq: 4500, filter: 'highpass', q: 0.5, vol: 0.3 });
+    noise(0.5, { freq: 5200, filter: 'highpass', q: 0.5, vol: 0.26, delay: 0.35 });
+    noise(0.6, { freq: 2500, sweepTo: 6000, vol: 0.1 });
+  },
+  bossSpit: () => {
+    for (let i = 0; i < 4; i++) { noise(0.07, { freq: 2600 + i * 600, q: 2, vol: 0.4, delay: i * 0.09 }); tone([320, 110], 0.06, { vol: 0.12, delay: i * 0.09 }); }
+  },
+  whoosh: () => noise(0.28, { freq: 300, sweepTo: 3200, q: 1.5, vol: 0.4 }),
+  thud: () => { tone([130, 35], 0.5, { type: 'sine', vol: 0.6 }); noise(0.5, { freq: 300, filter: 'lowpass', vol: 0.45 }); },
+  bossLose: () => {
+    tone([760, 300, 520, 140], 1.3, { type: 'sawtooth', vol: 0.22, vib: 40, vibRate: 12 });
+    tone([1140, 450, 780, 210], 1.3, { vol: 0.06, vib: 40, vibRate: 12 });
+  },
 };
 function sfx(name) {
   if (netEmit()) Net.ev.push(['s', name]);         // multiplayer: the friend hears it too
@@ -329,6 +368,13 @@ const TRACKS = {
                65 . 69 . 72 . 74 . 72 . 69 . 65 . 64 .
                67 . 71 . 74 . 71 . 72 . 74 . 76 . 74 .
                76 . 75 . 76 . 71 . 68 . 71 . 76 . . .`),
+  },
+  boss: {
+    bpm: 165, leadType: 'sawtooth', leadVol: 0.08, drums: true, roots: [40, 40, 41, 39],
+    lead: seq(`64 . 64 67 . 64 70 . 69 . 67 . 64 . 63 .
+               64 . 64 67 . 64 70 . 71 . 72 . 71 . 67 .
+               65 . 65 68 . 65 71 . 70 . 68 . 65 . 64 .
+               63 . 66 . 69 . 72 . 75 . 72 . 69 . 66 .`),
   },
 };
 const Music = {
@@ -631,7 +677,7 @@ function catShape(c, o) {
   c.fillStyle = '#000';
   // long curled tail that sways
   const sp = pose === 'run' ? 12 : 4;
-  for (let i = 0; i < TAIL.length - 1; i++) {
+  for (let i = 0; !o.noTail && i < TAIL.length - 1; i++) {
     const [ax, ay] = TAIL[i], [bx, by] = TAIL[i + 1];
     const k = i / (TAIL.length - 1);
     const sway = Math.sin(t * sp + i * 0.5) * k * 2.2;
@@ -942,8 +988,9 @@ const Level = {
   solids: [], hazards: [], genX: 0, gy: 190, count: 0, last: '', seen: {}, group: 0,
   nextId: 0, outbox: [],      // multiplayer: every new object gets an id and is queued for the friend's screen
   rng: null,                  // race: seeded generator, so both phones get the same level
+  arena: false,               // boss fight coming: only flat roof from here on
   reset() {
-    this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0;
+    this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0; this.arena = false;
     this.ground(-600, 1200, this.gy);
     this.genX = 600;
   },
@@ -1004,6 +1051,7 @@ const Level = {
     rng = prevRng;
   },
   pick(d) {
+    if (this.arena) return 'flat';
     const tutorial = ['gap', 'spikes', 'block', 'bar'];
     if (this.count < tutorial.length) return tutorial[this.count];
     const table = [
@@ -1242,7 +1290,7 @@ function updatePlayer(dt) {
   if (released && p.vy < -200 && !(p.noCut > 0)) p.vy *= 0.6;   // shorter hop when the jump is released early
 
   // auto-run + gravity
-  const target = p.stunT > 0 ? 0 : playerSpeed();     // the cat's roar stops you in your tracks
+  const target = p.stunT > 0 || (run.boss && run.boss.hold) ? 0 : playerSpeed();   // the cat's roar (or a boss) stops you in your tracks
   p.vx += (target - p.vx) * Math.min(1, dt * 9);
   p.vy = Math.min(p.vy + PHYS.gravity * dt, PHYS.maxFall);
   if (p.fastFall) p.vy = Math.max(p.vy, PHYS.fastFall);
@@ -1321,7 +1369,7 @@ function playerPose(p) {
   if (p.hangT > 0) return 'hang';
   if (p.sliding) return 'slide';
   if (!p.onGround) return p.touchWall ? 'wall' : (p.vy < 0 ? 'jump' : 'fall');
-  if (p.blocked) return 'stand';
+  if (p.blocked || (run && run.boss && run.boss.hold && Math.abs(p.vx) < 30)) return 'stand';
   return Math.floor(p.anim * 12) % 2 ? 'run1' : 'run2';
 }
 
@@ -1361,6 +1409,10 @@ function updateCat(dt) {
     return;
   }
   if (run.phase !== 'play') return;
+  if (Boss.active()) {                          // boss fight: she backs off and lets the big one handle it
+    c.x = Math.min(c.x, Math.max(c.x - 300 * dt, p.x - RUN.maxGap - 70));
+    return;
+  }
   const frozen = run.frozenT > 0;
   c.pounceT -= dt; c.sprintT -= dt;
   // multiplayer: a human cat can pounce (short lunge) and sprint on top of her normal speed
@@ -1405,6 +1457,7 @@ const DEATH_LINES = {
   fake: ['THAT ROOF WAS A LIE.'],
   ledge: ['THE ROOF LEFT BEFORE YOU DID.'],
   cattrap: ['SHE SET A TRAP. YOU FELL FOR IT.'],
+  tail: ['SWISH. THE TAIL GOT YOU.', 'BOSSY CAT SAYS NO.', 'JUMP LOW TAILS, SLIDE UNDER HIGH ONES.'],
 };
 
 // Multiplayer: everything is unlocked, limited only by cooldowns (seconds).
@@ -1433,6 +1486,8 @@ function newRun(opts = {}) {
     camX: 0, shake: 0, flash: 0, flashColor: '#ff2020', danger: 0, beatT: 0, fadeT: 0.5, startT: 1.2,
     particles: [], popups: [], banner: null, hudRects: [], newBest: false, trollAt: -99, lastTroll: '',
     frozenT: 0, boostT: 0, doubleT: 0, hintT: 6,
+    boss: null, bossAt: BOSS.first, bossCount: 0,         // boss fights (single player only)
+    sky: null, skyKey: '', pals: null, dayOff: 0,         // day and night
     worldMul: mp || opts.tutorial ? 1 : 1 + worldOf(Save.data.world).harder,   // harder worlds: a faster cat (not with a friend)
     gain: Save.data.equipped.includes('slow') && gainTier > 0 ? ABIL.slow.stat(gainTier).gain : RUN.angerGain,
     abil: Save.data.equipped.filter(id => tierOf(id) > 0).map(id => {
@@ -1451,6 +1506,7 @@ function newRun(opts = {}) {
   if (run.tutorial) { run.tut = { steps: Tutorial.build(), idx: 0, cp: 60, info: null, freeze: null, freezeT: 0, nudge: 0 }; run.hintT = 0; }
   run.player = makePlayer();
   run.cat = makeCat();
+  startDayNight();
   run.camX = run.player.x - W * 0.36;
   if (!run.view) Level.ensure(run.camX + W + 200);
   Input.clear();
@@ -1664,6 +1720,241 @@ function angerEvent() {
   sfx('alarm'); sfx('scream');
 }
 
+/* --------------------------------------------------------------------------
+   10a. BOSS FIGHT — Bossy Cat
+   The roof turns flat, the run stops and a giant cat drops from the sky. She
+   meows, spits and hisses and swishes her tail: low along the roof (jump!)
+   or high at head height (slide!). Survive BOSS.fight seconds to beat her.
+   -------------------------------------------------------------------------- */
+const Boss = {
+  // fighting right now (the run is stopped)?
+  active() { const B = run && run.boss; return !!B && B.st !== 'approach'; },
+  update(dt) {
+    const R = run;
+    if (R.mp || R.tutorial || R.phase !== 'play') return;
+    if (!R.boss) {
+      if (R.time < R.bossAt - 3) return;
+      Level.arena = true;                       // no more obstacles: she gets a flat roof
+      R.boss = { st: 'approach', t: 0, arenaX: Level.genX, gy: Level.gy, hold: false, music: false };
+      return;
+    }
+    const B = R.boss, p = R.player;
+    B.t += dt;
+    B.mouthT = Math.max(0, (B.mouthT || 0) - dt);
+    if (B.st === 'approach') {
+      if (p.x >= B.arenaX + 24 && p.onGround && !p.sliding) this.enter();
+    } else if (B.st === 'enter') this.updateEnter(dt);
+    else if (B.st === 'fight') this.updateFight(dt);
+    else if (B.st === 'win') this.updateWin(dt);
+  },
+  enter() {
+    const R = run, B = R.boss;
+    B.st = 'enter'; B.t = 0; B.hold = true; B.gy = R.player.y + R.player.h;
+    B.y = -260; B.vy = 0; B.landed = false; B.x = null;
+    Music.stop(); sfx('alarm');
+    R.banner = { text: '!! WARNING !!', sub: 'SOMETHING BIG IS COMING...', t: 1.4, max: 1.4 };
+    R.shake = 3;
+  },
+  updateEnter(dt) {
+    const R = run, B = R.boss;
+    if (B.t < 0.7) { R.shake = Math.max(R.shake, 1.5); return; }        // rumble...
+    if (B.x === null) B.x = R.player.x - W * 0.36 + W - 190;           // ...she lands on the right side of the screen
+    if (!B.landed) {
+      B.vy += 2200 * dt; B.y += B.vy * dt;
+      if (B.y >= 0) {
+        B.y = 0; B.landed = true; B.landT = B.t;
+        sfx('thud'); sfx('roar'); R.shake = 9; R.flash = 0.15; R.flashColor = '#ffffff';
+        for (let i = 0; i < 6; i++) burst(B.x + 20 + i * 28, B.gy - 2, 4, '#9a92b8', { speed: 90, vy: -40 });
+      }
+      return;
+    }
+    if (!B.music && B.t - B.landT > 0.35) {
+      B.music = true; B.mouthT = 1.1;
+      sfx('bossMeow'); Music.play('boss');
+      R.banner = { text: 'BOSSY CAT!', sub: 'SURVIVE ' + BOSS.fight + ' SECONDS!', t: 2.2, max: 2.2 };
+    }
+    if (B.t - B.landT > 2.4) { B.st = 'fight'; B.t = 0; B.ft = 0; B.next = 0.6; B.atk = null; B.n = 0; B.sndT = 2.5; }
+  },
+  // difficulty: 0 at the start of the fight .. 1 at the end, and every boss beaten makes the next one quicker
+  pace() { const B = run.boss; return { prog: clamp(B.ft / BOSS.fight, 0, 1), k: Math.pow(0.9, run.bossCount) }; },
+  updateFight(dt) {
+    const R = run, B = R.boss, { prog, k } = this.pace();
+    B.ft += dt;
+    if ((B.sndT -= dt) <= 0 && !B.atk) { B.sndT = rand(2.5, 4.5); B.mouthT = 0.9; sfx('bossMeow'); }
+    const a = B.atk;
+    if (!a) {
+      if (B.ft >= BOSS.fight) return this.win();
+      B.next -= dt;
+      if (B.next <= 0 && B.ft < BOSS.fight - 1) this.attack(B.combo ? (B.lastKind === 'low' ? 'high' : 'low') : (chance(0.5) ? 'low' : 'high'), !!B.combo);
+      return;
+    }
+    a.t += dt;
+    if (a.st === 'tele') {
+      if (a.t >= a.tele) { a.st = 'swipe'; a.t = 0; sfx('whoosh'); R.shake = Math.max(R.shake, 2); }
+    } else if (a.st === 'swipe') {
+      a.ext = clamp(a.t / 0.2, 0, 1);
+      if (a.t >= 0.2) { a.st = 'back'; a.t = 0; }
+    } else if (a.st === 'back') {
+      a.ext = 1 - clamp(a.t / 0.24, 0, 1);
+      if (a.t >= 0.24) {
+        B.atk = null; B.lastKind = a.kind;
+        B.combo = !a.combo && prog > 0.35 && chance(0.25 + 0.2 * prog);   // sometimes a second swipe right after, the other way
+        B.next = B.combo ? 0.2 : (lerp(1.15, 0.6, prog) + rand(0, 0.35)) * k;
+        return;
+      }
+    }
+    if (a.st !== 'tele') {                      // the tail hurts while it is out
+      const band = this.band(a);
+      const p = R.player, hb = { x: p.x + 1, y: p.y + 1, w: p.w - 2, h: p.h - 1 };
+      if (p.invuln <= 0 && overlaps(hb, band)) trapHit('tail');
+    }
+  },
+  attack(kind, combo) {
+    const R = run, B = R.boss, { prog, k } = this.pace();
+    B.atk = { kind, st: 'tele', t: 0, ext: 0, combo, tele: Math.max(0.42, (combo ? 0.6 : lerp(0.95, 0.65, prog)) * k) };
+    B.n++; B.mouthT = 0.7;
+    sfx(kind === 'low' ? 'bossSpit' : 'bossHiss');
+  },
+  // tail tip and the danger zone, in world coordinates. low: along the roof (jump), high: at head height (slide)
+  tailRoot() { return this.pt(12, 21); },
+  pt(bx, by) {                                   // a point of her (unflipped) 60x38 sprite in the world; she faces left
+    const B = run.boss, S = BOSS.scale;
+    return { x: B.x + (CAT_W - 1 - bx + 0.5) * S, y: B.gy + B.y - (CAT_H - by) * S };
+  },
+  bandY(kind) { const gy = run.boss.gy; return kind === 'low' ? [gy - 8, gy] : [gy - 22, gy - 12]; },
+  band(a) {
+    const root = this.tailRoot(), [y0, y1] = this.bandY(a.kind);
+    const tip = lerp(root.x - 40, run.camX - 30, a.ext);
+    return { x: tip, y: y0, w: root.x - tip, h: y1 - y0 };
+  },
+  win() {
+    const R = run, B = R.boss;
+    B.st = 'win'; B.t = 0; B.vx = 0; B.vy = 0; B.leapt = false; B.mouthT = 1.2;
+    const bonus = BOSS.reward + 5 * R.bossCount;
+    R.points += bonus; Save.data.points += bonus; Save.data.totalEarned += bonus;
+    Save.data.bossWins = (Save.data.bossWins || 0) + 1; Save.save();
+    Music.stop(); sfx('bossLose'); sfx('buy');
+    R.banner = { text: 'YOU BEAT BOSSY CAT!', sub: '+' + bonus + ' ★ BONUS', t: 2.6, max: 2.6 };
+    R.flash = 0.2; R.flashColor = '#ffd23f';
+    const p = R.player;
+    popup('+' + bonus, p.x + 4, p.y - 12, PAL.gold, 2, { vy: -40, life: 1.4 });
+    for (let i = 0; i < 3; i++) burst(p.x + 4, p.y, 10, i ? '#ffd23f' : '#fff', { speed: 120, vy: -60 });
+  },
+  updateWin(dt) {
+    const R = run, B = R.boss;
+    if (B.t > 0.8 && !B.leapt) { B.leapt = true; B.vx = 240; B.vy = -760; sfx('pounce'); }   // off she goes, sulking
+    if (B.leapt) { B.vy += 700 * dt; B.x += B.vx * dt; B.y += B.vy * dt; }
+    if (B.t > 1.1 && B.hold) { B.hold = false; Level.arena = false; Music.play('chase'); }
+    if (B.t > 2.6) { R.boss = null; R.bossCount++; R.bossAt = R.time + BOSS.every; }
+  },
+};
+
+// --- drawing Bossy Cat ----------------------------------------------------------
+const bossC = document.createElement('canvas'); bossC.width = CAT_W + 2; bossC.height = CAT_H + 2;
+const bossG = bossC.getContext('2d');
+const bossT = document.createElement('canvas'); bossT.width = CAT_W + 2; bossT.height = CAT_H + 2;
+const bossTG = bossT.getContext('2d');
+function drawCrown(c, dy) {
+  c.fillStyle = '#ffd23f';
+  c.fillRect(40, 4 + dy, 8, 2);
+  c.fillRect(40, 2 + dy, 1, 2); c.fillRect(43, 1 + dy, 2, 3); c.fillRect(47, 2 + dy, 1, 2);
+  c.fillStyle = '#e01e1e'; c.fillRect(43, 4 + dy, 2, 1);
+}
+// A thick tail through a list of points (world coordinates), with an outline.
+function drawTail(pts, camX, th, outline) {
+  for (const [size, color] of [[th + 2, outline], [th, '#000']]) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 2));
+      for (let s = 0; s <= n; s++) ctx.fillRect(Math.round(ax + (bx - ax) * s / n - camX - size / 2), Math.round(ay + (by - ay) * s / n - size / 2), size, size);
+    }
+    const [tx, ty] = pts[pts.length - 1];                          // fluffy tip
+    ctx.fillRect(Math.round(tx - camX - size / 2 - 2), Math.round(ty - size / 2 - 1), size + 4, size + 2);
+  }
+}
+function drawBoss(camX) {
+  const R = run, B = R.boss;
+  if (!B || B.x === null || B.x === undefined) return;
+  const S = BOSS.scale, a = B.atk, outline = PAL.rimCat;
+  const over = R.phase !== 'play';                                 // she got you: smug
+  const root = Boss.tailRoot(), t = menuT;
+
+  if (!B.landed) {                                                 // shadow of the falling cat
+    const k = clamp(1 + B.y / 260, 0.2, 1), sw = Math.round(CAT_W * S * 0.7 * k);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(Math.round(B.x - camX + CAT_W * S / 2 - sw / 2), B.gy - 2, sw, 3);
+  }
+  // danger zone of the next swipe: blinks while she gets ready
+  if (a && a.st === 'tele' && !over && Math.floor(menuT * 10) % 2) {
+    const [y0, y1] = Boss.bandY(a.kind);
+    ctx.fillStyle = 'rgba(255,40,40,0.28)'; ctx.fillRect(0, y0, Math.round(root.x - camX), y1 - y0);
+  }
+  // the tail (behind her body)
+  let pts;
+  if (a && a.st !== 'tele' && !over) {
+    const [y0, y1] = Boss.bandY(a.kind), cy = (y0 + y1) / 2, band = Boss.band(a);
+    pts = [[root.x, root.y], [root.x - 24, cy - 6], [root.x - 50, cy]];
+    for (let x = root.x - 70; x > band.x; x -= 14) pts.push([x, cy + Math.sin(x * 0.2 + t * 40)]);
+    pts.push([band.x + 4, cy]);
+  } else if (a && !over) {
+    const w = Math.sin(t * 24) * 7;
+    pts = a.kind === 'low'
+      ? [[root.x, root.y], [root.x + 18, root.y + 14], [root.x + 30 + w, B.gy - 8], [root.x + 44 + w, B.gy - 4]]
+      : [[root.x, root.y], [root.x + 16, root.y - 24], [root.x + 10 + w, root.y - 52], [root.x - 4 + w, root.y - 62]];
+  } else {
+    const w = Math.sin(t * 3) * 5;
+    pts = [[root.x, root.y], [root.x + 14, root.y - 14], [root.x + 20, root.y - 36], [root.x + 12 + w, root.y - 52], [root.x + w, root.y - 54]];
+  }
+  drawTail(pts, camX, 6, outline);
+
+  // the body: the normal cat sprite, three times bigger, facing left, with a crown
+  const tele = a && a.st === 'tele' && !over;
+  const o = { t: B.t, pose: tele ? 'crouch' : 'stand', noTail: true, puff: B.st !== 'win',
+              eyes: over ? 'closed' : B.st === 'win' ? 'frozen' : 'rage',
+              scream: !over && (B.mouthT > 0 || (a && a.st !== 'tele')) };
+  const dy = o.pose === 'crouch' ? 3 : 0;
+  bossG.clearRect(0, 0, bossC.width, bossC.height);
+  bossG.save(); bossG.translate(1, 1); catShape(bossG, o); drawCrown(bossG, dy); bossG.restore();
+  bossTG.globalCompositeOperation = 'source-over'; bossTG.clearRect(0, 0, bossT.width, bossT.height); bossTG.drawImage(bossC, 0, 0);
+  bossTG.globalCompositeOperation = 'source-in'; bossTG.fillStyle = outline; bossTG.fillRect(0, 0, bossT.width, bossT.height);
+  bossTG.globalCompositeOperation = 'source-over';
+  const sx = Math.round(B.x - camX), sy = Math.round(B.gy + B.y - CAT_H * S);
+  const jig = B.mouthT > 0 && !over ? Math.round(Math.sin(menuT * 50)) : 0;         // shakes while yowling
+  ctx.save();
+  ctx.translate(sx + (CAT_W + 1) * S + jig, sy - S);
+  ctx.scale(-1, 1);
+  for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) ctx.drawImage(bossT, ox, oy, bossT.width * S, bossT.height * S);
+  ctx.drawImage(bossC, 0, 0, bossC.width * S, bossC.height * S);
+  ctx.restore();
+  if (o.eyes === 'rage') {                                         // glowing eyes
+    ctx.globalAlpha = 0.25 + 0.12 * Math.sin(menuT * 20); ctx.fillStyle = '#ff2020';
+    for (const ex of [41, 48]) { const e = Boss.pt(ex, 11 + dy); ctx.fillRect(Math.round(e.x - camX) - 9, Math.round(e.y) - 7, 18, 14); }
+    ctx.globalAlpha = 1;
+  }
+  if (B.st === 'win' && !B.leapt) drawText('*', sx + CAT_W * S / 2, sy - 10 + Math.round(Math.sin(menuT * 12) * 2), '#ffd23f', 2, 'center', '#000');
+}
+// Above the thief: which way to dodge the next swipe.
+function drawBossHint(camX) {
+  const R = run, B = R.boss, a = B && B.atk;
+  if (!a || a.st !== 'tele' || R.phase !== 'play') return;
+  const p = R.player, x = Math.round(p.x - camX + 4), y = Math.round(p.y) - 30;
+  const low = a.kind === 'low', blink = Math.floor(menuT * 8) % 2;
+  drawText(low ? '↑' : '↓', x, y - 4 + (blink ? (low ? -2 : 2) : 0), low ? '#ffd23f' : '#7fe0ff', 3, 'center', '#000');
+  if (R.bossCount === 0 && B.n <= 8) drawText(low ? 'JUMP!' : 'SLIDE!', x, y - 16, '#fff', 1, 'center', '#000');
+}
+// HUD: how long until she gives up.
+function drawBossBar() {
+  const R = run, B = R.boss;
+  if (!B || B.st !== 'fight') return;
+  const left = Math.max(0, BOSS.fight - B.ft);
+  const bw = 180, bx = Math.round(W / 2 - bw / 2 + 8), by = 50;
+  drawText('BOSSY CAT', bx, 40, '#ffd23f', 1, 'left', '#000');
+  drawText('SURVIVE ' + Math.ceil(left) + 'S', bx + bw, 40, left <= 5 && Math.floor(menuT * 4) % 2 ? '#fff' : '#ff9a9a', 1, 'right', '#000');
+  ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+  ctx.fillStyle = '#3a1520'; ctx.fillRect(bx, by, bw, 6);
+  ctx.fillStyle = '#e01e1e'; ctx.fillRect(bx, by, Math.round(bw * left / BOSS.fight), 6);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx, by, Math.round(bw * left / BOSS.fight), 1);
+}
+
 function updateCamera(dt) {
   const target = run.player.x - W * 0.36;
   run.camX += (target - run.camX) * Math.min(1, dt * 10);
@@ -1692,7 +1983,7 @@ function updateRun(dt) {
   if (R.countdown > 0) {                        // multiplayer start, or back from pause: 3, 2, 1, GO!
     const before = Math.ceil(R.countdown);
     R.countdown -= dt;
-    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play('chase'); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
+    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play(R.boss && R.boss.music ? 'boss' : 'chase'); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
     updateCamera(dt);
     return;
   }
@@ -1702,7 +1993,7 @@ function updateRun(dt) {
   for (const a of R.abil) if (a.cd > 0) a.cd = Math.max(0, a.cd - dt);
   for (const m of R.catAbil) if (m.cd > 0) m.cd = Math.max(0, m.cd - dt);
   const lvl = Math.floor(R.time / RUN.angerEvery);
-  if (lvl > R.anger && !R.tutorial) { R.anger = lvl; angerEvent(); }
+  if (lvl > R.anger && !R.tutorial && !Boss.active()) { R.anger = lvl; angerEvent(); }   // (not in the middle of a boss fight)
   if (R.tutorial && Tutorial.update(dt)) return;   // finished: a real run just started
 
   if (!R.tutorial && !R.mp) R.pointT += dt;
@@ -1725,10 +2016,11 @@ function updateRun(dt) {
   Level.update(dt);
   updatePlayer(dt);
   updateCat(dt);
+  Boss.update(dt);
 
   const gap = p.x - R.cat.x;
   R.danger = clamp(1 - (gap - RUN.catchGap) / (RUN.maxGap - RUN.catchGap), 0, 1);
-  if (R.phase === 'play' && gap <= RUN.catchGap) killPlayer('caught');
+  if (R.phase === 'play' && gap <= RUN.catchGap && !Boss.active()) killPlayer('caught');
   if (R.phase === 'play' && R.danger > 0.75 && (R.beatT -= dt) <= 0) { R.beatT = 0.55; sfx('heartbeat'); }
 
   updateCamera(dt);
@@ -1778,31 +2070,139 @@ function drawSun(x, y, r, color, glow) {
   ctx.fillStyle = glow; disc(r + 10); disc(r + 5);
   ctx.fillStyle = color; disc(r);
 }
+function drawMoon(mx, my, alpha = 1) {
+  const r = 13;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(243,233,200,0.08)'; ctx.fillRect(mx - r - 6, my - r - 6, r * 2 + 13, r * 2 + 13);
+  ctx.fillStyle = '#f3e9c8';
+  for (let y = -r; y <= r; y++) { const hw = Math.floor(Math.sqrt(r * r - y * y)); ctx.fillRect(mx - hw, my + y, hw * 2 + 1, 1); }
+  ctx.fillStyle = '#d9cda4'; ctx.fillRect(mx - 5, my - 4, 4, 3); ctx.fillRect(mx + 3, my + 4, 3, 3); ctx.fillRect(mx - 2, my + 7, 2, 2);
+  ctx.globalAlpha = 1;
+}
+function drawStars(camX, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < 60; i++) {
+    const sx = ((hash(i) * W * 3 - camX * 0.03) % W + W) % W, sy = hash(i + 100) * 130;
+    ctx.fillStyle = Math.sin(menuT * 2 + i * 1.7) > 0.7 ? '#ffffff' : '#9a8fc0';
+    ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawCloud(x, y, big, alpha) {
+  ctx.globalAlpha = alpha; ctx.fillStyle = shade('#ffffff');
+  if (big) { ctx.fillRect(x, y, 38, 7); ctx.fillRect(x + 6, y - 5, 18, 5); ctx.fillRect(x + 20, y - 8, 12, 8); }
+  else { ctx.fillRect(x, y, 34, 6); ctx.fillRect(x + 6, y - 4, 16, 4); ctx.fillRect(x + 18, y - 6, 10, 6); }
+  ctx.globalAlpha = 1;
+}
+
+/* --- Day and night ------------------------------------------------------------
+   During a run time goes round: night, sunrise, day, sunset, night again...
+   The sun and the moon cross the sky and the scenery colors are blended between
+   each world's day and night look (with a warm glow at dawn and dusk). */
+const DAYNIGHT = { period: 120, riseAt: 30, dayAt: 45, setAt: 95, nightAt: 110 };   // seconds within one cycle
+const SCENE_KEYS = Object.keys(CITY_DAY);
+const SKY_KEYS = ['skyTop', 'skyBot', 'skyLow'];
+const DUSK_SKY = { skyTop: parseCol('#3c2a66'), skyBot: parseCol('#e8744a'), skyLow: parseCol('#ffc477') };
+const DUSK_TINT = parseCol('#ff7a3a'), NIGHT_TINT = parseCol('#120e22');
+const SUN_R = { city: 14, desert: 18, savanna: 24, spain: 14 };
+let nightK = 0;               // 0 by day ... 0.6 at night: darkens the hand-picked scenery colors (pyramids, houses...)
+const shadeCache = {};
+function shade(hex) {
+  if (nightK <= 0) return hex;
+  const k = Math.round(nightK * 40), key = hex + k;
+  return shadeCache[key] || (shadeCache[key] = colStr(mixCol(parseCol(hex), NIGHT_TINT, k / 40)));
+}
+// Each world's colors by day and by night. The city has a real night look; the others get a darkened one.
+function dayNightPals(w) {
+  const night = {}, day = {};
+  for (const k of SCENE_KEYS) {
+    const base = parseCol(PAL_CITY[k]);
+    if (w.id === 'city') { night[k] = base; day[k] = parseCol(CITY_DAY[k]); continue; }
+    const d = day[k] = parseCol(w.pal[k] || PAL_CITY[k]);
+    night[k] = SKY_KEYS.includes(k) ? mixCol(base, d, 0.12) : k === 'window' ? base
+             : k === 'fog' ? [13, 11, 19, 0.45] : mixCol(d, NIGHT_TINT, 0.6);
+  }
+  return { night, day };
+}
+function startDayNight() {
+  const w = worldOf(Save.data.world);
+  run.pals = dayNightPals(w);
+  // the city starts the way the MODE setting says (night or day); the other worlds start in their sunny look
+  run.dayOff = w.id === 'city' && isNight() ? 12 : 55;
+  run.skyKey = '';
+}
+// Where we are in the cycle: L = daylight 0..1, warm = dawn / dusk glow 0..1, sun / moon = position along their arc (-1: below the horizon).
+function skyState(t) {
+  const D = DAYNIGHT, u = ((t % D.period) + D.period) % D.period;
+  const ss = k => k * k * (3 - 2 * k);
+  let L = 0, warm = 0;
+  if (u >= D.riseAt && u < D.dayAt) { const k = (u - D.riseAt) / (D.dayAt - D.riseAt); L = ss(k); warm = Math.sin(Math.PI * k); }
+  else if (u >= D.dayAt && u < D.setAt) L = 1;
+  else if (u >= D.setAt && u < D.nightAt) { const k = (u - D.setAt) / (D.nightAt - D.setAt); L = 1 - ss(k); warm = Math.sin(Math.PI * k); }
+  const sunSpan = D.nightAt - D.riseAt + 4, su = u - D.riseAt + 2;
+  const moonSpan = D.period - D.setAt + D.dayAt, mu = (u - D.setAt + D.period) % D.period;
+  return { L, warm, sun: su >= 0 && su < sunSpan ? su / sunSpan : -1, moon: mu < moonSpan ? mu / moonSpan : -1 };
+}
+function updateDayNight() {
+  const R = run;
+  if (!R.pals) return;
+  const sky = R.sky = skyState(R.time + R.dayOff);
+  const key = Math.round(sky.L * 150) + ':' + Math.round(sky.warm * 150);
+  if (key === R.skyKey) return;                       // nothing visible changed
+  R.skyKey = key;
+  for (const k of SCENE_KEYS) {
+    let c = mixCol(R.pals.night[k], R.pals.day[k], sky.L);
+    if (sky.warm > 0) {
+      if (SKY_KEYS.includes(k)) c = mixCol(c, DUSK_SKY[k], sky.warm * 0.85);
+      else c = mixCol(c, [DUSK_TINT[0], DUSK_TINT[1], DUSK_TINT[2], c[3]], sky.warm * 0.15);
+    }
+    PAL[k] = colStr(c);
+  }
+  makeSky();
+}
+function drawSkyBodies(camX, sky, world) {
+  const dark = 1 - sky.L;
+  if (dark > 0.02) drawStars(camX, dark);
+  if (sky.moon >= 0) {
+    const m = sky.moon;
+    drawMoon(Math.round(lerp(-16, W + 16, m)), Math.round(178 - Math.sin(Math.PI * m) * 140), 0.3 + 0.7 * dark);
+  }
+  if (sky.sun >= 0) {
+    const s = sky.sun, up = Math.sin(Math.PI * s), r = SUN_R[world] || 14;
+    drawSun(Math.round(lerp(-r, W + r, s)), Math.round(186 - up * 150), r,
+            lerpColor('#ff7a3a', '#fff2b0', clamp(up * 1.8, 0, 1)), 'rgba(255,214,140,' + (0.2 + 0.15 * sky.warm).toFixed(2) + ')');
+  }
+}
+
 function drawChaseBG(camX) {
   ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, H);
   const world = Save.data.world;
+  const sky = state === 'run' && run ? run.sky : null;      // null: a still picture (world cards)
+  nightK = sky ? (1 - sky.L) * 0.6 : 0;
+  if (sky) drawSkyBodies(camX, sky, world);
   if (world === 'desert') {
-    drawSun(W - 90, 58, 18, '#fff2b0', 'rgba(255,240,180,0.25)');
+    if (!sky) drawSun(W - 90, 58, 18, '#fff2b0', 'rgba(255,240,180,0.25)');
     drawHills(camX, 0.08, 175, 30, 70, PAL.far, 1);
+    const p1 = shade('#c98a48'), p2 = shade('#a06a34');
     eachProp(camX, 0.12, 170, 5, (x, r) => {                         // pyramids
       if (r < 0.45) return;
       const h = 24 + Math.round(r * 34), by = 182;
       for (let k = 0; k < h; k++) {
-        ctx.fillStyle = '#c98a48'; ctx.fillRect(x - k, by - h + k, k + 1, 1);
-        ctx.fillStyle = '#a06a34'; ctx.fillRect(x + 1, by - h + k, k, 1);
+        ctx.fillStyle = p1; ctx.fillRect(x - k, by - h + k, k + 1, 1);
+        ctx.fillStyle = p2; ctx.fillRect(x + 1, by - h + k, k, 1);
       }
     });
     drawHills(camX, 0.3, 205, 22, 50, PAL.mid, 4);
     eachProp(camX, 0.3, 110, 9, (x, r) => {                          // cacti
       if (r < 0.5) return;
       const h = 14 + Math.round(r * 12), by = 214;
-      ctx.fillStyle = '#4f6a2a';
+      ctx.fillStyle = shade('#4f6a2a');
       ctx.fillRect(x, by - h, 3, h);
       ctx.fillRect(x - 4, by - h + 6, 4, 2); ctx.fillRect(x - 4, by - h + 2, 2, 5);
       ctx.fillRect(x + 3, by - h + 9, 4, 2); ctx.fillRect(x + 5, by - h + 4, 2, 6);
     });
   } else if (world === 'savanna') {
-    drawSun(Math.round(W * 0.62), 128, 30, '#ffdd7a', 'rgba(255,220,120,0.2)');
+    if (!sky) drawSun(Math.round(W * 0.62), 128, 30, '#ffdd7a', 'rgba(255,220,120,0.2)');
     for (let i = 0; i < 4; i++) {                                     // birds
       const bx = Math.round(((i * 97 + menuT * 14) % (W + 40)) - 20), by = 50 + i * 11 + Math.round(Math.sin(menuT * 2 + i) * 3);
       ctx.fillStyle = '#3a1a10'; ctx.fillRect(bx - 3, by, 3, 1); ctx.fillRect(bx + 1, by, 3, 1); ctx.fillRect(bx, by + 1, 1, 1);
@@ -1816,59 +2216,47 @@ function drawChaseBG(camX) {
       ctx.fillRect(x - 5, by - h + 4, 6, 2); ctx.fillRect(x + 3, by - h + 2, 6, 2);
       ctx.fillRect(x + 1 - cw / 2, by - h - 4, cw, 4); ctx.fillRect(x + 4 - cw / 2, by - h - 7, cw - 6, 3);
     });
-    drawHills(camX, 0.4, 218, 8, 40, '#6a4a1a', 6);
+    drawHills(camX, 0.4, 218, 8, 40, shade('#6a4a1a'), 6);
   } else if (world === 'spain') {
-    drawSun(W - 70, 36, 14, '#fff6c0', 'rgba(255,250,200,0.3)');
+    if (!sky) drawSun(W - 70, 36, 14, '#fff6c0', 'rgba(255,250,200,0.3)');
     eachProp(camX, 0.05, 150, 3, (x, r, i) => {                      // clouds
       if (r < 0.5) return;
-      const y = 22 + Math.round(hash(i * 5) * 40);
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(x, y, 34, 6); ctx.fillRect(x + 6, y - 4, 16, 4); ctx.fillRect(x + 18, y - 6, 10, 6);
+      drawCloud(x, 22 + Math.round(hash(i * 5) * 40), false, sky ? 0.2 + 0.65 * sky.L : 0.85);
     });
     drawHills(camX, 0.1, 170, 30, 80, PAL.far, 3);
+    const olive = shade('#56682a'), roof = shade('#c4553a'), roofHi = shade('#e07a54'), bell = shade('#3a3a3a');
+    const win = nightK > 0.3 ? '#e9c46a' : shade('#2a5a8a');         // lights go on at dusk
     eachProp(camX, 0.12, 60, 4, (x, r) => {                          // olive trees on the hills
       if (r < 0.6) return;
-      ctx.fillStyle = '#56682a'; ctx.fillRect(x, 168, 8, 5); ctx.fillRect(x + 3, 173, 2, 4);
+      ctx.fillStyle = olive; ctx.fillRect(x, 168, 8, 5); ctx.fillRect(x + 3, 173, 2, 4);
     });
     eachProp(camX, 0.35, 46, 8, (x, r, i) => {                       // white houses with red roofs
       const h = 34 + Math.round(r * 30), w = 34, by = 222;
       ctx.fillStyle = PAL.mid; ctx.fillRect(x, by - h, w, h);
-      ctx.fillStyle = '#c4553a'; ctx.fillRect(x - 2, by - h - 3, w + 4, 3);
-      ctx.fillStyle = '#e07a54'; ctx.fillRect(x - 2, by - h - 3, w + 4, 1);
-      ctx.fillStyle = '#2a5a8a';
+      ctx.fillStyle = roof; ctx.fillRect(x - 2, by - h - 3, w + 4, 3);
+      ctx.fillStyle = roofHi; ctx.fillRect(x - 2, by - h - 3, w + 4, 1);
+      ctx.fillStyle = win;
       for (let wy = by - h + 6; wy < by - 8; wy += 10) for (let wx = x + 5; wx < x + w - 5; wx += 10) if (hash(i * 7 + wx + wy) > 0.35) ctx.fillRect(wx, wy, 4, 5);
       if (r > 0.85) {                                                // church bell tower
         ctx.fillStyle = PAL.mid; ctx.fillRect(x + 10, by - h - 26, 12, 26);
-        ctx.fillStyle = '#c4553a'; ctx.fillRect(x + 9, by - h - 29, 14, 3); ctx.fillRect(x + 12, by - h - 32, 8, 3);
-        ctx.fillStyle = '#3a3a3a'; ctx.fillRect(x + 14, by - h - 22, 4, 6);
+        ctx.fillStyle = roof; ctx.fillRect(x + 9, by - h - 29, 14, 3); ctx.fillRect(x + 12, by - h - 32, 8, 3);
+        ctx.fillStyle = bell; ctx.fillRect(x + 14, by - h - 22, 4, 6);
       }
     });
-  } else drawCityBG(camX);
+  } else drawCityBG(camX, sky);
   ctx.fillStyle = PAL.fog; ctx.fillRect(0, H - 24, W, 24);
 }
-function drawCityBG(camX) {
-  if (!isNight()) {                                                  // daytime: sun and clouds
-    drawSun(W - 80, 42, 14, '#fff6c0', 'rgba(255,250,210,0.35)');
+function drawCityBG(camX, sky) {
+  if (sky ? sky.L > 0.05 : !isNight()) {                             // daytime: sun and clouds
+    if (!sky) drawSun(W - 80, 42, 14, '#fff6c0', 'rgba(255,250,210,0.35)');
     eachProp(camX, 0.05, 140, 13, (x, r, i) => {
       if (r < 0.45) return;
-      const y = 20 + Math.round(hash(i * 9) * 46);
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillRect(x, y, 38, 7); ctx.fillRect(x + 6, y - 5, 18, 5); ctx.fillRect(x + 20, y - 8, 12, 8);
+      drawCloud(x, 20 + Math.round(hash(i * 9) * 46), true, sky ? 0.9 * sky.L : 0.9);
     });
-    drawSkyline(camX, 0.15, 42, 50, 115, 205, PAL.far, 3, true);
-    drawSkyline(camX, 0.4, 60, 25, 70, 225, PAL.mid, 11, false);
-    return;
+  } else if (!sky) {                                                 // night: stars and the moon
+    drawStars(camX);
+    drawMoon(W - 80, 42);
   }
-  for (let i = 0; i < 60; i++) {                                     // stars
-    const sx = ((hash(i) * W * 3 - camX * 0.03) % W + W) % W, sy = hash(i + 100) * 130;
-    ctx.fillStyle = Math.sin(menuT * 2 + i * 1.7) > 0.7 ? '#ffffff' : '#9a8fc0';
-    ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
-  }
-  const mx = W - 80, my = 42, r = 13;                                // moon
-  ctx.fillStyle = 'rgba(243,233,200,0.08)'; ctx.fillRect(mx - r - 6, my - r - 6, r * 2 + 13, r * 2 + 13);
-  ctx.fillStyle = '#f3e9c8';
-  for (let y = -r; y <= r; y++) { const hw = Math.floor(Math.sqrt(r * r - y * y)); ctx.fillRect(mx - hw, my + y, hw * 2 + 1, 1); }
-  ctx.fillStyle = '#d9cda4'; ctx.fillRect(mx - 5, my - 4, 4, 3); ctx.fillRect(mx + 3, my + 4, 3, 3); ctx.fillRect(mx - 2, my + 7, 2, 2);
   drawSkyline(camX, 0.15, 42, 50, 115, 205, PAL.far, 3, true);
   drawSkyline(camX, 0.4, 60, 25, 70, 225, PAL.mid, 11, false);
 }
@@ -2069,6 +2457,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(mx, my, Math.round(mw * R.danger), 1);
   if (R.danger > 0.7) drawText(R.view ? 'ALMOST!' : 'DANGER!', mx + mw / 2, my + 13, blink ? '#ff4040' : '#fff', 1, 'center', '#000');
   R.ui.meter = { x: mx - 21, y: my - 4, w: mw + 23, h: 16 };
+  drawBossBar();
 
   if (R.mp) {           // no pausing with a friend: a LEAVE button instead (tap twice)
     R.leaveArm = Math.max(0, R.leaveArm - 1 / 60);
@@ -2318,14 +2707,17 @@ function drawRun() {
   if (!Save.data.shake || R.paused) shakeAmt = 0;
   const sx = shakeAmt > 0.3 ? Math.round(rand(-1, 1) * shakeAmt) : 0, sy = shakeAmt > 0.3 ? Math.round(rand(-1, 1) * shakeAmt) : 0;
   const camX = R.camX;
+  updateDayNight();
   drawChaseBG(camX);
   ctx.save(); ctx.translate(sx, sy);
   drawSolids(camX);
   drawHazards(camX);
+  drawBoss(camX);
   drawParticles(camX);
   if (R.race) drawGhost(camX);
   if (R.phase === 'over') { drawRunPlayer(camX); drawRunCat(camX); }
   else { drawRunCat(camX); drawRunPlayer(camX); }
+  drawBossHint(camX);
   drawPopups(camX);
   ctx.restore();
 
@@ -2629,7 +3021,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.5.3';
+const VERSION = '1.6.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -3003,6 +3395,7 @@ function updateView(dt) {
 
 function go(s) {
   state = s; UI.focus = 0;
+  applyWorld();          // undo the run's day / night colors
   if (s === 'menu' || s === 'shop' || s === 'skinedit' || s === 'worlds' || s === 'settings' || s === 'about' || s === 'mp') Music.play('menu');
 }
 function playFromMenu() {
