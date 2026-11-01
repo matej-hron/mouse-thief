@@ -23,6 +23,10 @@ New players get an interactive tutorial after the intro (replay it any time via 
   no ★ bonus); not in thief vs cat or the tutorial.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
+- **Famous looks:** THE KING, POP DIVA, FOOTBALL STAR, ROCK STAR and MOVIE STAR skins (page 2 of SKINS).
+- **PIXEL ART skin** (★150): paint every pixel of your thief yourself; the running, jumping and sliding poses follow your drawing.
+- **Move the buttons:** SETTINGS → MOVE BUTTONS lets you drag JUMP, SLIDE and the superpowers wherever you like (RESET puts them back).
+- **Trap hints:** hidden pop-up spikes are marked with a red X, invisible walls have a red outline.
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
 
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.

@@ -179,7 +179,7 @@ function colStr(c) {
 }
 function overlaps(a, b) { return a.x < b.x + b.w - 0.001 && a.x + a.w > b.x + 0.001 && a.y < b.y + b.h - 0.001 && a.y + a.h > b.y + 0.001; }
 
-let state = 'menu';   // menu | shop | skinedit | worlds | settings | about | mp | intro | run
+let state = 'menu';   // menu | shop | skinedit | pixeledit | worlds | settings | layout | about | mp | intro | run
 let menuT = 0;        // global animation clock
 let run = null;       // the current run (see section 10)
 
@@ -192,7 +192,8 @@ const Save = {
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
              sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false,
-             night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom() };
+             night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom(),
+             pixel: null, layout: null };
   },
   defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
@@ -205,6 +206,8 @@ const Save = {
     this.data.custom = Object.assign(this.defaultCustom(), this.data.custom);
     if (!Array.isArray(this.data.worlds)) this.data.worlds = ['city'];
     if (!this.data.worlds.includes(this.data.world)) this.data.world = 'city';   // worlds were free in 1.5.0 / 1.5.1
+    if (!Array.isArray(this.data.pixel) || this.data.pixel.length !== 190) this.data.pixel = null;
+    if (!this.data.layout || typeof this.data.layout !== 'object') this.data.layout = null;
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
@@ -607,14 +610,87 @@ const SKINS = [
   { id: 'ice', name: 'ICE', price: 90, body: '#8fe3ff', eye: '#1d3f8f', pattern: 'spots', pat: '#ffffff' },
   { id: 'gold', name: 'GOLD', price: 200, body: '#e0b030', eye: '#ff2424', pattern: 'spots', pat: '#fff0a0' },
   { id: 'custom', name: 'MY SKIN', price: 150, custom: true },
+  // famous looks, drawn pixel by pixel (10x19, facing right; '.' is see-through)
+  { id: 'king', name: 'THE KING', price: 100,
+    cols: { k: '#141414', f: '#f0c8a0', e: '#3a6ad8', w: '#f4f4f4', g: '#ffd23f' },
+    art: ['...kkkkkk.', '.kkkkkkkkk', '.kkkffffff', '.kkffeffef', '.kkffeffef', '.kkfffffff', '..kfffffff', '..wfffff..',
+          '.wwggggw..', '.wwwgwww..', 'wwwwwwwww.', 'wwwwgwwww.', 'f.wwwwwww.', '..ggggggg.', '..wwwwww..', '..www.ww..', '.www..www.', '.wwww.wwww', '.kkkk.kkkk'] },
+  { id: 'diva', name: 'POP DIVA', price: 100,
+    cols: { y: '#ffd84a', f: '#f5cfb0', b: '#2a7fd4', r: '#e01e5a', p: '#ff6fb0', s: '#fff2a0' },
+    art: ['..yyyyyyy.', '.yyyyyyyyy', '.yyyfffffy', '.yyffbffbf', '.yyffbffbf', '.yyfffffff', '..yfffrrff', '..yyfffff.',
+          '.yppppps..', '.ppsppppp.', 'fpppppppp.', 'fppppspp..', 'f.ppppppp.', '..ppppppp.', '..pppppp..', '..fff.ff..', '.fff..fff.', '.ffff.ffff', '.pppp.pppp'] },
+  { id: 'football', name: 'FOOTBALL STAR', price: 120,
+    cols: { n: '#4a2a14', f: '#d8a070', e: '#111111', R: '#d42020', W: '#ffffff', k: '#111111' },
+    art: ['..nnnnnnn.', '.nnnnnnnnn', '.nnfffffff', '.nfffeffef', '.nfffeffef', '.nffffffff', '..ffffffff', '..fffffff.',
+          '.RRRRRRR..', '.RWWWRRR..', 'fRRRWRRRR.', 'fRRWRRRRR.', 'f.RWRRRRR.', '..WWWWWWW.', '..WWWWWW..', '..fff.ff..', '.RRR..RRR.', '.kkkk.kkkk', '.kkkk.kkkk'] },
+  { id: 'rocker', name: 'ROCK STAR', price: 120,
+    cols: { k: '#141414', f: '#f0c8a0', s: '#2a2a3a', z: '#c8c8d0', j: '#2a5aa8', r: '#e01e1e' },
+    art: ['..kkkkkkk.', '.kkkkkkkkk', '.kkkffffff', '.kkkssssss', '.kkkfssfss', '.kkkffffff', '.kkkfffrrf', '.kkkfffff.',
+          '.kkzkkkk..', '.kkkkzkk..', 'fkkkkkkkk.', 'fkkkkkzkk.', 'f.kkkkkkk.', '..jjjjjjj.', '..jjjjjj..', '..jjj.jj..', '.jjj..jjj.', '.kkkk.kkkk', '.kkkk.kkkk'] },
+  { id: 'movie', name: 'MOVIE STAR', price: 150,
+    cols: { n: '#5a3418', f: '#f0c8a0', e: '#2f9a5a', k: '#1a1a24', W: '#ffffff', R: '#e01e1e', g: '#ffd23f' },
+    art: ['..nnnnnnn.', '.nnnnnnnnn', '.nnfffffff', '.nfffeffef', '.nfffeffef', '.nffffffff', '..ffffffff', '..fffffff.',
+          '.kkkkWRW..', '.kkkkWWk..', 'kkkkkkWkk.', 'kkkkkkWkk.', 'k.kkkkkkk.', '..kkkkkkk.', '..kkkkkk..', '..kkk.kk..', '.kkk..kkk.', '.kkkk.kkkk', '.gggg.gggg'] },
+  { id: 'pixel', name: 'PIXEL ART', price: 150, pixel: true },
 ];
 const SKIN_COLORS = ['#111111', '#f2f2f2', '#7a7a7a', '#c0281e', '#ff7aa2', '#e0782a', '#e0b030', '#3fae4a', '#2ad4c4', '#2a7fd4', '#7a3fc4', '#8a5a2b'];
 const PATTERNS = ['none', 'stripes', 'spots'];
-const skinDef = id => id === 'custom' ? Object.assign({ id: 'custom' }, Save.data.custom) : SKINS.find(s => s.id === id) || SKINS[0];
+const skinDef = id => id === 'custom' ? Object.assign({ id: 'custom' }, Save.data.custom)
+                   : id === 'pixel' ? { id: 'pixel', grid: Save.data.pixel || defaultPixels() }
+                   : SKINS.find(s => s.id === id) || SKINS[0];
+const PIXEL_COLORS = ['#000000', '#ffffff', '#7a7a7a', '#c0281e', '#ff2424', '#ff7aa2', '#e0782a', '#ffd23f', '#3fae4a', '#4dff9a',
+                      '#2ad4c4', '#2a7fd4', '#1d3f8f', '#7a3fc4', '#8a5a2b', '#4a2a14', '#f0c8a0', '#d8a070', '#ffd84a', '#c8c8d0'];
+// The PIXEL ART skin starts as the classic thief: black body, red eyes. 190 entries (10x19), null = see-through.
+function defaultPixels() {
+  return PLAYER_POSES.stand.flatMap(r => [...r.padEnd(10, '.')].map(ch => ch === '#' ? '#000000' : ch === 'r' ? '#ff2424' : null));
+}
+// A pixel skin's picture as 19 rows of 10 colors.
+function pixelGrid(def) {
+  if (def.grid) return Array.from({ length: 19 }, (_, y) => def.grid.slice(y * 10, y * 10 + 10));
+  return def.art.map(r => [...r.padEnd(10, '.')].map(ch => ch === '.' ? null : def.cols[ch] || null));
+}
+// Pixel skins are drawn for the standing pose; the other poses borrow their colors pixel by pixel.
+function buildPixelSkin(def) {
+  const G = pixelGrid(def), counts = {};
+  for (const c of G.flat()) if (c) counts[c] = (counts[c] || 0) + 1;
+  const main = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || '#000000';
+  const eyeCol = G[3][5] || G[4][5] || main;
+  const outline = lum(main) > 0.45 ? '#1a1524' : PAL.rimPlayer;
+  const near = (gx, gy) => {                    // the painted color here, or the closest painted one
+    gx = clamp(gx, 0, 9); gy = clamp(gy, 0, 18);
+    if (G[gy][gx]) return G[gy][gx];
+    for (let d = 1; d < 10; d++) for (const [dx, dy] of [[-d, 0], [d, 0], [0, -d], [0, d]]) {
+      const xx = gx + dx, yy = gy + dy;
+      if (xx >= 0 && xx < 10 && yy >= 0 && yy < 19 && G[yy][xx]) return G[yy][xx];
+    }
+    return main;
+  };
+  const out = {};
+  for (const k in PLAYER_POSES) {
+    const rows = PLAYER_POSES[k], h = rows.length, w = Math.max(...rows.map(r => r.length));
+    const same = w === 10 && h === 19, top = same && P_TOP.every((r, i) => rows[i] === r);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const ch = rows[y][x] || '.';
+      let col;
+      if (k === 'stand' || (top && y < 10)) col = G[y][x];            // the head exactly as painted
+      else if (ch === '.') continue;
+      else if (ch === 'p') col = '#ff7aa2';
+      else if (ch === 'r') col = eyeCol;
+      else if (same) col = near(x, k === 'sneak' ? y - 2 : y);
+      else col = near(Math.round(x * 9 / (w - 1)), Math.round(y * 18 / (h - 1)));
+      if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); }
+    }
+    out[k] = { plain: c, rim: outlineSprite(c, outline), eyes: [], w, h, glow: null };
+  }
+  return out;
+}
 function lum(h) { const [r, g, b] = hexToRgb(h); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
 
 // All player poses in one skin.
 function buildSkin(skin) {
+  if (skin.art || skin.grid) return buildPixelSkin(skin);
   const out = {}, outline = lum(skin.body) > 0.45 ? '#1a1524' : PAL.rimPlayer;
   for (const k in PLAYER_POSES) {
     const rows = PLAYER_POSES[k], h = rows.length, w = Math.max(...rows.map(r => r.length));
@@ -807,6 +883,7 @@ const Input = {
 // Immediate-mode UI: screens call UI.button() while drawing; clicks are resolved next frame.
 const UI = {
   list: [], focus: 0, kbNav: false, click: null, activate: false, back: false, downId: null, mx: -999, my: -999,
+  pressed: false, pressN: 0, downX: 0, downY: 0, screenPress: -1,     // pointer held down (pixel painting, dragging buttons)
   begin() { this.list = []; },
   end() {
     this.click = null; this.activate = false; this.back = false;
@@ -912,6 +989,7 @@ screenCanvas.addEventListener('pointerdown', e => {
     return;
   }
   UI.downId = UI.hit(x, y);
+  UI.pressed = true; UI.pressN++; UI.downX = x; UI.downY = y;
 });
 screenCanvas.addEventListener('pointermove', e => {
   const { x, y } = toLogical(e);
@@ -924,6 +1002,7 @@ screenCanvas.addEventListener('pointermove', e => {
   else if (dy < -12 && -dy > Math.abs(dx)) { g.decided = true; g.held = true; Input.jumpQ++; }
 });
 function endPointer(e, cancelled) {
+  UI.pressed = false;
   const g = Input.gestures.get(e.pointerId);
   if (g) {
     Input.gestures.delete(e.pointerId);
@@ -2342,7 +2421,10 @@ function drawSolids(camX) {
         break;
       }
       case 'invis':
-        if (s.revealed) {
+        if (!s.revealed) {               // see-through, but a red outline shows where it is
+          ctx.fillStyle = 'rgba(255,50,50,0.85)';
+          ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y, 1, s.h); ctx.fillRect(x + w - 1, y, 1, s.h);
+        } else {
           ctx.globalAlpha = 0.45 + 0.25 * Math.sin(menuT * 10);
           ctx.fillStyle = '#ff5a5a';
           for (let yy = 0; yy < s.h; yy += 2) { ctx.fillRect(x, y + yy, 1, 1); ctx.fillRect(x + w - 1, y + yy, 1, 1); }
@@ -2364,13 +2446,22 @@ function drawSpikeRow(x, y, w, rise) {
     }
   }
 }
+// A red X: "trap here!"
+function drawRedX(cx, cy) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  for (const [col, sz] of [['#000', 2], ['#ff2a2a', 1]]) {
+    ctx.fillStyle = col;
+    for (let i = -3; i <= 3; i++) { ctx.fillRect(cx + i - (sz >> 1), cy + i - (sz >> 1), sz, sz); ctx.fillRect(cx + i - (sz >> 1), cy - i - (sz >> 1), sz, sz); }
+  }
+}
 function drawHazards(camX) {
   for (const z of Level.hazards) {
     if (z.x - camX > W + 4 || z.x + z.w - camX < -4) continue;
     const x = Math.round(z.x - camX), y = Math.round(z.y);
-    if (z.pop && z.state === 0) {        // hidden: only tiny slits in the roof edge give it away
+    if (z.pop && z.state === 0) {        // hidden: tiny slits in the roof edge and a red X give it away
       ctx.fillStyle = PAL.ground;
       for (let i = 0; i < z.w; i += 8) ctx.fillRect(x + i + 3, y, 2, 1);
+      drawRedX(x + z.w / 2, y - 6);
       continue;
     }
     const rise = !z.pop ? 8 : z.state === 1 ? 2 : Math.min(8, 2 + Math.round(z.t * 120));
@@ -2446,6 +2537,15 @@ function drawCatHead(x, y) {
   ctx.fillRect(x + 1, y, 2, 3); ctx.fillRect(x + 10, y, 2, 3);
   ctx.fillStyle = '#ff3b3b'; ctx.fillRect(x + 3, y + 5, 2, 2); ctx.fillRect(x + 8, y + 5, 2, 2);
 }
+// Where the JUMP / SLIDE buttons and the superpowers block sit (moved in SETTINGS → MOVE BUTTONS, or the defaults).
+const CTRL = { slide: { w: 56, h: 48 }, jump: { w: 56, h: 48 }, abil: { w: 114, h: 34 } };
+function ctrlPos(key, touchUI = true) {
+  const c = CTRL[key], L = Save.data.layout && Save.data.layout[key];
+  if (L) return { x: Math.round(clamp(L[0], 0, 1) * (W - c.w)), y: Math.round(clamp(L[1], 0, 1) * (H - c.h)), custom: true };
+  if (key === 'slide') return { x: 8, y: H - 56 };
+  if (key === 'jump') return { x: W - 64, y: H - 56 };
+  return { x: (touchUI ? W - 74 : W - 8) - 120, y: H - c.h - (touchUI ? 15 : 8) };
+}
 function drawHUD() {
   const R = run, hud = [];
   R.hudRects = hud;
@@ -2503,9 +2603,10 @@ function drawHUD() {
   // big on-screen JUMP / SLIDE buttons for touch screens (tap anywhere / swipe still work too)
   const touchUI = touchButtonsOn();
   if (touchUI) {
-    const sl = { x: 8, y: H - 56, w: 56, h: 48, pad: 8,
+    const ps = ctrlPos('slide', touchUI), pj = ctrlPos('jump', touchUI);
+    const sl = { x: ps.x, y: ps.y, w: 56, h: 48, pad: 8,
                  down: () => { Input.slideQ++; Input.held.slide = true; }, up: () => { Input.held.slide = false; } };
-    const jp = { x: W - 64, y: H - 56, w: 56, h: 48, pad: 8,
+    const jp = { x: pj.x, y: pj.y, w: 56, h: 48, pad: 8,
                  down: () => { Input.jumpQ++; Input.held.jump = true; }, up: () => { Input.held.jump = false; } };   // taps always give a full jump
     drawTouchButton(sl, '↓', 'SLIDE', Input.held.slide);
     drawTouchButton(jp, '↑', 'JUMP', Input.held.jump);
@@ -2514,10 +2615,11 @@ function drawHUD() {
   }
 
   // equipped ability buttons
-  const bs = 34, n = R.abil.length, right = touchUI ? W - 74 : W - 8;
-  R.ui.abil = n ? { x: right - n * (bs + 6), y: H - bs - (touchUI ? 15 : 8), w: n * (bs + 6) - 6, h: bs } : null;
+  const bs = 34, n = R.abil.length, pa = ctrlPos('abil', touchUI);
+  const ax = pa.custom ? pa.x : pa.x + (3 - n) * (bs + 6);            // moved: line up from the left edge of the block
+  R.ui.abil = n ? { x: ax, y: pa.y, w: n * (bs + 6) - 6, h: bs } : null;
   R.abil.forEach((a, i) => {
-    const x = right - (n - i) * (bs + 6), y = R.ui.abil.y;
+    const x = ax + i * (bs + 6), y = R.ui.abil.y;
     const act = abilityActive(a);
     const usable = !a.def.passive && a.uses > 0 && act <= 0;
     ctx.fillStyle = 'rgba(13,11,19,0.78)'; ctx.fillRect(x, y, bs, bs);
@@ -2572,15 +2674,16 @@ function drawMpButtons(R, hud) {
     return;
   }
   if (touchUI) {
-    const sl = { x: 8, y: H - 56, w: 56, h: 48, pad: 8, down: () => { Input.slideQ++; Input.held.slide = true; }, up: () => { Input.held.slide = false; } };
-    const jp = { x: W - 64, y: H - 56, w: 56, h: 48, pad: 8, down: () => { Input.jumpQ++; Input.held.jump = true; }, up: () => { Input.held.jump = false; } };
+    const ps = ctrlPos('slide', touchUI), pj = ctrlPos('jump', touchUI);
+    const sl = { x: ps.x, y: ps.y, w: 56, h: 48, pad: 8, down: () => { Input.slideQ++; Input.held.slide = true; }, up: () => { Input.held.slide = false; } };
+    const jp = { x: pj.x, y: pj.y, w: 56, h: 48, pad: 8, down: () => { Input.jumpQ++; Input.held.jump = true; }, up: () => { Input.held.jump = false; } };
     drawTouchButton(sl, '↓', 'SLIDE', Input.held.slide);
     drawTouchButton(jp, '↑', 'JUMP', Input.held.jump);
     hud.push(sl, jp);
   }
-  const bs = 34, right = touchUI ? W - 74 : W - 8, n = R.abil.length;
+  const bs = 34, n = R.abil.length, pa = ctrlPos('abil', touchUI), ax = pa.custom ? pa.x : pa.x + (3 - n) * (bs + 6);
   R.abil.forEach((a, i) => {
-    const x = right - (n - i) * (bs + 6), y = H - bs - (touchUI ? 15 : 8);
+    const x = ax + i * (bs + 6), y = pa.y;
     drawAbilityButton(x, y, bs, a.def.icon, a.def.color, { ready: !(a.cd > 0) && abilityActive(a) <= 0, cdFrac: a.cd / a.cdMax,
                                                           actFrac: a.id === 'shield' ? 0 : abilityActive(a), key: String(i + 1) });
     hud.push({ x, y, w: bs, h: bs, down: () => useAbility(i) });
@@ -3041,7 +3144,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.6.1';
+const VERSION = '1.7.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -3415,8 +3518,9 @@ function updateView(dt) {
 
 function go(s) {
   state = s; UI.focus = 0;
+  UI.screenPress = UI.pressN;        // the tap that opened this screen doesn't paint or drag anything here
   applyWorld();          // undo the run's day / night colors
-  if (s === 'menu' || s === 'shop' || s === 'skinedit' || s === 'worlds' || s === 'settings' || s === 'about' || s === 'mp') Music.play('menu');
+  if (['menu', 'shop', 'skinedit', 'pixeledit', 'worlds', 'settings', 'layout', 'about', 'mp'].includes(s)) Music.play('menu');
 }
 function playFromMenu() {
   if (Save.data.intro) Intro.start();            // the intro hands over to the tutorial for new players
@@ -3494,7 +3598,7 @@ function drawShop(dt) {
   const msgY = H - 16;
   if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
   else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS, W / 2, msgY, PAL.inkSoft, 1, 'center');
-  else drawText('MY SKIN: DESIGN YOUR OWN THIEF!', W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else drawText('PAGE ' + (skinPage + 1) + '/' + Math.ceil(SKINS.length / SKINS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
 }
@@ -3537,6 +3641,7 @@ function buySkin(s) {
   Save.data.skin = s.id; Save.save(); applySkin();
   sfx('buy');
   if (s.custom) { say('NOW MAKE IT YOURS!', PAL.green); go('skinedit'); }
+  else if (s.pixel) { say('PAINT IT PIXEL BY PIXEL!', PAL.green); go('pixeledit'); }
   else say(s.name + ' SKIN UNLOCKED!', PAL.green);
 }
 // A thief in the given skin, standing on a dark tile.
@@ -3547,24 +3652,32 @@ function drawSkinTile(id, x, y, w, h, scale) {
   ctx.drawImage(pose.rim, -1, -1); ctx.drawImage(SPR.mouse.rim, -1, -6);
   ctx.restore();
 }
+let skinPage = 0;
+const SKINS_PER_PAGE = 8;
 function drawSkinShop() {
   const cols = 4, gap = 6, cw = Math.floor((W - 16 - gap * (cols - 1)) / cols), ch = 88;
-  SKINS.forEach((s, i) => {
+  const pages = Math.ceil(SKINS.length / SKINS_PER_PAGE);
+  skinPage = clamp(skinPage, 0, pages - 1);
+  if (pages > 1) {                                           // page arrows next to BACK / PLAY
+    if (UI.button('skinprev', 96, H - 22, 22, 18, '<', { disabled: skinPage === 0 })) { skinPage--; sfx('click'); }
+    if (UI.button('skinnext', W - 118, H - 22, 22, 18, '>', { disabled: skinPage === pages - 1 })) { skinPage++; sfx('click'); }
+  }
+  SKINS.slice(skinPage * SKINS_PER_PAGE, (skinPage + 1) * SKINS_PER_PAGE).forEach((s, i) => {
     const x = 8 + (i % cols) * (cw + gap), y = 32 + Math.floor(i / cols) * (ch + 4);
     const owned = ownsSkin(s.id), wearing = Save.data.skin === s.id;
     ctx.fillStyle = wearing ? '#7a3fc4' : PAL.ink; ctx.fillRect(x, y, cw, ch);
     ctx.fillStyle = wearing ? PAL.sel : PAL.paperHi; ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
     drawSkinTile(s.id, x + 4, y + 4, cw - 8, 48, 2);
-    if (s.custom && !owned) drawText('?', x + cw / 2, y + 14, '#ffd23f', 4, 'center', '#000');
+    if ((s.custom || s.pixel) && !owned) drawText('?', x + cw / 2, y + 14, '#ffd23f', 4, 'center', '#000');
     drawText(s.name, x + cw / 2, y + 56, PAL.ink, 1, 'center');
     const by = y + 66, bw = cw - 8;
     if (!owned) {
       const poor = Save.data.points < s.price;
       if (UI.button('skin_' + s.id, x + 4, by, bw, 18, 'BUY ★' + s.price, { size: 1, textColor: poor ? '#b03030' : null, accent: '#7a3fc4' })) buySkin(s);
-    } else if (s.custom) {
+    } else if (s.custom || s.pixel) {
       const hw = Math.floor((bw - 4) / 2);
-      if (UI.button('skinedit', x + 4, by, hw, 18, 'EDIT', { size: 1, accent: '#2f9a5a' })) { sfx('click'); go('skinedit'); }
-      if (UI.button('skin_custom', x + 8 + hw, by, hw, 18, wearing ? 'ON' : 'USE', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
+      if (UI.button('edit_' + s.id, x + 4, by, hw, 18, 'EDIT', { size: 1, accent: '#2f9a5a' })) { sfx('click'); go(s.pixel ? 'pixeledit' : 'skinedit'); }
+      if (UI.button('skin_' + s.id, x + 8 + hw, by, hw, 18, wearing ? 'ON' : 'USE', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
     } else if (UI.button('skin_' + s.id, x + 4, by, bw, 18, wearing ? 'WEARING' : 'WEAR', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
   });
 }
@@ -3613,6 +3726,114 @@ function drawSkinEditor() {
     if (Save.data.skin !== 'custom') { Save.data.skin = 'custom'; Save.save(); applySkin(); }
     shopTab = 'skins'; sfx('buy'); go('shop');
   }
+}
+
+// --- pixel skin editor (PIXEL ART): every pixel your way ------------------------------
+let pixelColor = '#000000';      // null = eraser
+let pixelStroke = -1;            // which press is painting (so a press that starts on a button doesn't paint)
+function setPixel(i, col) {
+  const d = Save.data;
+  if (!d.pixel) d.pixel = defaultPixels();
+  if (d.pixel[i] === col) return;
+  d.pixel[i] = col; Save.save();
+  for (const k in skinCache) if (k.startsWith('pixel')) delete skinCache[k];
+  if (d.skin === 'pixel') applySkin();
+  if (Math.random() < 0.5) sfx('tick');
+}
+function drawPixelEditor() {
+  bgLight();
+  drawText('PAINT YOUR THIEF', W / 2, 8, PAL.ink, 2, 'center');
+  const grid = Save.data.pixel || defaultPixels();
+  const cs = 10, gx = 14, gy = 26;                             // 10 x 19 cells
+  ctx.fillStyle = PAL.ink; ctx.fillRect(gx - 2, gy - 2, 10 * cs + 4, 19 * cs + 4);
+  for (let y = 0; y < 19; y++) for (let x = 0; x < 10; x++) {
+    const col = grid[y * 10 + x];
+    ctx.fillStyle = col || ((x + y) % 2 ? '#cfc8dc' : '#e6e0ee');
+    ctx.fillRect(gx + x * cs, gy + y * cs, cs, cs);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';                          // grid lines
+  for (let x = 1; x < 10; x++) ctx.fillRect(gx + x * cs, gy, 1, 19 * cs);
+  for (let y = 1; y < 19; y++) ctx.fillRect(gx, gy + y * cs, 10 * cs, 1);
+  // paint while the pointer is held down over the grid (a press that started on the grid)
+  const inGrid = (px, py) => px >= gx && px < gx + 10 * cs && py >= gy && py < gy + 19 * cs;
+  const cellAt = (px, py) => Math.floor((py - gy) / cs) * 10 + Math.floor((px - gx) / cs);
+  if (pixelStroke !== UI.pressN && UI.pressN !== UI.screenPress && inGrid(UI.downX, UI.downY)) {     // a new press on the grid (even a quick tap)
+    pixelStroke = UI.pressN; setPixel(cellAt(UI.downX, UI.downY), pixelColor);
+  }
+  if (UI.pressed && pixelStroke === UI.pressN && inGrid(UI.mx, UI.my)) {
+    setPixel(cellAt(UI.mx, UI.my), pixelColor);
+  }
+  const hx = Math.floor((UI.mx - gx) / cs), hy = Math.floor((UI.my - gy) / cs);
+  if (!Input.touch && inGrid(UI.mx, UI.my)) {                   // mouse: show the cell under the pointer
+    ctx.fillStyle = '#e01e1e';
+    const x = gx + hx * cs, y = gy + hy * cs;
+    ctx.fillRect(x, y, cs, 1); ctx.fillRect(x, y + cs - 1, cs, 1); ctx.fillRect(x, y, 1, cs); ctx.fillRect(x + cs - 1, y, 1, cs);
+  }
+  // running preview
+  const x0 = gx + 10 * cs + 14, pw = 64, ph = 86;
+  ctx.fillStyle = PAL.ink; ctx.fillRect(x0 - 1, gy - 1, pw + 2, ph + 2);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x0, gy, pw, ph);
+  ctx.fillStyle = '#3e3358'; ctx.fillRect(x0, gy + ph - 12, pw, 12);
+  const set = skinSprites('pixel'), poses = ['run1', 'run2', 'run1', 'run2', 'jump', 'fall', 'slide', 'stand'];
+  const pose = poses[Math.floor(menuT * 5) % poses.length], sp = set[pose], sc = 3;
+  ctx.save(); ctx.translate(x0 + Math.round(pw / 2 - sp.w * sc / 2), gy + ph - 12 - sp.h * sc); ctx.scale(sc, sc);
+  ctx.drawImage(sp.rim, -1, -1);
+  ctx.restore();
+  // palette + eraser
+  const px0 = x0 + pw + 12;
+  drawText('COLORS', px0, gy, PAL.ink, 1);
+  PIXEL_COLORS.forEach((col, i) => {
+    if (swatch('px_' + i, px0 + (i % 5) * 17, gy + 10 + Math.floor(i / 5) * 21, col, pixelColor === col)) { pixelColor = col; sfx('click'); }
+  });
+  const ey = gy + 10 + 4 * 21;
+  if (UI.button('px_erase', px0, ey, 82, 16, 'ERASER', { size: 1, on: pixelColor === null, accent: '#7a3fc4' })) { pixelColor = null; sfx('click'); }
+  const by = ey + 26;
+  drawText('TAP OR DRAG ON THE GRID. THE OTHER', x0, by + 28, PAL.inkSoft, 1);
+  drawText('POSES FOLLOW YOUR DRAWING.', x0, by + 38, PAL.inkSoft, 1);
+  if (UI.button('px_reset', x0, by, 76, 18, 'CLASSIC', { size: 1 })) { const def = defaultPixels(); for (let i = 0; i < 190; i++) setPixel(i, def[i]); sfx('click'); }
+  if (UI.button('px_clear', x0 + 82, by, 76, 18, 'CLEAR ALL', { size: 1, accent: '#e01e1e' })) { for (let i = 0; i < 190; i++) setPixel(i, null); sfx('hit'); }
+  const bw = 120;
+  if (UI.button('pxdone', W - bw - 10, H - 26, bw, 20, 'WEAR IT!', { accent: '#2f9a5a' }) || UI.back) {
+    if (Save.data.skin !== 'pixel') { Save.data.skin = 'pixel'; Save.save(); applySkin(); }
+    shopTab = 'skins'; sfx('buy'); go('shop');
+  }
+}
+
+// --- move the touch buttons and superpowers (SETTINGS → MOVE BUTTONS) ------------------
+let layoutDrag = null;
+function drawLayoutEditor() {
+  drawChaseBG(400);
+  drawRoof(0, 190, W, 400, false);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, H);
+  drawText('DRAG THE BUTTONS WHERE YOU LIKE THEM', W / 2, 40, '#fff', 1, 'center', '#000');
+  const d = Save.data;
+  if (UI.button('lay_reset', 10, 8, 80, 20, 'RESET', { theme: 'dark' })) { d.layout = null; Save.save(); sfx('click'); }
+  if (UI.button('lay_done', W - 90, 8, 80, 20, 'DONE', { theme: 'dark', accent: '#2f9a5a' }) || UI.back) { layoutDrag = null; go('settings'); return; }
+  const keys = ['slide', 'jump', 'abil'], pos = {};
+  for (const k of keys) pos[k] = ctrlPos(k, true);
+  // pick a button up at the start of a press, carry it while the pointer is down
+  if (UI.pressed && UI.pressN !== UI.screenPress && (!layoutDrag || layoutDrag.n !== UI.pressN) && UI.hit(UI.downX, UI.downY) === null) {
+    layoutDrag = null;
+    for (const k of keys) {
+      const p = pos[k], c = CTRL[k];
+      if (UI.downX >= p.x && UI.downX < p.x + c.w && UI.downY >= p.y && UI.downY < p.y + c.h) { layoutDrag = { k, n: UI.pressN, ox: UI.downX - p.x, oy: UI.downY - p.y }; sfx('click'); }
+    }
+  }
+  if (layoutDrag && UI.pressed && layoutDrag.n === UI.pressN) {
+    const k = layoutDrag.k, c = CTRL[k];
+    const nx = clamp(UI.mx - layoutDrag.ox, 0, W - c.w), ny = clamp(UI.my - layoutDrag.oy, 0, H - c.h);
+    if (!d.layout) d.layout = {};
+    for (const kk of keys) if (!d.layout[kk]) d.layout[kk] = [pos[kk].x / (W - CTRL[kk].w), pos[kk].y / (H - CTRL[kk].h)];   // pin the others too
+    d.layout[k] = [nx / (W - c.w), ny / (H - c.h)];
+    pos[k] = ctrlPos(k, true);
+  } else if (layoutDrag && !UI.pressed) { layoutDrag = null; Save.save(); }
+  // the buttons
+  const lift = k => layoutDrag && layoutDrag.k === k;
+  drawTouchButton({ x: pos.slide.x, y: pos.slide.y, w: 56, h: 48 }, '↓', 'SLIDE', lift('slide'));
+  drawTouchButton({ x: pos.jump.x, y: pos.jump.y, w: 56, h: 48 }, '↑', 'JUMP', lift('jump'));
+  const a = pos.abil;
+  ['freeze', 'boost', 'shield'].forEach((id, i) => drawAbilityButton(a.x + i * 40, a.y, 34, ABIL[id].icon, ABIL[id].color, { ready: true, key: String(i + 1), actFrac: lift('abil') ? 1 : 0 }));
+  drawText('SUPERPOWERS', a.x + 57, a.y - 9, '#fff', 1, 'center', '#000');
 }
 
 // --- worlds -------------------------------------------------------------------
@@ -3813,10 +4034,13 @@ function drawSettings(dt) {
   row('mus', 'MUSIC: ' + on(d.music), () => { d.music = !d.music; Save.save(); Sound.apply(); sfx('click'); });
   row('intro', 'INTRO CUTSCENE: ' + on(d.intro), () => { d.intro = !d.intro; Save.save(); sfx('click'); });
   row('shake', 'SCREEN SHAKE: ' + on(d.shake), () => { d.shake = !d.shake; Save.save(); sfx('click'); });
-  row('touchbtn', 'TOUCH BUTTONS: ' + on(d.touchButtons), () => { d.touchButtons = !d.touchButtons; Save.save(); sfx('click'); });
+  const tw = Math.round((bw - 6) / 2);
+  if (UI.button('touchbtn', bx, y, tw, 19, 'BUTTONS: ' + on(d.touchButtons))) { d.touchButtons = !d.touchButtons; Save.save(); sfx('click'); }
+  if (UI.button('layout', bx + tw + 6, y, bw - tw - 6, 19, 'MOVE BUTTONS', { accent: '#7a3fc4' })) { sfx('click'); go('layout'); }
+  y += 23;
   row('reset', resetArm > 0 ? 'TAP AGAIN TO ERASE ALL' : 'RESET PROGRESS', () => {
     if (resetArm > 0) {
-      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons, night: d.night };
+      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons, night: d.night, layout: d.layout };
       Save.data = Object.assign(Save.defaults(), keep); Save.save(); applyWorld(); applySkin(); resetArm = 0; sfx('hit');
     } else { resetArm = 3; sfx('deny'); }
   }, { accent: '#e01e1e', textColor: '#b03030' });
@@ -3861,6 +4085,8 @@ function frame(now) {
     case 'menu': drawMenu(); break;
     case 'shop': drawShop(dt); break;
     case 'skinedit': drawSkinEditor(); break;
+    case 'pixeledit': drawPixelEditor(); break;
+    case 'layout': drawLayoutEditor(); break;
     case 'worlds': drawWorlds(dt); break;
     case 'settings': drawSettings(dt); break;
     case 'about': drawAbout(); break;
