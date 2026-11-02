@@ -3095,6 +3095,7 @@ function drawGameOver() {
   const k = clamp(R.overT / 0.35, 0, 1);
   ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
   const pw = 290, ph = 178, { px, py } = drawPanel(pw, ph, k);
+  drawText('GAME OVER', W / 2, py - 18, '#ff3b3b', 2, 'center', '#000');
   shakyText('SHE GOT YOU!', W / 2, py + 12, '#e01e1e', 4, R.overT < 0.6 ? 1.2 : 0);
   drawText(R.line, W / 2, py + 38, PAL.inkSoft, 1, 'center');
   const rows = [['TIME', fmtTime(R.time)], ['POINTS EARNED', '+' + R.points], ['BEST TIME', fmtTime(d.bestTime)], ['WALLET', '★ ' + d.points]];
@@ -3221,6 +3222,14 @@ const Ending = {
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 8, W, 22);
     drawText(this.captions[k], W / 2, 14, '#fff', 2, 'center', '#000');
     if (t > 0.6) drawText(Input.touch ? 'TAP TO SKIP' : 'PRESS ANY KEY TO SKIP', W - 6, H - 9, 'rgba(255,255,255,0.6)', 1, 'right');
+    // GAME OVER: slams in big at the start, then stays small in the corner
+    if (t < 1.9) {
+      const k = clamp(t / 0.25, 0, 1), a = t > 1.6 ? (1.9 - t) / 0.3 : 1;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, H / 2 - 30, W, 52);
+      shakyText('GAME OVER', W / 2, Math.round(H / 2 - 22 - (1 - k) * 60), '#ff3b3b', 7, t < 0.7 ? 2 : 0.6);
+      ctx.globalAlpha = 1;
+    } else drawText('GAME OVER', 6, H - 13, '#ff3b3b', 2, 'left', '#000');
     const fade = t < 0.4 ? 1 - t / 0.4 : t > this.dur - 0.35 ? (t - (this.dur - 0.35)) / 0.35 : 0;
     if (fade > 0) { ctx.fillStyle = 'rgba(0,0,0,' + fade.toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
   },
