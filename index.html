@@ -191,7 +191,7 @@ const Save = {
   data: null,
   defaults() {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
-             sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false,
+             sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false, ending: true,
              night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom(),
              pixel: null, layout: null };
   },
@@ -346,6 +346,10 @@ const SFX = {
   ratHiss: () => noise(0.4, { freq: 5000, filter: 'highpass', vol: 0.25 }),
   devilLaugh: () => [0, 1, 2, 3].forEach(i => tone([300 - i * 25, 230 - i * 25], 0.16, { type: 'sawtooth', vol: 0.22, delay: i * 0.2, vib: 15, vibRate: 30 })),
   fire: () => noise(0.35, { freq: 600, sweepTo: 2500, q: 0.8, vol: 0.35 }),
+  meow: () => { tone([420, 760, 560], 0.45, { type: 'sawtooth', vol: 0.16, vib: 15, vibRate: 7, hold: 0.6 }); tone([630, 1140, 840], 0.45, { vol: 0.05, hold: 0.6 }); },
+  lap: () => { tone([900, 600], 0.05, { type: 'triangle', vol: 0.12 }); noise(0.04, { freq: 2500, vol: 0.08 }); },
+  pee: () => noise(0.7, { freq: 3200, q: 2, vol: 0.1 }),
+  applause: () => { for (let i = 0; i < 10; i++) noise(0.05, { freq: 1500 + Math.random() * 2500, q: 1.5, vol: 0.18, delay: i * 0.07 + Math.random() * 0.03 }); },
   harp: () => [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.6, { type: 'triangle', vol: 0.12, delay: i * 0.07 })),
   bossLose: () => {
     tone([760, 300, 520, 140], 1.3, { type: 'sawtooth', vol: 0.22, vib: 40, vibRate: 12 });
@@ -948,6 +952,7 @@ window.addEventListener('keydown', e => {
   }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
   if (state === 'intro') { if (!e.repeat) Intro.skip(); return; }
+  if (state === 'run' && run && run.phase === 'ending') { if (!e.repeat) Ending.skip(); return; }
   if (playing() && run.view) {                   // multiplayer: I'm the cat, send my moves
     if (e.repeat) return;
     if (JUMP_KEYS.includes(k)) Net.act('pounce');
@@ -995,6 +1000,7 @@ screenCanvas.addEventListener('pointerdown', e => {
     try { screenCanvas.setPointerCapture(e.pointerId); } catch (_) { /* not critical */ }
     return;
   }
+  if (state === 'run' && run && run.phase === 'ending') { Ending.skip(); return; }
   UI.downId = UI.hit(x, y);
   UI.pressed = true; UI.pressN++; UI.downX = x; UI.downY = y;
 });
@@ -1819,6 +1825,7 @@ function finishRun() {
   if (R.newBest) d.bestTime = R.time;
   if (R.points > d.bestPoints) d.bestPoints = R.points;
   Save.save();
+  if (d.ending !== false && !R.tutorial) { Ending.start(R); return; }   // a little scene first
   sfx('gameover');
   UI.focus = 0;
 }
@@ -2333,6 +2340,7 @@ function updateRun(dt) {
   if (R.banner && (R.banner.t -= dt) <= 0) R.banner = null;
 
   if (R.phase === 'over') { R.overT += dt; return; }
+  if (R.phase === 'ending') { Ending.update(R, dt); return; }
   if (R.phase === 'dying') {
     R.deathT += dt;
     if (!R.deathPit) { p.vy += PHYS.gravity * dt; p.y = Math.min(p.deathY, p.y + p.vy * dt); }
@@ -3105,6 +3113,7 @@ function drawGameOver() {
 
 function drawRun() {
   const R = run;
+  if (R.phase === 'ending') return Ending.draw(R);
   let shakeAmt = R.shake;
   if (R.phase === 'play' && R.danger > 0.65) shakeAmt += (R.danger - 0.65) / 0.35 * 2.5;
   if (!Save.data.shake || R.paused) shakeAmt = 0;
@@ -3158,6 +3167,231 @@ function drawRun() {
   else if (R.choice) drawHeavenChoice();
   else if (R.phase === 'over') drawGameOver();
   if (R.fadeT > 0) { ctx.fillStyle = 'rgba(0,0,0,' + (R.fadeT / 0.5) + ')'; ctx.fillRect(0, 0, W, H); }
+}
+
+/* --------------------------------------------------------------------------
+   10c. ENDING — a little scene after you get caught (single player).
+   A different one each time: mostly the cat having fun at your grave.
+   Tap / any key skips it. Turn it off in SETTINGS (END SCENE).
+   -------------------------------------------------------------------------- */
+const Ending = {
+  kinds: ['jump', 'milk', 'pee', 'nap', 'scratch', 'party', 'trophy'],
+  captions: {
+    jump: 'SHE DANCES ON YOUR GRAVE.',
+    milk: 'SHE COMES BY FOR MILK. EVERY DAY.',
+    pee: 'SHE LEFT YOU A LITTLE GIFT.',
+    nap: 'YOUR GRAVE IS HER FAVORITE BED NOW.',
+    scratch: 'YOUR TOMBSTONE MAKES A GREAT SCRATCHER.',
+    party: 'SHE THREW A PARTY. YOU WERE NOT INVITED.',
+    trophy: 'CAT OF THE YEAR!',
+  },
+  dur: 5.5, last: null,
+  start(R) {
+    let k;
+    do k = this.kinds[Math.floor(Math.random() * this.kinds.length)]; while (k === this.last);
+    this.last = k;
+    R.phase = 'ending'; R.endT = 0; R.endKind = k; R.endDone = {};
+    Music.stop(); Input.clear();
+  },
+  update(R, dt) {
+    R.endT += dt;
+    const t = R.endT, k = R.endKind;
+    const at = (key, time, fn) => { if (t >= time && !R.endDone[key]) { R.endDone[key] = true; fn(); } };
+    if (k === 'jump') { at('j', 1.0, () => sfx('pounce')); at('l', 1.55, () => sfx('land')); at('m1', 2.0, () => sfx('meow')); at('h', 3.0, () => sfx('jump')); at('m2', 3.5, () => sfx('bossMeow')); }
+    else if (k === 'milk') { for (let i = 0; i < 8; i++) at('lap' + i, 1.5 + i * 0.3, () => sfx('lap')); at('p', 4.1, () => sfx('purr')); }
+    else if (k === 'pee') { at('s', 1.6, () => sfx('pee')); at('s2', 2.3, () => sfx('pee')); at('k', 3.7, () => sfx('scratch')); at('m', 4.6, () => sfx('nyah')); }
+    else if (k === 'nap') { at('y', 1.6, () => sfx('meow')); at('p1', 2.4, () => sfx('purr')); at('p2', 3.6, () => sfx('purr')); }
+    else if (k === 'scratch') { for (let i = 0; i < 5; i++) at('sc' + i, 1.4 + i * 0.55, () => sfx('scratch')); at('m', 4.4, () => sfx('meow')); }
+    else if (k === 'party') { at('b', 0.3, () => sfx('buy')); for (let i = 0; i < 4; i++) at('pop' + i, 1 + i * 0.9, () => sfx('pop')); at('n', 3.2, () => sfx('nyah')); }
+    else if (k === 'trophy') { for (let i = 0; i < 4; i++) at('cl' + i, 0.6 + i * 1.1, () => sfx('applause')); at('m', 2.2, () => sfx('meow')); }
+    if (t >= this.dur) this.finish(R);
+  },
+  finish(R) { R.phase = 'over'; R.overT = 0; UI.focus = 0; sfx('gameover'); },
+  skip() { const R = run; if (R && R.phase === 'ending' && R.endT > 0.4) this.finish(R); },
+
+  // --- drawing -----------------------------------------------------------------
+  draw(R) {
+    const t = R.endT, k = R.endKind, floorY = 112;      // scene coordinates: half the screen, blown up 2x
+    ctx.save(); ctx.scale(2, 2);
+    if (k === 'party') this.drawParty(t, floorY, R);
+    else if (k === 'trophy') this.drawTrophy(t, floorY, R);
+    else this.drawGrave(t, floorY, R, k);
+    ctx.restore();
+    // caption + skip hint
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 8, W, 22);
+    drawText(this.captions[k], W / 2, 14, '#fff', 2, 'center', '#000');
+    if (t > 0.6) drawText(Input.touch ? 'TAP TO SKIP' : 'PRESS ANY KEY TO SKIP', W - 6, H - 9, 'rgba(255,255,255,0.6)', 1, 'right');
+    const fade = t < 0.4 ? 1 - t / 0.4 : t > this.dur - 0.35 ? (t - (this.dur - 0.35)) / 0.35 : 0;
+    if (fade > 0) { ctx.fillStyle = 'rgba(0,0,0,' + fade.toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  },
+  cat(noseX, feetY, o) {
+    drawCat(noseX, feetY, Object.assign({ outline: '#8b7fb0' }, o));
+    if (o.hold) drawMouse(noseX - 9, feetY - 22 + (o.pose === 'crouch' ? 3 : 0), false, true);
+  },
+  walkIn(t, x1, dur = 1.2) { return t < dur ? lerp(-30, x1, easeOut(t / dur)) : x1; },
+  drawGrave(t, fy, R, k) {
+    const SW = Math.ceil(W / 2), SH = H / 2;     // drawn at 2x
+    // night graveyard
+    const g = ctx.createLinearGradient(0, 0, 0, fy);
+    g.addColorStop(0, '#120e24'); g.addColorStop(1, '#3a2d5a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, SW, fy);
+    for (let i = 0; i < 40; i++) { ctx.fillStyle = Math.sin(menuT * 2 + i) > 0.6 ? '#fff' : '#9a8fc0'; ctx.fillRect(Math.round(hash(i) * SW), Math.round(18 + hash(i + 9) * 50), 1, 1); }
+    drawMoon(SW - 30, 32);
+    ctx.fillStyle = '#1e1832';                                     // far away: crooked tree, fence, little tombstones
+    ctx.fillRect(30, fy - 70, 5, 70); ctx.fillRect(18, fy - 66, 14, 3); ctx.fillRect(33, fy - 56, 16, 3); ctx.fillRect(16, fy - 72, 3, 8); ctx.fillRect(46, fy - 62, 3, 8);
+    for (let x = 0; x < SW; x += 9) ctx.fillRect(x, fy - 16, 2, 16);
+    ctx.fillRect(0, fy - 13, SW, 2);
+    for (const [x, h] of [[70, 14], [110, 10], [SW - 120, 12], [SW - 40, 16]]) { ctx.fillRect(x, fy - h, 9, h); ctx.fillRect(x + 1, fy - h - 1, 7, 1); }
+    ctx.fillStyle = '#2a3a24'; ctx.fillRect(0, fy, SW, SH - fy);   // grass
+    ctx.fillStyle = '#3a5030'; for (let x = 0; x < SW; x += 5) ctx.fillRect(x + (x % 3), fy - 1, 1, 2);
+    // your grave
+    const tx = Math.round(SW * 0.56), tw = 36, th = 46, top = fy - th;
+    ctx.fillStyle = '#5a3a24'; ctx.fillRect(tx - 78, fy - 6, 58, 6); ctx.fillRect(tx - 74, fy - 8, 50, 2);   // dirt mound
+    ctx.fillStyle = '#2a2638'; ctx.fillRect(tx - tw / 2 - 1, top + 5, tw + 2, th - 4); ctx.fillRect(tx - tw / 2 + 4, top - 1, tw - 8, 7);
+    ctx.fillStyle = '#8a8698'; ctx.fillRect(tx - tw / 2, top + 6, tw, th - 6); ctx.fillRect(tx - tw / 2 + 2, top + 2, tw - 4, 4); ctx.fillRect(tx - tw / 2 + 5, top, tw - 10, 2);
+    ctx.fillStyle = '#6a6678'; ctx.fillRect(tx + tw / 2 - 4, top + 6, 4, th - 6);
+    drawText('R.I.P.', tx, top + 9, '#2a2638', 1, 'center');
+    drawText('THIEF', tx, top + 19, '#2a2638', 1, 'center');
+    drawText(fmtTime(R.time), tx, top + 29, '#2a2638', 1, 'center');
+    ctx.fillStyle = '#e01e5a'; ctx.fillRect(tx - 30, fy - 12, 3, 3); ctx.fillStyle = '#3a8a3a'; ctx.fillRect(tx - 29, fy - 9, 1, 4);   // a flower
+    // your ghost watches, horrified
+    const gy = fy - 82 + Math.round(Math.sin(menuT * 2) * 3);
+    ctx.globalAlpha = 0.4; drawPlayerSprite('scared', tx - 70, gy, false, true); ctx.globalAlpha = 1;
+    drawHalo(tx - 66, gy - 4, 8);
+
+    const S = (x, y, o) => this.cat(x, y, o);
+    if (k === 'jump') {
+      const x0 = tx - 46, x1 = tx + 26;
+      if (t < 1) S(this.walkIn(t, x0, 1), fy, { t, pose: 'walk', eyes: 'normal' });
+      else if (t < 1.55) { const u = (t - 1) / 0.55; S(lerp(x0, x1, u), lerp(fy, top, u) - Math.sin(u * Math.PI) * 30, { t, pose: 'pounce', eyes: 'rage' }); }
+      else {
+        const hop = t > 3 && t < 3.4 ? Math.sin((t - 3) / 0.4 * Math.PI) * 8 : 0, loud = (t > 2 && t < 2.6) || (t > 3.5 && t < 4.3);
+        S(x1, top - hop, { t, pose: 'stand', eyes: t > 4.4 ? 'closed' : 'rage', scream: loud, puff: t > 3.4 && t < 4.4 });
+        if (loud) bubbleText(t < 3 ? 'MEOW!' : 'MEOOOW!!', x1 + 22, top - 24 - hop);
+      }
+    } else if (k === 'milk') {
+      const bx = tx - 22, x1 = bx - 6;
+      ctx.fillStyle = '#2a2638'; ctx.fillRect(bx - 1, fy - 6, 16, 6);
+      ctx.fillStyle = '#4a8ad8'; ctx.fillRect(bx, fy - 5, 14, 5);
+      const level = t < 1.4 ? 1 : clamp(1 - (t - 1.4) / 2.8, 0.2, 1);
+      ctx.fillStyle = '#fbf9f3'; ctx.fillRect(bx + 1, fy - 5, 12, level > 0.5 ? 2 : 1);
+      if (t < 1.2) S(this.walkIn(t, x1), fy, { t, pose: 'walk', eyes: 'normal' });
+      else {
+        const lap = t < 4.1 && Math.floor(t * 6.6) % 2;
+        S(x1, fy + (lap ? 1 : 0), { t, pose: 'crouch', eyes: 'closed', scream: !!lap });
+        if (t < 4.1 && lap) { ctx.fillStyle = '#fbf9f3'; ctx.fillRect(x1 + 2, fy - 12, 1, 1); ctx.fillRect(x1 - 1, fy - 14, 1, 1); }
+        if (t < 4.1) drawText('LAP LAP', x1 - 10, fy - 50, '#fff', 1, 'center', '#000');
+        else bubbleText('AAAH!', x1 - 10, fy - 44);
+      }
+    } else if (k === 'pee') {
+      const x1 = tx + tw / 2 + 42;                                  // her back to the tombstone
+      if (t < 1.4) S(this.walkIn(t, x1, 1.4), fy, { t, pose: 'walk', eyes: 'normal' });
+      else {
+        const peeing = t > 1.6 && t < 3.4, kick = t > 3.6 && t < 4.4;
+        S(x1, fy, { t: kick ? t * 3 : t, pose: kick ? 'walk' : peeing ? 'crouch' : 'stand', eyes: peeing ? 'closed' : 'normal' });
+        const px = tx + tw / 2, size = clamp((t - 1.7) / 1.5, 0, 1);
+        if (size > 0) { ctx.fillStyle = 'rgba(232,200,64,0.8)'; ctx.fillRect(px - Math.round(size * 10), fy - 1, Math.round(size * 22), 2); }
+        if (peeing) {
+          const rx = x1 - 41, ry = fy - 12;
+          ctx.fillStyle = Math.floor(menuT * 20) % 2 ? '#f0d040' : '#e8c030';
+          for (let i = 0; i <= 12; i++) { const u = i / 12; ctx.fillRect(Math.round(lerp(rx, px + 2, u)), Math.round(ry - Math.sin(u * Math.PI) * 5 + u * u * 10), 2, 1); }
+          drawText('PSSSSHH...', x1 - 30, fy - 52, '#f0d040', 1, 'center', '#000');
+        }
+        if (kick) { ctx.fillStyle = '#5a3a24'; for (let i = 0; i < 6; i++) ctx.fillRect(Math.round(x1 - 44 - hash(i + Math.floor(t * 12)) * 30), Math.round(fy - 4 - hash(i * 3 + Math.floor(t * 12)) * 14), 2, 2); }
+        if (t > 4.5) bubbleText('DONE.', x1 - 10, fy - 44);
+      }
+    } else if (k === 'nap') {
+      const x1 = tx - 26;
+      if (t < 1.2) S(this.walkIn(t, x1), fy - 8, { t, pose: 'walk', eyes: 'normal' });
+      else {
+        S(x1, fy - 8 + (Math.floor(t * 1.5) % 2), { t: 0, pose: 'crouch', eyes: 'closed', hold: true });
+        for (let i = 0; i < 3; i++) {
+          const zt = (t * 0.8 + i / 3) % 1;
+          drawText('Z', x1 - 4 + zt * 16 + i * 2, fy - 46 - zt * 30, 'rgba(255,255,255,' + (1 - zt).toFixed(2) + ')', 1 + (i % 2), 'center', '#000');
+        }
+        if (t > 1.5 && t < 2.2) bubbleText('YAWN', x1 - 10, fy - 52);
+      }
+    } else if (k === 'scratch') {
+      const x1 = tx - tw / 2 - 1;
+      if (t < 1.2) S(this.walkIn(t, x1), fy, { t, pose: 'walk', eyes: 'normal' });
+      else {
+        const s = t < 4.2 && Math.floor(t * 7) % 2;
+        S(x1 + (s ? 2 : 0), fy, { t, pose: s ? 'pounce' : 'stand', eyes: t < 4.2 ? 'rage' : 'closed' });
+        const marks = clamp(Math.floor((t - 1.2) / 0.5), 0, 6);
+        ctx.fillStyle = '#4a4658';
+        for (let m = 0; m < marks; m++) for (let j = 0; j < 3; j++) ctx.fillRect(tx - 14 + m * 4 + j, top + 30 + j * 2 + (m % 2) * 3, 1, 4);
+        if (t < 4.2) drawText('SCRITCH SCRATCH', x1 - 20, fy - 54, '#fff', 1, 'center', '#000');
+        else bubbleText('PERFECT.', x1 - 10, fy - 44);
+      }
+    }
+  },
+  drawParty(t, fy, R) {
+    const SW = Math.ceil(W / 2), SH = H / 2;     // drawn at 2x
+    ctx.fillStyle = '#2a1f44'; ctx.fillRect(0, 0, SW, fy);
+    ctx.fillStyle = '#33275a'; for (let x = 0; x < SW; x += 24) ctx.fillRect(x, 0, 12, fy);    // striped wallpaper
+    ctx.fillStyle = '#6a4a2a'; ctx.fillRect(0, fy, SW, SH - fy);
+    // garland and a "no thief" picture on the wall
+    for (let x = 0; x < SW; x += 12) { ctx.fillStyle = ['#e01e5a', '#ffd23f', '#2ad4c4', '#7a3fc4'][(x / 12) % 4]; ctx.fillRect(x, 20 + Math.round(Math.sin(x / 30) * 3), 5, 5); }
+    const fx = 22, fyy = 40;
+    ctx.fillStyle = '#c89a20'; ctx.fillRect(fx - 2, fyy - 2, 36, 46); ctx.fillStyle = '#1d1830'; ctx.fillRect(fx, fyy, 32, 42);
+    drawPlayerSprite('stand', fx + 11, fyy + 16, false, false);
+    ctx.fillStyle = '#e01e1e'; for (let i = 0; i < 30; i++) { ctx.fillRect(fx + 1 + i, fyy + 6 + i, 2, 2); ctx.fillRect(fx + 30 - i, fyy + 6 + i, 2, 2); }
+    // balloons
+    [[SW - 40, 50, '#e01e5a'], [SW - 24, 42, '#ffd23f'], [SW - 56, 58, '#2a7fd4']].forEach(([bx, by, col], i) => {
+      const yy = by + Math.round(Math.sin(menuT * 2 + i) * 3);
+      ctx.fillStyle = '#ddd'; ctx.fillRect(bx, yy + 10, 1, fy - yy - 10);
+      ctx.fillStyle = col; ctx.fillRect(bx - 5, yy - 6, 11, 14); ctx.fillRect(bx - 6, yy - 4, 13, 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(bx - 3, yy - 4, 2, 3);
+    });
+    // the cat dances with her mouse, wearing a party hat
+    const cx = Math.round(SW * 0.55), hop = Math.abs(Math.sin(t * 5)) * 10;
+    this.cat(cx, fy - hop, { t, pose: 'stand', eyes: 'closed', hold: true, scream: Math.floor(t * 2) % 2 === 0 });
+    const hx = cx - 52 + 43, hy = fy - hop - 38;
+    for (let r = 0; r < 10; r++) { ctx.fillStyle = r % 3 === 0 ? '#ffd23f' : '#ff6fb0'; ctx.fillRect(hx - (r >> 1), hy - 9 + r, r + 1, 1); }
+    ctx.fillStyle = '#fff'; ctx.fillRect(hx - 1, hy - 11, 3, 2);
+    // confetti
+    for (let i = 0; i < 50; i++) {
+      ctx.fillStyle = ['#e01e5a', '#ffd23f', '#2ad4c4', '#7a3fc4', '#fff'][i % 5];
+      ctx.fillRect(Math.round((hash(i) * SW + Math.sin(t * 2 + i) * 8 + SW) % SW), Math.round((t * 45 + hash(i + 70) * SH) % SH), 2, 1 + (i % 2));
+    }
+  },
+  drawTrophy(t, fy, R) {
+    const SW = Math.ceil(W / 2), SH = H / 2;     // drawn at 2x
+    ctx.fillStyle = '#100c1c'; ctx.fillRect(0, 0, SW, SH);
+    const cx = Math.round(SW * 0.5);
+    ctx.fillStyle = 'rgba(255,240,180,0.12)';                      // spotlight
+    for (let y = 16; y < fy; y++) { const hw = 10 + (y - 30) * 0.45; ctx.fillRect(Math.round(cx - hw), y, Math.round(hw * 2), 1); }
+    ctx.fillStyle = '#2a2240'; ctx.fillRect(0, fy, SW, SH - fy);
+    // podium
+    ctx.fillStyle = '#c89a20'; ctx.fillRect(cx - 40, fy - 30, 80, 30); ctx.fillStyle = '#ffd23f'; ctx.fillRect(cx - 40, fy - 30, 80, 3);
+    drawText('1', cx, fy - 22, '#7a5a10', 3, 'center');
+    ctx.fillStyle = '#8a6a10'; ctx.fillRect(cx - 90, fy - 16, 46, 16); ctx.fillRect(cx + 44, fy - 10, 46, 10);
+    drawText('2', cx - 67, fy - 12, '#3a2a08', 1, 'center'); drawText('3', cx + 67, fy - 8, '#3a2a08', 1, 'center');
+    // the champion, and her trophy
+    this.cat(cx + 22, fy - 30, { t, pose: 'stand', eyes: 'closed', hold: true, puff: t > 2 && t < 2.6, scream: t > 2.2 && t < 2.8 });
+    const tx = cx + 30, ty = fy - 30;
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(tx, ty - 16, 12, 8); ctx.fillRect(tx + 2, ty - 8, 8, 2); ctx.fillRect(tx + 5, ty - 6, 2, 4); ctx.fillRect(tx + 2, ty - 2, 8, 2);
+    ctx.fillRect(tx - 3, ty - 15, 3, 1); ctx.fillRect(tx - 3, ty - 15, 1, 4); ctx.fillRect(tx + 12, ty - 15, 3, 1); ctx.fillRect(tx + 14, ty - 15, 1, 4);
+    ctx.fillStyle = '#fff6c0'; ctx.fillRect(tx + 2, ty - 15, 2, 4);
+    drawText('SHE CAUGHT THE THIEF IN ' + fmtTime(R.time), cx, 18, '#ffd23f', 1, 'center', '#000');
+    // camera flashes from the crowd
+    for (let i = 0; i < 4; i++) {
+      const ph = (t * 1.7 + hash(i * 7)) % 1;
+      if (ph < 0.12) {
+        const fx = Math.round(30 + hash(i * 13 + Math.floor(t * 1.7)) * (SW - 60)), fyy = Math.round(20 + hash(i) * 50);
+        ctx.fillStyle = '#fff'; ctx.fillRect(fx - 4, fyy, 9, 1); ctx.fillRect(fx, fyy - 4, 1, 9); ctx.fillRect(fx - 1, fyy - 1, 3, 3);
+        if (ph < 0.04) { ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, 0, SW, SH); }
+      }
+    }
+    if (t > 2.2 && t < 3) bubbleText('THANK YOU!', cx + 12, fy - 74);
+  },
+};
+// A white speech bubble with a little tail.
+function bubbleText(text, cx, bottom) {
+  const w = textWidth(text, 1) + 8, h = 11, x = Math.round(cx - w / 2), y = Math.round(bottom - h);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = '#fff'; ctx.fillRect(x, y, w, h); ctx.fillRect(Math.round(cx), y + h, 2, 2);
+  drawText(text, cx, y + 3, '#111', 1, 'center');
 }
 
 /* --------------------------------------------------------------------------
@@ -3423,7 +3657,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4311,7 +4545,10 @@ function drawSettings(dt) {
   row('night', 'MODE: ' + (isNight() ? 'NIGHT' : 'DAY'), () => { d.night = !isNight(); Save.save(); applyWorld(); sfx('click'); });
   row('snd', 'SOUND: ' + on(d.sound), () => { d.sound = !d.sound; Save.save(); Sound.apply(); sfx('click'); });
   row('mus', 'MUSIC: ' + on(d.music), () => { d.music = !d.music; Save.save(); Sound.apply(); sfx('click'); });
-  row('intro', 'INTRO CUTSCENE: ' + on(d.intro), () => { d.intro = !d.intro; Save.save(); sfx('click'); });
+  const iw = Math.round((bw - 6) / 2);
+  if (UI.button('intro', bx, y, iw, 19, 'INTRO: ' + on(d.intro))) { d.intro = !d.intro; Save.save(); sfx('click'); }
+  if (UI.button('ending', bx + iw + 6, y, bw - iw - 6, 19, 'END SCENE: ' + on(d.ending))) { d.ending = !d.ending; Save.save(); sfx('click'); }
+  y += 23;
   row('shake', 'SCREEN SHAKE: ' + on(d.shake), () => { d.shake = !d.shake; Save.save(); sfx('click'); });
   const tw = Math.round((bw - 6) / 2);
   if (UI.button('touchbtn', bx, y, tw, 19, 'BUTTONS: ' + on(d.touchButtons))) { d.touchButtons = !d.touchButtons; Save.save(); sfx('click'); }
@@ -4319,7 +4556,7 @@ function drawSettings(dt) {
   y += 23;
   row('reset', resetArm > 0 ? 'TAP AGAIN TO ERASE ALL' : 'RESET PROGRESS', () => {
     if (resetArm > 0) {
-      const keep = { sound: d.sound, music: d.music, intro: d.intro, shake: d.shake, touchButtons: d.touchButtons, night: d.night, layout: d.layout };
+      const keep = { sound: d.sound, music: d.music, intro: d.intro, ending: d.ending, shake: d.shake, touchButtons: d.touchButtons, night: d.night, layout: d.layout };
       Save.data = Object.assign(Save.defaults(), keep); Save.save(); applyWorld(); applySkin(); resetArm = 0; sfx('hit');
     } else { resetArm = 3; sfx('deny'); }
   }, { accent: '#e01e1e', textColor: '#b03030' });

@@ -30,6 +30,10 @@ New players get an interactive tutorial after the intro (replay it any time via 
 - **PIXEL ART skin** (★150): paint every pixel of your thief yourself; the running, jumping and sliding poses follow your drawing.
 - **Move the buttons:** SETTINGS → MOVE BUTTONS lets you drag JUMP, SLIDE and the superpowers wherever you like (RESET puts them back).
 - **Trap hints:** hidden pop-up spikes are marked with a red X, invisible walls have a red outline. (No more fake floors.)
+- **End scenes:** when she catches you, a short scene plays before the results, a different one each time:
+  the cat jumping on your grave and meowing, lapping milk on it, peeing on it, napping on it, sharpening her claws
+  on your tombstone, throwing a party, or winning Cat of the Year. Tap or press a key to skip; turn it off in
+  SETTINGS → END SCENE.
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
 
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
