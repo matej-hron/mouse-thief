@@ -340,6 +340,13 @@ const SFX = {
   },
   whoosh: () => noise(0.28, { freq: 300, sweepTo: 3200, q: 1.5, vol: 0.4 }),
   thud: () => { tone([130, 35], 0.5, { type: 'sine', vol: 0.6 }); noise(0.5, { freq: 300, filter: 'lowpass', vol: 0.45 }); },
+  bark: () => { for (let i = 0; i < 2; i++) { tone([560, 250], 0.12, { type: 'sawtooth', vol: 0.3, delay: i * 0.17 }); noise(0.08, { freq: 900, vol: 0.25, delay: i * 0.17 }); } },
+  growl: () => { tone([110, 90, 125, 95], 0.6, { type: 'sawtooth', vol: 0.25, vib: 20, vibRate: 25 }); noise(0.5, { freq: 300, filter: 'lowpass', vol: 0.3 }); },
+  squeak: () => { tone([1600, 2400, 1800], 0.18, { vol: 0.13 }); tone([1700, 2600], 0.12, { vol: 0.11, delay: 0.2 }); },
+  ratHiss: () => noise(0.4, { freq: 5000, filter: 'highpass', vol: 0.25 }),
+  devilLaugh: () => [0, 1, 2, 3].forEach(i => tone([300 - i * 25, 230 - i * 25], 0.16, { type: 'sawtooth', vol: 0.22, delay: i * 0.2, vib: 15, vibRate: 30 })),
+  fire: () => noise(0.35, { freq: 600, sweepTo: 2500, q: 0.8, vol: 0.35 }),
+  harp: () => [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.6, { type: 'triangle', vol: 0.12, delay: i * 0.07 })),
   bossLose: () => {
     tone([760, 300, 520, 140], 1.3, { type: 'sawtooth', vol: 0.22, vib: 40, vibRate: 12 });
     tone([1140, 450, 780, 210], 1.3, { vol: 0.06, vib: 40, vibRate: 12 });
@@ -922,7 +929,7 @@ const UI = {
   },
 };
 
-function playing() { return state === 'run' && run && run.phase === 'play' && !run.paused && !run.netLost; }
+function playing() { return state === 'run' && run && run.phase === 'play' && !run.paused && !run.netLost && !run.choice; }
 const codeInput = document.getElementById('code');
 const touchButtonsOn = () => Input.touch && Save.data.touchButtons;
 
@@ -1068,10 +1075,11 @@ const Level = {
   nextId: 0, outbox: [],      // multiplayer: every new object gets an id and is queued for the friend's screen
   rng: null,                  // race: seeded generator, so both phones get the same level
   arena: false,               // boss fight coming: only flat roof from here on
+  heaven: false,              // up in heaven: clouds instead of roofs
   arenas: [], bossClock: null,  // race: boss arenas are built into the shared level (same spot on both phones)
   reset() {
     this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0; this.arena = false;
-    this.arenas = []; this.bossClock = this.rng ? BOSS.first : null;
+    this.arenas = []; this.bossClock = this.rng ? BOSS.first : null; this.heaven = false;
     this.ground(-600, 1200, this.gy);
     this.genX = 600;
   },
@@ -1106,8 +1114,12 @@ const Level = {
   // chunks at its own moment), so it uses the time a thief needs to get this far instead.
   clock() {
     if (!this.rng) return run.time;
+    return this.clockAt(this.genX - 60 - 480);
+  },
+  clockAt(dist) {               // seconds a thief needs to run this far
     const { baseSpeed: v0, speedGrowth: g, maxSpeedMul: m } = RUN;
-    const dist = Math.max(0, this.genX - 60 - 480), tCap = (m - 1) / g, dCap = v0 * (tCap + g * tCap * tCap / 2);
+    const tCap = (m - 1) / g, dCap = v0 * (tCap + g * tCap * tCap / 2);
+    dist = Math.max(0, dist);
     return dist < dCap ? (Math.sqrt(1 + 2 * g * dist / v0) - 1) / g : tCap + (dist - dCap) / (v0 * m);
   },
   speedEstimate() { return RUN.baseSpeed * Math.min(RUN.maxSpeedMul, 1 + (this.clock() + 2) * RUN.speedGrowth); },
@@ -1133,12 +1145,19 @@ const Level = {
   },
   pick(d) {
     if (this.arena) return 'flat';
+    if (this.heaven) {          // heaven: hop from cloud to cloud
+      const sky = [['flat', 0.5], ['gap', 1.3], ['plats', 1.1], ['step', 0.6], ['mover', d > 0.1 ? 0.7 : 0.3], ['spikes', 0.6], ['bar', 0.35]]
+        .filter(([k]) => k !== this.last);
+      let r = rng() * sky.reduce((a, o) => a + o[1], 0);
+      for (const [k, w] of sky) { r -= w; if (r <= 0) return k; }
+      return 'flat';
+    }
     const tutorial = ['gap', 'spikes', 'block', 'bar'];
     if (this.count < tutorial.length) return tutorial[this.count];
     const table = [
       ['flat', 0.6], ['gap', 1.2], ['spikes', 1.0], ['step', 0.6], ['block', 0.9],
       ['plats', d > 0.05 ? 0.7 : 0], ['bar', d > 0.06 ? 0.75 : 0], ['crumble', d > 0.1 ? 0.7 : 0],
-      ['invis', d > 0.08 ? 0.55 : 0], ['pop', d > 0.1 ? 0.6 + 0.4 * d : 0], ['fake', d > 0.16 ? 0.55 : 0],
+      ['invis', d > 0.08 ? 0.55 : 0], ['pop', d > 0.1 ? 0.6 + 0.4 * d : 0],
       ['mover', d > 0.18 ? 0.6 : 0], ['tower', d > 0.22 ? 0.5 : 0], ['ledge', d > 0.28 ? 0.5 : 0],
       ['popgap', d > 0.38 ? 0.45 : 0], ['spikebed', d > 0.42 ? 0.5 : 0],
     ].filter(([k, w]) => w > 0 && k !== this.last);
@@ -1544,6 +1563,9 @@ const DEATH_LINES = {
   fake: ['THAT ROOF WAS A LIE.'],
   ledge: ['THE ROOF LEFT BEFORE YOU DID.'],
   cattrap: ['SHE SET A TRAP. YOU FELL FOR IT.'],
+  bone: ['A BONE TO THE HEAD.', 'BOSSY DOG PLAYED FETCH. WITH YOU.'],
+  cheese: ['SAY CHEESE!', 'THE CHEESE WAS A TRAP.'],
+  fire: ['TOO HOT FOR HEAVEN.', 'BOSSY DEVIL WINS THIS ONE.'],
   tail: ['SWISH. THE TAIL GOT YOU.', 'BOSSY CAT SAYS NO.', 'JUMP LOW TAILS, SLIDE UNDER HIGH ONES.'],
 };
 
@@ -1573,7 +1595,8 @@ function newRun(opts = {}) {
     camX: 0, shake: 0, flash: 0, flashColor: '#ff2020', danger: 0, beatT: 0, fadeT: 0.5, startT: 1.2,
     particles: [], popups: [], banner: null, hudRects: [], newBest: false, trollAt: -99, lastTroll: '',
     frozenT: 0, boostT: 0, doubleT: 0, hintT: 6,
-    boss: null, bossAt: BOSS.first, bossCount: 0,         // boss fights (single player only)
+    boss: null, bossAt: BOSS.first, bossCount: 0, earthBoss: 0,   // boss fights
+    heaven: false, choice: false,                          // up in heaven? / choosing where to go after Bossy Devil
     sky: null, skyKey: '', pals: null, dayOff: 0,         // day and night
     worldMul: mp || opts.tutorial ? 1 : 1 + worldOf(Save.data.world).harder,   // harder worlds: a faster cat (not with a friend)
     gain: Save.data.equipped.includes('slow') && gainTier > 0 ? ABIL.slow.stat(gainTier).gain : RUN.angerGain,
@@ -1814,6 +1837,13 @@ function angerEvent() {
    meows, spits and hisses and swishes her tail: low along the roof (jump!)
    or high at head height (slide!). Survive BOSS.fight seconds to beat her.
    -------------------------------------------------------------------------- */
+// Who comes next: on the roofs the bosses take turns (cat, dog, rat); in heaven it's always the devil.
+const EARTH_BOSSES = ['cat', 'dog', 'rat'];
+function nextBossType() {
+  const R = run;
+  if (R.race) return EARTH_BOSSES[R.bossCount % EARTH_BOSSES.length];
+  return R.heaven ? 'devil' : EARTH_BOSSES[R.earthBoss % EARTH_BOSSES.length];
+}
 const Boss = {
   // fighting right now (the run is stopped)?
   active() { const B = run && run.boss; return !!B && B.st !== 'approach'; },
@@ -1827,12 +1857,13 @@ const Boss = {
         if (arenaX === undefined) return;
       } else {
         if (R.time < R.bossAt - 3) return;
-        Level.arena = true;                     // no more obstacles: she gets a flat roof
+        Level.arena = true;                     // no more obstacles: a flat roof (or cloud) to fight on
         arenaX = Level.genX;
       }
-      // in a race both phones get the same swipes (seeded), so it stays fair
+      // in a race both phones get the same attacks (seeded), so it stays fair
       const rnd = R.race ? mulberry32(((R.seed >>> 0) + 7919 * (R.bossCount + 1)) >>> 0) : Math.random;
-      R.boss = { st: 'approach', t: 0, arenaX, gy: Level.gy, hold: false, music: false, rnd };
+      const type = nextBossType();
+      R.boss = { st: 'approach', t: 0, arenaX, gy: Level.gy, hold: false, music: false, rnd, type, def: BOSSES[type], shots: [] };
       return;
     }
     const B = R.boss, p = R.player;
@@ -1855,66 +1886,84 @@ const Boss = {
   updateEnter(dt) {
     const R = run, B = R.boss;
     if (B.t < 0.7) { R.shake = Math.max(R.shake, 1.5); return; }        // rumble...
-    if (B.x === null) B.x = R.player.x - W * 0.36 + W - 190;           // ...she lands on the right side of the screen
+    if (B.x === null) B.x = R.player.x - W * 0.36 + W - 190;           // ...the boss lands on the right side of the screen
     if (!B.landed) {
       B.vy += 2200 * dt; B.y += B.vy * dt;
       if (B.y >= 0) {
         B.y = 0; B.landed = true; B.landT = B.t;
         sfx('thud'); sfx('roar'); R.shake = 9; R.flash = 0.15; R.flashColor = '#ffffff';
-        for (let i = 0; i < 6; i++) burst(B.x + 20 + i * 28, B.gy - 2, 4, '#9a92b8', { speed: 90, vy: -40 });
+        for (let i = 0; i < 6; i++) burst(B.x + 20 + i * 28, B.gy - 2, 4, R.heaven ? '#ffffff' : '#9a92b8', { speed: 90, vy: -40 });
       }
       return;
     }
     if (!B.music && B.t - B.landT > 0.35) {
       B.music = true; B.mouthT = 1.1;
-      sfx('bossMeow'); Music.play('boss');
-      R.banner = { text: 'BOSSY CAT!', sub: 'SURVIVE ' + BOSS.fight + ' SECONDS!', t: 2.2, max: 2.2 };
+      sfx(B.def.voice); Music.play('boss');
+      R.banner = { text: B.def.name + '!', sub: 'SURVIVE ' + BOSS.fight + ' SECONDS!', t: 2.2, max: 2.2 };
     }
     if (B.t - B.landT > 2.4) { B.st = 'fight'; B.t = 0; B.ft = 0; B.next = 0.6; B.atk = null; B.n = 0; B.sndT = 2.5; }
   },
   // difficulty: 0 at the start of the fight .. 1 at the end, and every boss beaten makes the next one quicker
   pace() { const B = run.boss; return { prog: clamp(B.ft / BOSS.fight, 0, 1), k: Math.pow(0.9, run.bossCount) }; },
+  hurt(band, cause) {
+    const p = run.player, hb = { x: p.x + 1, y: p.y + 1, w: p.w - 2, h: p.h - 1 };
+    if (p.invuln <= 0 && overlaps(hb, band)) { trapHit(cause); return true; }
+    return false;
+  },
   updateFight(dt) {
     const R = run, B = R.boss, { prog, k } = this.pace();
     B.ft += dt;
-    if ((B.sndT -= dt) <= 0 && !B.atk) { B.sndT = 2.5 + Math.random() * 2; B.mouthT = 0.9; sfx('bossMeow'); }
+    if ((B.sndT -= dt) <= 0 && !B.atk) { B.sndT = 2.5 + Math.random() * 2; B.mouthT = 0.9; sfx(B.def.voice); }
+    // flying things (bones, cheese, fireballs)
+    for (const s of B.shots) {
+      s.x += s.vx * dt; s.t += dt;
+      if (B.def.shot === 'fire' && Math.random() < 0.5) R.particles.push({ x: s.x + 4, y: s.y + rand(-2, 2), vx: rand(20, 60), vy: rand(-20, 5), life: 0.25, max: 0.25, color: chance(0.5) ? '#ffd23f' : '#ff7a2a', g: 0, s: 1 });
+      const [y0, y1] = this.bandY(s.kind);
+      if (!s.hit && this.hurt({ x: s.x - 6, y: y0, w: 12, h: y1 - y0 }, B.def.shot)) s.hit = true;
+    }
+    B.shots = B.shots.filter(s => s.x > R.camX - 40 && !s.hit);
     const a = B.atk;
     if (!a) {
-      if (B.ft >= BOSS.fight) return this.win();
+      if (B.ft >= BOSS.fight && !B.shots.length) return this.win();
       B.next -= dt;
       if (B.next <= 0 && B.ft < BOSS.fight - 1) this.attack(B.combo ? (B.lastKind === 'low' ? 'high' : 'low') : (B.rnd() < 0.5 ? 'low' : 'high'), !!B.combo);
       return;
     }
     a.t += dt;
-    if (a.st === 'tele') {
+    const done = () => {
+      B.atk = null; B.lastKind = a.kind;
+      B.combo = !a.combo && prog > 0.35 && B.rnd() < 0.25 + 0.2 * prog;   // sometimes a second attack right after, the other way
+      B.next = B.combo ? 0.2 : (lerp(1.15, 0.6, prog) + B.rnd() * 0.35) * k;
+    };
+    if (B.def.attack === 'throw') {             // wind up... and throw
+      if (a.st === 'tele' && a.t >= a.tele) {
+        a.st = 'throw'; a.t = 0; B.mouthT = 0.3;
+        const m = this.pt(B.def.mouth[0], B.def.mouth[1]), [y0, y1] = this.bandY(a.kind);
+        B.shots.push({ kind: a.kind, x: m.x, y: (y0 + y1) / 2, vx: -(300 + 60 * prog), t: 0 });
+        sfx(B.def.shot === 'fire' ? 'fire' : 'whoosh');
+      } else if (a.st === 'throw' && a.t >= 0.25) done();
+      return;
+    }
+    if (a.st === 'tele') {                      // Bossy Cat swishes her tail
       if (a.t >= a.tele) { a.st = 'swipe'; a.t = 0; sfx('whoosh'); R.shake = Math.max(R.shake, 2); }
     } else if (a.st === 'swipe') {
       a.ext = clamp(a.t / 0.2, 0, 1);
       if (a.t >= 0.2) { a.st = 'back'; a.t = 0; }
     } else if (a.st === 'back') {
       a.ext = 1 - clamp(a.t / 0.24, 0, 1);
-      if (a.t >= 0.24) {
-        B.atk = null; B.lastKind = a.kind;
-        B.combo = !a.combo && prog > 0.35 && B.rnd() < 0.25 + 0.2 * prog;   // sometimes a second swipe right after, the other way
-        B.next = B.combo ? 0.2 : (lerp(1.15, 0.6, prog) + B.rnd() * 0.35) * k;
-        return;
-      }
+      if (a.t >= 0.24) return done();
     }
-    if (a.st !== 'tele') {                      // the tail hurts while it is out
-      const band = this.band(a);
-      const p = R.player, hb = { x: p.x + 1, y: p.y + 1, w: p.w - 2, h: p.h - 1 };
-      if (p.invuln <= 0 && overlaps(hb, band)) trapHit('tail');
-    }
+    if (a.st !== 'tele') this.hurt(this.band(a), 'tail');   // the tail hurts while it is out
   },
   attack(kind, combo) {
     const R = run, B = R.boss, { prog, k } = this.pace();
     B.atk = { kind, st: 'tele', t: 0, ext: 0, combo, tele: Math.max(0.42, (combo ? 0.6 : lerp(0.95, 0.65, prog)) * k) };
     B.n++; B.mouthT = 0.7;
-    sfx(kind === 'low' ? 'bossSpit' : 'bossHiss');
+    sfx(kind === 'low' ? B.def.low : B.def.high);
   },
-  // tail tip and the danger zone, in world coordinates. low: along the roof (jump), high: at head height (slide)
+  // the danger zones, in world coordinates. low: along the roof (jump), high: at head height (slide)
   tailRoot() { return this.pt(12, 21); },
-  pt(bx, by) {                                   // a point of her (unflipped) 60x38 sprite in the world; she faces left
+  pt(bx, by) {                                   // a point of the (unflipped) 60x38 boss picture in the world; bosses face left
     const B = run.boss, S = BOSS.scale;
     return { x: B.x + (CAT_W - 1 - bx + 0.5) * S, y: B.gy + B.y - (CAT_H - by) * S };
   },
@@ -1923,6 +1972,15 @@ const Boss = {
     const root = this.tailRoot(), [y0, y1] = this.bandY(a.kind);
     const tip = lerp(root.x - 40, run.camX - 30, a.ext);
     return { x: tip, y: y0, w: root.x - tip, h: y1 - y0 };
+  },
+  // which way to dodge right now: the attack being wound up, or the closest thing flying at you
+  incoming() {
+    const B = run.boss, p = run.player;
+    if (!B || B.st !== 'fight') return null;
+    if (B.atk && B.atk.st === 'tele') return B.atk.kind;
+    let best = null;
+    for (const s of B.shots) if (s.x > p.x - 4 && (!best || s.x < best.x)) best = s;
+    return best ? best.kind : null;
   },
   win() {
     const R = run, B = R.boss;
@@ -1933,25 +1991,107 @@ const Boss = {
       Save.data.bossWins = (Save.data.bossWins || 0) + 1; Save.save();
     }
     Music.stop(); sfx('bossLose'); sfx('buy');
-    R.banner = { text: 'YOU BEAT BOSSY CAT!', sub: bonus ? '+' + bonus + ' ★ BONUS' : 'NOW RUN!', t: 2.6, max: 2.6 };
+    R.banner = { text: 'YOU BEAT ' + B.def.name + '!', sub: bonus ? '+' + bonus + ' ★ BONUS' : 'NOW RUN!', t: 2.6, max: 2.6 };
     R.flash = 0.2; R.flashColor = '#ffd23f';
     const p = R.player;
     if (bonus) popup('+' + bonus, p.x + 4, p.y - 12, PAL.gold, 2, { vy: -40, life: 1.4 });
     for (let i = 0; i < 3; i++) burst(p.x + 4, p.y, 10, i ? '#ffd23f' : '#fff', { speed: 120, vy: -60 });
   },
   updateWin(dt) {
-    const R = run, B = R.boss;
-    if (B.t > 0.8 && !B.leapt) { B.leapt = true; B.vx = 240; B.vy = -760; sfx('pounce'); }   // off she goes, sulking
+    const R = run, B = R.boss, devil = B.type === 'devil' && !R.mp;
+    if (B.t > 0.8 && !B.leapt) { B.leapt = true; B.vx = 240; B.vy = -760; sfx('pounce'); }   // off it goes, sulking
     if (B.leapt) { B.vy += 700 * dt; B.x += B.vx * dt; B.y += B.vy * dt; }
-    if (B.t > 1.1 && B.hold) { B.hold = false; Level.arena = false; Music.play('chase'); }
-    if (B.t > 2.6) { R.boss = null; R.bossCount++; R.bossAt = R.time + BOSS.every; }
+    if (B.t > 1.1 && B.hold && !devil) { B.hold = false; Level.arena = false; Music.play('chase'); }
+    if (B.t > 2.6) {
+      R.boss = null; R.bossCount++; R.bossAt = R.time + BOSS.every;
+      if (!R.heaven) R.earthBoss++;
+      if (devil) { Level.arena = false; R.choice = true; Input.clear(); UI.focus = 0; }   // stay in heaven, or back to the roofs?
+    }
   },
 };
 
-// --- drawing Bossy Cat ----------------------------------------------------------
-const bossC = document.createElement('canvas'); bossC.width = CAT_W + 2; bossC.height = CAT_H + 2;
+// --- what the bosses look like -------------------------------------------------------
+// Each one is drawn facing right into a 60x38 box (like the cat), then flipped and blown up 3x.
+function bossEyes(c, pts, dy, eyes, color) {
+  for (const [x, y] of pts) {
+    if (eyes === 'closed') { c.fillStyle = '#111'; c.fillRect(x - 1, y + 1 + dy, 1, 1); c.fillRect(x, y + dy, 2, 1); c.fillRect(x + 2, y + 1 + dy, 1, 1); }
+    else { c.fillStyle = eyes === 'frozen' ? '#bff3ff' : color; c.fillRect(x, y + dy, 3, 3); c.fillStyle = '#fff'; c.fillRect(x + 2, y + dy, 1, 1); }
+  }
+}
+function catBossShape(c, o, dy) { catShape(c, Object.assign({}, o, { noTail: true })); drawCrown(c, dy); }
+function dogShape(c, o, dy) {
+  const t = o.t || 0, B = '#7a4a24', D = '#4a2a10', L = '#e8d0a8';
+  const wag = Math.round(Math.sin(t * 14) * 2);
+  c.fillStyle = B;
+  c.fillRect(8 + wag, 6 + dy, 3, 10); c.fillRect(9, 14 + dy, 5, 3);               // wagging tail
+  c.fillRect(12, 16 + dy, 30, 12); c.fillRect(14, 14 + dy, 26, 2);                 // body
+  for (const lx of [14, 20, 32, 38]) c.fillRect(lx, 27 + dy, 4, 11 - dy);           // legs
+  c.fillStyle = L; c.fillRect(20, 26 + dy, 14, 2);                                  // belly
+  c.fillStyle = D; for (const lx of [14, 20, 32, 38]) c.fillRect(lx - 1, 36, 6, 2); // paws
+  c.fillStyle = B; c.fillRect(38, 5 + dy, 14, 15);                                  // head
+  c.fillStyle = L; c.fillRect(48, 12 + dy, 10, 7);                                  // snout
+  c.fillStyle = '#111'; c.fillRect(56, 11 + dy, 3, 3);                              // nose
+  c.fillStyle = D; c.fillRect(37, 4 + dy, 5, 13); c.fillRect(36, 7 + dy, 2, 9);     // floppy ear
+  c.fillStyle = '#c81e1e'; c.fillRect(38, 19 + dy, 13, 3);                          // spiked collar
+  c.fillStyle = '#d8d8e0'; for (const sx of [39, 43, 47]) c.fillRect(sx, 21 + dy, 2, 2);
+  c.fillStyle = '#111'; c.fillRect(43, 7 + dy, 4, 1); c.fillRect(48, 8 + dy, 3, 1); // angry brows
+  bossEyes(c, [[43, 8], [48, 9]], dy, o.eyes, '#ff3b3b');
+  if (o.scream) { c.fillStyle = '#8a1010'; c.fillRect(50, 17 + dy, 8, 4); c.fillStyle = '#fff'; c.fillRect(50, 17 + dy, 1, 2); c.fillRect(56, 17 + dy, 1, 2); }
+}
+function ratShape(c, o, dy) {
+  const t = o.t || 0, G = '#6e6e7a', D = '#4a4a55', P = '#f0a0b0';
+  c.fillStyle = P;                                                                  // long pink tail
+  for (let i = 0; i < 14; i++) c.fillRect(12 - i, 24 + Math.round(i * 0.7 + Math.sin(i * 0.6 + t * 6) * 1.5) + dy, 2, 2);
+  c.fillStyle = G;
+  c.fillRect(12, 14 + dy, 30, 14); c.fillRect(15, 12 + dy, 24, 2);                 // body
+  c.fillStyle = '#9a9aa6'; c.fillRect(18, 25 + dy, 18, 3);                          // belly
+  c.fillStyle = G; for (const lx of [16, 22, 32, 37]) c.fillRect(lx, 27 + dy, 4, 10 - dy);
+  c.fillStyle = P; for (const lx of [16, 22, 32, 37]) c.fillRect(lx - 1, 36, 6, 2); // pink feet
+  c.fillStyle = D; c.fillRect(43, 1 + dy, 7, 7);                                    // ear behind
+  c.fillStyle = G; c.fillRect(38, 9 + dy, 13, 13);                                  // head
+  c.fillRect(50, 12 + dy, 4, 8); c.fillRect(54, 14 + dy, 3, 5);                     // pointy snout
+  c.fillStyle = P; c.fillRect(57, 14 + dy, 2, 2);                                   // nose
+  c.fillStyle = G; c.fillRect(37, 3 + dy, 8, 8); c.fillStyle = P; c.fillRect(39, 5 + dy, 4, 4);   // big round ear
+  c.fillStyle = '#d8d8e0'; c.fillRect(53, 17 + dy, 7, 1); c.fillRect(52, 19 + dy, 7, 1);           // whiskers
+  bossEyes(c, [[46, 12]], dy, o.eyes, '#ff3b3b');
+  c.fillStyle = '#fff'; c.fillRect(53, 20 + dy, 2, 3);                              // big front teeth
+  if (o.scream) { c.fillStyle = '#8a1010'; c.fillRect(49, 20 + dy, 4, 3); }
+  c.fillStyle = '#ffd23f'; c.fillRect(44, 7 + dy, 6, 2); c.fillRect(44, 5 + dy, 1, 2); c.fillRect(47, 4 + dy, 1, 3); c.fillRect(49, 5 + dy, 1, 2);   // little crown
+}
+function devilShape(c, o, dy) {
+  const t = o.t || 0, R = '#c81e1e', D = '#7a0a14', Wg = '#4a0a1a';
+  const flap = Math.round(Math.sin(t * 8) * 2);
+  c.fillStyle = Wg;                                                                 // bat wings
+  c.fillRect(6, 4 + flap, 18, 3); c.fillRect(4, 7 + flap, 20, 3); c.fillRect(8, 10 + flap, 16, 3); c.fillRect(13, 13, 11, 3);
+  c.fillStyle = '#2a0008'; for (const wx of [6, 11, 16]) c.fillRect(wx, 16 + flap - 3, 2, 2);
+  c.fillStyle = R;                                                                  // pointy tail
+  c.fillRect(12, 29, 12, 2); c.fillRect(10, 24, 2, 7); c.fillRect(7, 21, 8, 3); c.fillRect(9, 19, 4, 2);
+  c.fillRect(24, 28, 5, 10); c.fillRect(33, 28, 5, 10);                             // legs
+  c.fillStyle = '#111'; c.fillRect(23, 36, 7, 2); c.fillRect(32, 36, 7, 2);         // hooves
+  c.fillStyle = R; c.fillRect(22, 14 + dy, 18, 15);                                 // body
+  c.fillStyle = D; c.fillRect(26, 20 + dy, 10, 6);                                  // belly
+  c.fillStyle = R; c.fillRect(19, 15 + dy, 4, 10);                                  // back arm
+  c.fillRect(39, 17 + dy, 8, 3);                                                    // front arm to the pitchfork
+  c.fillStyle = '#3a3a3a'; c.fillRect(47, 2, 2, 36);                                // pitchfork
+  c.fillStyle = '#ffd23f'; c.fillRect(43, 3, 10, 2); c.fillRect(43, 0, 2, 4); c.fillRect(47, -1, 2, 4); c.fillRect(51, 0, 2, 4);
+  c.fillStyle = R; c.fillRect(24, 3 + dy, 15, 12);                                  // head
+  c.fillStyle = '#f0e0c0'; c.fillRect(25, 0 + dy, 2, 4); c.fillRect(24, 1 + dy, 1, 2); c.fillRect(36, 0 + dy, 2, 4); c.fillRect(38, 1 + dy, 1, 2);   // horns
+  c.fillStyle = '#111'; c.fillRect(35, 14 + dy, 3, 3);                              // goatee
+  bossEyes(c, [[29, 6], [34, 6]], dy, o.eyes, '#ffd23f');
+  c.fillStyle = '#3a0000'; c.fillRect(30, 11 + dy, 7, o.scream ? 3 : 1);           // grin
+  c.fillStyle = '#fff'; c.fillRect(30, 11 + dy, 1, 2); c.fillRect(36, 11 + dy, 1, 2);
+}
+const BOSSES = {
+  cat:   { name: 'BOSSY CAT', attack: 'tail', shape: catBossShape, voice: 'bossMeow', low: 'bossSpit', high: 'bossHiss', glow: [[41, 11], [48, 11]] },
+  dog:   { name: 'BOSSY DOG', attack: 'throw', shot: 'bone', shape: dogShape, voice: 'bark', low: 'growl', high: 'bark', mouth: [55, 18] },
+  rat:   { name: 'BOSSY RAT', attack: 'throw', shot: 'cheese', shape: ratShape, voice: 'squeak', low: 'ratHiss', high: 'squeak', mouth: [56, 18] },
+  devil: { name: 'BOSSY DEVIL', attack: 'throw', shot: 'fire', shape: devilShape, voice: 'devilLaugh', low: 'fire', high: 'devilLaugh', mouth: [50, 4] },
+};
+
+// --- drawing the bosses ---------------------------------------------------------
+const bossC = document.createElement('canvas'); bossC.width = CAT_W + 2; bossC.height = CAT_H + 4;
 const bossG = bossC.getContext('2d');
-const bossT = document.createElement('canvas'); bossT.width = CAT_W + 2; bossT.height = CAT_H + 2;
+const bossT = document.createElement('canvas'); bossT.width = CAT_W + 2; bossT.height = CAT_H + 4;
 const bossTG = bossT.getContext('2d');
 function drawCrown(c, dy) {
   c.fillStyle = '#ffd23f';
@@ -1971,87 +2111,211 @@ function drawTail(pts, camX, th, outline) {
     ctx.fillRect(Math.round(tx - camX - size / 2 - 2), Math.round(ty - size / 2 - 1), size + 4, size + 2);
   }
 }
+// Bones, cheese and fireballs.
+function drawShot(s, kind, camX) {
+  const x = Math.round(s.x - camX), y = Math.round(s.y), wob = Math.round(Math.sin(s.t * 30));
+  if (kind === 'bone') {
+    ctx.fillStyle = '#3a3048'; ctx.fillRect(x - 7, y - 3 + wob, 14, 6);
+    ctx.fillStyle = '#f4f0e4'; ctx.fillRect(x - 5, y - 1 + wob, 10, 2);
+    for (const ex of [-7, 5]) { ctx.fillRect(x + ex, y - 3 + wob, 2, 2); ctx.fillRect(x + ex, y + 1 + wob, 2, 2); }
+  } else if (kind === 'cheese') {
+    for (let r = 0; r < 7; r++) { ctx.fillStyle = r === 6 ? '#c89a20' : '#ffd23f'; ctx.fillRect(x - 6 + (6 - r), y - 3 + r, 6 + r * 1.5 | 0, 1); }
+    ctx.fillStyle = '#c89a20'; ctx.fillRect(x - 1, y, 2, 2); ctx.fillRect(x + 3, y + 2, 1, 1);
+  } else {
+    const f = Math.floor(menuT * 20) % 2;
+    ctx.fillStyle = '#ff3a1a'; ctx.fillRect(x - 5, y - 4, 10, 8); ctx.fillRect(x - 6, y - 3, 12, 6);
+    ctx.fillStyle = '#ffa020'; ctx.fillRect(x - 4, y - 3 + f, 7, 5);
+    ctx.fillStyle = '#fff2a0'; ctx.fillRect(x - 3, y - 1, 4, 3);
+  }
+}
 function drawBoss(camX) {
   const R = run, B = R.boss;
   if (!B || B.x === null || B.x === undefined) return;
-  const S = BOSS.scale, a = B.atk, outline = PAL.rimCat;
-  const over = R.phase !== 'play';                                 // she got you: smug
-  const root = Boss.tailRoot(), t = menuT;
+  const S = BOSS.scale, a = B.atk, outline = R.heaven ? '#8a7ab8' : PAL.rimCat;
+  const over = R.phase !== 'play';                                 // you got caught: smug
+  const t = menuT;
 
-  if (!B.landed) {                                                 // shadow of the falling cat
+  if (!B.landed) {                                                 // shadow of the falling boss
     const k = clamp(1 + B.y / 260, 0.2, 1), sw = Math.round(CAT_W * S * 0.7 * k);
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(Math.round(B.x - camX + CAT_W * S / 2 - sw / 2), B.gy - 2, sw, 3);
   }
-  // danger zone of the next swipe: blinks while she gets ready
+  // danger zone of the next attack: blinks while the boss gets ready
   if (a && a.st === 'tele' && !over && Math.floor(menuT * 10) % 2) {
-    const [y0, y1] = Boss.bandY(a.kind);
-    ctx.fillStyle = 'rgba(255,40,40,0.28)'; ctx.fillRect(0, y0, Math.round(root.x - camX), y1 - y0);
+    const [y0, y1] = Boss.bandY(a.kind), edge = B.def.attack === 'tail' ? Boss.tailRoot().x : Boss.pt(B.def.mouth[0], 0).x;
+    ctx.fillStyle = 'rgba(255,40,40,0.28)'; ctx.fillRect(0, y0, Math.round(edge - camX), y1 - y0);
   }
-  // the tail (behind her body)
-  let pts;
-  if (a && a.st !== 'tele' && !over) {
-    const [y0, y1] = Boss.bandY(a.kind), cy = (y0 + y1) / 2, band = Boss.band(a);
-    pts = [[root.x, root.y], [root.x - 24, cy - 6], [root.x - 50, cy]];
-    for (let x = root.x - 70; x > band.x; x -= 14) pts.push([x, cy + Math.sin(x * 0.2 + t * 40)]);
-    pts.push([band.x + 4, cy]);
-  } else if (a && !over) {
-    const w = Math.sin(t * 24) * 7;
-    pts = a.kind === 'low'
-      ? [[root.x, root.y], [root.x + 18, root.y + 14], [root.x + 30 + w, B.gy - 8], [root.x + 44 + w, B.gy - 4]]
-      : [[root.x, root.y], [root.x + 16, root.y - 24], [root.x + 10 + w, root.y - 52], [root.x - 4 + w, root.y - 62]];
-  } else {
-    const w = Math.sin(t * 3) * 5;
-    pts = [[root.x, root.y], [root.x + 14, root.y - 14], [root.x + 20, root.y - 36], [root.x + 12 + w, root.y - 52], [root.x + w, root.y - 54]];
+  if (B.def.attack === 'tail') {                                   // Bossy Cat's tail (behind her body)
+    const root = Boss.tailRoot();
+    let pts;
+    if (a && a.st !== 'tele' && !over) {
+      const [y0, y1] = Boss.bandY(a.kind), cy = (y0 + y1) / 2, band = Boss.band(a);
+      pts = [[root.x, root.y], [root.x - 24, cy - 6], [root.x - 50, cy]];
+      for (let x = root.x - 70; x > band.x; x -= 14) pts.push([x, cy + Math.sin(x * 0.2 + t * 40)]);
+      pts.push([band.x + 4, cy]);
+    } else if (a && !over) {
+      const w = Math.sin(t * 24) * 7;
+      pts = a.kind === 'low'
+        ? [[root.x, root.y], [root.x + 18, root.y + 14], [root.x + 30 + w, B.gy - 8], [root.x + 44 + w, B.gy - 4]]
+        : [[root.x, root.y], [root.x + 16, root.y - 24], [root.x + 10 + w, root.y - 52], [root.x - 4 + w, root.y - 62]];
+    } else {
+      const w = Math.sin(t * 3) * 5;
+      pts = [[root.x, root.y], [root.x + 14, root.y - 14], [root.x + 20, root.y - 36], [root.x + 12 + w, root.y - 52], [root.x + w, root.y - 54]];
+    }
+    drawTail(pts, camX, 6, outline);
   }
-  drawTail(pts, camX, 6, outline);
 
-  // the body: the normal cat sprite, three times bigger, facing left, with a crown
+  // the body, three times bigger, facing left
   const tele = a && a.st === 'tele' && !over;
-  const o = { t: B.t, pose: tele ? 'crouch' : 'stand', noTail: true, puff: B.st !== 'win',
+  const o = { t: B.t, pose: tele ? 'crouch' : 'stand', puff: B.st !== 'win',
               eyes: over ? 'closed' : B.st === 'win' ? 'frozen' : 'rage',
               scream: !over && (B.mouthT > 0 || (a && a.st !== 'tele')) };
   const dy = o.pose === 'crouch' ? 3 : 0;
   bossG.clearRect(0, 0, bossC.width, bossC.height);
-  bossG.save(); bossG.translate(1, 1); catShape(bossG, o); drawCrown(bossG, dy); bossG.restore();
+  bossG.save(); bossG.translate(1, 3); B.def.shape(bossG, o, dy); bossG.restore();
   bossTG.globalCompositeOperation = 'source-over'; bossTG.clearRect(0, 0, bossT.width, bossT.height); bossTG.drawImage(bossC, 0, 0);
   bossTG.globalCompositeOperation = 'source-in'; bossTG.fillStyle = outline; bossTG.fillRect(0, 0, bossT.width, bossT.height);
   bossTG.globalCompositeOperation = 'source-over';
   const sx = Math.round(B.x - camX), sy = Math.round(B.gy + B.y - CAT_H * S);
-  const jig = B.mouthT > 0 && !over ? Math.round(Math.sin(menuT * 50)) : 0;         // shakes while yowling
+  const jig = B.mouthT > 0 && !over ? Math.round(Math.sin(menuT * 50)) : 0;         // shakes while yelling
   ctx.save();
-  ctx.translate(sx + (CAT_W + 1) * S + jig, sy - S);
+  ctx.translate(sx + (CAT_W + 1) * S + jig, sy - 3 * S);
   ctx.scale(-1, 1);
   for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) ctx.drawImage(bossT, ox, oy, bossT.width * S, bossT.height * S);
   ctx.drawImage(bossC, 0, 0, bossC.width * S, bossC.height * S);
   ctx.restore();
-  if (o.eyes === 'rage') {                                         // glowing eyes
+  if (o.eyes === 'rage' && B.def.glow) {                           // glowing eyes
     ctx.globalAlpha = 0.25 + 0.12 * Math.sin(menuT * 20); ctx.fillStyle = '#ff2020';
-    for (const ex of [41, 48]) { const e = Boss.pt(ex, 11 + dy); ctx.fillRect(Math.round(e.x - camX) - 9, Math.round(e.y) - 7, 18, 14); }
+    for (const [ex, ey] of B.def.glow) { const e = Boss.pt(ex, ey + dy); ctx.fillRect(Math.round(e.x - camX) - 9, Math.round(e.y) - 7, 18, 14); }
     ctx.globalAlpha = 1;
   }
+  for (const s of B.shots) drawShot(s, B.def.shot, camX);
   if (B.st === 'win' && !B.leapt) drawText('*', sx + CAT_W * S / 2, sy - 10 + Math.round(Math.sin(menuT * 12) * 2), '#ffd23f', 2, 'center', '#000');
 }
-// Above the thief: which way to dodge the next swipe.
+// Above the thief: which way to dodge.
 function drawBossHint(camX) {
-  const R = run, B = R.boss, a = B && B.atk;
-  if (!a || a.st !== 'tele' || R.phase !== 'play') return;
+  const R = run, B = R.boss;
+  if (!B || R.phase !== 'play') return;
+  const kind = Boss.incoming();
+  if (!kind) return;
   const p = R.player, x = Math.round(p.x - camX + 4), y = Math.round(p.y) - 30;
-  const low = a.kind === 'low', blink = Math.floor(menuT * 8) % 2;
+  const low = kind === 'low', blink = Math.floor(menuT * 8) % 2;
   drawText(low ? '↑' : '↓', x, y - 4 + (blink ? (low ? -2 : 2) : 0), low ? '#ffd23f' : '#7fe0ff', 3, 'center', '#000');
-  if (R.bossCount === 0 && B.n <= 8) drawText(low ? 'JUMP!' : 'SLIDE!', x, y - 16, '#fff', 1, 'center', '#000');
+  if (R.bossCount < 3 && B.n <= 5) drawText(low ? 'JUMP!' : 'SLIDE!', x, y - 16, '#fff', 1, 'center', '#000');
 }
-// HUD: how long until she gives up.
+// HUD: how long until the boss gives up...
 function drawBossBar() {
   const R = run, B = R.boss;
-  if (!B || B.st !== 'fight') return;
+  if (!B || B.st !== 'fight') return drawBossCountdown();
   const left = Math.max(0, BOSS.fight - B.ft);
   const bw = 180, bx = Math.round(W / 2 - bw / 2 + 8), by = 50;
-  drawText('BOSSY CAT', bx, 40, '#ffd23f', 1, 'left', '#000');
+  drawText(B.def.name, bx, 40, '#ffd23f', 1, 'left', '#000');
   drawText('SURVIVE ' + Math.ceil(left) + 'S', bx + bw, 40, left <= 5 && Math.floor(menuT * 4) % 2 ? '#fff' : '#ff9a9a', 1, 'right', '#000');
   ctx.fillStyle = '#000'; ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
   ctx.fillStyle = '#3a1520'; ctx.fillRect(bx, by, bw, 6);
   ctx.fillStyle = '#e01e1e'; ctx.fillRect(bx, by, Math.round(bw * left / BOSS.fight), 6);
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx, by, Math.round(bw * left / BOSS.fight), 1);
+}
+// ...and how long until the next one shows up.
+function bossEta() {
+  const R = run;
+  if (R.tutorial || (R.mp && !R.race) || R.phase !== 'play') return null;
+  if (R.boss) return R.boss.st === 'approach' ? 0 : null;
+  if (R.race) return Math.max(0, BOSS.first + R.bossCount * BOSS.every - Level.clockAt(R.player.x - 540));
+  return Math.max(0, R.bossAt - R.time);
+}
+function drawBossCountdown() {
+  const R = run, eta = bossEta();
+  if (eta === null || (R.banner && R.banner.t > 0)) return;
+  const name = R.boss ? R.boss.def.name : BOSSES[nextBossType()].name;
+  const soon = eta <= 5, blink = Math.floor(menuT * 4) % 2;
+  drawText(eta > 0 ? name + ' IN ' + Math.ceil(eta) + 'S' : name + ' AHEAD!', W / 2 + 8, 44, soon && blink ? '#fff' : '#ff9a9a', 1, 'center', '#000');
+}
+
+/* --- Heaven ------------------------------------------------------------------------
+   Climb a slide bar to the very top and you end up in heaven: clouds to jump on,
+   and after 50 seconds Bossy Devil. Beat him and choose: stay up here, or go back. */
+const HEAVEN_PAL = {
+  skyTop: '#6ab8f0', skyBot: '#cfe8ff', skyLow: '#fff1c8', far: '#ffffff', mid: '#eef4ff', window: '#ffe9a0',
+  ground: '#f4f7ff', shingle: '#d8e0f2', rim: '#ffffff', rimDark: '#c9d4ea', brick: '#ffe08a', brickLine: '#e0b84a', blockBase: '#c89a30',
+  plat: '#f4f7ff', platLeg: '#d8e0f2', mover: '#fbfcff', moverTop: '#ffffff', bar: '#a07a28',
+  crumble: '#e8eef8', crumbleTop: '#ffffff', crumbleCrack: '#c9d4ea', fog: 'rgba(255,255,255,0.35)', spike: '#ffd23f', spikeShade: '#c8961e',
+};
+function warpTo(heaven) {
+  const R = run, p = R.player, c = R.cat;
+  R.heaven = heaven; Level.heaven = heaven; Level.arena = false;
+  if (R.boss && R.boss.st === 'approach') R.boss = null;
+  // a fresh stretch of ground (clouds or roofs) under your feet
+  Level.solids = []; Level.hazards = []; Level.gy = 190;
+  Level.ground(p.x - 500, 900, Level.gy); Level.genX = p.x + 400;
+  if (p.sliding) stopSlide(p);
+  Object.assign(p, { y: Level.gy - P_H, vy: 0, onGround: true, ground: null, fastFall: false, slideOnLand: false, hangT: 0, touchWall: false, jumpsLeft: 1, invuln: 1 });
+  Object.assign(c, { x: p.x - 150, y: Level.gy, vy: 0, onGround: true, floor: Level.gy });
+  R.camX = p.x - W * 0.36; R.particles = []; R.popups = [];
+  R.flash = 0.7; R.flashColor = '#ffffff'; R.shake = 0; R.skyKey = '';
+  applyWorld(); if (heaven) Object.assign(PAL, HEAVEN_PAL); makeSky();
+  R.bossAt = R.time + 50;
+  R.banner = heaven ? { text: 'WELCOME TO HEAVEN!', sub: 'JUMP ON THE CLOUDS!', t: 2.6, max: 2.6 }
+                    : { text: 'BACK ON THE ROOFS!', sub: 'SHE IS STILL CHASING YOU!', t: 2.2, max: 2.2 };
+  sfx('harp');
+  Level.ensure(R.camX + W + 200);
+}
+// After Bossy Devil: stay in heaven or go back to the roofs.
+function drawHeavenChoice() {
+  ctx.fillStyle = 'rgba(8,6,14,0.6)'; ctx.fillRect(0, 0, W, H);
+  shakyText('YOU BEAT BOSSY DEVIL!', W / 2, 46, '#ffd23f', 3, 0.6);
+  drawText('WHERE DO YOU WANT TO RUN NOW?', W / 2, 80, '#fff', 2, 'center', '#000');
+  const bw = 170, bx = Math.round(W / 2 - bw / 2);
+  const resume = () => { run.choice = false; run.countdown = 3; run.resumed = true; Input.clear(); sfx('beep'); };
+  if (UI.button('heaven_stay', bx, 108, bw, 26, 'STAY IN HEAVEN', { theme: 'dark', accent: '#ffd23f' })) { resume(); sfx('harp'); }
+  if (UI.button('heaven_back', bx, 144, bw, 26, 'BACK TO THE ROOFS', { theme: 'dark', accent: '#7fe0ff' })) { warpTo(false); resume(); }
+}
+function drawHalo(cx, y, w) {
+  cx = Math.round(cx); y = Math.round(y);
+  ctx.fillStyle = '#7a5a10'; ctx.fillRect(cx - w / 2 - 1, y - 1, w + 2, 4);
+  ctx.fillStyle = '#ffe066'; ctx.fillRect(cx - w / 2, y, w, 1); ctx.fillRect(cx - w / 2, y + 2, w, 1); ctx.fillRect(cx - w / 2 - 1, y + 1, 1, 1); ctx.fillRect(cx + w / 2, y + 1, 1, 1);
+}
+// Clouds you can stand on: flat top for the physics, puffy for the eyes.
+function drawCloudSolid(x, y, w, h, camX) {
+  ctx.fillStyle = PAL.ground; ctx.fillRect(x, y + 2, w, h - 2);
+  const r = 5;
+  for (let wx = Math.floor((x + camX) / 10) * 10; wx - camX < x + w; wx += 10) {
+    const cx = Math.round(wx - camX + 5), up = hash(wx * 0.37) > 0.5 ? 1 : 0;
+    for (let yy = -r; yy <= 0; yy++) {
+      const hw = Math.floor(Math.sqrt(r * r - yy * yy)), x0 = Math.max(x, cx - hw), x1 = Math.min(x + w, cx + hw + 1);
+      if (x1 > x0) ctx.fillRect(x0, y + 3 + yy - up, x1 - x0, 1);
+    }
+  }
+  ctx.fillStyle = PAL.shingle;
+  if (h <= 12) { ctx.fillRect(x + 2, y + h - 2, w - 4, 2); return; }
+  for (let yy = y + 12, row = 0; yy < H; yy += 9, row++) {
+    for (let wx = Math.floor((x + camX) / 22) * 22 + (row % 2) * 11; wx - camX < x + w; wx += 22) {
+      const xx = Math.round(wx - camX);
+      if (xx >= x && xx + 8 <= x + w) ctx.fillRect(xx, yy, 8, 1);
+    }
+  }
+}
+function drawGates(x, by) {                     // pearly gates far away
+  ctx.fillStyle = '#e8c860'; ctx.fillRect(x, by - 46, 6, 46); ctx.fillRect(x + 40, by - 46, 6, 46);
+  ctx.fillStyle = '#fff3c0'; ctx.fillRect(x - 1, by - 49, 8, 3); ctx.fillRect(x + 39, by - 49, 8, 3);
+  ctx.fillStyle = '#d4af37';
+  for (let i = 9; i < 40; i += 5) ctx.fillRect(x + i, by - 38, 1, 38);
+  for (let i = 0; i <= 46; i++) ctx.fillRect(x + i, by - 52 - Math.round(Math.sin(i / 46 * Math.PI) * 10), 1, 3);
+}
+function drawHeavenBG(camX) {
+  nightK = 0;
+  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, H);
+  const sx = W - 90, sy = 46;
+  ctx.fillStyle = 'rgba(255,250,215,0.25)';      // sun rays
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2 + menuT * 0.1;
+    for (let r = 24; r < 150; r += 4) ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2);
+  }
+  drawSun(sx, sy, 16, '#fffbe6', 'rgba(255,248,200,0.45)');
+  eachProp(camX, 0.04, 130, 17, (x, r, i) => { if (r >= 0.4) drawCloud(x, 18 + Math.round(hash(i * 3) * 50), r > 0.7, 0.9); });
+  drawHills(camX, 0.08, 178, 22, 60, '#ffffff', 2);
+  eachProp(camX, 0.12, 420, 31, (x, r) => { if (r >= 0.35) drawGates(x, 182); });
+  drawHills(camX, 0.25, 212, 16, 40, PAL.mid, 5);
+  ctx.fillStyle = PAL.fog; ctx.fillRect(0, H - 24, W, 24);
 }
 
 function updateCamera(dt) {
@@ -2116,6 +2380,10 @@ function updateRun(dt) {
   updatePlayer(dt);
   updateCat(dt);
   Boss.update(dt);
+  // secret: climb a slide bar all the way to the top and you go to heaven
+  if (!R.mp && !R.tutorial && !R.heaven && !Boss.active() && R.phase === 'play') {
+    for (const s of Level.solids) if (s.type === 'bar' && p.x + p.w > s.x && p.x < s.x + s.w && p.y + p.h <= s.y + 3) { warpTo(true); break; }
+  }
 
   const gap = p.x - R.cat.x;
   R.danger = clamp(1 - (gap - RUN.catchGap) / (RUN.maxGap - RUN.catchGap), 0, 1);
@@ -2244,6 +2512,11 @@ function skyState(t) {
 }
 function updateDayNight() {
   const R = run;
+  if (R.heaven) {                                     // heaven: always a sunny day
+    R.sky = { L: 1, warm: 0, sun: -1, moon: -1 };
+    if (R.skyKey !== 'heaven') { R.skyKey = 'heaven'; Object.assign(PAL, HEAVEN_PAL); makeSky(); }
+    return;
+  }
   if (!R.pals) return;
   const sky = R.sky = skyState(R.time + R.dayOff);
   const key = Math.round(sky.L * 150) + ':' + Math.round(sky.warm * 150);
@@ -2274,6 +2547,7 @@ function drawSkyBodies(camX, sky, world) {
 }
 
 function drawChaseBG(camX) {
+  if (state === 'run' && run && run.heaven) return drawHeavenBG(camX);
   ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, W, H);
   const world = Save.data.world;
   const sky = state === 'run' && run ? run.sky : null;      // null: a still picture (world cards)
@@ -2377,7 +2651,8 @@ function drawSolids(camX) {
     const x = Math.round(s.x - camX), y = Math.round(s.y), w = s.w;
     switch (s.type) {
       case 'ground': case 'fake':
-        drawRoof(x, y, w, camX, false); break;
+        if (run.heaven) drawCloudSolid(x, y, w, H - y, camX); else drawRoof(x, y, w, camX, false);
+        break;
       case 'block': {
         ctx.fillStyle = PAL.brick; ctx.fillRect(x, y, w, s.h);
         ctx.fillStyle = PAL.brickLine;
@@ -2400,6 +2675,7 @@ function drawSolids(camX) {
         break;
       }
       case 'plat':
+        if (run.heaven) { drawCloudSolid(x, y, w, s.h + 2, camX); break; }
         ctx.fillStyle = PAL.plat; ctx.fillRect(x, y, w, s.h);
         ctx.fillStyle = PAL.rim; ctx.fillRect(x, y, w, 1);
         ctx.fillStyle = PAL.platLeg; ctx.fillRect(x + 3, y + s.h, 2, 4); ctx.fillRect(x + w - 5, y + s.h, 2, 4);
@@ -2408,6 +2684,7 @@ function drawSolids(camX) {
         ctx.fillStyle = 'rgba(200,190,240,0.12)';
         if (s.ay) ctx.fillRect(Math.round(s.bx - camX) + w / 2, Math.round(s.by - s.ay), 1, s.ay * 2 + 8);
         else ctx.fillRect(Math.round(s.bx - s.ax - camX), Math.round(s.by + 4), s.ax * 2 + w, 1);
+        if (run.heaven) { drawCloudSolid(x, y, w, s.h + 2, camX); break; }
         ctx.fillStyle = PAL.mover; ctx.fillRect(x, y, w, s.h);
         ctx.fillStyle = PAL.moverTop; ctx.fillRect(x, y, w, 1);
         ctx.fillStyle = PAL.platLeg; for (let i = 4; i < w; i += 10) ctx.fillRect(x + i, y + 3, 2, 2);
@@ -2482,6 +2759,8 @@ function drawRunPlayer(camX) {
     if (!p.dead) drawMouse(sx, sy - 5 + bob, false, true);
   }
   if (p.hangT > 0) drawText('?!', sx + 4, sy - 14, '#fff', 2, 'center', '#000');
+  if (R.heaven && !p.dead) drawHalo(sx + 4, sy - 10, 8);
+  if (sy + p.h < 4 && !p.dead) drawText('↑', sx + 4, 2, '#ffd23f', 2, 'center', '#000');   // climbing above the screen
   if (p.shield) {                        // bubble
     const cx = sx + 4, cy = sy + p.h / 2, rr = 15;
     ctx.fillStyle = 'rgba(88,224,160,' + (0.55 + 0.25 * Math.sin(menuT * 8)) + ')';
@@ -2505,6 +2784,7 @@ function drawRunCat(camX) {
   };
   if (frozen) o.pose = 'stand';
   const { bx, by } = drawCat(c.x - camX, c.y, o);
+  if (R.heaven) drawHalo(bx + 43, by - 4 + (o.pose === 'crouch' ? 3 : 0), 14);
   if (frozen) {                           // ice block
     ctx.fillStyle = 'rgba(150,225,255,0.28)'; ctx.fillRect(bx - 3, by - 3, CAT_W + 4, CAT_H + 5);
     ctx.fillStyle = 'rgba(220,250,255,0.8)'; ctx.fillRect(bx - 3, by - 3, CAT_W + 4, 1); ctx.fillRect(bx - 3, by - 3, 1, CAT_H + 5);
@@ -2875,6 +3155,7 @@ function drawRun() {
   }
   if (R.netLost) drawNetLost();
   else if (R.paused) drawPause();
+  else if (R.choice) drawHeavenChoice();
   else if (R.phase === 'over') drawGameOver();
   if (R.fadeT > 0) { ctx.fillStyle = 'rgba(0,0,0,' + (R.fadeT / 0.5) + ')'; ctx.fillRect(0, 0, W, H); }
 }
@@ -2892,11 +3173,10 @@ const Tutorial = {
     L.solids = []; L.hazards = []; L.gy = gy; L.genX = 1e9;
     L.ground(-600, 1240, gy);                                         // start ... gap 1 at 640
     L.ground(704, 396, gy);                                           // ... gap 2 at 1100 (needs a double jump)
-    L.ground(1200, 1700, gy);                                         // bar, spikes, tower ... fake floor at 2900
+    L.ground(1200, 1760, gy);                                         // bar, spikes, tower
     L.add({ type: 'bar', x: 1400, y: -30, w: 60, h: gy - 13 + 30 });
     L.spikes(1600, gy, 32);
     L.add({ type: 'block', x: 2200, y: gy - 120, w: 28, h: 120 });    // too tall without a wall jump
-    L.add({ type: 'fake', x: 2900, y: gy, w: 60, h: H + 60 - gy, state: 0 });
     L.ground(2960, 3400, gy);
     return [
       { at: 0, title: 'YOU RUN BY YOURSELF', sub: 'THE CAT IS RIGHT BEHIND YOU. NEVER STOP!', dur: 2.4 },
@@ -2907,8 +3187,7 @@ const Tutorial = {
       { at: 1576, wait: 'jump', cp: 1480, title: 'SPIKES! JUMP OVER THEM' },
       { at: 1720, title: 'TALL WALL AHEAD!', sub: 'JUMP AT IT, THEN JUMP AGAIN WHILE TOUCHING IT', dur: 2.2, cp: 1700 },
       { cond: p => p.touchWall && !p.onGround, pass: 2232, wait: 'wall', title: 'WALL JUMP!' },
-      { at: 2450, title: 'CAREFUL...', sub: 'NOT EVERYTHING HERE IS WHAT IT SEEMS', dur: 2.0, cp: 2400 },
-      { cond: p => p.hangT > 0, pass: 2970, wait: 'fake', title: 'LOL, A FAKE FLOOR!' },
+      { at: 2450, title: 'HIDDEN TRAPS HAVE A RED X', sub: 'CLIMB A SLIDE BAR ALL THE WAY UP FOR A SECRET...', dur: 2.4, cp: 2400 },
       { at: 3100, title: 'THIS BAR IS HOW CLOSE SHE IS', sub: 'WHEN IT FILLS UP, SHE GOT YOU!', dur: 2.8, highlight: 'meter', demo: true, cp: 3050 },
       { at: 3700, title: 'SHE GETS 20% FASTER EVERY 30S', sub: "SO DON'T GET STUCK ON WALLS!", dur: 2.4 },
       { at: 4200, title: 'EVERY 5 SECONDS = +1 ★', sub: 'SPEND YOUR ★ IN THE SHOP ON ABILITIES', dur: 2.4, star: true },
@@ -3144,7 +3423,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4075,7 +4354,7 @@ function frame(now) {
   Input.update();
   if (state === 'run' && run) {
     if (run.view) updateView(dt);                                               // multiplayer cat: just draw what the thief sends
-    else if (run.paused || run.netLost) acc = 0;
+    else if (run.paused || run.netLost || run.choice) acc = 0;
     else if (run.tut && run.tut.freeze) { acc = 0; Tutorial.frozenInput(dt); }   // tutorial waiting for an action
     else { acc += dt; while (acc >= STEP && !(run.tut && run.tut.freeze)) { updateRun(STEP); acc -= STEP; } }
   } else if (state === 'intro') Intro.update(dt);

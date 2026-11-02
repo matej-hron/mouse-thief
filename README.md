@@ -16,17 +16,20 @@ New players get an interactive tutorial after the intro (replay it any time via 
 - **Night / day mode** (SETTINGS → MODE): dark menus and the city at night, or light menus and the city by day.
 - **Day and night:** during a run time goes round: night, sunrise, day, sunset, night again (one cycle every 2 minutes).
   The sun and the moon cross the sky and the whole scene changes color. The city starts the way MODE says, other worlds start by day.
-- **Boss fight:** every now and then the roof turns flat, the run stops and **Bossy Cat** drops in: a huge crowned cat that
-  meows, spits and hisses and swishes her tail. Low tail along the roof: **jump**. High tail at head height: **slide**.
-  Survive 30 seconds to beat her (+10 ★ bonus, more for every next boss in the same run). First boss after 50 s,
-  then 75 s of running between fights. Also in the multiplayer race (same spot and same tail swipes for both thieves,
-  no ★ bonus); not in thief vs cat or the tutorial.
+- **Boss fights:** every now and then the roof turns flat, the run stops and a boss drops in. Bosses take turns:
+  **Bossy Cat** (swishes her tail), **Bossy Dog** (throws bones) and **Bossy Rat** (throws cheese). Low attack along the
+  roof: **jump**. High attack at head height: **slide**. Survive 30 seconds to win (+10 ★ bonus, more for every next boss
+  in the same run). First boss after 50 s, then 75 s of running between fights. The HUD counts down to the next boss.
+  Also in the multiplayer race (same spot and same attacks for both thieves, no ★ bonus); not in thief vs cat or the tutorial.
+- **Heaven (secret):** climb a slide bar all the way to the top (keep wall-jumping on it) and you end up in heaven:
+  clouds to jump on, halos, pearly gates. After 50 seconds **Bossy Devil** attacks with fireballs. Beat him and choose:
+  stay in heaven or go back to the roofs.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
 - **Famous looks:** THE KING, POP DIVA, FOOTBALL STAR, ROCK STAR and MOVIE STAR skins (page 2 of SKINS).
 - **PIXEL ART skin** (★150): paint every pixel of your thief yourself; the running, jumping and sliding poses follow your drawing.
 - **Move the buttons:** SETTINGS → MOVE BUTTONS lets you drag JUMP, SLIDE and the superpowers wherever you like (RESET puts them back).
-- **Trap hints:** hidden pop-up spikes are marked with a red X, invisible walls have a red outline.
+- **Trap hints:** hidden pop-up spikes are marked with a red X, invisible walls have a red outline. (No more fake floors.)
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
 
 Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
