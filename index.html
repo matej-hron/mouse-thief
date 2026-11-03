@@ -350,6 +350,10 @@ const SFX = {
   lap: () => { tone([900, 600], 0.05, { type: 'triangle', vol: 0.12 }); noise(0.04, { freq: 2500, vol: 0.08 }); },
   pee: () => noise(0.7, { freq: 3200, q: 2, vol: 0.1 }),
   applause: () => { for (let i = 0; i < 10; i++) noise(0.05, { freq: 1500 + Math.random() * 2500, q: 1.5, vol: 0.18, delay: i * 0.07 + Math.random() * 0.03 }); },
+  flap: () => { noise(0.05, { freq: 1200, q: 0.8, vol: 0.12 }); noise(0.05, { freq: 900, q: 0.8, vol: 0.1, delay: 0.07 }); },
+  whistle: () => tone([1800, 500], 0.55, { type: 'sine', vol: 0.14 }),
+  crash: () => { noise(0.3, { freq: 2500, q: 0.7, vol: 0.35 }); tone([300, 120], 0.15, { vol: 0.15 }); },
+  pickup: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.1, { type: 'triangle', vol: 0.14, delay: i * 0.05 })),
   harp: () => [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.6, { type: 'triangle', vol: 0.12, delay: i * 0.07 })),
   bossLose: () => {
     tone([760, 300, 520, 140], 1.3, { type: 'sawtooth', vol: 0.22, vib: 40, vibRate: 12 });
@@ -1082,10 +1086,11 @@ const Level = {
   rng: null,                  // race: seeded generator, so both phones get the same level
   arena: false,               // boss fight coming: only flat roof from here on
   heaven: false,              // up in heaven: clouds instead of roofs
+  things: [],                 // pigeons, flower pots and pickups (single player and race)
   arenas: [], bossClock: null,  // race: boss arenas are built into the shared level (same spot on both phones)
   reset() {
     this.solids = []; this.hazards = []; this.gy = 190; this.count = 0; this.last = ''; this.seen = {}; this.group = 0; this.arena = false;
-    this.arenas = []; this.bossClock = this.rng ? BOSS.first : null; this.heaven = false;
+    this.arenas = []; this.bossClock = this.rng ? BOSS.first : null; this.heaven = false; this.things = [];
     this.ground(-600, 1200, this.gy);
     this.genX = 600;
   },
@@ -1136,6 +1141,15 @@ const Level = {
   prune(minX) {
     this.solids = this.solids.filter(s => s.x + s.w + Math.abs(s.ax || 0) > minX && s.y < H + 100);
     this.hazards = this.hazards.filter(z => z.x + z.w > minX);
+    this.things = this.things.filter(o => o.x > minX && !o.gone);
+  },
+  // the newer hazards and pickups: not in the tutorial, and not in thief vs cat (the cat's screen couldn't show them)
+  extras() { return run && !run.tutorial && !(run.mp && !run.race); },
+  maybePickup(x, y, p) {
+    if (!this.extras() || this.clock() < 15 || !chance(p)) return;
+    const r = rng(), kind = r < 0.25 ? 'heart' : r < 0.6 ? 'wings' : 'nip';
+    this.things.push({ type: 'pickup', kind, x: Math.round(x), y: Math.round(y), t: rng() * 6, hint: !this.seen['pk_' + kind] });
+    this.seen['pk_' + kind] = true;
   },
   next(d) {
     const prevRng = rng;
@@ -1152,7 +1166,8 @@ const Level = {
   pick(d) {
     if (this.arena) return 'flat';
     if (this.heaven) {          // heaven: hop from cloud to cloud
-      const sky = [['flat', 0.5], ['gap', 1.3], ['plats', 1.1], ['step', 0.6], ['mover', d > 0.1 ? 0.7 : 0.3], ['spikes', 0.6], ['bar', 0.35]]
+      const sky = [['flat', 0.5], ['gap', 1.3], ['plats', 1.1], ['step', 0.6], ['mover', d > 0.1 ? 0.7 : 0.3], ['spikes', 0.6], ['bar', 0.35],
+                   ['birds', this.extras() ? 0.6 : 0]]
         .filter(([k]) => k !== this.last);
       let r = rng() * sky.reduce((a, o) => a + o[1], 0);
       for (const [k, w] of sky) { r -= w; if (r <= 0) return k; }
@@ -1166,6 +1181,7 @@ const Level = {
       ['invis', d > 0.08 ? 0.55 : 0], ['pop', d > 0.1 ? 0.6 + 0.4 * d : 0],
       ['mover', d > 0.18 ? 0.6 : 0], ['tower', d > 0.22 ? 0.5 : 0], ['ledge', d > 0.28 ? 0.5 : 0],
       ['popgap', d > 0.38 ? 0.45 : 0], ['spikebed', d > 0.42 ? 0.5 : 0],
+      ['birds', this.extras() && d > 0.2 ? 0.8 : 0], ['pot', this.extras() && d > 0.3 ? 0.65 : 0],   // from ~40 s and ~60 s
     ].filter(([k, w]) => w > 0 && k !== this.last);
     let r = rng() * table.reduce((a, o) => a + o[1], 0);
     for (const [k, w] of table) { r -= w; if (r <= 0) return k; }
@@ -1184,6 +1200,7 @@ const Level = {
     const w = Math.round(v * rand(0.2, lerp(0.34, 0.6, d)));
     let ny = this.gy + pick([-16, 0, 0, 16, 32]);
     if (w > v * 0.36 && ny < this.gy) ny = this.gy;           // wide gaps never land higher
+    this.maybePickup(this.genX + w / 2, this.gy - 44, 0.1);     // over the gap
     this.genX += w;
     this.gy = clamp(ny, 160, 210);
   },
@@ -1192,6 +1209,7 @@ const Level = {
     const L = 48 + sw + 48;
     this.ground(this.genX, L, this.gy);
     this.spikes(this.genX + 48, this.gy, sw);
+    this.maybePickup(this.genX + 48 + sw / 2, this.gy - 36, 0.1);   // right above the spikes
     this.genX += L;
     if (d > 0.35 && chance(0.4)) {                               // a second cluster right after
       const gap = randi(56, 88), sw2 = 8 * randi(2, 3);
@@ -1220,6 +1238,7 @@ const Level = {
     const h = Math.min(randi(96, 128), this.gy - 40);
     this.ground(this.genX, L, this.gy);
     this.add({ type: 'block', x: this.genX + 96, y: this.gy - h, w, h, tower: true, hint: !this.seen.tower });
+    this.maybePickup(this.genX + 96 + w / 2, this.gy - h - 12, 0.4);   // on top of the tower
     this.seen.tower = true;
     this.genX += L;
   },
@@ -1292,6 +1311,22 @@ const Level = {
                period: rand(1.6, 2.4), phase, dx: 0, dy: 0 });
     this.genX += side * 2 + mw;
   },
+  p_birds(d, v) {    // pigeons fly at you, low (jump) or at head height (slide)
+    const L = 300, x0 = this.genX + 260, first = !this.seen.bird;
+    this.ground(this.genX, L, this.gy);
+    const kind = chance(0.5) ? 'low' : 'high';
+    this.things.push({ type: 'bird', kind, x: x0, gy: this.gy, trigX: x0 - 300, t: rng(), hint: first });
+    if (!first && d > 0.45 && chance(0.4)) this.things.push({ type: 'bird', kind: kind === 'low' ? 'high' : 'low', x: x0 + 90, gy: this.gy, trigX: x0 - 300, t: rng() });
+    this.seen.bird = true;
+    this.genX += L;
+  },
+  p_pot(d, v) {      // a flower pot falls off a balcony and smashes on the roof ahead: watch its shadow, jump the pieces
+    const L = 260, x = this.genX + 150;
+    this.ground(this.genX, L, this.gy);
+    this.things.push({ type: 'pot', x, y: -12, vy: 0, st: 0, gy: this.gy, trigX: x - Math.round(v * 1.05), hint: !this.seen.pot });
+    this.seen.pot = true;
+    this.genX += L;
+  },
   p_spikebed() {
     const S = 8 * randi(13, 19), L = 48 + S + 48;
     this.ground(this.genX, L, this.gy);
@@ -1299,7 +1334,9 @@ const Level = {
     const n = S > 128 ? 2 : 1;
     for (let i = 1; i <= n; i++) {
       const cx = this.genX + 48 + S * i / (n + 1);
-      this.add({ type: 'plat', x: Math.round(cx - 26), y: this.gy - randi(36, 48), w: 52, h: 8 });
+      const py = this.gy - randi(36, 48);
+      this.add({ type: 'plat', x: Math.round(cx - 26), y: py, w: 52, h: 8 });
+      if (i === 1) this.maybePickup(cx, py - 12, 0.3);
     }
     this.genX += L;
   },
@@ -1318,6 +1355,19 @@ const Level = {
           s.t -= dt;
           if (s.t <= 0) { s.state = 2; sfx('crumble'); burst(s.x + 8, s.y + 2, 6, PAL.crumble, { speed: 80 }); }
         } else if (s.state === 2) { s.vy += PHYS.gravity * dt; s.y += s.vy * dt; }
+      }
+    }
+    for (const o of this.things) {
+      o.t += dt;
+      if (o.type === 'bird') {
+        if (!o.on && p.x >= o.trigX) { o.on = true; sfx('flap'); }
+        if (o.on) { o.x -= (o.hit ? 40 : 110) * dt; if (o.hit) o.up = (o.up || 0) + 120 * dt; }
+      } else if (o.type === 'pot') {
+        if (o.st === 0 && p.x >= o.trigX) { o.st = 1; sfx('whistle'); }
+        else if (o.st === 1) {
+          o.vy += 1100 * dt; o.y += o.vy * dt;
+          if (o.y >= o.gy - 7) { o.y = o.gy - 7; o.st = 2; sfx('crash'); burst(o.x, o.gy - 4, 10, '#c0603a', { speed: 90 }); burst(o.x, o.gy - 4, 4, '#3a8a3a', { speed: 60 }); }
+        }
       }
     }
     for (const z of this.hazards) {
@@ -1387,6 +1437,11 @@ function updatePlayer(dt) {
   }
   if (p.sliding) { p.slideT -= dt; if (p.slideT <= 0 && canStand(p)) stopSlide(p); }
 
+  // wings: every tap is a flap
+  if (run.flyT > 0 && p.jumpBuf > 0 && !p.onGround && p.coyote <= 0) {
+    p.vy = -270; p.jumpBuf = 0; p.fastFall = false; p.slideOnLand = false;
+    sfx('flap'); burst(p.x, p.y + 8, 3, '#ffffff', { speed: 40 });
+  }
   // jump / wall-jump / double jump
   if (p.jumpBuf > 0) {
     if (p.onGround || p.coyote > 0) {
@@ -1405,6 +1460,10 @@ function updatePlayer(dt) {
   const target = p.stunT > 0 || (run.boss && run.boss.hold) ? 0 : playerSpeed();   // the cat's roar (or a boss) stops you in your tracks
   p.vx += (target - p.vx) * Math.min(1, dt * 9);
   p.vy = Math.min(p.vy + PHYS.gravity * dt, PHYS.maxFall);
+  if (run.flyT > 0) {                                  // wings: floaty fall, and not above the top of the screen
+    p.vy = Math.min(p.vy - PHYS.gravity * dt * 0.45, p.fastFall ? PHYS.fastFall : 170);
+    if (p.y < 2) { p.y = 2; p.vy = Math.max(p.vy, 0); }
+  }
   if (p.fastFall) p.vy = Math.max(p.vy, PHYS.fastFall);
   if (p.touchWall && !p.onGround && p.vy > PHYS.wallSlide) p.vy = PHYS.wallSlide;
 
@@ -1525,7 +1584,7 @@ function updateCat(dt) {
     c.x = Math.min(c.x, Math.max(c.x - 300 * dt, p.x - RUN.maxGap - 70));
     return;
   }
-  const frozen = run.frozenT > 0;
+  const frozen = run.frozenT > 0 || run.nipT > 0;      // frozen, or rolling around in catnip
   c.pounceT -= dt; c.sprintT -= dt;
   // multiplayer: a human cat can pounce (short lunge) and sprint on top of her normal speed
   const spd = frozen ? 0 : catSpeed() * (c.pounceT > 0 ? 2.6 : 1) * (c.sprintT > 0 ? 1.6 : 1);
@@ -1569,6 +1628,8 @@ const DEATH_LINES = {
   fake: ['THAT ROOF WAS A LIE.'],
   ledge: ['THE ROOF LEFT BEFORE YOU DID.'],
   cattrap: ['SHE SET A TRAP. YOU FELL FOR IT.'],
+  bird: ['TAKEN OUT BY A PIGEON. A PIGEON!', 'BIRDS HAVE THE RIGHT OF WAY.'],
+  pot: ['A FLOWER POT. FROM THE SKY.', 'SHOULD HAVE LOOKED UP.'],
   bone: ['A BONE TO THE HEAD.', 'BOSSY DOG PLAYED FETCH. WITH YOU.'],
   cheese: ['SAY CHEESE!', 'THE CHEESE WAS A TRAP.'],
   fire: ['TOO HOT FOR HEAVEN.', 'BOSSY DEVIL WINS THIS ONE.'],
@@ -1602,7 +1663,8 @@ function newRun(opts = {}) {
     particles: [], popups: [], banner: null, hudRects: [], newBest: false, trollAt: -99, lastTroll: '',
     frozenT: 0, boostT: 0, doubleT: 0, hintT: 6,
     boss: null, bossAt: BOSS.first, bossCount: 0, earthBoss: 0,   // boss fights
-    heaven: false, choice: false,                          // up in heaven? / choosing where to go after Bossy Devil
+    heaven: false, choice: false,
+    hearts: 0, flyT: 0, nipT: 0,                           // pickups: extra life, wings, catnip                          // up in heaven? / choosing where to go after Bossy Devil
     sky: null, skyKey: '', pals: null, dayOff: 0,         // day and night
     worldMul: mp || opts.tutorial ? 1 : 1 + worldOf(Save.data.world).harder,   // harder worlds: a faster cat (not with a friend)
     gain: Save.data.equipped.includes('slow') && gainTier > 0 ? ABIL.slow.stat(gainTier).gain : RUN.angerGain,
@@ -1796,6 +1858,16 @@ function trapHit(cause) {
 function killPlayer(cause) {
   if (run.phase !== 'play') return;
   const p = run.player;
+  if (run.hearts > 0 && !run.tutorial) {            // extra life: not this time!
+    run.hearts = 0; p.invuln = 2; run.shake = 5; run.flash = 0.25; run.flashColor = '#ff6b9a';
+    sfx('shieldPop'); sfx('nyah');
+    ring(p.x + 4, p.y + 9, '#ff6b9a'); burst(p.x + 4, p.y + 8, 12, '#ff6b9a', { speed: 100 });
+    popup('SAVED BY A HEART!', p.x + 4, Math.min(p.y, H - 30) - 14, '#ff6b9a', 2, { life: 1.4 });
+    if (cause === 'caught') { run.cat.x = p.x - RUN.maxGap; run.cat.rageT = 1; }   // she gets knocked away
+    else if (cause === 'pit' || cause === 'fake' || cause === 'ledge') rescueFromPit(p);
+    else { p.vy = -380; p.jumpsLeft = 1; p.onGround = false; }
+    return;
+  }
   run.phase = 'dying'; run.deathT = 0; run.cause = cause; run.line = pick(DEATH_LINES[cause] || DEATH_LINES.caught);
   p.dead = true;
   if (p.sliding) stopSlide(p);
@@ -1815,6 +1887,110 @@ function endMpRound(cause, line) {
   if (R.race) Net.send({ t: 'done', r: Net.round, tm: R.time });
   Music.stop(); sfx('buy'); UI.focus = 0;
 }
+// Pigeons and pots hurt; pickups get picked up.
+function touchThings() {
+  const R = run, p = R.player, hb = { x: p.x + 1, y: p.y + 1, w: p.w - 2, h: p.h - 1 };
+  for (const o of Level.things) {
+    if (o.gone || o.x < p.x - 30 || o.x > p.x + 40) continue;
+    if (o.type === 'pickup') {
+      if (overlaps({ x: p.x - 2, y: p.y - 6, w: p.w + 4, h: p.h + 6 }, { x: o.x - 10, y: o.y - 10, w: 20, h: 20 })) { o.gone = true; collect(o.kind); }
+      continue;
+    }
+    if (p.invuln > 0 || o.hit) continue;
+    let box = null;
+    if (o.type === 'bird' && o.on) box = o.kind === 'low' ? { x: o.x - 8, y: o.gy - 9, w: 16, h: 8 } : { x: o.x - 8, y: o.gy - 22, w: 16, h: 8 };
+    else if (o.type === 'pot' && o.st === 1) box = { x: o.x - 9, y: o.y - 8, w: 18, h: 20 };
+    else if (o.type === 'pot' && o.st === 2) box = { x: o.x - 11, y: o.gy - 8, w: 22, h: 8 };
+    if (box && overlaps(hb, box)) { o.hit = true; trapHit(o.type); if (R.phase !== 'play') return; }
+  }
+}
+function collect(kind) {
+  const R = run, p = R.player;
+  sfx('pickup'); ring(p.x + 4, p.y + 8, '#fff');
+  if (kind === 'heart') {
+    if (R.hearts > 0 && !R.mp) { R.points += 3; Save.data.points += 3; Save.data.totalEarned += 3; Save.save(); popup('+3 ★', p.x + 4, p.y - 14, PAL.gold, 2); }
+    else { R.hearts = 1; popup('EXTRA LIFE!', p.x + 4, p.y - 14, '#ff6b9a', 2); }
+  } else if (kind === 'wings') {
+    R.flyT = 6; popup(Input.touch ? 'WINGS! TAP TO FLAP' : 'WINGS! PRESS JUMP TO FLAP', p.x + 4, p.y - 14, '#fff', 1, { life: 1.6 });
+  } else {
+    R.nipT = 3.5; sfx('purr');
+    popup('CATNIP!', p.x + 4, p.y - 14, '#7fe07f', 2);
+    popup('PURRR...', R.cat.x - 20, R.cat.y - 44, '#7fe07f', 1, { life: 1.6 });
+  }
+}
+// Drawing pigeons, pots and pickups.
+function drawBird(cx, cy, t, col) {
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(2, 2);           // drawn twice as big
+  const x = 0, y = 0, up = Math.floor(t * 12) % 2;
+  ctx.fillStyle = '#2a2433';                                    // dark outline around the shape
+  ctx.fillRect(x - 6, y - 3, 11, 6); ctx.fillRect(x + 3, y - 2, 5, 4); ctx.fillRect(x - 8, y - 4, 5, 5); ctx.fillRect(x - 10, y - 3, 3, 3);
+  ctx.fillStyle = col.body; ctx.fillRect(x - 5, y - 2, 9, 4); ctx.fillRect(x + 4, y - 1, 3, 2);
+  ctx.fillStyle = col.head; ctx.fillRect(x - 7, y - 3, 3, 3);
+  ctx.fillStyle = '#f0a020'; ctx.fillRect(x - 9, y - 2, 2, 1);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 6, y - 3, 1, 1);
+  ctx.fillStyle = col.wing;
+  if (up) { ctx.fillRect(x - 2, y - 6, 5, 4); ctx.fillRect(x - 1, y - 8, 3, 2); } else { ctx.fillRect(x - 2, y + 1, 5, 3); ctx.fillRect(x - 1, y + 4, 3, 2); }
+  ctx.restore();
+}
+function drawThings(camX) {
+  const R = run, world = R.heaven ? 'heaven' : Save.data.world;
+  const birdCol = world === 'heaven' ? { body: '#f4f4f8', head: '#ffffff', wing: '#dcdce8' }
+                : world === 'desert' || world === 'savanna' ? { body: '#8a5a34', head: '#c8a070', wing: '#5a3a1e' }
+                : { body: '#8a8a96', head: '#5a8a7a', wing: '#5a5a66' };
+  for (const o of Level.things) {
+    if (o.gone) continue;
+    const x = Math.round(o.x - camX);
+    if (x < -20 || x > W + 20) continue;
+    if (o.type === 'bird') {
+      const y = (o.kind === 'low' ? o.gy - 6 : o.gy - 18) - Math.round(o.up || 0);
+      drawBird(x, y, o.t, birdCol);
+      if (o.hint && o.on && !o.hit) drawText(o.kind === 'low' ? 'BIRD! JUMP!' : 'BIRD! SLIDE!', x, y - 24, '#fff', 1, 'center', '#000');
+    } else if (o.type === 'pot') {
+      if (o.st === 1) {                              // shadow grows as it falls, and a warning
+        const k = clamp((o.y + 12) / (o.gy + 12), 0, 1), sw = Math.round(6 + k * 18);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x - sw / 2, o.gy - 1, sw, 2);
+        if (Math.floor(menuT * 10) % 2) drawText('!', x, o.gy - 22, '#ff3b3b', 2, 'center', '#000');
+        if (o.hint) drawText('LOOK OUT ABOVE!', x, o.gy - 36, '#fff', 1, 'center', '#000');
+      }
+      if (o.st === 1 || o.st === 2) { ctx.save(); ctx.translate(x, o.st === 1 ? Math.round(o.y) : o.gy); ctx.scale(2, 2); ctx.translate(-x, o.st === 1 ? -Math.round(o.y) : -o.gy); }
+      if (o.st === 1) {
+        const y = Math.round(o.y);
+        ctx.fillStyle = '#2a1a10'; ctx.fillRect(x - 5, y - 3, 10, 9);
+        ctx.fillStyle = '#c0603a'; ctx.fillRect(x - 4, y - 2, 8, 7); ctx.fillStyle = '#a04a2a'; ctx.fillRect(x - 5, y - 2, 10, 2);
+        ctx.fillStyle = '#3a8a3a'; ctx.fillRect(x - 3, y - 6, 2, 4); ctx.fillRect(x + 1, y - 7, 2, 5);
+        ctx.fillStyle = '#e01e5a'; ctx.fillRect(x + 1, y - 9, 3, 3);
+      } else if (o.st === 2) {                       // smashed: pieces to jump over
+        const y = o.gy;
+        ctx.fillStyle = '#5a3a24'; ctx.fillRect(x - 6, y - 2, 12, 2);
+        ctx.fillStyle = '#c0603a'; ctx.fillRect(x - 6, y - 4, 3, 3); ctx.fillRect(x - 1, y - 5, 3, 4); ctx.fillRect(x + 3, y - 3, 3, 2);
+        ctx.fillStyle = '#3a8a3a'; ctx.fillRect(x - 3, y - 6, 1, 3); ctx.fillStyle = '#e01e5a'; ctx.fillRect(x - 4, y - 8, 3, 2);
+      }
+      if (o.st === 1 || o.st === 2) ctx.restore();
+    } else if (o.type === 'pickup') {
+      const y = Math.round(o.y + Math.sin(o.t * 3) * 2);
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(o.t * 6);
+      ctx.fillStyle = o.kind === 'heart' ? '#ff6b9a' : o.kind === 'wings' ? '#ffffff' : '#7fe07f';
+      ctx.fillRect(x - 13, y - 13, 26, 26); ctx.globalAlpha = 1;
+      drawPickupIcon(o.kind, x, y);
+      if (o.hint) drawText(o.kind === 'heart' ? 'EXTRA LIFE' : o.kind === 'wings' ? 'WINGS' : 'CATNIP', x, y - 22, '#fff', 1, 'center', '#000');
+    }
+  }
+}
+function drawPickupIcon(kind, x, y, big = true) {
+  if (kind === 'heart') { drawText('♥', x, y - (big ? 7 : 5), '#ff4a6a', big ? 3 : 2, 'center', '#000'); return; }
+  if (big) { ctx.save(); ctx.translate(x, y); ctx.scale(2, 2); drawPickupIcon(kind, 0, 0, false); ctx.restore(); return; }
+  if (kind === 'wings') {
+    ctx.fillStyle = '#2a2433'; ctx.fillRect(x - 7, y - 5, 14, 9);
+    ctx.fillStyle = '#ffffff';
+    for (const s of [-1, 1]) { ctx.fillRect(x + s * 1 - (s < 0 ? 5 : 0), y - 4, 5, 2); ctx.fillRect(x + s * 2 - (s < 0 ? 4 : 0), y - 2, 4, 2); ctx.fillRect(x + s * 3 - (s < 0 ? 3 : 0), y, 3, 2); }
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 1, y - 3, 2, 5);
+    return;
+  }
+  ctx.fillStyle = '#1a3a1a'; ctx.fillRect(x - 6, y - 6, 12, 12);   // catnip sprig
+  ctx.fillStyle = '#3fae4a'; ctx.fillRect(x - 1, y - 5, 2, 10);
+  ctx.fillStyle = '#7fe07f'; ctx.fillRect(x - 5, y - 4, 4, 3); ctx.fillRect(x + 1, y - 2, 4, 3); ctx.fillRect(x - 5, y + 1, 4, 3);
+}
+
 function finishRun() {
   const R = run, d = Save.data;
   R.phase = 'over'; R.overT = 0;
@@ -2380,12 +2556,15 @@ function updateRun(dt) {
   R.frozenT = Math.max(0, R.frozenT - dt);
   if (wasFrozen && R.frozenT === 0) { sfx('thaw'); popup("SHE'S FREE!", R.cat.x - 20, R.cat.y - 44, '#ff6b6b', 1); }
   R.boostT = Math.max(0, R.boostT - dt);
+  if (R.flyT > 0 && (R.flyT -= dt) <= 0) { R.flyT = 0; popup('NO MORE WINGS!', p.x + 4, p.y - 14, '#fff', 1); }
+  if (R.nipT > 0 && (R.nipT -= dt) <= 0) { R.nipT = 0; popup("SHE'S BACK!", R.cat.x - 20, R.cat.y - 44, '#ff6b6b', 1); }
   R.doubleT = Math.max(0, R.doubleT - dt);
   R.hintT -= dt;
   if (R.boostT > 0 && chance(0.5)) R.particles.push({ x: p.x - 2, y: p.y + rand(2, p.h - 2), vx: -120, vy: 0, life: 0.25, max: 0.25, color: '#ffd23f', g: 0, s: 1 });
 
   Level.update(dt);
   updatePlayer(dt);
+  touchThings();
   updateCat(dt);
   Boss.update(dt);
   // secret: climb a slide bar all the way to the top and you go to heaven
@@ -2768,6 +2947,12 @@ function drawRunPlayer(camX) {
   }
   if (p.hangT > 0) drawText('?!', sx + 4, sy - 14, '#fff', 2, 'center', '#000');
   if (R.heaven && !p.dead) drawHalo(sx + 4, sy - 10, 8);
+  if (R.flyT > 0 && !p.dead) {                      // little wings while flying
+    const up = (p.vy < 0 ? Math.floor(menuT * 16) : Math.floor(menuT * 6)) % 2, wy = sy + 10 + (up ? -3 : 0);
+    ctx.fillStyle = '#2a2433'; ctx.fillRect(sx - 8, wy - 1, 8, 5);
+    ctx.fillStyle = R.flyT < 1.5 && Math.floor(menuT * 8) % 2 ? '#ffd23f' : '#ffffff';
+    ctx.fillRect(sx - 7, wy, 6, 2); ctx.fillRect(sx - 6, wy + 2, 4, 1);
+  }
   if (sy + p.h < 4 && !p.dead) drawText('↑', sx + 4, 2, '#ffd23f', 2, 'center', '#000');   // climbing above the screen
   if (p.shield) {                        // bubble
     const cx = sx + 4, cy = sy + p.h / 2, rr = 15;
@@ -2778,7 +2963,7 @@ function drawRunPlayer(camX) {
 }
 function drawRunCat(camX) {
   const R = run, c = R.cat, p = R.player;
-  const frozen = R.frozenT > 0;
+  const frozen = R.frozenT > 0, nip = R.nipT > 0 && R.phase === 'play';
   const near = R.phase === 'dying' && p.x - c.x < 30;
   const over = R.phase === 'over', caught = over && R.cause !== 'escaped' && R.cause !== 'won';
   const o = {
@@ -2791,7 +2976,14 @@ function drawRunCat(camX) {
     outline: frozen ? '#bff3ff' : PAL.rimCat,
   };
   if (frozen) o.pose = 'stand';
-  const { bx, by } = drawCat(c.x - camX, c.y, o);
+  if (nip) Object.assign(o, { pose: 'crouch', eyes: 'closed', scream: false, t: 0 });   // rolling around in catnip
+  const { bx, by } = drawCat(c.x - camX, c.y + (nip ? Math.round(Math.abs(Math.sin(menuT * 8)) * -3) : 0), o);
+  if (nip) {
+    for (let i = 0; i < 4; i++) {
+      const u = (menuT * 0.9 + i / 4) % 1;
+      drawText(i % 2 ? '♥' : '*', bx + 30 + Math.sin(u * 9 + i) * 14, by - 4 - u * 22, i % 2 ? '#ff6b9a' : '#7fe07f', 1, 'center', '#000');
+    }
+  }
   if (R.heaven) drawHalo(bx + 43, by - 4 + (o.pose === 'crouch' ? 3 : 0), 14);
   if (frozen) {                           // ice block
     ctx.fillStyle = 'rgba(150,225,255,0.28)'; ctx.fillRect(bx - 3, by - 3, CAT_W + 4, CAT_H + 5);
@@ -2834,6 +3026,12 @@ function ctrlPos(key, touchUI = true) {
   if (key === 'jump') return { x: W - 64, y: H - 56 };
   return { x: (touchUI ? W - 74 : W - 8) - 120, y: H - c.h - (touchUI ? 15 : 8) };
 }
+// Extra life and wings, under the points.
+function drawPowerHud(R) {
+  let x = 8;
+  if (R.hearts > 0) { drawText('♥', x, 46, '#ff4a6a', 2, 'left', '#000'); x += 16; }
+  if (R.flyT > 0) { drawPickupIcon('wings', x + 7, 51, false); drawText(Math.ceil(R.flyT) + 'S', x + 16, 48, '#fff', 1, 'left', '#000'); }
+}
 function drawHUD() {
   const R = run, hud = [];
   R.hudRects = hud;
@@ -2841,7 +3039,7 @@ function drawHUD() {
   else if (R.mp) {
     drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
     const cat = Net.role === 'cat';
-    if (R.race) drawText(raceStatus(R), 8, 30, '#7fe0a8', 1, 'left', '#000');
+    if (R.race) { drawText(raceStatus(R), 8, 30, '#7fe0a8', 1, 'left', '#000'); drawPowerHud(R); }
     else {
       drawText(cat ? 'YOU: THE CAT' : 'YOU: THE THIEF', 8, 30, cat ? '#ff6b6b' : PAL.gold, 1, 'left', '#000');
       const left = Math.max(0, Math.ceil(MP_ESCAPE - R.time));
@@ -2850,6 +3048,7 @@ function drawHUD() {
   } else {
     drawText(fmtTime(R.time), 8, 8, '#fff', 3, 'left', '#000');
     drawText('★ ' + R.points, 8, 30, PAL.gold, 2, 'left', '#000');
+    drawPowerHud(R);
     if (R.doubleT > 0) drawText('2X ' + Math.ceil(R.doubleT) + 'S', 14 + textWidth('★ ' + R.points, 2) + 8, 30, Math.floor(menuT * 4) % 2 ? '#ffc83a' : '#fff', 2, 'left', '#000');
   }
 
@@ -3125,6 +3324,7 @@ function drawRun() {
   ctx.save(); ctx.translate(sx, sy);
   drawSolids(camX);
   drawHazards(camX);
+  drawThings(camX);
   drawBoss(camX);
   drawParticles(camX);
   if (R.race) drawGhost(camX);
@@ -3666,7 +3866,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
