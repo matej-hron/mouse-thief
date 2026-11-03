@@ -354,6 +354,7 @@ const SFX = {
   whistle: () => tone([1800, 500], 0.55, { type: 'sine', vol: 0.14 }),
   crash: () => { noise(0.3, { freq: 2500, q: 0.7, vol: 0.35 }); tone([300, 120], 0.15, { vol: 0.15 }); },
   pickup: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.1, { type: 'triangle', vol: 0.14, delay: i * 0.05 })),
+  impLaugh: () => [0, 1, 2].forEach(i => tone([900 - i * 60, 700 - i * 60], 0.08, { type: 'square', vol: 0.08, delay: i * 0.09 })),
   harp: () => [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.6, { type: 'triangle', vol: 0.12, delay: i * 0.07 })),
   bossLose: () => {
     tone([760, 300, 520, 140], 1.3, { type: 'sawtooth', vol: 0.22, vib: 40, vibRate: 12 });
@@ -860,6 +861,12 @@ const ICONS = {
   trap: { pal: { w: '#ece6f7', r: '#ff5a5a' }, rows: [
     '...........', '...........', '.....w.....', '.....w.....', '....www....', '..w.www.w..',
     '..w.www.w..', '.wwwwwwwww.', '.wwwwwwwww.', 'rrrrrrrrrrr', 'rrrrrrrrrrr'] },
+  jump3: { pal: { b: '#7fe0ff', w: '#ffffff' }, rows: [
+    '.....w.....', '....bbb....', '...bbbbb...', '.....w.....', '....bbb....', '...bbbbb...',
+    '.....w.....', '....bbb....', '...bbbbb...', '....bbb....', '....bbb....'] },
+  clover: { pal: { g: '#3fae4a', l: '#7fe07f', s: '#2a7a34' }, rows: [
+    '..ggg.ggg..', '.glllglllg.', '.gllggllg..', '..ggggggg..', '.gggggggg..', 'glllggglllg',
+    'gllgg.ggllg', '.ggg...ggg.', '.....s.....', '......s....', '.......s...'] },
   roar: { pal: { r: '#ff5a5a', k: '#ffd0d0' }, rows: [
     '.......r...', '..rr....r..', '.rrrr.r..r.', 'rrkkr..r.r.', 'rkkkk..r.r.', 'rkkkk..r.r.',
     'rrkkr..r.r.', '.rrrr.r..r.', '..rr....r..', '.......r...', '...........'] },
@@ -1050,25 +1057,33 @@ document.addEventListener('visibilitychange', () => {
    6. ABILITIES & SHOP DATA
    -------------------------------------------------------------------------- */
 const MAX_SLOTS = 3;
+// Four tiers each. Prices went up in 1.11, but tiers you already bought stay yours.
+const MAX_TIER = 4;
 const ABILITIES = [
-  { id: 'freeze', name: 'FREEZE', icon: 'freeze', color: '#8fe3ff', prices: [30, 70, 140],
-    stat: t => ({ uses: 1, dur: [3, 4, 5][t - 1] }),
-    desc: s => `FREEZES HER FOR ${s.dur}S. 1 USE PER RUN.` },
-  { id: 'boost', name: 'SPEED BOOST', icon: 'boost', color: '#ffd23f', prices: [15, 40, 90],
+  { id: 'freeze', name: 'FREEZE', icon: 'freeze', color: '#8fe3ff', prices: [45, 100, 200, 270],
+    stat: t => ({ uses: t >= 4 ? 2 : 1, dur: [3, 4, 5, 5][t - 1] }),
+    desc: s => `FREEZES HER FOR ${s.dur}S. ${s.uses} USE${s.uses > 1 ? 'S' : ''} PER RUN.` },
+  { id: 'boost', name: 'SPEED BOOST', icon: 'boost', color: '#ffd23f', prices: [25, 60, 130, 220],
     stat: t => ({ uses: t, dur: 2 }),
     desc: s => `SHORT SPRINT BURST. ${s.uses} USE${s.uses > 1 ? 'S' : ''} PER RUN.` },
-  { id: 'shield', name: 'SHIELD', icon: 'shield', color: '#58e0a0', prices: [25, 60, 120],
+  { id: 'shield', name: 'SHIELD', icon: 'shield', color: '#58e0a0', prices: [40, 90, 180, 410],
     stat: t => ({ uses: t }),
     desc: s => `SURVIVE ONE TRAP. ${s.uses} USE${s.uses > 1 ? 'S' : ''} PER RUN.` },
-  { id: 'double', name: 'DOUBLE POINTS', icon: 'double', color: '#ffc83a', prices: [40, 90, 180],
-    stat: t => ({ uses: 1, dur: [20, 30, 40][t - 1] }),
+  { id: 'double', name: 'DOUBLE POINTS', icon: 'double', color: '#ffc83a', prices: [60, 130, 260, 380],
+    stat: t => ({ uses: 1, dur: [20, 30, 40, 50][t - 1] }),
     desc: s => `2X POINTS FOR ${s.dur}S. 1 USE PER RUN.` },
-  { id: 'slow', name: 'CAT SLOWDOWN', icon: 'slow', color: '#8fd46a', prices: [50, 110, 220], passive: true,
-    stat: t => ({ gain: [0.16, 0.13, 0.10][t - 1] }),
+  { id: 'slow', name: 'CAT SLOWDOWN', icon: 'slow', color: '#8fd46a', prices: [75, 160, 300, 350], passive: true,
+    stat: t => ({ gain: [0.16, 0.13, 0.10, 0.05][t - 1] }),
     desc: s => `PASSIVE: HER RAGE +${Math.round(s.gain * 100)}% INSTEAD OF +20%.` },
+  { id: 'triple', name: 'TRIPLE JUMP', icon: 'jump3', color: '#7fe0ff', prices: [150, 300, 500, 1100], passive: true,
+    stat: t => ({ extra: t >= 4 ? 2 : 1, power: [330, 370, 400, 400][t - 1] }),
+    desc: s => s.extra > 1 ? 'PASSIVE: QUADRUPLE JUMP! 4 JUMPS IN A ROW.' : `PASSIVE: ONE MORE JUMP IN THE AIR (${Math.round(s.power / 4)}% POWER).` },
+  { id: 'clover', name: 'LUCKY CLOVER', icon: 'clover', color: '#3fae4a', prices: [80, 170, 320, 500], passive: true,
+    stat: t => ({ luck: [1.5, 2, 2.5, 3][t - 1] }),
+    desc: s => `PASSIVE: ${s.luck}X MORE HEARTS, WINGS AND CATNIP.` },
 ];
 const ABIL = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
-const tierOf = id => clamp(Save.data.tiers[id] | 0, 0, 3);
+const tierOf = id => clamp(Save.data.tiers[id] | 0, 0, MAX_TIER);
 Save.data.equipped = Save.data.equipped.filter(id => ABIL[id] && tierOf(id) > 0).slice(0, MAX_SLOTS);
 
 /* --------------------------------------------------------------------------
@@ -1147,7 +1162,7 @@ const Level = {
   extras() { return run && !run.tutorial && !(run.mp && !run.race); },
   maybePickup(x, y, p) {
     if (!this.extras() || this.clock() < 10) return;
-    if (this.seen.pickup && !chance(p)) return;           // the first chance always gives one
+    if (this.seen.pickup && !chance(Math.min(0.9, p * (run.luck || 1)))) return;   // the first chance always gives one; LUCKY CLOVER: more
     this.seen.pickup = true;
     const r = rng(), kind = r < 0.25 ? 'heart' : r < 0.6 ? 'wings' : 'nip';
     this.things.push({ type: 'pickup', kind, x: Math.round(x), y: Math.round(y), t: rng() * 6, hint: !this.seen['pk_' + kind] });
@@ -1365,7 +1380,8 @@ const Level = {
     for (const o of this.things) {
       o.t += dt;
       if (o.type === 'bird') {
-        if (!o.on && p.x >= o.trigX) { o.on = true; sfx('flap'); }
+        if (!o.on && p.x >= o.trigX) { o.on = true; sfx(run.heaven ? 'impLaugh' : 'flap'); }
+        if (o.on && run.heaven && !run.impSeen && o.x < p.x - 10) run.impSeen = true;
         if (o.on) { o.x -= (o.hit ? 40 : 110) * dt; if (o.hit) o.up = (o.up || 0) + 120 * dt; }
       } else if (o.type === 'pot') {
         if (o.st === 0 && p.x >= o.trigX) { o.st = 1; sfx('whistle'); }
@@ -1410,8 +1426,10 @@ function startSlide(p) {
 }
 function canStand(p) { return rectFree(p.x, p.y + p.h - P_H, p.w, P_H); }
 function stopSlide(p) { p.sliding = false; p.y -= P_H - P_SLIDE_H; p.h = P_H; }
+// Air jumps you get: the double jump, plus 1 (triple jump) or 2 (quadruple) more from the shop.
+const airJumps = () => 1 + (run && run.extraJumps || 0);
 function groundJump(p) {
-  p.vy = -PHYS.jump; p.onGround = false; p.coyote = 0; p.jumpBuf = 0; p.jumpsLeft = 1; p.fastFall = false;
+  p.vy = -PHYS.jump; p.onGround = false; p.coyote = 0; p.jumpBuf = 0; p.jumpsLeft = airJumps(); p.fastFall = false;
   sfx('jump'); burst(p.x + 4, p.y + p.h, 4, '#6d5f92', { speed: 40 });
 }
 function land(p, s) { p.y = s.y - p.h; p.vy = 0; p.onGround = true; p.ground = s; }
@@ -1452,10 +1470,12 @@ function updatePlayer(dt) {
     if (p.onGround || p.coyote > 0) {
       if (!p.sliding || canStand(p)) { if (p.sliding) stopSlide(p); groundJump(p); }
     } else if (p.touchWall && p.wjCool <= 0) {
-      p.vy = -PHYS.wallJump; p.vx = -110; p.jumpsLeft = 1; p.wjCool = 0.16; p.jumpBuf = 0; p.fastFall = false;
+      p.vy = -PHYS.wallJump; p.vx = -110; p.jumpsLeft = airJumps(); p.wjCool = 0.16; p.jumpBuf = 0; p.fastFall = false;
       sfx('wall'); burst(p.x + p.w, p.y + 10, 5, '#cfc4ee', { speed: 60 });
     } else if (p.jumpsLeft > 0) {
-      p.vy = -PHYS.doubleJump; p.jumpsLeft--; p.jumpBuf = 0; p.fastFall = false; p.slideOnLand = false;
+      const extra = p.jumpsLeft <= (run.extraJumps || 0);              // the 3rd / 4th jump (triple jump ability)
+      p.vy = -(extra ? run.extraPower : PHYS.doubleJump); p.jumpsLeft--;
+      if (extra) ring(p.x + 4, p.y + p.h, '#7fe0ff'); p.jumpBuf = 0; p.fastFall = false; p.slideOnLand = false;
       sfx('djump'); ring(p.x + 4, p.y + p.h, '#cfc4ee');
     }
   }
@@ -1508,7 +1528,7 @@ function updatePlayer(dt) {
   }
 
   if (p.onGround) {
-    p.jumpsLeft = 1; p.coyote = PHYS.coyote;
+    p.jumpsLeft = airJumps(); p.coyote = PHYS.coyote;
     if (!wasGround) {
       if (p.vy >= 0) burst(p.x + 4, p.y + p.h, 3, '#6d5f92', { speed: 30 });
       sfx('land');
@@ -1634,6 +1654,7 @@ const DEATH_LINES = {
   ledge: ['THE ROOF LEFT BEFORE YOU DID.'],
   cattrap: ['SHE SET A TRAP. YOU FELL FOR IT.'],
   bird: ['TAKEN OUT BY A PIGEON. A PIGEON!', 'BIRDS HAVE THE RIGHT OF WAY.'],
+  imp: ['A LITTLE DEVIL GOT YOU.', 'TINY HORNS, BIG TROUBLE.'],
   pot: ['A FLOWER POT. FROM THE SKY.', 'SHOULD HAVE LOOKED UP.'],
   bone: ['A BONE TO THE HEAD.', 'BOSSY DOG PLAYED FETCH. WITH YOU.'],
   cheese: ['SAY CHEESE!', 'THE CHEESE WAS A TRAP.'],
@@ -1678,6 +1699,10 @@ function newRun(opts = {}) {
       return { id, def, st, uses: st.uses || 0 };
     }),
   };
+  const passive = id => { const a = !mp && !opts.tutorial && run.abil.find(a => a.id === id); return a ? a.st : null; };
+  const tj = passive('triple'), lc = passive('clover');
+  run.extraJumps = tj ? tj.extra : 0; run.extraPower = tj ? tj.power : 0;
+  run.luck = lc ? lc.luck : 1;
   if (mp) {
     run.gain = RUN.angerGain; run.hintT = 0;
     run.abil = MP_THIEF.map(m => ({ id: m.id, def: ABIL[m.id], st: m.st, uses: Infinity, cd: 0, cdMax: m.cd }));
@@ -1843,7 +1868,7 @@ function rescueFromPit(p) {
   const top = target ? target.y : Level.gy;
   p.y = H + 4;
   p.vy = -Math.sqrt(2 * PHYS.gravity * (p.y - top + 40));
-  p.jumpsLeft = 1; p.fastFall = false; p.slideOnLand = false;
+  p.jumpsLeft = airJumps(); p.fastFall = false; p.slideOnLand = false;
   if (p.sliding) { p.sliding = false; p.h = P_H; }
 }
 function trapHit(cause) {
@@ -1855,7 +1880,7 @@ function trapHit(cause) {
     sfx('shieldPop'); ring(p.x + 4, p.y + 9, '#58e0a0'); ring(p.x + 4, p.y + 9, '#d8fff0');
     popup('SAVED!', p.x + 4, Math.min(p.y, H - 30) - 12, '#58e0a0', 2);
     if (cause === 'pit' || cause === 'fake' || cause === 'ledge') rescueFromPit(p);
-    else { p.vy = -380; p.jumpsLeft = 1; p.onGround = false; }
+    else { p.vy = -380; p.jumpsLeft = airJumps(); p.onGround = false; }
     return;
   }
   killPlayer(cause);
@@ -1870,7 +1895,7 @@ function killPlayer(cause) {
     popup('SAVED BY A HEART!', p.x + 4, Math.min(p.y, H - 30) - 14, '#ff6b9a', 2, { life: 1.4 });
     if (cause === 'caught') { run.cat.x = p.x - RUN.maxGap; run.cat.rageT = 1; }   // she gets knocked away
     else if (cause === 'pit' || cause === 'fake' || cause === 'ledge') rescueFromPit(p);
-    else { p.vy = -380; p.jumpsLeft = 1; p.onGround = false; }
+    else { p.vy = -380; p.jumpsLeft = airJumps(); p.onGround = false; }
     return;
   }
   run.phase = 'dying'; run.deathT = 0; run.cause = cause; run.line = pick(DEATH_LINES[cause] || DEATH_LINES.caught);
@@ -1906,7 +1931,7 @@ function touchThings() {
     if (o.type === 'bird' && o.on) box = o.kind === 'low' ? { x: o.x - 8, y: o.gy - 9, w: 16, h: 8 } : { x: o.x - 8, y: o.gy - 22, w: 16, h: 8 };
     else if (o.type === 'pot' && o.st === 1) box = { x: o.x - 9, y: o.y - 8, w: 18, h: 20 };
     else if (o.type === 'pot' && o.st === 2) box = { x: o.x - 11, y: o.gy - 8, w: 22, h: 8 };
-    if (box && overlaps(hb, box)) { o.hit = true; trapHit(o.type); if (R.phase !== 'play') return; }
+    if (box && overlaps(hb, box)) { o.hit = true; trapHit(o.type === 'bird' && R.heaven ? 'imp' : o.type); if (R.phase !== 'play') return; }
   }
 }
 function collect(kind) {
@@ -1937,6 +1962,27 @@ function drawBird(cx, cy, t, col) {
   if (up) { ctx.fillRect(x - 2, y - 6, 5, 4); ctx.fillRect(x - 1, y - 8, 3, 2); } else { ctx.fillRect(x - 2, y + 1, 5, 3); ctx.fillRect(x - 1, y + 4, 3, 2); }
   ctx.restore();
 }
+// Heaven: little flying devils instead of pigeons.
+function drawImp(cx, cy, t) {
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(2, 2);
+  const up = Math.floor(t * 14) % 2, bob = Math.round(Math.sin(t * 9));
+  ctx.translate(0, bob);
+  ctx.fillStyle = '#2a0810';                                       // outline
+  ctx.fillRect(-4, -4, 9, 8); ctx.fillRect(-5, -3, 1, 6);
+  ctx.fillStyle = '#4a0a1a';                                       // bat wings
+  if (up) { ctx.fillRect(0, -8, 6, 2); ctx.fillRect(1, -6, 4, 2); ctx.fillRect(5, -9, 1, 2); }
+  else { ctx.fillRect(0, 3, 6, 2); ctx.fillRect(1, 5, 4, 2); ctx.fillRect(5, 6, 1, 2); }
+  ctx.fillStyle = '#d82020'; ctx.fillRect(-3, -3, 7, 6);         // round red body, facing left
+  ctx.fillStyle = '#ff5a3a'; ctx.fillRect(-2, -2, 2, 2);
+  ctx.fillStyle = '#f0e0c0'; ctx.fillRect(-3, -5, 1, 2); ctx.fillRect(2, -5, 1, 2);   // horns
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(-2, -1, 1, 1); ctx.fillRect(0, -1, 1, 1);   // yellow eyes
+  ctx.fillStyle = '#3a0000'; ctx.fillRect(-2, 1, 3, 1);                                // grin
+  ctx.fillStyle = '#d82020'; ctx.fillRect(4, 1, 3, 1); ctx.fillRect(6, -1, 1, 2);      // pointy tail
+  ctx.fillRect(6, -2, 2, 1);
+  ctx.fillStyle = '#5a5a5a'; ctx.fillRect(-6, -4, 1, 8);         // tiny pitchfork
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(-7, -5, 3, 1); ctx.fillRect(-7, -6, 1, 1); ctx.fillRect(-5, -6, 1, 1);
+  ctx.restore();
+}
 function drawThings(camX) {
   const R = run, world = R.heaven ? 'heaven' : Save.data.world;
   const birdCol = world === 'heaven' ? { body: '#f4f4f8', head: '#ffffff', wing: '#dcdce8' }
@@ -1948,8 +1994,10 @@ function drawThings(camX) {
     if (x < -20 || x > W + 20) continue;
     if (o.type === 'bird') {
       const y = (o.kind === 'low' ? o.gy - 6 : o.gy - 18) - Math.round(o.up || 0);
-      drawBird(x, y, o.t, birdCol);
-      if (o.hint && o.on && !o.hit) drawText(o.kind === 'low' ? 'BIRD! JUMP!' : 'BIRD! SLIDE!', x, y - 24, '#fff', 1, 'center', '#000');
+      if (R.heaven) drawImp(x, y, o.t); else drawBird(x, y, o.t, birdCol);
+      if ((o.hint || (R.heaven && !R.impSeen)) && o.on && !o.hit) {
+        drawText((R.heaven ? 'LITTLE DEVIL! ' : 'BIRD! ') + (o.kind === 'low' ? 'JUMP!' : 'SLIDE!'), x, y - 24, '#fff', 1, 'center', '#000');
+      }
     } else if (o.type === 'pot') {
       if (o.st === 1) {                              // shadow grows as it falls, and a warning
         const k = clamp((o.y + 12) / (o.gy + 12), 0, 1), sw = Math.round(6 + k * 18);
@@ -2436,7 +2484,7 @@ function warpTo(heaven) {
   Level.solids = []; Level.hazards = []; Level.gy = 190;
   Level.ground(p.x - 500, 900, Level.gy); Level.genX = p.x + 400;
   if (p.sliding) stopSlide(p);
-  Object.assign(p, { y: Level.gy - P_H, vy: 0, onGround: true, ground: null, fastFall: false, slideOnLand: false, hangT: 0, touchWall: false, jumpsLeft: 1, invuln: 1 });
+  Object.assign(p, { y: Level.gy - P_H, vy: 0, onGround: true, ground: null, fastFall: false, slideOnLand: false, hangT: 0, touchWall: false, jumpsLeft: airJumps(), invuln: 1 });
   Object.assign(c, { x: p.x - 150, y: Level.gy, vy: 0, onGround: true, floor: Level.gy });
   R.camX = p.x - W * 0.36; R.particles = []; R.popups = [];
   R.flash = 0.7; R.flashColor = '#ffffff'; R.shake = 0; R.skyKey = '';
@@ -3871,7 +3919,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.10.1';
+const VERSION = '1.11.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4295,7 +4343,7 @@ let shopMsg = { text: '', color: PAL.ink, t: 0 };
 const say = (text, color) => { shopMsg = { text, color, t: 2.2 }; };
 function buy(a) {
   const tier = tierOf(a.id);
-  if (tier >= 3) return;
+  if (tier >= MAX_TIER) return;
   const price = a.prices[tier];
   if (Save.data.points < price) { sfx('deny'); say('NEED ' + (price - Save.data.points) + ' MORE ★', '#e01e1e'); return; }
   Save.data.points -= price;
@@ -4324,29 +4372,37 @@ function drawShop(dt) {
   else drawAbilityShop();
   const msgY = H - 16;
   if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
-  else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS, W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS + '   PAGE ' + (abilPage + 1) + '/' + Math.ceil(ABILITIES.length / ABIL_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   else drawText('PAGE ' + (skinPage + 1) + '/' + Math.ceil(SKINS.length / SKINS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
 }
+let abilPage = 0;
+const ABIL_PER_PAGE = 5;
 function drawAbilityShop() {
-  ABILITIES.forEach((a, i) => {
-    const y = 34 + i * 36, tier = tierOf(a.id), eq = Save.data.equipped.includes(a.id);
+  const pages = Math.ceil(ABILITIES.length / ABIL_PER_PAGE);
+  abilPage = clamp(abilPage, 0, pages - 1);
+  if (pages > 1) {
+    if (UI.button('abilprev', 96, H - 22, 22, 18, '<', { disabled: abilPage === 0 })) { abilPage--; sfx('click'); }
+    if (UI.button('abilnext', W - 118, H - 22, 22, 18, '>', { disabled: abilPage === pages - 1 })) { abilPage++; sfx('click'); }
+  }
+  ABILITIES.slice(abilPage * ABIL_PER_PAGE, (abilPage + 1) * ABIL_PER_PAGE).forEach((a, i) => {
+    const y = 32 + i * 36, tier = tierOf(a.id), eq = Save.data.equipped.includes(a.id);
     ctx.fillStyle = PAL.ink; ctx.fillRect(8, y, W - 16, 32);
     ctx.fillStyle = eq ? PAL.sel : PAL.paperHi; ctx.fillRect(9, y + 1, W - 18, 30);
     ctx.fillStyle = '#1d1830'; ctx.fillRect(13, y + 4, 24, 24);
     drawIcon(a.icon, 14, y + 5, 2, tier > 0 ? 1 : 0.45);
     drawText(a.name, 44, y + 6, PAL.ink, 2);
     let pxx = 44 + textWidth(a.name, 2) + 8;
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < MAX_TIER; k++) {
       ctx.fillStyle = PAL.ink; ctx.fillRect(pxx + k * 9, y + 7, 7, 7);
       ctx.fillStyle = k < tier ? a.color : PAL.paperHi; ctx.fillRect(pxx + k * 9 + 1, y + 8, 5, 5);
     }
     drawText(a.desc(a.stat(Math.max(1, tier))), 44, y + 21, PAL.inkSoft, 1);
-    const price = tier < 3 ? a.prices[tier] : 0;
-    const label = tier === 0 ? 'BUY ★' + price : tier < 3 ? 'UP ★' + price : 'MAX';
-    const poor = tier < 3 && Save.data.points < price;
-    if (UI.button('buy_' + a.id, W - 172, y + 6, 80, 20, label, { disabled: tier >= 3, textColor: poor ? '#b03030' : null })) buy(a);
+    const price = tier < MAX_TIER ? a.prices[tier] : 0;
+    const label = tier === 0 ? 'BUY ★' + price : tier < MAX_TIER ? 'UP ★' + price : 'MAX';
+    const poor = tier < MAX_TIER && Save.data.points < price;
+    if (UI.button('buy_' + a.id, W - 172, y + 6, 80, 20, label, { disabled: tier >= MAX_TIER, textColor: poor ? '#b03030' : null })) buy(a);
     if (UI.button('eq_' + a.id, W - 86, y + 6, 72, 20, eq ? 'EQUIPPED' : 'EQUIP', { disabled: tier === 0, on: eq, accent: '#2f9a5a' })) toggleEquip(a);
   });
 }
