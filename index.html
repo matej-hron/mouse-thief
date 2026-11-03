@@ -1146,7 +1146,9 @@ const Level = {
   // the newer hazards and pickups: not in the tutorial, and not in thief vs cat (the cat's screen couldn't show them)
   extras() { return run && !run.tutorial && !(run.mp && !run.race); },
   maybePickup(x, y, p) {
-    if (!this.extras() || this.clock() < 15 || !chance(p)) return;
+    if (!this.extras() || this.clock() < 10) return;
+    if (this.seen.pickup && !chance(p)) return;           // the first chance always gives one
+    this.seen.pickup = true;
     const r = rng(), kind = r < 0.25 ? 'heart' : r < 0.6 ? 'wings' : 'nip';
     this.things.push({ type: 'pickup', kind, x: Math.round(x), y: Math.round(y), t: rng() * 6, hint: !this.seen['pk_' + kind] });
     this.seen['pk_' + kind] = true;
@@ -1175,13 +1177,16 @@ const Level = {
     }
     const tutorial = ['gap', 'spikes', 'block', 'bar'];
     if (this.count < tutorial.length) return tutorial[this.count];
+    // new dangers get introduced for sure, well before the first boss (50 s): a pigeon at ~20 s, a flower pot at ~32 s
+    if (this.extras() && !this.seen.bird && d >= 0.1) return 'birds';
+    if (this.extras() && !this.seen.pot && d >= 0.16) return 'pot';
     const table = [
       ['flat', 0.6], ['gap', 1.2], ['spikes', 1.0], ['step', 0.6], ['block', 0.9],
       ['plats', d > 0.05 ? 0.7 : 0], ['bar', d > 0.06 ? 0.75 : 0], ['crumble', d > 0.1 ? 0.7 : 0],
       ['invis', d > 0.08 ? 0.55 : 0], ['pop', d > 0.1 ? 0.6 + 0.4 * d : 0],
       ['mover', d > 0.18 ? 0.6 : 0], ['tower', d > 0.22 ? 0.5 : 0], ['ledge', d > 0.28 ? 0.5 : 0],
       ['popgap', d > 0.38 ? 0.45 : 0], ['spikebed', d > 0.42 ? 0.5 : 0],
-      ['birds', this.extras() && d > 0.2 ? 0.8 : 0], ['pot', this.extras() && d > 0.3 ? 0.65 : 0],   // from ~40 s and ~60 s
+      ['birds', this.extras() && d > 0.1 ? 1.0 : 0], ['pot', this.extras() && d > 0.16 ? 0.8 : 0],   // from ~20 s and ~32 s
     ].filter(([k, w]) => w > 0 && k !== this.last);
     let r = rng() * table.reduce((a, o) => a + o[1], 0);
     for (const [k, w] of table) { r -= w; if (r <= 0) return k; }
@@ -1200,7 +1205,7 @@ const Level = {
     const w = Math.round(v * rand(0.2, lerp(0.34, 0.6, d)));
     let ny = this.gy + pick([-16, 0, 0, 16, 32]);
     if (w > v * 0.36 && ny < this.gy) ny = this.gy;           // wide gaps never land higher
-    this.maybePickup(this.genX + w / 2, this.gy - 44, 0.1);     // over the gap
+    this.maybePickup(this.genX + w / 2, this.gy - 44, 0.15);    // over the gap
     this.genX += w;
     this.gy = clamp(ny, 160, 210);
   },
@@ -1209,7 +1214,7 @@ const Level = {
     const L = 48 + sw + 48;
     this.ground(this.genX, L, this.gy);
     this.spikes(this.genX + 48, this.gy, sw);
-    this.maybePickup(this.genX + 48 + sw / 2, this.gy - 36, 0.1);   // right above the spikes
+    this.maybePickup(this.genX + 48 + sw / 2, this.gy - 36, 0.15);  // right above the spikes
     this.genX += L;
     if (d > 0.35 && chance(0.4)) {                               // a second cluster right after
       const gap = randi(56, 88), sw2 = 8 * randi(2, 3);
@@ -3866,7 +3871,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });

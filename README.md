@@ -29,7 +29,7 @@ New players get an interactive tutorial after the intro (replay it any time via 
 - **Famous looks:** THE KING, POP DIVA, FOOTBALL STAR, ROCK STAR and MOVIE STAR skins (page 2 of SKINS).
 - **PIXEL ART skin** (★150): paint every pixel of your thief yourself; the running, jumping and sliding poses follow your drawing.
 - **Move the buttons:** SETTINGS → MOVE BUTTONS lets you drag JUMP, SLIDE and the superpowers wherever you like (RESET puts them back).
-- **More dangers as you go:** from ~40 s **pigeons** fly at you (low: jump, at head height: slide); from ~60 s **flower pots**
+- **More dangers as you go:** from ~20 s **pigeons** fly at you (low: jump, at head height: slide); from ~30 s **flower pots**
   fall from above (watch the shadow) and smash into pieces you have to jump.
 - **Pickups** (rare, in risky spots: over spikes, gaps, on towers): **❤ extra life** (when she catches you, she gets
   knocked away instead), **wings** (6 s of flying: tap to flap), **catnip** (the cat rolls around for a few seconds).
