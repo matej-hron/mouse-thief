@@ -17,6 +17,10 @@ The arcade (index.html) is the start screen: pick a game, and set **your name an
   First over the line after 3 laps wins.
 - Gas is automatic. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
   The tight hairpin needs a brake; going off the road or hitting things slows you down.
+- **Damage:** your car has 3 hearts. Barrels, crates and cones on the road cost a heart, and so does crashing into
+  trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
+  **WRECKED!** (in a race with a friend, the friend wins). Obstacles change every race and come back every lap;
+  a blinking SHARP TURN! warns you to brake.
 - Your car has your avatar's color. Best lap, best race and wins are saved on your phone.
 
 ---
