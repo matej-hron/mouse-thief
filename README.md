@@ -17,13 +17,13 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
   First over the line after 3 laps wins.
 - Gas is automatic. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
   The tight hairpin needs a brake; going off the road or hitting things slows you down.
-- **Damage:** your car has 3 hearts. Barrels, crates and cones on the road cost a heart, and so does crashing into
+- **Damage:** your car has 1 heart (ARMOR in the garage gives 2 or 3). Barrels, crates and cones on the road cost a heart, and so does crashing into
   trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
   **WRECKED!** (in a race with a friend, the friend wins). Obstacles change every race and come back every lap;
   a blinking SHARP TURN! warns you to brake.
 - **Stars:** collect ★ on the road (once per race) and get a bonus for your place (1st ★15 … 6th ★2; online: win ★10,
   lose ★3). **The ★ wallet is shared** with Mouse Thief and shown in the arcade.
-- **GARAGE:** abilities (NITRO and SHIELD buttons in the race, keys 1 / 2; ARMOR = more hearts; GRIP = less sliding in
+- **GARAGE:** abilities (NITRO and SHIELD buttons in the race, keys 1 / 2; ARMOR = 2-3 hearts; GRIP = less sliding in
   curves; MAGNET = grab stars from further away), 6 car designs and 12 paint colors (or your avatar's color).
 - **Music:** its own chiptune racing tune, a calmer one in the menus; the note button on the title switches it off.
 - Your car has your avatar's color unless you paint it. Best lap, best race and wins are saved on your phone.
