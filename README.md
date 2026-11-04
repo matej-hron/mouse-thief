@@ -26,8 +26,12 @@ New players get an interactive tutorial after the intro (replay it any time via 
   stay in heaven or go back to the roofs.
 - **Shop abilities** have 4 upgrade tiers. New: **TRIPLE JUMP** (passive: one more air jump; tier 4 = quadruple jump,
   ★1100) and **LUCKY CLOVER** (passive: up to 3x more pickups). Tier 4: Freeze 2 uses (★270), Cat Slowdown rage only
-  +5% (★350), Shield 4 uses (★410). Prices went up in 1.11; tiers you already bought stay yours.
+  +5% (★350). Prices went up in 1.11; tiers you already bought stay yours.
 - **Heaven** has little flying devils instead of pigeons.
+- **Music shop** (SHOP → MUSIC): buy songs and pick one as the music for your runs (TRY to listen first; switch songs
+  in the pause menu too): Sunny Days (an original chill summer groove), In the Hall of the Mountain King, Can-Can,
+  Korobeiniki, Ode to Joy, Jingle Bells (★300–450 each). Boss fights keep their own music.
+- **Shields** are used up: buy them one by one (★50, up to 9); each one you raise is gone for good.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
 - **Famous looks:** THE KING, POP DIVA, FOOTBALL STAR, ROCK STAR and MOVIE STAR skins (page 2 of SKINS).
