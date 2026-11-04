@@ -21,7 +21,7 @@
   #safe { position: fixed; visibility: hidden; pointer-events: none;
           padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   /* room-code box for joining a multiplayer game (positioned from JS over the canvas) */
-  #code { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+  #code, #name { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
           font: bold 32px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.3em; padding: 0 0 0 0.3em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
 </style>
@@ -30,6 +30,7 @@
 <canvas id="screen"></canvas>
 <div id="safe"></div>
 <input id="code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Room code">
+<input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script>
 'use strict';
 /* ==========================================================================
@@ -193,7 +194,8 @@ const Save = {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
              sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false, ending: true,
              night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom(),
-             pixel: null, layout: null, songs: ['chase'], song: 'chase' };
+             pixel: null, layout: null, songs: ['chase'], song: 'chase',
+             name: '', mice: ['classic'], mouse: 'classic', friends: {} };
   },
   defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
@@ -210,6 +212,9 @@ const Save = {
     if (!this.data.layout || typeof this.data.layout !== 'object') this.data.layout = null;
     if (!Array.isArray(this.data.songs)) this.data.songs = ['chase'];
     if (!this.data.songs.includes('chase')) this.data.songs.unshift('chase');
+    if (!Array.isArray(this.data.mice)) this.data.mice = ['classic'];
+    if (!this.data.friends || typeof this.data.friends !== 'object') this.data.friends = {};
+    if (!this.data.name) this.data.name = 'THIEF' + (10 + Math.floor(Math.random() * 90));   // a nickname to start with
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
@@ -814,6 +819,30 @@ const PLAYER_POSES = {
 };
 const MOUSE_ROWS = ['......pp..', '...ggggpg.', 't.gggggge.', 'tggggggggn', '...g...g..'];
 
+// --- Mouse skins: the mouse the thief carries ------------------------------
+const MICE = [
+  { id: 'classic', name: 'GREY MOUSE', price: 0, pal: { g: '#9b9b9b', p: '#e7a3ad', e: '#111', n: '#e7a3ad', t: '#7a7a7a' } },
+  { id: 'white', name: 'WHITE MOUSE', price: 60, pal: { g: '#f4f4f4', p: '#ff9ab0', e: '#e01e1e', n: '#ff9ab0', t: '#dcdcdc' } },
+  { id: 'brown', name: 'BROWN MOUSE', price: 60, pal: { g: '#8a5a34', p: '#e7a3ad', e: '#111', n: '#e7a3ad', t: '#6a4024' } },
+  { id: 'zombie', name: 'ZOMBIE', price: 120, pal: { g: '#7fae5a', p: '#c05a5a', e: '#ffffff', n: '#8a3a3a', t: '#5a7a3a' } },
+  { id: 'robot', name: 'ROBOT', price: 150, pal: { g: '#a8b0c0', p: '#5a6070', e: '#ff2424', n: '#2ad4c4', t: '#5a6070' } },
+  { id: 'ninja', name: 'NINJA', price: 150, pal: { g: '#1e1e28', p: '#e01e1e', e: '#ffffff', n: '#e01e1e', t: '#1e1e28' } },
+  { id: 'rainbow', name: 'RAINBOW', price: 200, rainbow: true, pal: { g: '#ff4a4a', p: '#ffffff', e: '#111', n: '#ff9ab0', t: '#7a3fc4' } },
+  { id: 'gold', name: 'GOLDEN', price: 250, pal: { g: '#ffd23f', p: '#fff0a0', e: '#7a4a00', n: '#ff9a1f', t: '#c89a20' } },
+];
+const RAINBOW = ['#ff4a4a', '#ff9a1f', '#ffd23f', '#3fae4a', '#2a7fd4', '#7a3fc4'];
+const mouseDef = id => MICE.find(m => m.id === id) || MICE[0];
+function buildMouse(def) {
+  const pal = Object.assign({}, def.pal);
+  const c = makeSprite(MOUSE_ROWS, pal);
+  if (def.rainbow) {                                   // body colored column by column
+    const g = c.getContext('2d');
+    MOUSE_ROWS.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'g') { g.fillStyle = RAINBOW[x % RAINBOW.length]; g.fillRect(x, y, 1, 1); } }));
+  }
+  return { plain: c, rim: outlineSprite(c, '#3a3348'), w: c.width, h: c.height, eyes: [] };
+}
+function applyMouse() { SPR.mouse = buildMouse(mouseDef(Save.data.mouse)); }
+
 // --- Skins: body color, eye color and an optional pattern (stripes / spots) --
 const SKINS = [
   { id: 'classic', name: 'CLASSIC', price: 0, body: '#000000', eye: '#ff2424' },
@@ -934,8 +963,7 @@ function applySkin() { Object.assign(SPR, buildSkin(skinDef(Save.data.skin))); }
     const friend = makeSprite(PLAYER_POSES[k], { '#': '#1d3f8f', 'r': '#4dff9a', 'p': '#ff7aa2' });     // the friend in a race
     SPR2[k] = { plain: friend, rim: outlineSprite(friend, '#9fc3ff'), eyes: [], w: friend.width, h: friend.height };
   }
-  const m = makeSprite(MOUSE_ROWS, { g: '#9b9b9b', p: '#e7a3ad', e: '#111', n: '#e7a3ad', t: '#7a7a7a' });
-  SPR.mouse = { plain: m, rim: outlineSprite(m, '#3a3348'), w: m.width, h: m.height, eyes: [] };
+  applyMouse();
 })();
 
 function drawSprite(s, x, y, flip, rim) {
@@ -1155,6 +1183,10 @@ const JUMP_KEYS = ['Space', 'ArrowUp', 'KeyW', 'KeyZ', 'KeyK'];
 window.addEventListener('keydown', e => {
   Sound.unlock();
   const k = e.code;
+  if (e.target === nameInput) {                  // typing your name
+    if (k === 'Enter') saveName(); else if (k === 'Escape') UI.back = true;
+    return;
+  }
   if (e.target === codeInput) {                  // typing a room code
     if (k === 'Enter') { if (state === 'about') checkDevCode(); else Net.joinTyped(); } else if (k === 'Escape') UI.back = true;
     return;
@@ -1907,6 +1939,10 @@ function newRun(opts = {}) {
     run.abil = MP_THIEF.map(m => ({ id: m.id, def: ABIL[m.id], st: m.st, uses: Infinity, cd: 0, cdMax: m.cd }));
     Level.outbox = []; Level.nextId = 0;
   }
+  if (mp && Net.bet > 0 && Net.betReady() && Save.data.points >= Net.bet) {   // both agreed: the bets go in the pot
+    run.bet = Net.bet; Save.data.points -= Net.bet; Save.save();
+  }
+  if (mp) { Net.bet = 0; Net.myOk = Net.friendOk = false; }   // a new bet has to be agreed for the next round
   Level.rng = opts.seed !== undefined ? mulberry32(opts.seed) : null;
   run.seed = opts.seed || 0;
   if (run.view) { Level.solids = []; Level.hazards = []; Net.byId.clear(); }   // the friend's device sends the level
@@ -2111,9 +2147,18 @@ function killPlayer(cause) {
   Input.clear();
 }
 // Multiplayer round won without getting caught: the thief escaped (vs cat) or outlasted the friend (race).
+// The winner gets both bets.
+function settleBet(won) {
+  const R = run;
+  if (!R || !R.bet || R.betDone) return;
+  R.betDone = true; R.betWon = won;
+  if (won) { Save.data.points += R.bet * 2; Save.save(); }
+  Net.sendMe();
+}
 function endMpRound(cause, line) {
   const R = run;
   R.phase = 'over'; R.overT = 0; R.cause = cause; R.line = line; R.won = true;
+  settleBet(R.race || Net.role === 'thief');
   if (R.race) Net.send({ t: 'done', r: Net.round, tm: R.time });
   Music.stop(); sfx('buy'); UI.focus = 0;
 }
@@ -2248,7 +2293,10 @@ function finishRun() {
   const R = run, d = Save.data;
   R.phase = 'over'; R.overT = 0;
   if (R.race) Net.send({ t: 'done', r: Net.round, tm: R.time });
-  if (R.mp) { sfx('gameover'); UI.focus = 0; return; }   // friendly matches don't touch your records
+  if (R.mp) {                                         // friendly matches don't touch your records (bets aside)
+    settleBet(R.race ? (R.won || (R.ghost.done && R.time > R.ghost.time)) : Net.role !== 'thief');
+    sfx('gameover'); UI.focus = 0; return;
+  }
   d.runs++;
   R.newBest = R.time > d.bestTime;
   if (R.newBest) d.bestTime = R.time;
@@ -3482,6 +3530,11 @@ function drawPanel(pw, ph, k) {
   ctx.fillStyle = PAL.paper; ctx.fillRect(px, py, pw, ph);
   return { px, py };
 }
+function drawBetResult(R, y) {
+  if (!R.bet) return;
+  if (!R.betDone) drawText('BET: ★' + R.bet * 2 + ' IN THE POT', W / 2, y, PAL.goldDark, 1, 'center');
+  else drawText(R.betWon ? 'BET: YOU WON ★' + R.bet * 2 + '!' : 'BET: YOU LOST ★' + R.bet, W / 2, y, R.betWon ? PAL.green : '#e01e1e', 2, 'center');
+}
 function drawGameOverMP() {
   const R = run, k = clamp(R.overT / 0.35, 0, 1), cat = Net.role === 'cat';
   ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
@@ -3495,6 +3548,7 @@ function drawGameOverMP() {
     drawText(b, px + pw - 26, py + 58 + i * 18, PAL.ink, 2, 'right');
   });
   drawText(good ? (cat ? 'NOW SWAP AND TRY TO ESCAPE HER!' : 'NOW SWAP AND TRY TO CATCH HIM!') : 'SWAP ROLES AND GET REVENGE!', W / 2, py + 104, '#e01e1e', 1, 'center');
+  drawBetResult(R, py + 118);
   if (R.overT < 0.5) return;
   if (!Net.live) { if (UI.button('menu', Math.round(W / 2 - 50), py + ph - 34, 100, 24, 'MENU') || UI.back) { Net.reset(); go('menu'); } return; }
   const bw = 88, by = py + ph - 34, gx = Math.round(W / 2 - (bw * 3 + 16) / 2);
@@ -3540,6 +3594,7 @@ function drawGameOverRace() {
     drawText(b, px + pw - 26, py + 58 + i * 18, PAL.ink, 2, 'right');
   });
   if (waiting) drawText('YOUR FRIEND IS STILL RUNNING' + '.'.repeat(1 + Math.floor(menuT * 3) % 3), W / 2, py + 104, '#e01e1e', 1, 'center');
+  drawBetResult(R, py + 118);
   if (R.overT < 0.5) return;
   if (!Net.live) { if (UI.button('menu', Math.round(W / 2 - 50), py + ph - 34, 100, 24, 'MENU') || UI.back) { Net.reset(); go('menu'); } return; }
   const bw = 88, by = py + ph - 34, gx = Math.round(W / 2 - (bw * 3 + 16) / 2);
@@ -4126,7 +4181,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.14.0';
+const VERSION = '1.15.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4208,6 +4263,8 @@ function netSample(buf, t) {
 const Net = {
   peer: null, conn: null, live: false, isHost: false, role: 'thief', code: '',
   mode: 'cat', round: 0, clockOff: Infinity,   // mode: 'cat' (thief vs cat) or 'race' (two thieves)
+  friend: null,                                // the friend's name, stars, best time (for the lobby and the leaderboard)
+  bet: 0, myOk: false, friendOk: false,        // the bet both players agree on before a round
   screen: 'home', msg: '', ev: [], byId: new Map(), timer: 0,
   log: [], t0: 0, showLog: false, ice: null, iceT: 0, copiedT: -9,   // connection log, shown under DETAILS
 
@@ -4345,6 +4402,8 @@ const Net = {
       clearTimeout(this.timer);
       this.live = true; this.screen = 'lobby'; sfx('buy');
       this.send({ t: 'ver', v: VERSION });
+      this.friend = null; this.bet = 0; this.myOk = this.friendOk = false;
+      this.sendMe();
       if (this.isHost) this.send({ t: 'hello', role: this.role, mode: this.mode, v: VERSION });
     });
     c.on('data', m => this.onData(m));
@@ -4359,7 +4418,7 @@ const Net = {
   lost() {
     if (!this.live) return;
     this.live = false; this.conn = null;
-    if (state === 'run' && run && run.mp) run.netLost = true;
+    if (state === 'run' && run && run.mp) { run.netLost = true; if (run.phase === 'play') settleBet(true); }   // leaving mid-round = losing the bet
     else if (state === 'mp') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; }
   },
   leave() {
@@ -4368,6 +4427,11 @@ const Net = {
     setTimeout(() => this.reset(), 150);
   },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (_) { /* channel closing */ } },
+  sendMe() { const d = realData(); this.send({ t: 'me', name: Save.data.name, pts: d.points, best: d.bestTime, dev: !!Save.data.dev }); },
+  canBet() { return !Save.data.dev && !(this.friend && this.friend.dev); },
+  setBet(v) { this.bet = v; this.myOk = this.friendOk = false; this.send({ t: 'bet', v }); sfx('click'); },
+  agree() { if (this.bet > 0 && Save.data.points >= this.bet && this.canBet()) { this.myOk = true; this.send({ t: 'betok' }); sfx('click'); } },
+  betReady() { return this.bet === 0 || (this.myOk && this.friendOk && this.canBet()); },
 
   // --- roles & rounds ----------------------------------------------------
   swap(tell) { this.role = this.role === 'thief' ? 'cat' : 'thief'; if (tell) this.send({ t: 'swap' }); },
@@ -4399,6 +4463,9 @@ const Net = {
       case 'act': catMove(m.a); break;
       case 's': applySnap(m); break;
       case 'bye': this.lost(); break;
+      case 'me': this.friend = { name: String(m.name || 'FRIEND').slice(0, 10), pts: m.pts | 0, best: +m.best || 0, dev: !!m.dev }; rememberFriend(this.friend); break;
+      case 'bet': this.bet = Math.max(0, m.v | 0); this.myOk = this.friendOk = false; break;
+      case 'betok': this.friendOk = true; break;
     }
   },
 
@@ -4460,6 +4527,7 @@ function applySnap(m) {
   if (!R || !R.view || state !== 'run') return;
   if (R.countdown > 0 && m.cd <= 0) R.startT = 0.8;
   R.time = m.tm; R.phase = m.ph; R.countdown = m.cd; R.overT = m.oT; R.cause = m.ca; R.line = m.li;
+  if (m.ph === 'over') settleBet(m.ca !== 'escaped');   // I'm the cat: I win unless he escaped
   Net.noteClock(m.st); netPush(R.buf, m.st, [m.p, m.c]);     // positions are drawn a bit later, smoothly (updateView)
   R.anger = m.an; R.gain = m.g; R.danger = m.dz; R.frozenT = m.fz; R.boostT = m.bo;
   R.shake = Math.max(R.shake, m.sh); R.flash = Math.max(R.flash, m.fl); R.flashColor = m.fc; R.banner = m.bn; R.catCd = m.cc;
@@ -4502,8 +4570,9 @@ function go(s) {
   state = s; UI.focus = 0;
   UI.screenPress = UI.pressN;        // the tap that opened this screen doesn't paint or drag anything here
   applyWorld();          // undo the run's day / night colors
+  if (s === 'name') nameInput.value = Save.data.name;
   if (Save.data.dev) { devFill(); Save.save(); }   // developer mode: stars and shields never run out
-  if (['menu', 'shop', 'skinedit', 'pixeledit', 'worlds', 'settings', 'layout', 'about', 'mp'].includes(s)) Music.play('menu');
+  if (['menu', 'shop', 'skinedit', 'pixeledit', 'worlds', 'settings', 'layout', 'about', 'mp', 'name', 'leaders'].includes(s)) Music.play('menu');
 }
 function playFromMenu() {
   if (Save.data.intro) Intro.start();            // the intro hands over to the tutorial for new players
@@ -4535,12 +4604,13 @@ function drawMenu() {
   drawText('SHE WANTS IT BACK.', W / 2, 58, '#e01e1e', 1, 'center');
   wallet();
   const bw = 160, bx = Math.round(W / 2 - bw / 2);
-  if (UI.button('play', bx, 70, bw, 20, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
-  if (UI.button('mp', bx, 93, bw, 20, 'MULTIPLAYER', { accent: '#2f9a5a' })) { Net.reset(); go('mp'); }
-  if (UI.button('howto', bx, 116, bw, 20, 'HOW TO PLAY')) startTutorial();
-  if (UI.button('shop', bx, 139, bw, 20, 'SHOP')) go('shop');
-  if (UI.button('worlds', bx, 162, bw, 20, 'WORLDS')) go('worlds');
-  if (UI.button('settings', bx, 185, bw, 20, 'SETTINGS')) go('settings');
+  if (UI.button('play', bx, 70, bw, 19, 'PLAY', { accent: '#e01e1e' })) playFromMenu();
+  if (UI.button('mp', bx, 91, bw, 19, 'MULTIPLAYER', { accent: '#2f9a5a' })) { Net.reset(); go('mp'); }
+  if (UI.button('howto', bx, 112, bw, 19, 'HOW TO PLAY')) startTutorial();
+  if (UI.button('shop', bx, 133, bw, 19, 'SHOP')) go('shop');
+  if (UI.button('worlds', bx, 154, bw, 19, 'WORLDS')) go('worlds');
+  if (UI.button('settings', bx, 175, bw, 19, 'SETTINGS')) go('settings');
+  if (UI.button('leaders', bx, 196, bw, 19, 'LEADERBOARD', { accent: '#e0a820' })) go('leaders');
   drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.floorText, 1, 'center');
   drawText('V' + VERSION, W - 6, H - 8, PAL.verText, 1, 'right');
   if (Save.data.dev) drawText('DEV MODE', 6, H - 8, '#2f9a5a', 1);
@@ -4594,7 +4664,7 @@ function drawShop(dt) {
   if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
   else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS + '   PAGE ' + (abilPage + 1) + '/' + Math.ceil(ABILITIES.length / ABIL_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   else if (shopTab === 'music') drawText('TRY: LISTEN.  USE: PLAYS IN RUNS.  PAGE ' + (songPage + 1) + '/' + Math.ceil(SONGS.length / SONGS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
-  else drawText('PAGE ' + (skinPage + 1) + '/' + Math.ceil(SKINS.length / SKINS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else drawText((skinPage >= Math.ceil(SKINS.length / SKINS_PER_PAGE) ? 'MOUSE SKINS   ' : 'THIEF SKINS   ') + 'PAGE ' + (skinPage + 1) + '/' + skinPages(), W / 2, msgY, PAL.inkSoft, 1, 'center');
   if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
 }
@@ -4701,14 +4771,16 @@ function drawSkinTile(id, x, y, w, h, scale) {
 }
 let skinPage = 0;
 const SKINS_PER_PAGE = 8;
+const skinPages = () => Math.ceil(SKINS.length / SKINS_PER_PAGE) + Math.ceil(MICE.length / SKINS_PER_PAGE);
 function drawSkinShop() {
   const cols = 4, gap = 6, cw = Math.floor((W - 16 - gap * (cols - 1)) / cols), ch = 88;
-  const pages = Math.ceil(SKINS.length / SKINS_PER_PAGE);
+  const pages = skinPages(), thiefPages = Math.ceil(SKINS.length / SKINS_PER_PAGE);
   skinPage = clamp(skinPage, 0, pages - 1);
   if (pages > 1) {                                           // page arrows next to BACK / PLAY
     if (UI.button('skinprev', 96, H - 22, 22, 18, '<', { disabled: skinPage === 0 })) { skinPage--; sfx('click'); }
     if (UI.button('skinnext', W - 118, H - 22, 22, 18, '>', { disabled: skinPage === pages - 1 })) { skinPage++; sfx('click'); }
   }
+  if (skinPage >= thiefPages) return drawMouseShop(skinPage - thiefPages, cols, gap, cw, ch);
   SKINS.slice(skinPage * SKINS_PER_PAGE, (skinPage + 1) * SKINS_PER_PAGE).forEach((s, i) => {
     const x = 8 + (i % cols) * (cw + gap), y = 32 + Math.floor(i / cols) * (ch + 4);
     const owned = ownsSkin(s.id), wearing = Save.data.skin === s.id;
@@ -4728,6 +4800,34 @@ function drawSkinShop() {
     } else if (UI.button('skin_' + s.id, x + 4, by, bw, 18, wearing ? 'WEARING' : 'WEAR', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) wearSkin(s.id);
   });
 }
+
+// The mouse the thief carries: its own skins.
+function drawMouseShop(page, cols, gap, cw, ch) {
+  const d = Save.data;
+  MICE.slice(page * SKINS_PER_PAGE, (page + 1) * SKINS_PER_PAGE).forEach((m, i) => {
+    const x = 8 + (i % cols) * (cw + gap), y = 32 + Math.floor(i / cols) * (ch + 4);
+    const owned = d.mice.includes(m.id), wearing = d.mouse === m.id;
+    ctx.fillStyle = wearing ? '#7a3fc4' : PAL.ink; ctx.fillRect(x, y, cw, ch);
+    ctx.fillStyle = wearing ? PAL.sel : PAL.paperHi; ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+    ctx.fillStyle = '#1d1830'; ctx.fillRect(x + 4, y + 4, cw - 8, 48);
+    const spr = buildMouseCached(m), sc = 4;
+    ctx.save(); ctx.translate(Math.round(x + cw / 2 - spr.w * sc / 2), y + 4 + 48 - 6 - spr.h * sc); ctx.scale(sc, sc);
+    ctx.drawImage(spr.rim, -1, -1); ctx.restore();
+    drawText(m.name, x + cw / 2, y + 56, PAL.ink, 1, 'center');
+    const by = y + 66, bw = cw - 8;
+    if (!owned) {
+      const poor = d.points < m.price;
+      if (UI.button('mouse_' + m.id, x + 4, by, bw, 18, 'BUY ★' + m.price, { size: 1, textColor: poor ? '#b03030' : null, accent: '#7a3fc4' })) {
+        if (poor) { sfx('deny'); say('NEED ' + (m.price - d.points) + ' MORE ★', '#e01e1e'); }
+        else { d.points -= m.price; d.mice.push(m.id); d.mouse = m.id; Save.save(); applyMouse(); sfx('buy'); say(m.name + ' UNLOCKED!', PAL.green); }
+      }
+    } else if (UI.button('mouse_' + m.id, x + 4, by, bw, 18, wearing ? 'CARRYING' : 'CARRY', { size: 1, on: wearing, accent: '#7a3fc4' }) && !wearing) {
+      d.mouse = m.id; Save.save(); applyMouse(); sfx('click');
+    }
+  });
+}
+const mouseCache = {};
+function buildMouseCached(m) { return mouseCache[m.id] || (mouseCache[m.id] = buildMouse(m)); }
 
 // --- skin maker (MY SKIN) -------------------------------------------------------
 function swatch(id, x, y, color, selected) {
@@ -4958,11 +5058,16 @@ function drawRolePortrait(role, cx, feetY, label, sub) {
   drawText(label, cx, feetY + 6, role === 'cat' ? '#e01e1e' : PAL.ink, 2, 'center');
   if (sub) drawText(sub, cx, feetY + 20, PAL.inkSoft, 1, 'center');
 }
-function placeCodeInput(x, y, w, h) {
+function placeCodeInput(x, y, w, h) { placeInput(codeInput, x, y, w, h); }
+function placeInput(el, x, y, w, h) {
   const s = view.scale / view.dpr;
-  Object.assign(codeInput.style, { display: 'block', left: (view.ox / view.dpr + x * s) + 'px', top: (view.oy / view.dpr + y * s) + 'px',
+  Object.assign(el.style, { display: 'block', left: (view.ox / view.dpr + x * s) + 'px', top: (view.oy / view.dpr + y * s) + 'px',
                                     width: (w * s) + 'px', height: (h * s) + 'px', fontSize: Math.round(h * s * 0.6) + 'px' });
 }
+const nameInput = document.getElementById('name');
+nameInput.addEventListener('input', () => {
+  nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10);
+});
 codeInput.addEventListener('input', () => {
   codeInput.value = codeInput.value.toUpperCase().split('').filter(ch => CODE_CHARS.includes(ch)).join('').slice(0, 4);
 });
@@ -5045,13 +5150,28 @@ function drawMP() {
       break;
     case 'lobby': {
       const race = Net.mode === 'race', me = Net.role, friend = race ? 'friend' : me === 'cat' ? 'thief' : 'cat';
-      drawText('CONNECTED!', W / 2, 36, PAL.green, 2, 'center');
-      drawRolePortrait(race ? 'thief' : me, W / 2 - 90, 124, 'YOU', race ? 'THIEF' : me === 'cat' ? 'THE CAT' : 'THE THIEF');
-      drawRolePortrait(friend, W / 2 + 90, 124, 'FRIEND', race ? 'BLUE THIEF' : friend === 'cat' ? 'THE CAT' : 'THE THIEF');
-      drawText('VS', W / 2, 92, '#e01e1e', 3, 'center');
-      if (race) { if (UI.button('start', bx, 162, bw, 22, 'START THE RACE!', { accent: '#e01e1e' })) Net.requestRound(); }
+      drawText('CONNECTED!', W / 2, 60, PAL.green, 1, 'center');
+      const fname = Net.friend ? Net.friend.name : 'FRIEND';
+      drawRolePortrait(race ? 'thief' : me, W / 2 - 90, 110, Save.data.name, race ? 'THIEF' : me === 'cat' ? 'THE CAT' : 'THE THIEF');
+      drawRolePortrait(friend, W / 2 + 90, 110, fname, race ? 'BLUE THIEF' : friend === 'cat' ? 'THE CAT' : 'THE THIEF');
+      drawText('VS', W / 2, 78, '#e01e1e', 3, 'center');
+      // the bet: both must agree on the same amount; the winner takes both
+      const BETS = [0, 10, 25, 50, 100, 250, 500], bi = Math.max(0, BETS.indexOf(Net.bet)), by = 140;
+      if (!Net.canBet()) drawText('NO BETS: SOMEONE IS IN DEV MODE', W / 2, by + 5, PAL.inkSoft, 1, 'center');
       else {
-        if (UI.button('start', W / 2 - 150, 162, 140, 22, 'START!', { accent: '#e01e1e' })) Net.requestRound();
+        if (UI.button('betminus', W / 2 - 150, by, 20, 16, '-', { size: 1, disabled: bi === 0 })) Net.setBet(BETS[bi - 1]);
+        drawText(Net.bet ? 'BET ★' + Net.bet : 'NO BET', W / 2 - 96, by + 5, Net.bet ? PAL.goldDark : PAL.inkSoft, 1, 'center');
+        if (UI.button('betplus', W / 2 - 62, by, 20, 16, '+', { size: 1, disabled: bi === BETS.length - 1 })) Net.setBet(BETS[bi + 1]);
+        if (Net.bet > 0) {
+          const poor = Save.data.points < Net.bet;
+          const label = poor ? 'NOT ENOUGH ★' : !Net.myOk ? 'I AGREE (★' + Net.bet + ')' : Net.friendOk ? 'BOTH AGREED!' : 'WAITING FOR ' + fname;
+          if (UI.button('betok', W / 2 - 36, by, 186, 16, label, { size: 1, disabled: poor || Net.myOk, on: Net.myOk && Net.friendOk, accent: '#e0a820' })) Net.agree();
+        } else drawText('THE WINNER TAKES BOTH BETS', W / 2 + 56, by + 5, PAL.inkSoft, 1, 'center');
+      }
+      const ready = Net.betReady();
+      if (race) { if (UI.button('start', bx, 162, bw, 22, ready ? 'START THE RACE!' : 'AGREE ON THE BET FIRST', { accent: '#e01e1e', disabled: !ready })) Net.requestRound(); }
+      else {
+        if (UI.button('start', W / 2 - 150, 162, 140, 22, ready ? 'START!' : 'AGREE FIRST', { accent: '#e01e1e', disabled: !ready })) Net.requestRound();
         if (UI.button('swaproles', W / 2 + 10, 162, 140, 22, 'SWAP ROLES', { accent: '#2f9a5a' })) { Net.swap(true); sfx('click'); }
       }
       if (UI.button('mode', bx, 190, bw, 20, race ? 'MODE: RACE (TAP TO CHANGE)' : 'MODE: THIEF VS CAT (TAP TO CHANGE)', { size: 1 })) {
@@ -5076,7 +5196,10 @@ function drawSettings(dt) {
   resetArm = Math.max(0, resetArm - dt);
   let y = 42;
   const row = (id, label, fn, o) => { if (UI.button(id, bx, y, bw, 19, label, o)) fn(); y += 23; };
-  row('night', 'MODE: ' + (isNight() ? 'NIGHT' : 'DAY'), () => { d.night = !isNight(); Save.save(); applyWorld(); sfx('click'); });
+  const mw = Math.round((bw - 6) / 2);
+  if (UI.button('night', bx, y, mw, 19, 'MODE: ' + (isNight() ? 'NIGHT' : 'DAY'))) { d.night = !isNight(); Save.save(); applyWorld(); sfx('click'); }
+  if (UI.button('name', bx + mw + 6, y, bw - mw - 6, 19, 'NAME: ' + d.name, { size: d.name.length > 6 ? 1 : 2, accent: '#2a7fd4' })) { sfx('click'); go('name'); }
+  y += 23;
   row('snd', 'SOUND: ' + on(d.sound), () => { d.sound = !d.sound; Save.save(); Sound.apply(); sfx('click'); });
   row('mus', 'MUSIC: ' + on(d.music), () => { d.music = !d.music; Save.save(); Sound.apply(); sfx('click'); });
   const iw = Math.round((bw - 6) / 2);
@@ -5090,13 +5213,68 @@ function drawSettings(dt) {
   y += 23;
   row('reset', resetArm > 0 ? 'TAP AGAIN TO ERASE ALL' : 'RESET PROGRESS', () => {
     if (resetArm > 0) {
-      const keep = { sound: d.sound, music: d.music, intro: d.intro, ending: d.ending, shake: d.shake, touchButtons: d.touchButtons, night: d.night, layout: d.layout };
-      Save.data = Object.assign(Save.defaults(), keep); Save.save(); applyWorld(); applySkin(); resetArm = 0; sfx('hit');
+      const keep = { name: d.name, friends: d.friends, sound: d.sound, music: d.music, intro: d.intro, ending: d.ending, shake: d.shake, touchButtons: d.touchButtons, night: d.night, layout: d.layout };
+      Save.data = Object.assign(Save.defaults(), keep); Save.save(); Save.load(); applyWorld(); applySkin(); applyMouse(); resetArm = 0; sfx('hit');
     } else { resetArm = 3; sfx('deny'); }
   }, { accent: '#e01e1e', textColor: '#b03030' });
   const hw = (bw - 8) / 2;
   if (UI.button('about', bx, y + 4, hw, 21, 'ABOUT')) go('about');
   if (UI.button('back', bx + hw + 8, y + 4, hw, 21, 'BACK') || UI.back) go('menu');
+}
+
+// --- your name (SETTINGS -> NAME): shown to friends in multiplayer and on the leaderboard ---------
+function saveName() {
+  const v = nameInput.value.trim().replace(/\s+/g, ' ');
+  if (v.length >= 2) { Save.data.name = v; Save.save(); sfx('buy'); nameInput.blur(); go('settings'); }
+  else sfx('deny');
+}
+function drawNameScreen() {
+  bgLight();
+  drawText('YOUR NAME', W / 2, 16, PAL.ink, 4, 'center');
+  drawText('YOUR FRIENDS SEE IT IN MULTIPLAYER AND ON THE LEADERBOARD.', W / 2, 46, PAL.inkSoft, 1, 'center');
+  drawText('PICK A NICKNAME, NOT YOUR REAL NAME!', W / 2, 58, '#e01e1e', 1, 'center');
+  placeInput(nameInput, W / 2 - 110, 76, 220, 32);
+  drawText(Input.touch ? 'TAP THE BOX TO TYPE (2-10 LETTERS)' : 'CLICK THE BOX TO TYPE (2-10 LETTERS)', W / 2, 116, PAL.inkSoft, 1, 'center');
+  const bw = 100;
+  if (UI.button('namesave', Math.round(W / 2 - bw - 4), 140, bw, 22, 'SAVE', { accent: '#2f9a5a', disabled: nameInput.value.trim().length < 2 })) saveName();
+  if (UI.button('nameback', Math.round(W / 2 + 4), 140, bw, 22, 'BACK') || UI.back) { nameInput.blur(); go('settings'); }
+}
+
+// --- leaderboard: you and the friends you've played online with ---------------------------
+// There's no server: whenever two phones meet in multiplayer they swap names, stars and best times.
+let boardTab = 'coins';
+const realData = () => Save.data.dev && Save.data.devBackup ? Save.data.devBackup : Save.data;   // dev mode doesn't count
+function rememberFriend(f) {
+  if (!f || !f.name) return;
+  const fr = Save.data.friends;
+  fr[f.name] = { pts: f.pts | 0, best: +f.best || 0, t: Date.now() };
+  const names = Object.keys(fr);
+  if (names.length > 40) { names.sort((a, b) => fr[a].t - fr[b].t); delete fr[names[0]]; }   // keep the 40 most recent
+  if (Save.data.dev && Save.data.devBackup) Save.data.devBackup.friends = fr;
+  Save.save();
+}
+function drawLeaderboard() {
+  bgLight();
+  drawText('LEADERBOARD', W / 2, 10, PAL.ink, 3, 'center');
+  const coins = boardTab === 'coins', bw = 110;
+  if (UI.button('board_coins', Math.round(W / 2 - bw - 4), 32, bw, 18, '★ MOST STARS', { size: 1, on: coins, accent: '#e0a820' })) { boardTab = 'coins'; sfx('click'); }
+  if (UI.button('board_time', Math.round(W / 2 + 4), 32, bw, 18, 'LONGEST RUN', { size: 1, on: !coins, accent: '#2a7fd4' })) { boardTab = 'time'; sfx('click'); }
+  const me = realData(), fr = Save.data.friends;
+  const rows = [{ name: Save.data.name, pts: me.points, best: me.bestTime, you: true }]
+    .concat(Object.keys(fr).map(n => ({ name: n, pts: fr[n].pts, best: fr[n].best })));
+  rows.sort((a, b) => coins ? b.pts - a.pts : b.best - a.best);
+  const show = rows.slice(0, 9), myRank = rows.findIndex(x => x.you);
+  if (myRank >= 9) show[8] = rows[myRank];
+  show.forEach((x, i) => {
+    const y = 56 + i * 17, rank = rows.indexOf(x) + 1;
+    ctx.fillStyle = x.you ? PAL.sel : i % 2 ? PAL.paper : PAL.paperHi; ctx.fillRect(40, y, W - 80, 15);
+    drawText(rank === 1 ? '★' : String(rank), 52, y + 5, rank === 1 ? PAL.goldDark : PAL.inkSoft, 1, 'center');
+    drawText(x.name + (x.you ? ' (YOU)' : ''), 64, y + 4, x.you ? '#e01e1e' : PAL.ink, 1, 'left');
+    drawText(coins ? '★ ' + x.pts : fmtTime(x.best), W - 50, y + 4, coins ? PAL.goldDark : PAL.ink, 1, 'right');
+  });
+  if (rows.length === 1) drawText('PLAY MULTIPLAYER WITH FRIENDS TO SEE THEM HERE!', W / 2, 90 + 17, PAL.inkSoft, 1, 'center');
+  drawText('YOU + FRIENDS YOU PLAYED ONLINE WITH', W / 2, H - 38, PAL.inkSoft, 1, 'center');
+  if (UI.button('back', Math.round(W / 2 - 60), H - 26, 120, 20, 'BACK') || UI.back) go('menu');
 }
 
 // --- developer mode (SETTINGS -> ABOUT -> DEV CODE) ----------------------------------
@@ -5108,7 +5286,7 @@ function devFill() {
   const d = Save.data;
   d.points = Math.max(d.points, 99999);
   for (const a of ABILITIES) d.tiers[a.id] = a.stock ? a.max : MAX_TIER;
-  d.skins = SKINS.map(k => k.id); d.worlds = WORLDS.map(w => w.id); d.songs = SONGS.map(g => g.id); d.tutorialDone = true;
+  d.skins = SKINS.map(k => k.id); d.worlds = WORLDS.map(w => w.id); d.songs = SONGS.map(g => g.id); d.mice = MICE.map(m => m.id); d.tutorialDone = true;
 }
 function devOn() {
   const d = Save.data;
@@ -5121,7 +5299,7 @@ function devOff() {
   if (!d.dev) return;
   Save.data = Object.assign(Save.defaults(), d.devBackup || {}, { dev: false });
   delete Save.data.devBackup;
-  Save.save(); Save.load(); applySkin(); applyWorld(); Sound.apply();
+  Save.save(); Save.load(); applySkin(); applyMouse(); applyWorld(); Sound.apply();
 }
 let aboutMsg = { text: '', color: '#fff', t: 0 };
 function checkDevCode() {
@@ -5182,11 +5360,14 @@ function frame(now) {
     case 'worlds': drawWorlds(dt); break;
     case 'settings': drawSettings(dt); break;
     case 'about': drawAbout(); break;
+    case 'name': drawNameScreen(); break;
+    case 'leaders': drawLeaderboard(); break;
     case 'intro': Intro.draw(); break;
     case 'run': drawRun(); break;
     case 'mp': drawMP(); break;
   }
   if (state !== 'mp' && !(state === 'about' && !Save.data.dev)) codeInput.style.display = 'none';
+  if (state !== 'name') nameInput.style.display = 'none';
   if (netEmit()) Net.sendSnap();
   else if (raceEmit()) Net.sendGhost();
   UI.end();
