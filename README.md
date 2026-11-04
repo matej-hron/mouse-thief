@@ -1,4 +1,27 @@
-# Mouse Thief
+# Pixel Arcade
+
+Pixel-art games to play alone or with a friend. **Play:** https://matej-hron.github.io/mouse-thief/
+
+The arcade (index.html) is the start screen: pick a game, and set **your name and avatar** (EDIT): all the games use them.
+
+| Game | |
+|---|---|
+| **Mouse Thief** (`thief.html`) | You stole the cat's mouse "just for fun". She did not find it funny. Run! |
+| **Pixel GP** (`racer.html`) | A pixel open-wheel racer that looks 3D: race 5 rivals, drive freely, or race a friend online. |
+
+## Pixel GP
+
+- **RACE:** you vs 5 rivals, 3 laps of the Pixel Ring. You start at the back of the grid.
+- **FREE DRIVE:** no rivals, just drive and chase your best lap.
+- **RACE A FRIEND:** CREATE GAME gives a 4-letter code, your friend joins with it (both phones need the same version).
+  First over the line after 3 laps wins.
+- Gas is automatic. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
+  The tight hairpin needs a brake; going off the road or hitting things slows you down.
+- Your car has your avatar's color. Best lap, best race and wins are saved on your phone.
+
+---
+
+## Mouse Thief
 
 A tiny pixel-art endless runner. You stole the cat's mouse "just for fun". She did not find it funny.
 
@@ -54,7 +77,7 @@ New players get an interactive tutorial after the intro (replay it any time via 
   SETTINGS → END SCENE.
 - **Pause:** when you resume, a 3, 2, 1, GO! countdown gives you a moment to get ready.
 
-Single HTML file, no dependencies. Open `index.html` locally or serve via GitHub Pages.
+Each game is a single HTML file (plus the shared `common.js`), no dependencies. Serve the folder via GitHub Pages.
 
 ## Multiplayer
 
@@ -85,4 +108,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and `VERSION` in `index.html`.
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html`; online play checks it).
