@@ -34,7 +34,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -46,9 +46,38 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const fmt = t => { if (!isFinite(t) || t <= 0) return '--:--.-'; const m = Math.floor(t / 60), s = t % 60; return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0'); };
 const profile = PX.Profile.load();
 const SAVE_KEY = 'pixelGP.save';
-let save = { bestLap: 0, bestRace: 0, wins: 0, races: 0 };
+let save = { bestLap: 0, bestRace: 0, wins: 0, races: 0, music: true,
+             tiers: {}, cars: ['classic'], car: 'classic', paints: [], paint: 'auto' };   // the garage
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+if (!save.tiers || typeof save.tiers !== 'object') save.tiers = {};
+if (!Array.isArray(save.cars)) save.cars = ['classic'];
+if (!Array.isArray(save.paints)) save.paints = [];
+
+/* --- GARAGE: abilities, car designs and paint, bought with the arcade's ★ (shared with Mouse Thief) --- */
+const ABILITIES = [
+  { id: 'nitro', name: 'NITRO', color: '#2ad4c4', prices: [40, 90, 160], active: true, key: '1',
+    stat: t => ({ uses: t }), desc: s => s.uses + ' BOOST' + (s.uses > 1 ? 'S' : '') + ' PER RACE' },
+  { id: 'shield', name: 'SHIELD', color: '#58e0a0', prices: [60, 150], active: true, key: '2',
+    stat: t => ({ uses: t }), desc: s => 'BLOCKS ' + s.uses + ' HIT' + (s.uses > 1 ? 'S' : '') },
+  { id: 'armor', name: 'ARMOR', color: '#ff3b5a', prices: [80, 200],
+    stat: t => ({ hp: 3 + t }), desc: s => s.hp + ' HEARTS' },
+  { id: 'grip', name: 'GRIP', color: '#ffd23f', prices: [50, 110, 220],
+    stat: t => ({ k: [0.8, 0.65, 0.5][t - 1] }), desc: s => Math.round((1 - s.k) * 100) + '% LESS SLIDING' },
+  { id: 'magnet', name: 'MAGNET', color: '#9a5ae0', prices: [60, 140],
+    stat: t => ({ w: [2, 3][t - 1] }), desc: s => 'GRABS STARS ' + s.w + 'X WIDER' },
+];
+const ABIL = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
+const tierOf = id => Math.max(0, Math.min(ABIL[id].prices.length, save.tiers[id] | 0));
+const stat = id => tierOf(id) ? ABIL[id].stat(tierOf(id)) : null;
+const CARS = [
+  { id: 'classic', name: 'CLASSIC', price: 0 }, { id: 'stripe', name: 'STRIPE', price: 60 }, { id: 'checker', name: 'CHECKER', price: 90 },
+  { id: 'flames', name: 'FLAMES', price: 140 }, { id: 'bolt', name: 'LIGHTNING', price: 180 }, { id: 'gold', name: 'GOLD', price: 300 },
+];
+const PAINTS = ['#e01e1e', '#ff8a1f', '#ffd23f', '#5ad43f', '#1f8a4a', '#2ad4c4', '#2a7fd4', '#1d3f8f', '#9a5ae0', '#ff6fb0', '#f2f2f2', '#3a3a46'];
+const PAINT_PRICE = 25;
+const myColor = () => save.paint !== 'auto' && save.paints.includes(save.paint) ? save.paint : PX.AVATAR_COLORS[profile.avatar.color] || '#2a7fd4';
+const myCar = () => save.cars.includes(save.car) ? save.car : 'classic';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
 const SEG = 200;                        // length of one road segment
@@ -124,9 +153,11 @@ function buildTrack(seed = 1) {
     if ([0, 10, 20].some(k => Math.abs((segments[n + k] || segments[n]).curve) > 1.6)) { n -= 50; continue; }   // only on straights and gentle bends
     const r = o(), free = Math.floor(o() * 3);                  // one lane always stays free
     if (r < 0.12) { put(n, 'wrench', LANE[free]); continue; }
+    if (r < 0.2) { const lane = Math.floor(o() * 3); for (let k = 0; k < 8; k++) put(n + k * 3, 'star', LANE[(lane + (k >> 2)) % 3]); continue; }   // a star trail
     if (r < 0.3) { put(n, 'oil', LANE[(free + 1 + Math.floor(o() * 2)) % 3]); continue; }
     if (r < 0.5) { const lane = LANE[(free + 1) % 3]; for (let k = 0; k < 3; k++) put(n + k * 3, 'cone', lane); continue; }
     const two = o() < 0.35;                                       // usually one lane blocked, sometimes two
+    if (o() < 0.5) for (let k = 0; k < 5; k++) put(n + 14 + k * 3, 'star', LANE[free]);   // a row of stars in the free lane, after the obstacle
     for (let k = 0, placed = 0; k < 3; k++) if (k !== free && (placed === 0 || two)) { if (!two && o() < 0.5 && placed === 0 && k < 2) continue; put(n, o() < 0.5 ? 'barrel' : 'crate', LANE[k]); placed++; }
   }
 }
@@ -142,8 +173,9 @@ function shade(hex, k) {
 }
 // An open-wheel race car seen from behind. turn: -1 left, 0 straight, 1 right.
 const carCache = {};
-function carSprite(color, turn = 0) {
-  const key = color + turn;
+function carSprite(color, turn = 0, deco = 'classic') {
+  if (deco === 'gold') color = '#e0b030';
+  const key = color + turn + deco;
   if (carCache[key]) return carCache[key];
   return (carCache[key] = sprite(36, 22, g => {
     const dark = '#16161c', tyre = '#111111', b = shade(color, 0.7), t = turn;
@@ -154,6 +186,11 @@ function carSprite(color, turn = 0) {
     }
     g.fillStyle = color; g.fillRect(11 + t, 9, 14, 8); g.fillRect(9 + t, 11, 18, 5);   // body
     g.fillStyle = b; g.fillRect(9 + t, 15, 18, 1); g.fillRect(14 + t, 6, 8, 4);         // engine cover
+    if (deco === 'stripe') { g.fillStyle = '#f4f4f4'; g.fillRect(17 + t, 6, 2, 11); }
+    else if (deco === 'checker') { for (let y = 10; y < 16; y += 2) for (let x = 9; x < 27; x += 2) { g.fillStyle = ((x + y) >> 1) % 2 ? '#111' : '#f4f4f4'; g.fillRect(x + t, y, 2, 2); } }
+    else if (deco === 'flames') { g.fillStyle = '#ffd23f'; g.fillRect(9 + t, 13, 4, 2); g.fillRect(23 + t, 13, 4, 2); g.fillStyle = '#ff5a1a'; g.fillRect(10 + t, 11, 3, 2); g.fillRect(23 + t, 11, 3, 2); g.fillRect(12 + t, 9, 2, 2); g.fillRect(22 + t, 9, 2, 2); }
+    else if (deco === 'bolt') { g.fillStyle = '#ffd23f'; g.fillRect(14 + t, 9, 3, 2); g.fillRect(16 + t, 11, 3, 2); g.fillRect(18 + t, 13, 3, 2); }
+    else if (deco === 'gold') { g.fillStyle = '#fff6c0'; g.fillRect(11 + t, 9, 2, 6); g.fillRect(13 + t, 9, 1, 2); }
     g.fillStyle = '#ffd23f'; g.fillRect(16 + t, 5, 4, 3);                               // helmet
     g.fillStyle = dark; g.fillRect(16 + t, 7, 4, 1);
     g.fillStyle = dark; g.fillRect(15 + t * 2, 3, 2, 4); g.fillRect(19 + t * 2, 3, 2, 4); // wing pillars
@@ -203,6 +240,11 @@ const SPR = {
     g.fillStyle = '#3a3a46'; g.fillRect(3, 8, 2, 2); g.fillRect(4, 7, 2, 2); g.fillRect(5, 6, 2, 2); g.fillRect(6, 5, 2, 2);
     g.fillRect(7, 3, 3, 2); g.fillRect(8, 2, 1, 1); g.fillRect(9, 5, 1, 1);
   }) },
+  star: { w: 330, road: true, img: sprite(11, 11, g => {
+    const rows = ['....#....', '....#....', '...###...', '#########', '.#######.', '..#####..', '.###.###.', '.##...##.', '#.......#'];
+    g.fillStyle = '#7a5a10'; rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === '#') g.fillRect(x + 1, y + 2, 1, 1); }));
+    rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === '#') { g.fillStyle = y < 3 ? '#fff6c0' : '#ffd23f'; g.fillRect(x + 1, y + 1, 1, 1); } }));
+  }) },
   board: { w: 2600, img: sprite(48, 28, g => {
     g.fillStyle = '#3a3a46'; g.fillRect(8, 18, 3, 10); g.fillRect(37, 18, 3, 10);
     g.fillStyle = '#111'; g.fillRect(0, 0, 48, 19); g.fillStyle = '#e01e1e'; g.fillRect(1, 1, 46, 17);
@@ -211,7 +253,7 @@ const SPR = {
 };
 
 /* --- 4. RACE LOGIC ------------------------------------------------------------ */
-let state = 'title';          // title | race | result | online
+let state = 'title';          // title | race | result | garage
 let mode = 'race';            // race (vs rivals) | free (just drive) | mp (vs a friend)
 let race = null, attract = null, paused = false;
 const keys = {};
@@ -224,15 +266,18 @@ function rivalColors() {
   return RIVAL_COLORS.filter(far).slice(0, 5);
 }
 function newDriver() {
+  const armor = stat('armor');
   return { x: 0, speed: 0, position: 0, dist: 0, lapStart: 0, lap: 1, lapTime: 0, lastLap: 0, bestLap: 0, time: 0, turn: 0, bump: 0, offroad: false,
-           hp: 3, spin: 0, hurtT: 0, smokeT: 0 };
+           hp: armor ? armor.hp : 3, maxHp: armor ? armor.hp : 3, spin: 0, hurtT: 0, smokeT: 0, nitroT: 0, shieldOn: false };
 }
 const HP = 3;
 function startRace(m, seed) {
   if (seed === undefined) seed = 1 + Math.floor(Math.random() * 100000);
   buildTrack(seed); mode = m; paused = false;
   const p = newDriver();
-  race = { p, cars: [], countdown: 3.6, over: false, place: 0, banner: null, ghost: null, result: null, msgT: 0, fx: [], shake: 0, flash: 0, seed };
+  race = { p, cars: [], countdown: 3.6, over: false, place: 0, banner: null, ghost: null, result: null, msgT: 0, fx: [], shake: 0, flash: 0, seed,
+           stars: 0, uses: { nitro: stat('nitro') ? stat('nitro').uses : 0, shield: stat('shield') ? stat('shield').uses : 0 } };
+  Music.play('race');
   if (m === 'race') rivalColors().forEach((color, i) => {   // you start at the back of the grid
     const z = PLAYER_Z + 300 + (4 - i) * 360, car = { color, offset: i % 2 ? 0.45 : -0.45, z, dist: z - PLAYER_Z, speed: 0, pace: RIVAL_PACE[i], finished: 0 };
     race.cars.push(car); findSegment(car.z).cars.push(car);
@@ -256,7 +301,7 @@ function updateCars(dt) {
     }
     for (let k = 1; k <= 8; k++) {                       // and around barrels, crates, cones and oil
       const ahead2 = segments[(old.index + k) % segments.length];
-      const thing = ahead2.sprites.find(t => SPR[t.kind].road && t.kind !== 'wrench' && !t.dead && overlap(car.offset, CAR_W / ROAD_W, t.offset, SPR[t.kind].w / ROAD_W, 1.3));
+      const thing = ahead2.sprites.find(t => SPR[t.kind].road && t.kind !== 'wrench' && t.kind !== 'star' && !t.dead && overlap(car.offset, CAR_W / ROAD_W, t.offset, SPR[t.kind].w / ROAD_W, 1.3));
       if (thing) { car.offset += (car.offset >= thing.offset ? 1 : -1) * dt * 2.2; break; }
     }
     car.offset = clamp(car.offset, -0.8, 0.8);
@@ -288,7 +333,7 @@ function updateRace(dt) {
   else if (p.spin > 0) { p.spin -= dt; p.turn = Math.floor(p.spin * 14) % 2 ? 1 : -1; p.x += Math.sin(p.spin * 9) * dx * 0.8; p.speed = accelerate(p.speed, DECEL * 1.5, dt); }
   else if (R.over && R.auto) { const target = -seg.curve * 0.08; if (p.x > target + 0.05) p.x -= dx; else if (p.x < target - 0.05) p.x += dx; p.turn = 0; }
   else if (left) { p.x -= dx; p.turn = -1; } else if (right) { p.x += dx; p.turn = 1; } else p.turn = 0;
-  p.x -= dx * sp * seg.curve * CENTRIFUGAL;
+  p.x -= dx * sp * seg.curve * CENTRIFUGAL * (stat('grip') ? stat('grip').k : 1);
   // gas is automatic: just steer, and brake if you need to
   if (R.wrecked) p.speed = accelerate(p.speed, BRAKE * 0.7, dt);
   else if (brake && !R.over) p.speed = accelerate(p.speed, BRAKE, dt);
@@ -309,10 +354,17 @@ function updateRace(dt) {
   // things on the road
   if (!R.wrecked) for (const s of seg.sprites) {
     const def = SPR[s.kind];
-    if (!def.road || s.dead || !overlap(p.x, CAR_W / ROAD_W, s.offset, def.w / ROAD_W, 0.9)) continue;
+    const reach = s.kind === 'star' && stat('magnet') ? stat('magnet').w : 1;
+    if (!def.road || s.dead || !overlap(p.x, CAR_W / ROAD_W * reach, s.offset, def.w / ROAD_W, 0.9)) continue;
+    if (s.kind === 'star') {
+      s.dead = true; R.stars++; PX.Wallet.add(1);
+      PX.Sound.tone([1320, 1760], 0.08, { vol: 0.08 });
+      R.fx.push({ x: S.W / 2, y: H - 70, vx: 0, vy: -50, life: 0.5, max: 0.5, color: '#ffd23f', size: 3, g: 0 });
+      continue;
+    }
     if (s.kind === 'wrench') {
       s.dead = true;
-      if (p.hp < HP) { p.hp++; R.banner = { text: 'REPAIRED!', t: 1.2 }; } else R.banner = { text: 'CAR IS FINE!', t: 1 };
+      if (p.hp < p.maxHp) { p.hp++; R.banner = { text: 'REPAIRED!', t: 1.2 }; } else R.banner = { text: 'CAR IS FINE!', t: 1 };
       PX.Sound.tone([660, 880, 1320], 0.3, { vol: 0.12 }); sparks(R, '#ffd23f', 10);
     } else if (s.kind === 'oil') {
       if (p.spin <= 0 && p.speed > MAX_SPEED * 0.25) { p.spin = 1.1; R.banner = { text: 'OIL!', t: 1 }; PX.Sound.tone([500, 200, 400, 150], 0.6, { type: 'sawtooth', vol: 0.08 }); }
@@ -328,7 +380,11 @@ function updateRace(dt) {
       break;
     }
   }
-  p.x = clamp(p.x, -3, 3); p.speed = clamp(p.speed, 0, MAX_SPEED); p.bump = Math.max(0, p.bump - dt);
+  if (p.nitroT > 0) {
+    p.nitroT -= dt; p.speed = Math.min(MAX_SPEED * 1.3, p.speed + ACCEL * 1.5 * dt);
+    if (Math.random() < 0.7) R.fx.push({ x: S.W / 2 + (Math.random() - 0.5) * 20, y: H - 16, vx: (Math.random() - 0.5) * 40, vy: 40 + Math.random() * 40, life: 0.25, max: 0.25, color: Math.random() < 0.5 ? '#2ad4c4' : '#fff6c0', size: 2, g: 0 });
+  }
+  p.x = clamp(p.x, -3, 3); p.speed = clamp(p.speed, 0, p.nitroT > 0 ? MAX_SPEED * 1.3 : Math.max(MAX_SPEED, p.speed - ACCEL * 2 * dt)); p.bump = Math.max(0, p.bump - dt);
   bgOffset += seg.curve * sp * dt * 0.0045;
   // laps
   const lap = Math.floor(p.dist / trackLength) + 1;
@@ -338,7 +394,7 @@ function updateRace(dt) {
     if (!save.bestLap || p.lastLap < save.bestLap) { save.bestLap = p.lastLap; store(); R.banner = { text: 'NEW BEST LAP!', t: 2 }; }
     else R.banner = { text: 'LAP ' + fmt(p.lastLap), t: 1.6 };
     p.lap = lap;
-    for (const sg of segments) for (const t of sg.sprites) t.dead = false;   // the obstacles are back for the next lap
+    for (const sg of segments) for (const t of sg.sprites) if (t.kind !== 'star') t.dead = false;   // the obstacles are back for the next lap (stars: once a race)
     PX.Sound.tone([660, 990], 0.25, { vol: 0.12 });
     if (mode !== 'free' && p.lap > LAPS) finishRace();
   }
@@ -353,6 +409,14 @@ function updateRace(dt) {
   Engine.set(0.15 + sp * 0.85);
 }
 // --- damage: 3 hearts, then the car is wrecked ---------------------------------------------
+function useAbility(id) {
+  const R = race;
+  if (!R || state !== 'race' || paused || R.over || R.countdown > 0 || !(R.uses[id] > 0)) return;
+  const p = R.p;
+  if (id === 'nitro') { if (p.nitroT > 0) return; p.nitroT = 2.5; R.banner = { text: 'NITRO!', t: 1 }; PX.Sound.tone([180, 900], 0.5, { type: 'sawtooth', vol: 0.12 }); }
+  if (id === 'shield') { if (p.shieldOn) return; p.shieldOn = true; R.banner = { text: 'SHIELD UP', t: 1 }; PX.Sound.tone([500, 1100], 0.25, { type: 'triangle', vol: 0.15 }); }
+  R.uses[id]--;
+}
 function sparks(R, color, n) {
   for (let i = 0; i < n; i++) R.fx.push({ x: S.W / 2 + (Math.random() - 0.5) * 40, y: H - 40 + (Math.random() - 0.5) * 16, vx: (Math.random() - 0.5) * 160, vy: -40 - Math.random() * 120,
                                          life: 0.4 + Math.random() * 0.4, max: 0.8, color, size: Math.random() < 0.3 ? 3 : 2, g: 300 });
@@ -360,6 +424,11 @@ function sparks(R, color, n) {
 function damage(R, what) {
   const p = R.p;
   if (R.wrecked || R.over || p.hurtT > 0) return;
+  if (p.shieldOn) {                                     // the shield takes the hit
+    p.shieldOn = false; p.hurtT = 0.6; R.banner = { text: 'SHIELD!', t: 1 };
+    PX.Sound.tone([500, 1100], 0.25, { type: 'triangle', vol: 0.15 }); sparks(R, '#58e0a0', 14);
+    return;
+  }
   p.hp--; p.hurtT = 0.6; R.shake = 6; R.flash = 0.25; p.bump = 0.4;
   PX.Sound.noise(0.35, { freq: 700, vol: 0.4 }); PX.Sound.tone([180, 60], 0.3, { vol: 0.15 });
   sparks(R, '#ffd23f', 14); sparks(R, '#ff7a1a', 8);
@@ -375,7 +444,8 @@ function wreck(R) {
   if (mode === 'mp') { R.result.won = false; Net.send({ t: 'wreck' }); }
   save.races++; store();
   Engine.off();
-  setTimeout(() => { if (race === R) state = 'result'; }, 2000);
+  Music.stop();
+  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); } }, 2000);
 }
 function updateFx(R, dt) {
   const p = R.p;
@@ -394,17 +464,75 @@ function finishRace(won) {
   R.over = true; R.auto = true;
   if (mode === 'mp') {
     R.result = { won: won !== false && !R.ghost.fin, time: p.time };
+    R.result.bonus = R.result.won ? 10 : 3; PX.Wallet.add(R.result.bonus);
     if (R.result.won) Net.send({ t: 'fin', tm: p.time });
     if (R.result.won) save.wins++;
   } else {
     R.result = { place: R.place, time: p.time };
+    if (mode === 'race') { const bonus = [15, 10, 6, 4, 3, 2][R.place - 1] || 2; R.result.bonus = bonus; PX.Wallet.add(bonus); }
     if (R.place === 1) save.wins++;
     if (!save.bestRace || p.time < save.bestRace) save.bestRace = p.time;
   }
   save.races++; store();
   PX.Sound.tone([523, 659, 784, 1047], 0.6, { vol: 0.12 });
-  setTimeout(() => { if (race === R) state = 'result'; }, 1600);
+  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); } }, 1600);
 }
+
+/* --- MUSIC: a little chiptune player (same idea as Mouse Thief), with its own racing tunes --- */
+const seq = str => str.trim().split(/\s+/).map(v => v === '.' ? 0 : +v);
+const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+const TRACKS = {
+  race: { bpm: 140, leadType: 'square', vol: 0.07, drums: true, roots: [45, 48, 41, 43, 45, 48, 41, 40], lead: seq(`
+         69 . 72 . 76 . 74 . 72 . 69 . 67 . 69 .
+         . . 72 . 76 . 79 . 77 . 76 . 74 . 72 .
+         65 . 69 . 72 . 74 . 72 . 69 . 65 . 67 .
+         69 . . . 71 . 72 . 74 . 72 . 71 . 67 .
+         76 . . 76 . 74 . 76 . 79 . . 76 . 74 .
+         72 . . 72 . 71 . 72 . 76 . . 72 . 71 .
+         69 . . 69 . 67 . 69 . 72 . 74 . 76 . .
+         74 . 72 . 71 . 67 . 69 . . . . . . .`) },
+  menu: { bpm: 100, leadType: 'triangle', vol: 0.13, drums: false, roots: [48, 43, 45, 43], lead: seq(`
+         72 . . 76 . . 79 . . . 76 . 74 . . .
+         71 . . 74 . . 79 . . . 77 . 76 . 74 .
+         69 . . 72 . . 76 . . . 74 . 72 . . .
+         71 . . 72 . . 74 . . . 67 . . . . .`) },
+};
+// Every loop sounds a bit different: plain, an octave up, a breakdown, then with a low second voice.
+const Music = {
+  track: null, step: 0, loop: 0, next: 0, gain: null,
+  play(name) { if (this.track === name) return; this.track = name; this.step = 0; this.loop = 0; if (PX.Sound.ctx) this.next = PX.Sound.ctx.currentTime + 0.05; },
+  stop() { this.track = null; },
+  bus() {
+    const c = PX.Sound.ctx; if (!c) return null;
+    if (!this.gain) { this.gain = c.createGain(); this.gain.connect(PX.Sound.out); }
+    this.gain.gain.value = save.music ? 0.9 : 0; return this.gain;
+  },
+  tick() {
+    const c = PX.Sound.ctx; if (!c || !this.track || c.state !== 'running') return;
+    const tr = TRACKS[this.track], spb = 60 / tr.bpm / 4, dest = this.bus();
+    if (this.next < c.currentTime - 0.2) this.next = c.currentTime + 0.05;   // the tab was asleep
+    while (this.next < c.currentTime + 0.12) {
+      this.playStep(tr, this.step, this.next, spb, dest);
+      this.next += spb; this.step = (this.step + 1) % tr.lead.length; if (!this.step) this.loop++;
+    }
+  },
+  playStep(tr, i, t, spb, dest) {
+    const delay = Math.max(0, t - PX.Sound.ctx.currentTime), v = this.loop % 4, s = i % 16, n = tr.lead[i];
+    if (n && !(v === 2 && tr.drums && i % 4)) {
+      PX.Sound.tone(midi(n + (v === 1 && n < 84 ? 12 : 0)), spb * 1.6, { type: tr.leadType, vol: tr.vol * (v === 2 ? 0.5 : 1), delay, dest });
+      if (v === 3) PX.Sound.tone(midi(n - 12), spb * 1.6, { type: 'triangle', vol: tr.vol * 1.4, delay, dest });
+    }
+    const root = tr.roots[Math.floor(i / 16) % tr.roots.length];
+    if (s % 2 === 0) PX.Sound.tone(midi(root + (s % 4 === 2 ? 12 : 0)), spb * 1.5, { type: tr.drums ? 'square' : 'triangle', vol: tr.drums ? 0.05 : 0.12, delay, dest });
+    if (tr.drums) {
+      if (s % 8 === 0 || s === 10) PX.Sound.tone([150, 40], 0.12, { type: 'sine', vol: 0.35, delay, dest });
+      if ((s === 4 || s === 12) && v !== 2) PX.Sound.noise(0.1, { freq: 1800, filter: 'bandpass', vol: 0.12, delay, dest });
+      if (s % 2 === 1) PX.Sound.noise(0.03, { freq: 7000, filter: 'highpass', vol: 0.04, delay, dest });
+    }
+  },
+};
+setInterval(() => Music.tick(), 25);
+Music.play('menu');
 
 // Engine noise: a buzzing tone that follows your speed.
 const Engine = {
@@ -478,7 +606,8 @@ function drawWorld(R, W) {
   // the friend's car (online) is placed on the road just for drawing
   let ghost = null;
   if (R.ghost && mode === 'mp') {
-    ghost = { z: increase(R.ghost.dist, PLAYER_Z, trackLength), offset: R.ghost.x, color: PX.AVATAR_COLORS[(Net.friend && Net.friend.av && Net.friend.av.color) | 0] || '#2a7fd4', name: Net.friend ? Net.friend.name : 'FRIEND', turn: 0 };
+    const fc = Net.friend && Net.friend.car;
+    ghost = { z: increase(R.ghost.dist, PLAYER_Z, trackLength), offset: R.ghost.x, color: fc && fc.c || PX.AVATAR_COLORS[(Net.friend && Net.friend.av && Net.friend.av.color) | 0] || '#2a7fd4', deco: fc && fc.d || 'classic', name: Net.friend ? Net.friend.name : 'FRIEND', turn: 0 };
     findSegment(ghost.z).cars.push(ghost);
   }
   for (let n = 0; n < DRAW_DIST; n++) {
@@ -499,7 +628,7 @@ function drawWorld(R, W) {
       const cx = lerp(s.p1.screen.x, s.p2.screen.x, pct) + sc * c.offset * ROAD_W * W / 2, cy = lerp(s.p1.screen.y, s.p2.screen.y, pct);
       if (!(sc > 0)) continue;
       const turn = Math.abs(s.curve) > 1.5 ? Math.sign(s.curve) : 0;
-      drawSprite(carSprite(c.color, turn), CAR_W, sc, cx, cy, -0.5, -1, s.clip, W);
+      drawSprite(carSprite(c.color, turn, c.deco), CAR_W, sc, cx, cy, -0.5, -1, s.clip, W);
       if (c === ghost && n < 120) T(c.name, cx, cy - CAR_W * sc * W / 2 * 0.62 - 9, '#fff', 1, 'center', '#000');
     }
     for (const sp of s.sprites) {
@@ -512,8 +641,13 @@ function drawWorld(R, W) {
       const bounce = p.offroad && p.speed > 100 ? Math.round(Math.random() * 2 - 1) : 0;
       const sc = CAM_DEPTH / PLAYER_Z, py = H / 2 - sc * lerp(pSeg.p1.camera.y, pSeg.p2.camera.y, pPct) * H / 2 + bounce;
       if (!(p.hurtT > 0 && Math.floor(p.hurtT * 20) % 2)) {
-        const color = R.wrecked ? '#3a3a40' : PX.AVATAR_COLORS[profile.avatar.color] || '#2a7fd4';
-        drawSprite(carSprite(color, p.speed > 0 || p.spin > 0 ? p.turn : 0), CAR_W, sc, W / 2, py, -0.5, -1, 0, W);
+        const color = R.wrecked ? '#3a3a40' : myColor();
+        drawSprite(carSprite(color, p.speed > 0 || p.spin > 0 ? p.turn : 0, R.wrecked ? 'classic' : myCar()), CAR_W, sc, W / 2, py, -0.5, -1, 0, W);
+        if (p.shieldOn) {                                         // shield bubble
+          const w = Math.round(CAR_W * sc * W / 2) + 10, h = Math.round(w * 0.62), x0 = Math.round(W / 2 - w / 2), y0 = Math.round(py - h + 4);
+          ctx.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 120); ctx.fillStyle = '#58e0a0';
+          ctx.fillRect(x0, y0, w, 2); ctx.fillRect(x0, y0 + h - 2, w, 2); ctx.fillRect(x0, y0, 2, h); ctx.fillRect(x0 + w - 2, y0, 2, h); ctx.globalAlpha = 1;
+        }
       }
     }
   }
@@ -535,7 +669,16 @@ function drawHUD(R, W) {
     T(R.place + '/' + n, 40, 6, R.place === 1 ? '#ffd23f' : '#fff', 3, 'left', '#000');
     T('LAP ' + Math.min(p.lap, LAPS) + '/' + LAPS, 40, 26, '#fff', 2, 'left', '#000');
   } else T('LAP ' + p.lap, 40, 10, '#fff', 3, 'left', '#000');
-  for (let i = 0; i < HP; i++) T('♥', 8 + i * 14, 40, i < p.hp ? (p.hp === 1 && Math.floor(performance.now() / 200) % 2 ? '#fff' : '#ff3b5a') : '#3a2a3a', 2, 'left', '#000');
+  T('★ ' + R.stars, 8, 54, '#ffd23f', 2, 'left', '#000');
+  // NITRO / SHIELD buttons (keys 1 and 2)
+  ['nitro', 'shield'].filter(id => stat(id)).forEach((id, i, list) => {
+    const a = ABIL[id], bs = 34, x = W - 8 - (list.length - i) * (bs + 6) + 6, y = H - 58 - bs - 10, left = R.uses[id], on = id === 'nitro' ? p.nitroT > 0 : p.shieldOn;
+    if (UI.button('ab_' + id, x, y, bs, bs, '', { disabled: !left && !on, on, accent: a.color })) useAbility(id);
+    T(id === 'nitro' ? 'N' : 'S', x + bs / 2, y + 8, left || on ? a.color : '#5b5275', 3, 'center', '#000');
+    T(String(left), x + bs - 4, y + bs - 9, '#fff', 1, 'right', '#000');
+    if (!Ctl.show) T(a.key, x + 4, y + 4, '#fff', 1, 'left', '#000');
+  });
+  for (let i = 0; i < p.maxHp; i++) T('♥', 8 + i * 14, 40, i < p.hp ? (p.hp === 1 && Math.floor(performance.now() / 200) % 2 ? '#fff' : '#ff3b5a') : '#3a2a3a', 2, 'left', '#000');
   T(fmt(p.time - p.lapStart), W / 2, 6, '#fff', 2, 'center', '#000');
   // countdown lights
   if (R.countdown > 0 && R.countdown < 3.6) {
@@ -593,12 +736,13 @@ window.addEventListener('keydown', e => {
   PX.Sound.unlock();
   if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); return; }
   if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); }
+  if (e.code === 'Digit1') useAbility('nitro'); else if (e.code === 'Digit2') useAbility('shield');
   if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'race') setPause(!paused);
   else if (e.code === 'Escape') UI.back = true;
 });
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
-function setPause(v) { if (mode === 'mp' && v) return; paused = v; if (v) Engine.off(); }
+function setPause(v) { if (mode === 'mp' && v) return; paused = v; if (v) { Engine.off(); Music.stop(); } else Music.play('race'); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'race' && mode !== 'mp') setPause(true); });
 
 /* --- 6. ONLINE: race a friend (the same free PeerJS server as Mouse Thief) ---------- */
@@ -631,7 +775,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, v: VERSION }); PX.Sound.tone([523, 784], 0.2); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, car: { c: myColor(), d: myCar() }, v: VERSION }); PX.Sound.tone([523, 784], 0.2); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -644,7 +788,7 @@ const Net = {
     switch (m.t) {
       case 'me':
         if (m.v !== VERSION) { this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
-        this.friend = { name: PX.cleanName(m.name) || 'FRIEND', av: m.av };
+        this.friend = { name: PX.cleanName(m.name) || 'FRIEND', av: m.av, car: m.car && /^#[0-9a-f]{6}$/i.test(m.car.c) && CARS.some(k => k.id === m.car.d) ? m.car : null };
         break;
       case 'go': startRace('mp', m.seed); break;
       case 'wreck': if (race && race.ghost) race.ghost.wrecked = true; break;
@@ -681,14 +825,17 @@ function drawTitle() {
   drawWorld({ p: attract, cars: [] }, W);
   ctx.fillStyle = 'rgba(8,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
   drawProfileTag();
-  T('PIXEL GP', W / 2 + 3, 30, '#e01e1e', 6, 'center');
-  T('PIXEL GP', W / 2, 27, '#fff', 6, 'center');
+  T('PIXEL GP', W / 2 + 3, 20, '#e01e1e', 6, 'center');
+  T('PIXEL GP', W / 2, 17, '#fff', 6, 'center');
+  T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
+  musicButton(W - 30, 8);
   const bw = 170, bx = Math.round(W / 2 - bw / 2);
   if (Net.screen !== 'home') return drawOnline();
-  if (UI.button('race', bx, 76, bw, 26, 'RACE', { accent: '#e01e1e' })) startRace('race');
-  if (UI.button('free', bx, 108, bw, 26, 'FREE DRIVE', { accent: '#5ad43f' })) startRace('free');
-  if (UI.button('online', bx, 140, bw, 26, 'RACE A FRIEND', { accent: '#2a7fd4' })) Net.screen = 'pick';
-  if (UI.button('games', bx, 172, bw, 26, '< ALL GAMES') || UI.back) location.href = './';
+  if (UI.button('race', bx, 60, bw, 26, 'RACE', { accent: '#e01e1e' })) startRace('race');
+  if (UI.button('free', bx, 92, bw, 26, 'FREE DRIVE', { accent: '#5ad43f' })) startRace('free');
+  if (UI.button('online', bx, 124, bw, 26, 'RACE A FRIEND', { accent: '#2a7fd4' })) Net.screen = 'pick';
+  if (UI.button('garage', bx, 156, bw, 26, 'GARAGE', { accent: '#ffd23f' })) { state = 'garage'; garageTab = 'abil'; }
+  if (UI.button('games', bx, 188, bw, 26, '< ALL GAMES') || UI.back) location.href = './';
 }
 function drawOnline() {
   const W = S.W, bw = 200, bx = Math.round(W / 2 - bw / 2), dots = '.'.repeat(1 + Math.floor(performance.now() / 333) % 3);
@@ -746,13 +893,68 @@ function drawResult() {
   if (mode === 'race' && r.place === 1 && !r.wrecked) T('★ ★ ★', cx, y + 34, '#ffd23f', 2, 'center');
   if (r.wrecked) T(mode === 'mp' ? (Net.friend ? Net.friend.name : 'FRIEND') + ' WINS' : 'OUT ON LAP ' + Math.min(r.lap, mode === 'free' ? 99 : LAPS), cx, y + 34, '#efe9ff', 2, 'center');
   T('TIME', x + 30, y + 52, '#efe9ff', 2); T(fmt(r.time), x + 250, y + 52, '#fff', 2, 'right');
-  T('BEST LAP', x + 30, y + 72, '#efe9ff', 2); T(fmt(R.p.bestLap), x + 250, y + 72, '#ffd23f', 2, 'right');
+  T('BEST LAP', x + 30, y + 72, '#efe9ff', 2); T(fmt(R.p.bestLap), x + 250, y + 72, '#efe9ff', 2, 'right');
+  T('STARS', x + 30, y + 92, '#efe9ff', 2); T('★ +' + (R.stars + (r.bonus || 0)), x + 250, y + 92, '#ffd23f', 2, 'right');
   const bw = 110;
   if (mode === 'mp') {
     if (Net.live && Net.isHost) { if (UI.button('again', Math.round(cx - bw - 4), y + 112, bw, 24, 'REMATCH', { accent: '#e01e1e' })) Net.start(); }
     else T(Net.live ? 'WAITING FOR A REMATCH...' : 'YOUR FRIEND LEFT', cx - 60, y + 120, '#efe9ff', 1, 'center');
   } else if (UI.button('again', Math.round(cx - bw - 4), y + 112, bw, 24, 'RACE AGAIN', { accent: '#e01e1e' })) startRace(mode);
   if (UI.button('menu', Math.round(cx + 4), y + 112, bw, 24, 'MENU') || UI.back) toTitle();
+}
+// A note icon: tap to switch the music on / off.
+function musicButton(x, y) {
+  if (UI.button('music', x, y, 22, 20, '')) { save.music = !save.music; store(); Music.bus(); }
+  ctx.fillStyle = save.music ? '#efe9ff' : '#5b5275';
+  ctx.fillRect(x + 7, y + 12, 4, 3); ctx.fillRect(x + 10, y + 4, 1, 9); ctx.fillRect(x + 11, y + 4, 4, 2); ctx.fillRect(x + 14, y + 6, 1, 2);
+  if (!save.music) { ctx.fillStyle = '#e01e1e'; for (let i = 0; i < 14; i++) ctx.fillRect(x + 4 + i, y + 3 + i, 2, 1); }
+}
+/* --- GARAGE ------------------------------------------------------------------------- */
+let garageTab = 'abil', garageMsg = { text: '', t: 0 };
+function buy(price, then) {
+  if (!PX.Wallet.spend(price)) { PX.Sound.tone(150, 0.2); garageMsg = { text: 'NEED ' + (price - PX.Wallet.get()) + ' MORE ★', t: 2 }; return; }
+  then(); store(); PX.Sound.tone([523, 784, 1047], 0.3, { vol: 0.12 });
+}
+function drawGarage() {
+  const W = S.W;
+  drawWorld({ p: attract, cars: [] }, W);
+  ctx.fillStyle = 'rgba(8,6,14,0.75)'; ctx.fillRect(0, 0, W, H);
+  T('GARAGE', 10, 8, '#fff', 3, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), W - 10, 10, '#ffd23f', 2, 'right', '#000');
+  const tabs = [['abil', 'ABILITIES'], ['cars', 'CARS'], ['paint', 'PAINT']], tw = 96;
+  tabs.forEach(([id, label], i) => { if (UI.button('tab_' + id, Math.round(W / 2 - 150 + i * 102), 32, tw, 18, label, { on: garageTab === id, accent: '#ffd23f' })) garageTab = id; });
+  if (garageTab === 'abil') ABILITIES.forEach((a, i) => {
+    const y = 58 + i * 30, t = tierOf(a.id), max = a.prices.length;
+    ctx.fillStyle = 'rgba(29,24,48,0.9)'; ctx.fillRect(10, y, W - 20, 26);
+    ctx.fillStyle = a.color; ctx.fillRect(10, y, 3, 26);
+    T(a.name, 20, y + 4, '#fff', 2);
+    for (let k = 0; k < max; k++) { ctx.fillStyle = '#111'; ctx.fillRect(20 + PX.textWidth(a.name, 2) + 8 + k * 9, y + 5, 7, 7); ctx.fillStyle = k < t ? a.color : '#3a2f5c'; ctx.fillRect(21 + PX.textWidth(a.name, 2) + 8 + k * 9, y + 6, 5, 5); }
+    T(a.desc(a.stat(Math.max(1, t))), 20, y + 17, '#9a92b8', 1);
+    if (UI.button('buy_' + a.id, W - 100, y + 4, 86, 18, t >= max ? 'MAX' : '★ ' + a.prices[t], { size: 2, disabled: t >= max, accent: a.color })) buy(a.prices[t], () => { save.tiers[a.id] = t + 1; });
+  });
+  if (garageTab === 'cars') CARS.forEach((c, i) => {
+    const cw = Math.floor((W - 40) / 3), x = 10 + (i % 3) * (cw + 10), y = 58 + Math.floor(i / 3) * 78, owned = save.cars.includes(c.id), on = myCar() === c.id;
+    ctx.fillStyle = on ? '#3a2f5c' : 'rgba(29,24,48,0.9)'; ctx.fillRect(x, y, cw, 72);
+    ctx.drawImage(carSprite(myColor(), 0, c.id), Math.round(x + cw / 2 - 36), y + 4, 72, 44);
+    if (!owned) { if (UI.button('car_' + c.id, x + 6, y + 50, cw - 12, 18, '★ ' + c.price, { accent: '#ffd23f' })) buy(c.price, () => { save.cars.push(c.id); save.car = c.id; }); }
+    else if (UI.button('car_' + c.id, x + 6, y + 50, cw - 12, 18, on ? 'DRIVING' : c.name, { on, accent: '#5ad43f', size: on ? 2 : 1 }) && !on) { save.car = c.id; store(); }
+  });
+  if (garageTab === 'paint') {
+    ctx.drawImage(carSprite(myColor(), 0, myCar()), Math.round(W / 2 - 54), 54, 108, 66);
+    const sw = 26, cols = 7, x0 = Math.round(W / 2 - (cols * (sw + 6) - 6) / 2);
+    ['auto', ...PAINTS].forEach((col, i) => {
+      const x = x0 + (i % cols) * (sw + 6), y = 128 + Math.floor(i / cols) * (sw + 14), owned = col === 'auto' || save.paints.includes(col), on = save.paint === col || (col === 'auto' && !save.paints.includes(save.paint));
+      if (UI.button('paint_' + i, x, y, sw, sw, '', { on, accent: '#ffd23f' })) {
+        if (owned) { save.paint = col; store(); PX.Sound.tone(700, 0.05); } else buy(PAINT_PRICE, () => { save.paints.push(col); save.paint = col; });
+      }
+      ctx.fillStyle = col === 'auto' ? PX.AVATAR_COLORS[profile.avatar.color] : col; ctx.fillRect(x + 4, y + 4, sw - 8, sw - 8);
+      if (col === 'auto') PX.drawAvatar(ctx, profile.avatar, x + 6, y + 6, 1, null);
+      if (!owned) T('★' + PAINT_PRICE, x + sw / 2, y + sw + 2, '#ffd23f', 1, 'center', '#000');
+      if (on) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y + sw + 2, sw, 2); }
+    });
+  }
+  if ((garageMsg.t -= 1 / 60) > 0) T(garageMsg.text, W / 2 + 10, 12, '#ff6b6b', 2, 'center', '#000');
+  if (UI.button('gback', Math.round(W / 2 - 60), H - 26, 120, 22, 'BACK') || UI.back) state = 'title';
 }
 function drawPause() {
   const W = S.W, { y } = drawPanel(200, 130), bw = 150, bx = Math.round(W / 2 - bw / 2);
@@ -763,7 +965,7 @@ function drawPause() {
 }
 function toTitle() {
   if (mode === 'mp' && Net.live) { Net.screen = 'lobby'; }
-  state = 'title'; paused = false; race = null; attract = null; Engine.off(); Ctl.ptrs.clear(); Ctl.sync();
+  state = 'title'; paused = false; race = null; attract = null; Engine.off(); Ctl.ptrs.clear(); Ctl.sync(); Music.play('menu');
 }
 
 /* --- 8. MAIN LOOP ------------------------------------------------------------- */
@@ -781,6 +983,7 @@ function frame(now) {
     drawHUD(race, S.W);
     if (paused) drawPause();
   } else if (state === 'result') drawResult();
+  else if (state === 'garage') { attractMode(dt); drawGarage(); }
   if (!(state === 'title' && Net.screen === 'join')) codeInput.style.display = 'none';
   UI.end();
   S.blit();

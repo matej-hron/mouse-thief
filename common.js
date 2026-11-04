@@ -238,7 +238,7 @@ window.PX = (() => {
       for (let i = 1; i < fs.length; i++) osc.frequency.exponentialRampToValueAtTime(Math.max(20, fs[i]), t0 + dur * i / (fs.length - 1));
       g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(o.vol || 0.15, t0 + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(g); g.connect(this.out); osc.start(t0); osc.stop(t0 + dur + 0.05);
+      osc.connect(g); g.connect(o.dest || this.out); osc.start(t0); osc.stop(t0 + dur + 0.05);
     },
     noise(dur, o = {}) {
       const c = this.ctx; if (!c) return;
@@ -247,10 +247,25 @@ window.PX = (() => {
       const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
       src.buffer = b; f.type = o.filter || 'lowpass'; f.frequency.value = o.freq || 800;
       g.gain.setValueAtTime(o.vol || 0.2, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      src.connect(f); f.connect(g); g.connect(this.out); src.start(t0);
+      src.connect(f); f.connect(g); g.connect(o.dest || this.out); src.start(t0);
     },
   };
 
-  return { textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, Profile, cleanName,
+  // --- the ★ wallet: one pile of stars for all the games (kept in Mouse Thief's save) ---------
+  const WALLET_KEY = 'mouseThief.save.v1';
+  const Wallet = {
+    read() { try { return JSON.parse(localStorage.getItem(WALLET_KEY)) || {}; } catch (e) { return {}; } },
+    write(d) { try { localStorage.setItem(WALLET_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } },
+    get() { return this.read().points | 0; },
+    add(n) {
+      const d = this.read();
+      d.points = Math.max(0, (d.points | 0) + n);
+      if (n > 0) d.totalEarned = (d.totalEarned | 0) + n;
+      this.write(d); return d.points;
+    },
+    spend(n) { if (this.get() < n) return false; this.add(-n); return true; },
+  };
+
+  return { Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();
