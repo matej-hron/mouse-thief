@@ -40,7 +40,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const SAVE_KEY = 'pixelHeist.save';
 const save = { level: 1, done: false, best: {}, music: true, sfx: true, heists: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -1004,8 +1004,9 @@ const keys = { w: 0, a: 0, s: 0, d: 0, lu: 0, ld: 0, ll: 0, lr: 0 };
 const Ctl = { show: false, L: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 }, R: { id: null, ox: 0, oy: 0, dx: 0, dy: 0 } };
 const STICK = 26;
 function stick(s) { if (s.id === null) return { x: 0, y: 0 }; const x = s.dx / STICK, y = -s.dy / STICK, m = Math.hypot(x, y); return m > 1 ? { x: x / m, y: y / m } : m < 0.15 ? { x: 0, y: 0 } : { x, y }; }
-function moveInput() { const k = { x: keys.d - keys.a, y: keys.w - keys.s }, t = stick(Ctl.L); return (t.x || t.y) ? t : k; }
-function lookInput() { const k = { x: keys.lr - keys.ll, y: keys.lu - keys.ld }, t = stick(Ctl.R); return (t.x || t.y) ? t : k; }
+// left stick: only forward / backward; right stick: turn (you always face where the camera looks)
+function moveInput() { const t = stick(Ctl.L); return { x: 0, y: t.y || (keys.w - keys.s) }; }
+function lookInput() { const k = { x: clamp(keys.lr - keys.ll + keys.d - keys.a, -1, 1), y: keys.lu - keys.ld }, t = stick(Ctl.R); return (t.x || t.y) ? t : k; }
 function nearestCar() {
   if (G.inside) return null;
   let best = null, bd = 3.6;
@@ -1017,7 +1018,7 @@ function action() {
   if (G.lock) return;
   if (player.car) {                                             // get out
     const c = player.car, lx = Math.cos(c.yaw), lz = -Math.sin(c.yaw);
-    player.x = c.x + lx * 2.4; player.z = c.z + lz * 2.4; player.yaw = c.yaw; player.car = null; c.ai = 'parked';
+    player.x = c.x + lx * 2.4; player.z = c.z + lz * 2.4; player.yaw = cam.yaw; player.car = null; c.ai = 'parked';
     pushOut(player, 0.5); player.mesh.visible = true; sfx('door');
   } else {
     const c = nearestCar(); if (!c) return;
@@ -1040,7 +1041,7 @@ function shoot(air) {
   const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
   const tip = new THREE.Vector3(player.x + fx * 0.9 + Math.cos(player.yaw) * 0.55, 1.45, player.z + fz * 0.9 - Math.sin(player.yaw) * 0.55);
   if (best) {
-    player.yaw = Math.atan2(best.x - player.x, best.z - player.z);
+    player.yaw = cam.yaw = Math.atan2(best.x - player.x, best.z - player.z);
     zapBeam(tip, new THREE.Vector3(best.x, 1.4, best.z));
     setState(best, 'down'); sfx('zap');
     for (let k = 0; k < 6; k++) puff(best.x, 1.6, best.z, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4, '#7af6ff', 0.5, 0.15);
@@ -1095,17 +1096,13 @@ function update(dt) {
   const mv = G.over ? { x: 0, y: 0 } : moveInput();
   if (player.car) {
     const c = player.car;
-    stepCar(c, mv.y, mv.x, dt);
+    stepCar(c, mv.y, G.over ? 0 : lookInput().x, dt);          // left stick: gas / brake, right stick: steer
     if (c.hitT > 0) c.hitT -= dt;
   } else {
-    const fx = Math.sin(cam.yaw), fz = Math.cos(cam.yaw), mag = Math.min(1, Math.hypot(mv.x, mv.y));
-    if (mag > 0.05) {
-      const dx = fx * mv.y - fz * mv.x, dz = fz * mv.y + fx * mv.x;       // left stick: move where the camera looks
-      const want = Math.atan2(dx, dz), da = wrapA(want - player.yaw);
-      player.yaw = wrapA(player.yaw + clamp(da, -14 * dt, 14 * dt));
-      player.v += clamp(7.5 * mag - player.v, -50 * dt, 50 * dt);
-      if (G.lock && G.lockCD <= 0) G.lock = null;                         // walking away closes the lock
-    } else player.v += clamp(-player.v, -50 * dt, 50 * dt);
+    if (!G.over) player.yaw = cam.yaw;                                    // you face where the camera looks
+    const want = mv.y > 0 ? 7.5 * mv.y : 3.5 * mv.y;                        // forward, or step back slower
+    player.v += clamp(want - player.v, -50 * dt, 50 * dt);
+    if (Math.abs(mv.y) > 0.05 && G.lock && G.lockCD <= 0) G.lock = null;  // walking away closes the lock
     player.x += Math.sin(player.yaw) * player.v * dt; player.z += Math.cos(player.yaw) * player.v * dt;
     pushOut(player, 0.45);
   }
@@ -1225,9 +1222,9 @@ function escaped() {
 const cam = { yaw: 0, pitch: 0.32, snap: true, pos: new THREE.Vector3(), orbit: 0, idle: 0 };
 function updateCamera(dt) {
   const e = player.car || player, inCar = !!player.car, look = lookInput();
-  if (look.x || look.y) { cam.yaw = wrapA(cam.yaw - look.x * 2.8 * dt); cam.pitch = clamp(cam.pitch - look.y * 1.6 * dt, 0.02, 1.2); cam.idle = 0; }
-  else cam.idle += dt;
-  if (inCar && cam.idle > 1.2 && player.car.v > 2) cam.yaw = wrapA(cam.yaw + wrapA(player.car.yaw - cam.yaw) * (1 - Math.exp(-2.5 * dt)));   // in a car it swings back behind you
+  if (!inCar && look.x && !(G && G.over)) cam.yaw = wrapA(cam.yaw - look.x * 2.6 * dt);
+  if (look.y) cam.pitch = clamp(cam.pitch - look.y * 1.6 * dt, 0.02, 1.2);
+  if (inCar) cam.yaw = wrapA(cam.yaw + wrapA(player.car.yaw - cam.yaw) * (1 - Math.exp(-4 * dt)));   // in a car: behind the car
   const inside = G && G.inside, dst = inCar ? 11 : inside ? 6 : 8, ty = inCar ? 1.6 : 1.7;
   const ox = -Math.sin(cam.yaw) * Math.cos(cam.pitch), oz = -Math.cos(cam.yaw) * Math.cos(cam.pitch), oy = Math.sin(cam.pitch) + 0.25;
   let k = 1;
@@ -1409,7 +1406,7 @@ function drawTitle() {
   if (UI.button('levels', bx, 130, bw, 26, 'HEISTS')) { sfx('click'); state = 'levels'; }
   if (UI.button('games', bx, 162, bw, 26, '< ALL GAMES') || UI.back) location.href = './';
   if (save.done) T("★ YOU'RE THE BOSS OF THE CREW NOW! ★", W / 2, 198, '#ffd23f', 1, 'center');
-  T('WASD: MOVE   ARROWS: CAMERA   SPACE: SHOOT   R: AIR SHOT   E: CAR', W / 2, H - 22, '#9a92b8', 1, 'center');
+  T('W/S: GO / BACK   A/D: TURN   SPACE: SHOOT   R: AIR SHOT   E: CAR', W / 2, H - 22, '#9a92b8', 1, 'center');
   T('V' + VERSION, W - 4, H - 9, '#5b5275', 1, 'right', null);
 }
 function drawLevels() {
@@ -1479,11 +1476,12 @@ function drawMinimap(x, y, r) {
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x + 3, y + 3); ctx.lineTo(x - 3, y + 3); ctx.closePath(); ctx.fill();
   ctx.strokeStyle = '#efe9ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
 }
-function drawStick(s, hx, hy, label) {
+function drawStick(s, hx, hy, label, vertical) {
   const on = s.id !== null, ox = on ? s.ox : hx, oy = on ? s.oy : hy;
+  if (vertical) { ctx.fillStyle = 'rgba(239,233,255,0.18)'; ctx.fillRect(ox - 9, oy - STICK, 18, STICK * 2); }
   ctx.strokeStyle = on ? 'rgba(239,233,255,0.6)' : 'rgba(239,233,255,0.25)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, STICK, 0, Math.PI * 2); ctx.stroke();
-  const k = on ? Math.min(1, STICK / (Math.hypot(s.dx, s.dy) || 1)) : 0;
-  ctx.fillStyle = on ? 'rgba(239,233,255,0.75)' : 'rgba(239,233,255,0.25)'; ctx.beginPath(); ctx.arc(ox + s.dx * k, oy + s.dy * k, 10, 0, Math.PI * 2); ctx.fill();
+  const dx = vertical ? 0 : s.dx, k = on ? Math.min(1, STICK / (Math.hypot(dx, s.dy) || 1)) : 0;
+  ctx.fillStyle = on ? 'rgba(239,233,255,0.75)' : 'rgba(239,233,255,0.25)'; ctx.beginPath(); ctx.arc(ox + dx * k, oy + s.dy * k, 10, 0, Math.PI * 2); ctx.fill();
   if (!on) T(label, ox, oy + STICK + 4, 'rgba(239,233,255,0.5)', 1, 'center', null);
 }
 function drawLock() {
@@ -1544,8 +1542,8 @@ function drawHUD(now) {
   // controls
   const near = !player.car && nearestCar();
   if (Ctl.show) {
-    drawStick(Ctl.L, 56, H - 50, 'MOVE');
-    drawStick(Ctl.R, W - 160, H - 50, 'CAMERA');
+    drawStick(Ctl.L, 56, H - 50, player.car ? 'GAS / BRAKE' : 'GO / BACK', true);
+    drawStick(Ctl.R, W - 160, H - 50, player.car ? 'STEER' : 'TURN');
     if (!player.car) {
       if (G.lock && G.lock.mode === 'pins') { if (UI.button('pickb', W - 66, H - 54, 60, 46, 'PICK', { accent: '#9be36b' })) pickPin(); }
       else if (UI.button('shoot', W - 66, H - 54, 60, 46, 'SHOOT', { accent: '#7af6ff' })) shoot(false);
@@ -1555,7 +1553,7 @@ function drawHUD(now) {
   } else {
     if (near) T('E: GET IN', W / 2, H - 30, '#fff', 2, 'center');
     else if (player.car) T('E: GET OUT', W / 2, H - 22, '#9a92b8', 1, 'center');
-    else T('SPACE: SHOOT   R: SHOOT IN THE AIR   ARROWS: CAMERA', W / 2, H - 12, '#9a92b8', 1, 'center');
+    else T('W/S: GO   A/D: TURN   SPACE: SHOOT   R: AIR', W / 2, H - 12, '#9a92b8', 1, 'center');
   }
   if (G.fade > 0) { ctx.fillStyle = 'rgba(0,0,0,' + G.fade + ')'; ctx.fillRect(0, 0, W, H); }
 }

@@ -29,8 +29,8 @@ everybody nearby put their hands up for 15 seconds. Shots, a wrong code or openi
 you (their yellow light) do too. An angry person or a police car that catches you: **busted**.
 
 **Controls:**
-- Phone: the left stick (left half of the screen) moves you, the right stick (right half) turns the camera; buttons SHOOT, AIR, CAR/OUT, PICK.
-- Computer: WASD to move, the arrow keys to turn the camera, Space to shoot (and pick a pin), R to shoot in the air, E to get in or out of a car, digits for the code, P to pause.
+- Phone: the left stick (left half of the screen) only goes forward / back; the right stick (right half) turns you and the camera together (you always face where you look). In a car: left = gas / brake, right = steer. Buttons SHOOT, AIR, CAR/OUT, PICK.
+- Computer: W/S to go forward / back, A/D (or the arrow keys) to turn, Space to shoot (and pick a pin), R to shoot in the air, E to get in or out of a car, digits for the code, P to pause.
 - Music and sound effects each have an on/off button.
 
 Every heist pays ★ into the shared arcade wallet. The 3D drawing uses [three.js](https://threejs.org) (MIT licence), kept in `vendor/`.
