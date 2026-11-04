@@ -193,7 +193,7 @@ const Save = {
     return { points: 0, totalEarned: 0, bestTime: 0, bestPoints: 0, runs: 0, tiers: {}, equipped: [],
              sound: true, music: true, intro: true, shake: true, touchButtons: true, tutorialDone: false, ending: true,
              night: true, world: 'city', worlds: ['city'], skin: 'classic', skins: ['classic'], custom: this.defaultCustom(),
-             pixel: null, layout: null };
+             pixel: null, layout: null, songs: ['chase'], song: 'chase' };
   },
   defaultCustom() { return { body: '#2a7fd4', eye: '#ffd23f', pattern: 'none', pat: '#f2f2f2' }; },
   load() {
@@ -208,6 +208,8 @@ const Save = {
     if (!this.data.worlds.includes(this.data.world)) this.data.world = 'city';   // worlds were free in 1.5.0 / 1.5.1
     if (!Array.isArray(this.data.pixel) || this.data.pixel.length !== 190) this.data.pixel = null;
     if (!this.data.layout || typeof this.data.layout !== 'object') this.data.layout = null;
+    if (!Array.isArray(this.data.songs)) this.data.songs = ['chase'];
+    if (!this.data.songs.includes('chase')) this.data.songs.unshift('chase');
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
@@ -395,7 +397,89 @@ const TRACKS = {
                65 . 65 68 . 65 71 . 70 . 68 . 65 . 64 .
                63 . 66 . 69 . 72 . 75 . 72 . 69 . 66 .`),
   },
+  // --- songs from the MUSIC shop (classics and folk songs that are free to use, plus an original) ---
+  sunny: {
+    bpm: 96, leadType: 'triangle', leadVol: 0.2, drums: true, roots: [41, 40, 38, 43, 41, 40, 38, 43],
+    lead: seq(`69 . . 72 . . 76 . 74 . 72 . . . 69 .
+               67 . . 71 . . 74 . 72 . 71 . 67 . . .
+               65 . . 69 . . 72 . 74 . 76 . 74 . 72 .
+               71 . . . 74 . . 72 . 71 . 69 . 67 . .
+               69 . . 72 . . 76 . 79 . 76 . . 74 . .
+               76 . . 74 . . 72 . 71 . 72 . 74 . . .
+               72 . . 69 . . 65 . 69 . 72 . 77 . 76 .
+               74 . . . . . 71 . . . 74 . 72 . . .`),
+  },
+  mountain: {
+    bpm: 150, leadType: 'square', leadVol: 0.1, drums: true, roots: [45, 47, 45, 40, 45, 47, 45, 40],
+    lead: seq(`57 . 59 . 60 . 62 . 64 . 60 . 64 . . .
+               63 . 59 . 63 . . . 62 . 58 . 62 . . .
+               57 . 59 . 60 . 62 . 64 . 60 . 64 . 69 .
+               67 . 64 . 60 . 64 . 67 . . . . . . .
+               69 . 71 . 72 . 74 . 76 . 72 . 76 . . .
+               75 . 71 . 75 . . . 74 . 70 . 74 . . .
+               69 . 71 . 72 . 74 . 76 . 72 . 76 . 81 .
+               79 . 76 . 72 . 76 . 79 . . . . . . .`),
+  },
+  cancan: {
+    bpm: 165, leadType: 'square', leadVol: 0.1, drums: true, roots: [48, 43, 43, 48],
+    lead: seq(`72 . . . 74 . 77 . 76 . 74 . 79 . . .
+               79 . . . 79 . 81 . 76 . 77 . 74 . . .
+               74 . . . 74 . 77 . 76 . 74 . 72 . 84 .
+               83 . 81 . 79 . 77 . 76 . 74 . 72 . . .`),
+  },
+  korobeiniki: {
+    bpm: 150, leadType: 'square', leadVol: 0.1, drums: true, roots: [40, 45, 40, 45, 38, 48, 40, 45],
+    lead: seq(`76 . . . 71 . 72 . 74 . . . 72 . 71 .
+               69 . . . 69 . 72 . 76 . . . 74 . 72 .
+               71 . . . . . 72 . 74 . . . 76 . . .
+               72 . . . 69 . . . 69 . . . . . . .
+               . . 74 . . . 77 . 81 . . . 79 . 77 .
+               76 . . . . . 72 . 76 . . . 74 . 72 .
+               71 . . . 71 . 72 . 74 . . . 76 . . .
+               72 . . . 69 . . . 69 . . . . . . .`),
+  },
+  joy: {
+    bpm: 140, leadType: 'square', leadVol: 0.11, drums: true, roots: [48, 43, 48, 43, 48, 43, 48, 48],
+    lead: seq(`76 . . . 76 . . . 77 . . . 79 . . .
+               79 . . . 77 . . . 76 . . . 74 . . .
+               72 . . . 72 . . . 74 . . . 76 . . .
+               76 . . . . . 74 . 74 . . . . . . .
+               76 . . . 76 . . . 77 . . . 79 . . .
+               79 . . . 77 . . . 76 . . . 74 . . .
+               72 . . . 72 . . . 74 . . . 76 . . .
+               74 . . . . . 72 . 72 . . . . . . .`),
+  },
+  jingle: {
+    bpm: 150, leadType: 'triangle', leadVol: 0.2, drums: true, roots: [48, 48, 48, 48, 41, 48, 43, 43, 48, 48, 48, 48, 41, 48, 43, 48],
+    lead: seq(`76 . . . 76 . . . 76 . . . . . . .
+               76 . . . 76 . . . 76 . . . . . . .
+               76 . . . 79 . . . 72 . . . . . 74 .
+               76 . . . . . . . . . . . . . . .
+               77 . . . 77 . . . 77 . . . . . 77 .
+               77 . . . 76 . . . 76 . . . 76 . 76 .
+               76 . . . 74 . . . 74 . . . 76 . . .
+               74 . . . . . . . 79 . . . . . . .
+               76 . . . 76 . . . 76 . . . . . . .
+               76 . . . 76 . . . 76 . . . . . . .
+               76 . . . 79 . . . 72 . . . . . 74 .
+               76 . . . . . . . . . . . . . . .
+               77 . . . 77 . . . 77 . . . . . 77 .
+               77 . . . 76 . . . 76 . . . 76 . 76 .
+               79 . . . 79 . . . 77 . . . 74 . . .
+               72 . . . . . . . . . . . . . . .`),
+  },
 };
+// The MUSIC shop: songs you buy and pick as the music for your runs.
+const SONGS = [
+  { id: 'chase', name: 'CAT CHASE', sub: 'THE ORIGINAL', price: 0 },
+  { id: 'sunny', name: 'SUNNY DAYS', sub: 'CHILL SUMMER GROOVE', price: 60 },
+  { id: 'mountain', name: 'MOUNTAIN KING', sub: 'GRIEG: SNEAKY AND FAST', price: 50 },
+  { id: 'cancan', name: 'CAN-CAN', sub: 'OFFENBACH: DANCE PARTY', price: 50 },
+  { id: 'korobeiniki', name: 'KOROBEINIKI', sub: 'RUSSIAN FOLK SONG', price: 50 },
+  { id: 'joy', name: 'ODE TO JOY', sub: 'BEETHOVEN', price: 40 },
+  { id: 'jingle', name: 'JINGLE BELLS', sub: 'HO HO HO!', price: 40 },
+];
+const runSong = () => Save.data.songs.includes(Save.data.song) && TRACKS[Save.data.song] ? Save.data.song : 'chase';
 const Music = {
   track: null, step: 0, nextTime: 0, bpmBoost: 0,
   play(name) {
@@ -413,14 +497,14 @@ const Music = {
     while (this.nextTime < c.currentTime + 0.12) {
       this.playStep(tr, this.step, this.nextTime, spb);
       this.nextTime += spb;
-      this.step = (this.step + 1) % 64;
+      this.step = (this.step + 1) % tr.lead.length;
     }
   },
   playStep(tr, i, t, spb) {
     const dest = Sound.musicBus;
     const n = tr.lead[i];
     if (n) tone(midi(n), spb * 1.7, { type: tr.leadType, vol: tr.leadVol, at: t, dest, hold: 0.3 });
-    const s = i % 16, root = tr.roots[Math.floor(i / 16)];
+    const s = i % 16, root = tr.roots[Math.floor(i / 16) % tr.roots.length];
     if (s % 2 === 0) tone(midi(root + (s % 4 === 2 ? 12 : 0)), spb * 1.6, { type: tr.drums ? 'square' : 'triangle', vol: tr.drums ? 0.06 : 0.16, at: t, dest });
     if (tr.drums) {
       if (s % 8 === 0 || s === 10) tone([150, 40], 0.12, { type: 'sine', vol: 0.5, at: t, dest });
@@ -1004,7 +1088,7 @@ screenCanvas.addEventListener('pointerdown', e => {
     if (run.view) { Net.act('pounce'); return; }   // multiplayer cat: tap anywhere to pounce
     if (e.pointerType === 'mouse') {           // mouse: jump right away, release cuts the jump short
       Input.jumpQ++;
-      Input.gestures.set(e.pointerId, { decided: true, held: true });
+      Input.gestures.set(e.pointerId, { decided: true, held: true, mouse: true });
     } else {
       Input.gestures.set(e.pointerId, { x0: x, y0: y, t0: performance.now(), decided: false, held: false });
     }
@@ -1032,7 +1116,7 @@ function endPointer(e, cancelled) {
     Input.gestures.delete(e.pointerId);
     if (g.hud) { g.hud.up(); return; }
     if (!g.decided && !cancelled) Input.jumpQ++;   // quick tap
-    else if (g.held) Input.releaseQ++;
+    else if (g.held && g.mouse) Input.releaseQ++;    // mouse: let go early for a small hop (touch: always a full jump, like the JUMP button)
     return;
   }
   if (cancelled) return;
@@ -1066,9 +1150,10 @@ const ABILITIES = [
   { id: 'boost', name: 'SPEED BOOST', icon: 'boost', color: '#ffd23f', prices: [25, 60, 130, 220],
     stat: t => ({ uses: t, dur: 2 }),
     desc: s => `SHORT SPRINT BURST. ${s.uses} USE${s.uses > 1 ? 'S' : ''} PER RUN.` },
-  { id: 'shield', name: 'SHIELD', icon: 'shield', color: '#58e0a0', prices: [40, 90, 180, 410],
+  // Shields are used up: buy them one by one (up to 9); each one you raise is gone for good.
+  { id: 'shield', name: 'SHIELD', icon: 'shield', color: '#58e0a0', stock: true, price: 50, max: 9, prices: [],
     stat: t => ({ uses: t }),
-    desc: s => `SURVIVE ONE TRAP. ${s.uses} USE${s.uses > 1 ? 'S' : ''} PER RUN.` },
+    desc: s => `SAVES YOU FROM ONE TRAP, THEN IT'S GONE.` },
   { id: 'double', name: 'DOUBLE POINTS', icon: 'double', color: '#ffc83a', prices: [60, 130, 260, 380],
     stat: t => ({ uses: 1, dur: [20, 30, 40, 50][t - 1] }),
     desc: s => `2X POINTS FOR ${s.dur}S. 1 USE PER RUN.` },
@@ -1083,7 +1168,7 @@ const ABILITIES = [
     desc: s => `PASSIVE: ${s.luck}X MORE HEARTS, WINGS AND CATNIP.` },
 ];
 const ABIL = Object.fromEntries(ABILITIES.map(a => [a.id, a]));
-const tierOf = id => clamp(Save.data.tiers[id] | 0, 0, MAX_TIER);
+const tierOf = id => clamp(Save.data.tiers[id] | 0, 0, ABIL[id] && ABIL[id].stock ? ABIL[id].max : MAX_TIER);
 Save.data.equipped = Save.data.equipped.filter(id => ABIL[id] && tierOf(id) > 0).slice(0, MAX_SLOTS);
 
 /* --------------------------------------------------------------------------
@@ -1724,7 +1809,7 @@ function newRun(opts = {}) {
 function startRun(opts) {
   newRun(opts);
   state = 'run'; UI.focus = 0;
-  Music.stop(); Music.play('chase');
+  Music.stop(); Music.play(runSong());
   sfx('go');
 }
 const startTutorial = () => startRun({ tutorial: true });
@@ -1737,7 +1822,7 @@ function setPaused(v) {
   run.paused = v; UI.focus = 0;
   Input.clear();
   if (v) Music.stop();
-  else if (run.tut && run.tut.freeze) Music.play('chase');
+  else if (run.tut && run.tut.freeze) Music.play(runSong());
   else { run.countdown = 3; run.resumed = true; sfx('beep'); }   // 3, 2, 1, GO! (music comes back on GO)
 }
 
@@ -1799,6 +1884,7 @@ function useAbility(i) {
     case 'shield':
       if (p.shield) return;
       p.shield = true; sfx('shield'); popup('SHIELD UP', p.x + 4, p.y - 12, a.def.color, 1);
+      if (!run.mp && a.def.stock) { Save.data.tiers.shield = Math.max(0, tierOf('shield') - 1); Save.save(); }   // that shield is gone for good
       break;
     case 'double':
       if (run.doubleT > 0) return;
@@ -2237,7 +2323,7 @@ const Boss = {
     const R = run, B = R.boss, devil = B.type === 'devil' && !R.mp;
     if (B.t > 0.8 && !B.leapt) { B.leapt = true; B.vx = 240; B.vy = -760; sfx('pounce'); }   // off it goes, sulking
     if (B.leapt) { B.vy += 700 * dt; B.x += B.vx * dt; B.y += B.vy * dt; }
-    if (B.t > 1.1 && B.hold && !devil) { B.hold = false; Level.arena = false; Music.play('chase'); }
+    if (B.t > 1.1 && B.hold && !devil) { B.hold = false; Level.arena = false; Music.play(runSong()); }
     if (B.t > 2.6) {
       R.boss = null; R.bossCount++; R.bossAt = R.time + BOSS.every;
       if (!R.heaven) R.earthBoss++;
@@ -2583,7 +2669,7 @@ function updateRun(dt) {
   if (R.countdown > 0) {                        // multiplayer start, or back from pause: 3, 2, 1, GO!
     const before = Math.ceil(R.countdown);
     R.countdown -= dt;
-    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play(R.boss && R.boss.music ? 'boss' : 'chase'); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
+    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play(R.boss && R.boss.music ? 'boss' : runSong()); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
     updateCamera(dt);
     return;
   }
@@ -3260,6 +3346,8 @@ function drawPause() {
   if (run.tutorial) { if (UI.button('skiptut', bx, 128, bw, 24, 'SKIP TUTORIAL', { theme: 'dark' })) finishTutorial(); }
   else if (UI.button('restart', bx, 128, bw, 24, 'RESTART', { theme: 'dark' })) startRun();
   if (UI.button('quit', bx, 160, bw, 24, 'MENU', { theme: 'dark' })) go('menu');
+  const song = SONGS.find(g => g.id === runSong());
+  if (Save.data.songs.length > 1 && UI.button('song', bx - 20, 192, bw + 40, 24, 'MUSIC: ' + song.name + ' >', { theme: 'dark', accent: '#2a7fd4' })) nextSong();
 }
 
 function drawNetLost() {
@@ -3919,7 +4007,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4225,13 +4313,13 @@ function startMpRound() {
   state = 'run'; UI.focus = 0;       // set first: level pieces created by newRun are queued for the friend
   newRun({ mp: true });
   Net.send({ t: 'round' });
-  Music.stop(); Music.play('chase');
+  Music.stop(); Music.play(runSong());
 }
 function startViewRound() {
   Net.clockOff = Infinity;
   newRun({ mp: true, view: true });
   state = 'run'; UI.focus = 0;
-  Music.stop(); Music.play('chase');
+  Music.stop(); Music.play(runSong());
 }
 // Race: the host picks the level (a seed) and both phones start on it.
 function startRace() {
@@ -4245,7 +4333,7 @@ function startRaceRound(seed) {
   Net.clockOff = Infinity;
   newRun({ mp: true, race: true, seed });
   state = 'run'; UI.focus = 0;
-  Music.stop(); Music.play('chase');
+  Music.stop(); Music.play(runSong());
 }
 // Cat's device: copy the thief's snapshot into the local run so the normal renderer can draw it.
 function applySnap(m) {
@@ -4342,6 +4430,15 @@ function drawMenu() {
 let shopMsg = { text: '', color: PAL.ink, t: 0 };
 const say = (text, color) => { shopMsg = { text, color, t: 2.2 }; };
 function buy(a) {
+  if (a.stock) {                                    // one more shield
+    const n = tierOf(a.id);
+    if (n >= a.max) return;
+    if (Save.data.points < a.price) { sfx('deny'); say('NEED ' + (a.price - Save.data.points) + ' MORE ★', '#e01e1e'); return; }
+    Save.data.points -= a.price; Save.data.tiers[a.id] = n + 1;
+    if (n === 0 && !Save.data.equipped.includes(a.id) && Save.data.equipped.length < MAX_SLOTS) Save.data.equipped.push(a.id);
+    Save.save(); sfx('buy'); say('+1 ' + a.name + '! YOU HAVE ' + (n + 1) + '.', PAL.green);
+    return;
+  }
   const tier = tierOf(a.id);
   if (tier >= MAX_TIER) return;
   const price = a.prices[tier];
@@ -4365,14 +4462,17 @@ function drawShop(dt) {
   bgLight();
   drawText('SHOP', 10, 9, PAL.ink, 4);
   wallet(12);
-  if (UI.button('tab_abil', 80, 7, 84, 18, 'ABILITIES', { on: shopTab === 'abil' })) { shopTab = 'abil'; sfx('click'); }
-  if (UI.button('tab_skins', 172, 7, 84, 18, 'SKINS', { on: shopTab === 'skins', accent: '#7a3fc4' })) { shopTab = 'skins'; sfx('click'); }
+  if (UI.button('tab_abil', 76, 7, 80, 18, 'ABILITIES', { on: shopTab === 'abil' })) { shopTab = 'abil'; sfx('click'); Music.play('menu'); }
+  if (UI.button('tab_skins', 160, 7, 58, 18, 'SKINS', { on: shopTab === 'skins', accent: '#7a3fc4' })) { shopTab = 'skins'; sfx('click'); Music.play('menu'); }
+  if (UI.button('tab_music', 222, 7, 58, 18, 'MUSIC', { on: shopTab === 'music', accent: '#2a7fd4' })) { shopTab = 'music'; sfx('click'); }
   shopMsg.t -= dt;
   if (shopTab === 'skins') drawSkinShop();
+  else if (shopTab === 'music') drawMusicShop();
   else drawAbilityShop();
   const msgY = H - 16;
   if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
   else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS + '   PAGE ' + (abilPage + 1) + '/' + Math.ceil(ABILITIES.length / ABIL_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else if (shopTab === 'music') drawText('TRY: LISTEN.  USE: IT PLAYS WHILE YOU RUN.', W / 2, msgY, PAL.inkSoft, 1, 'center');
   else drawText('PAGE ' + (skinPage + 1) + '/' + Math.ceil(SKINS.length / SKINS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
@@ -4394,17 +4494,53 @@ function drawAbilityShop() {
     drawIcon(a.icon, 14, y + 5, 2, tier > 0 ? 1 : 0.45);
     drawText(a.name, 44, y + 6, PAL.ink, 2);
     let pxx = 44 + textWidth(a.name, 2) + 8;
-    for (let k = 0; k < MAX_TIER; k++) {
+    for (let k = 0; k < (a.stock ? 0 : MAX_TIER); k++) {
       ctx.fillStyle = PAL.ink; ctx.fillRect(pxx + k * 9, y + 7, 7, 7);
       ctx.fillStyle = k < tier ? a.color : PAL.paperHi; ctx.fillRect(pxx + k * 9 + 1, y + 8, 5, 5);
     }
     drawText(a.desc(a.stat(Math.max(1, tier))), 44, y + 21, PAL.inkSoft, 1);
-    const price = tier < MAX_TIER ? a.prices[tier] : 0;
-    const label = tier === 0 ? 'BUY ★' + price : tier < MAX_TIER ? 'UP ★' + price : 'MAX';
-    const poor = tier < MAX_TIER && Save.data.points < price;
-    if (UI.button('buy_' + a.id, W - 172, y + 6, 80, 20, label, { disabled: tier >= MAX_TIER, textColor: poor ? '#b03030' : null })) buy(a);
+    const top = a.stock ? a.max : MAX_TIER;
+    const price = a.stock ? a.price : tier < MAX_TIER ? a.prices[tier] : 0;
+    const label = a.stock ? (tier >= top ? 'FULL' : '+1 ★' + price) : tier === 0 ? 'BUY ★' + price : tier < MAX_TIER ? 'UP ★' + price : 'MAX';
+    const poor = tier < top && Save.data.points < price;
+    if (a.stock) drawText('X' + tier, 44 + textWidth(a.name, 2) + 8, y + 7, tier > 0 ? a.color : PAL.inkSoft, 1, 'left', '#000');
+    if (UI.button('buy_' + a.id, W - 172, y + 6, 80, 20, label, { disabled: tier >= top, textColor: poor ? '#b03030' : null })) buy(a);
     if (UI.button('eq_' + a.id, W - 86, y + 6, 72, 20, eq ? 'EQUIPPED' : 'EQUIP', { disabled: tier === 0, on: eq, accent: '#2f9a5a' })) toggleEquip(a);
   });
+}
+
+// --- music --------------------------------------------------------------------
+function drawMusicShop() {
+  const d = Save.data;
+  SONGS.forEach((g, i) => {
+    const y = 30 + i * 26, owned = d.songs.includes(g.id), on = runSong() === g.id, playing = Music.track === g.id;
+    ctx.fillStyle = PAL.ink; ctx.fillRect(8, y, W - 16, 24);
+    ctx.fillStyle = on ? PAL.sel : PAL.paperHi; ctx.fillRect(9, y + 1, W - 18, 22);
+    // a little note, bouncing while it plays
+    const ny = y + 6 + (playing ? Math.round(Math.abs(Math.sin(menuT * 8)) * -2) : 0);
+    ctx.fillStyle = playing ? '#2a7fd4' : PAL.inkSoft; ctx.fillRect(16, ny + 8, 5, 4); ctx.fillRect(20, ny, 1, 10); ctx.fillRect(21, ny, 3, 2);
+    drawText(g.name, 32, y + 5, PAL.ink, 2);
+    drawText(g.sub, 32 + textWidth(g.name, 2) + 8, y + 9, PAL.inkSoft, 1);
+    if (UI.button('try_' + g.id, W - 172, y + 3, 56, 18, playing ? 'STOP' : 'TRY', { size: 1, accent: '#2a7fd4' })) {
+      if (playing) Music.play('menu'); else Music.play(g.id);
+      sfx('click');
+    }
+    if (!owned) {
+      const poor = d.points < g.price;
+      if (UI.button('song_' + g.id, W - 110, y + 3, 96, 18, 'BUY ★' + g.price, { size: 1, textColor: poor ? '#b03030' : null, accent: '#2a7fd4' })) {
+        if (poor) { sfx('deny'); say('NEED ' + (g.price - d.points) + ' MORE ★', '#e01e1e'); }
+        else { d.points -= g.price; d.songs.push(g.id); d.song = g.id; Save.save(); sfx('buy'); say(g.name + ' IS YOUR RUN MUSIC NOW!', PAL.green); }
+      }
+    } else if (UI.button('song_' + g.id, W - 110, y + 3, 96, 18, on ? 'PLAYING IN RUNS' : 'USE', { size: 1, on, accent: '#2a7fd4' }) && !on) {
+      d.song = g.id; Save.save(); sfx('click'); say(g.name + ' IS YOUR RUN MUSIC NOW!', PAL.green);
+    }
+  });
+}
+// Pause menu: switch between the songs you own.
+function nextSong() {
+  const own = SONGS.filter(g => Save.data.songs.includes(g.id));
+  const i = own.findIndex(g => g.id === runSong());
+  Save.data.song = own[(i + 1) % own.length].id; Save.save(); sfx('click');
 }
 
 // --- skins -------------------------------------------------------------------
