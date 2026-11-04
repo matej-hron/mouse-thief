@@ -25,7 +25,7 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
   lose ★3). **The ★ wallet is shared** with Mouse Thief and shown in the arcade.
 - **GARAGE:** abilities (NITRO and SHIELD buttons in the race, keys 1 / 2; ARMOR = 2-3 hearts; GRIP = less sliding in
   curves; MAGNET = grab stars from further away), 6 car designs and 12 paint colors (or your avatar's color).
-- **Music:** its own chiptune racing tune, a calmer one in the menus; the note button on the title switches it off.
+- **Sound:** its own chiptune racing tune, a calmer one in the menus; the note button (title or pause menu) switches music off. The engine sound is **off** by default; the little car button next to it switches it on.
 - Your car has your avatar's color unless you paint it. Best lap, best race and wins are saved on your phone.
 
 ---
