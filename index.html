@@ -479,11 +479,59 @@ const TRACKS = {
                69 70 69 68 69 70 69 68 69 70 71 72 73 74 75 76`),
   },
   toccata: {
-    bpm: 96, leadType: 'sawtooth', leadVol: 0.12, drums: false, roots: [38, 38, 45, 38],
+    bpm: 96, leadType: 'sawtooth', leadVol: 0.12, drums: false, roots: [38, 38, 45, 38, 38, 38, 45, 38],
     lead: seq(`81 79 81 . . . . . 79 77 76 74 73 . 74 .
                . . . . . . . . 69 67 69 . . . . .
                64 65 61 . 62 . . . . . . . . . . .
-               57 55 57 . . . . . 55 53 52 50 49 . 50 .`),
+               57 55 57 . . . . . 55 53 52 50 49 . 50 .
+               74 69 65 69 74 69 65 69 76 69 67 69 76 69 67 69
+               77 69 65 69 77 69 65 69 76 69 67 69 73 69 64 69
+               86 84 82 81 79 77 76 74 73 74 76 77 79 81 82 85
+               74 73 74 . . . 69 . 65 . 62 . 57 . 50 .`),
+  },
+  valkyries: {
+    bpm: 140, leadType: 'square', leadVol: 0.1, legato: true, drums: true, roots: [47, 47, 50, 50],
+    lead: seq(`66 . 71 . . 66 71 . 74 . . . . . . .
+               71 . 74 . . 71 74 . 78 . . . . . . .
+               74 . 78 . . 74 78 . 81 . . . . . . .
+               69 . 74 . . 69 74 . 78 . . . . . . .`),
+  },
+  fate: {
+    bpm: 108, leadType: 'square', leadVol: 0.11, legato: true, drums: true, roots: [48, 43, 44, 48],
+    lead: seq(`. . 79 . 79 . 79 . 75 . . . . . . .
+               . . 77 . 77 . 77 . 74 . . . . . . .
+               . . 79 . 79 . 79 . 80 . 80 . 80 . 79 .
+               . . 87 . 87 . 87 . 84 . . . . . . .`),
+  },
+  storm: {
+    bpm: 150, leadType: 'square', leadVol: 0.08, drums: true, roots: [43, 43, 50, 43],
+    lead: seq(`79 79 79 79 79 79 79 79 79 79 79 79 79 79 79 79
+               91 89 87 86 84 82 81 79 78 79 81 82 84 86 87 89
+               86 86 86 86 86 86 86 86 84 82 81 79 77 75 74 72
+               74 . 79 . 74 . 79 . 86 . . . 79 . . .`),
+  },
+  goinghome: {
+    bpm: 72, leadType: 'triangle', leadVol: 0.22, legato: true, drums: false, roots: [48, 41, 43, 43, 48, 41, 43, 48],
+    lead: seq(`76 . . . 79 . . . 79 . . . . . . .
+               76 . . . 74 . . . 72 . . . . . . .
+               74 . . . 76 . . . 79 . . . 76 . . .
+               74 . . . . . . . . . . . . . . .
+               76 . . . 79 . . . 79 . . . . . . .
+               76 . . . 74 . . . 72 . . . . . . .
+               74 . . . 76 . . . 74 . . . 72 . . .
+               72 . . . . . . . . . . . . . . .`),
+  },
+  // Bossy Devil's fight: Bach's Toccata, faster and with drums
+  devilboss: {
+    bpm: 124, leadType: 'sawtooth', leadVol: 0.1, drums: true, roots: [38, 38, 45, 38, 38, 38, 45, 38],
+    lead: seq(`81 79 81 . . . . . 79 77 76 74 73 . 74 .
+               . . . . . . . . 69 67 69 . . . . .
+               64 65 61 . 62 . . . . . . . . . . .
+               57 55 57 . . . . . 55 53 52 50 49 . 50 .
+               74 69 65 69 74 69 65 69 76 69 67 69 76 69 67 69
+               77 69 65 69 77 69 65 69 76 69 67 69 73 69 64 69
+               86 84 82 81 79 77 76 74 73 74 76 77 79 81 82 85
+               74 73 74 . . . 69 . 65 . 62 . 57 . 50 .`),
   },
   jingle: {
     bpm: 150, leadType: 'triangle', leadVol: 0.2, drums: true, roots: [48, 48, 48, 48, 41, 48, 43, 43, 48, 48, 48, 48, 41, 48, 43, 48],
@@ -513,18 +561,23 @@ const SONGS = [
   { id: 'wub', name: 'WUB WUB', sub: 'ELECTRO BASS', price: 450 },
   { id: 'bumblebee', name: 'BUMBLEBEE', sub: 'RIMSKY-KORSAKOV: CRAZY FAST', price: 400 },
   { id: 'toccata', name: 'TOCCATA', sub: 'BACH: SPOOKY ORGAN', price: 400 },
+  { id: 'valkyries', name: 'VALKYRIES', sub: 'WAGNER: EPIC RIDE', price: 450 },
+  { id: 'fate', name: 'BEETHOVEN 5', sub: 'TA-TA-TA-TAAA!', price: 400 },
+  { id: 'storm', name: 'SUMMER STORM', sub: 'VIVALDI: PRESTO', price: 400 },
+  { id: 'goinghome', name: 'GOING HOME', sub: 'DVORAK: CALM LARGO', price: 350 },
   { id: 'mountain', name: 'MOUNTAIN KING', sub: 'GRIEG: SNEAKY AND FAST', price: 400 },
   { id: 'cancan', name: 'CAN-CAN', sub: 'OFFENBACH: DANCE PARTY', price: 400 },
   { id: 'korobeiniki', name: 'KOROBEINIKI', sub: 'RUSSIAN FOLK SONG', price: 400 },
   { id: 'joy', name: 'ODE TO JOY', sub: 'BEETHOVEN', price: 300 },
   { id: 'jingle', name: 'JINGLE BELLS', sub: 'HO HO HO!', price: 300 },
 ];
+const bossTrack = () => run && run.boss && run.boss.type === 'devil' ? 'devilboss' : 'boss';
 const runSong = () => Save.data.songs.includes(Save.data.song) && TRACKS[Save.data.song] ? Save.data.song : 'chase';
 const Music = {
-  track: null, step: 0, nextTime: 0, bpmBoost: 0,
+  track: null, step: 0, loop: 0, nextTime: 0, bpmBoost: 0,
   play(name) {
     if (this.track === name) return;
-    this.track = name; this.step = 0;
+    this.track = name; this.step = 0; this.loop = 0;
     if (Sound.ctx) this.nextTime = Sound.ctx.currentTime + 0.06;
   },
   stop() { this.track = null; },
@@ -538,21 +591,39 @@ const Music = {
       this.playStep(tr, this.step, this.nextTime, spb);
       this.nextTime += spb;
       this.step = (this.step + 1) % tr.lead.length;
+      if (this.step === 0) this.loop++;
     }
   },
-  playStep(tr, i, t, spb) {
-    const dest = Sound.musicBus;
+  // Every time the loop comes round it's arranged a little differently, so a short song doesn't get boring:
+  // 1st time plain, 2nd an octave up with an echo, 3rd a breakdown (melody mostly out), 4th full with a low second voice.
+  // Every other loop ends with a drum fill.
+  playStep(tr, i, t, spb, loop = this.loop) {
+    const dest = Sound.musicBus, L = tr.lead.length, v = loop % 4, s = i % 16;
     const n = tr.lead[i];
-    if (n) tone(midi(n), spb * 1.7, { type: tr.leadType, vol: tr.leadVol, at: t, dest, hold: 0.3 });
-    const s = i % 16, root = tr.roots[Math.floor(i / 16) % tr.roots.length];
+    if (n) {
+      let len = 1.7;
+      if (tr.legato) { let k = 1; while (k < 12 && !tr.lead[(i + k) % L]) k++; len = k * 0.95; }   // held until the next note
+      const o = { type: tr.leadType, vol: tr.leadVol, at: t, dest, hold: tr.legato ? 0.75 : 0.3 };
+      if (v === 2 && tr.drums) {                       // breakdown: just a soft hint of the melody
+        if (i % 4 === 0) tone(midi(n - 12), spb * len, Object.assign({}, o, { vol: o.vol * 0.5 }));
+      } else {
+        const shift = v === 1 && n + 12 <= 98 ? 12 : v === 2 ? -12 : 0;
+        tone(midi(n + shift), spb * len, o);
+        if (v === 1) tone(midi(n + shift), spb * len, Object.assign({}, o, { vol: o.vol * 0.35, at: t + spb * 3 }));   // echo
+        if (v === 3) tone(midi(n - 12), spb * len, Object.assign({}, o, { type: 'triangle', vol: Math.min(0.25, o.vol * 1.6) }));   // second voice
+      }
+    }
+    const root = tr.roots[Math.floor(i / 16) % tr.roots.length];
     if (tr.bass) {                                     // a song with its own bass line (funk, wobble bass...)
       const b = tr.bass[i % tr.bass.length];
       if (b) tone(midi(b), spb * (tr.bassLen || 1.8), { type: tr.bassType || 'square', vol: tr.bassVol || 0.12, at: t, dest, vib: tr.bassVib || 0, vibRate: tr.bassVibRate || 6, hold: 0.7 });
     } else if (s % 2 === 0) tone(midi(root + (s % 4 === 2 ? 12 : 0)), spb * 1.6, { type: tr.drums ? 'square' : 'triangle', vol: tr.drums ? 0.06 : 0.16, at: t, dest });
     if (tr.drums) {
-      if (s % 8 === 0 || s === 10) tone([150, 40], 0.12, { type: 'sine', vol: 0.5, at: t, dest });
-      if (s === 4 || s === 12) noise(0.1, { freq: 1800, vol: 0.16, at: t, dest });
-      if (s % 2 === 1) noise(0.03, { freq: 8000, filter: 'highpass', vol: 0.05, at: t, dest });
+      const fill = loop % 2 === 1 && i >= L - 4;
+      if (fill) { noise(0.08, { freq: 1200 + (i - L + 4) * 500, vol: 0.2, at: t, dest }); if (i === L - 4) tone([160, 50], 0.15, { type: 'sine', vol: 0.5, at: t, dest }); return; }
+      if (s % 8 === 0 || s === 10) tone([150, 40], 0.12, { type: 'sine', vol: v === 2 ? 0.35 : 0.5, at: t, dest });
+      if ((s === 4 || s === 12) && v !== 2) noise(0.1, { freq: 1800, vol: 0.16, at: t, dest });
+      if (s % 2 === 1 || (v === 3 && s % 2 === 0)) noise(0.03, { freq: 8000, filter: 'highpass', vol: 0.05, at: t, dest });
     } else if (s % 4 === 2) noise(0.03, { freq: 8000, filter: 'highpass', vol: 0.025, at: t, dest });
   },
 };
@@ -2263,7 +2334,7 @@ const Boss = {
     }
     if (!B.music && B.t - B.landT > 0.35) {
       B.music = true; B.mouthT = 1.1;
-      sfx(B.def.voice); Music.play('boss');
+      sfx(B.def.voice); Music.play(bossTrack());
       R.banner = { text: B.def.name + '!', sub: 'SURVIVE ' + BOSS.fight + ' SECONDS!', t: 2.2, max: 2.2 };
     }
     if (B.t - B.landT > 2.4) { B.st = 'fight'; B.t = 0; B.ft = 0; B.next = 0.6; B.atk = null; B.n = 0; B.sndT = 2.5; }
@@ -2712,7 +2783,7 @@ function updateRun(dt) {
   if (R.countdown > 0) {                        // multiplayer start, or back from pause: 3, 2, 1, GO!
     const before = Math.ceil(R.countdown);
     R.countdown -= dt;
-    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play(R.boss && R.boss.music ? 'boss' : runSong()); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
+    if (R.countdown <= 0) { sfx('go'); R.startT = 0.8; Music.play(R.boss && R.boss.music ? bossTrack() : runSong()); } else if (Math.ceil(R.countdown) !== before) sfx('beep');
     updateCamera(dt);
     return;
   }
@@ -4055,7 +4126,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
