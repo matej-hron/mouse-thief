@@ -29,7 +29,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -73,14 +73,32 @@ function background(t) {
 }
 // --- little animated previews on the game cards -----------------------------------------
 function previewThief(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ctx.fillStyle = '#140f24'; ctx.fillRect(x, y, w, h);
-  for (let i = 0; i < 12; i++) { ctx.fillStyle = '#9a8fc0'; ctx.fillRect(x + (i * 37) % w, y + (i * 13) % (h - 20), 1, 1); }
-  ctx.fillStyle = '#2a2240'; for (let i = 0; i < 6; i++) { const bh = 14 + (i * 11) % 18; ctx.fillRect(x + i * 22 - ((t * 20) % 22), y + h - 12 - bh, 18, bh); }
-  ctx.fillStyle = '#0d0b13'; ctx.fillRect(x, y + h - 12, w, 12); ctx.fillStyle = '#8070b0'; ctx.fillRect(x, y + h - 12, w, 1);
-  if (thiefIcon.complete && thiefIcon.naturalWidth) {
-    const s = h, bob = Math.round(Math.abs(Math.sin(t * 6)) * -2);
-    ctx.drawImage(thiefIcon, Math.round(x + w / 2 - s / 2), y + bob, s, s);
-  }
+  for (let i = 0; i < 14; i++) { ctx.fillStyle = i % 4 ? '#6a5f90' : '#ffffff'; ctx.fillRect(x + (i * 37) % w, y + 4 + (i * 13) % (h - 26), 1, 1); }
+  ctx.fillStyle = '#f3e9c8'; ctx.fillRect(x + w - 22, y + 6, 10, 10); ctx.fillRect(x + w - 23, y + 8, 12, 6);   // moon
+  const sc = (t * 40) % 30;
+  ctx.fillStyle = '#2a2240';                                               // far buildings
+  for (let i = -1; i < 7; i++) { const bh = 14 + ((i + Math.floor(t * 40 / 30)) * 7) % 16; ctx.fillRect(Math.round(x + i * 30 - sc), y + h - 14 - bh, 24, bh); }
+  ctx.fillStyle = '#e9c46a';
+  for (let i = -1; i < 7; i++) ctx.fillRect(Math.round(x + i * 30 - sc + 6), y + h - 24, 2, 3);
+  ctx.fillStyle = '#0d0b13'; ctx.fillRect(x, y + h - 14, w, 14); ctx.fillStyle = '#8070b0'; ctx.fillRect(x, y + h - 14, w, 1);
+  const g = y + h - 14, leg = Math.floor(t * 12) % 2;
+  // the thief, with the mouse on his head
+  const tx = Math.round(x + w * 0.62), ty = g - 14 - (leg ? 1 : 0);
+  ctx.fillStyle = '#8b7fb0'; ctx.fillRect(tx - 1, ty - 1, 9, 13);
+  ctx.fillStyle = '#000'; ctx.fillRect(tx, ty, 7, 11); ctx.fillRect(tx + (leg ? 0 : 1), ty + 11, 2, 3); ctx.fillRect(tx + (leg ? 5 : 4), ty + 11, 2, 3);
+  ctx.fillStyle = '#ff2424'; ctx.fillRect(tx + 3, ty + 3, 1, 2); ctx.fillRect(tx + 5, ty + 3, 1, 2);
+  ctx.fillStyle = '#9b9b9b'; ctx.fillRect(tx + 1, ty - 4, 6, 3); ctx.fillStyle = '#e7a3ad'; ctx.fillRect(tx + 5, ty - 5, 2, 1);
+  // the cat, right behind him
+  const cx = Math.round(x + w * 0.18 + Math.sin(t * 2) * 4), cy = g - 12;
+  ctx.fillStyle = '#8b7fb0'; ctx.fillRect(cx - 1, cy + 1, 24, 10);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx, cy + 3, 16, 6); ctx.fillRect(cx + 14, cy, 8, 7); ctx.fillRect(cx + 14, cy - 2, 2, 2); ctx.fillRect(cx + 20, cy - 2, 2, 2);
+  ctx.fillRect(cx - 4, cy + 1, 4, 2); ctx.fillRect(cx - 5, cy - 2, 2, 4);
+  ctx.fillRect(cx + 1 + leg * 2, cy + 9, 2, 3); ctx.fillRect(cx + 11 - leg * 2, cy + 9, 2, 3);
+  ctx.fillStyle = '#ff3b3b'; ctx.fillRect(cx + 16, cy + 2, 2, 2); ctx.fillRect(cx + 19, cy + 2, 2, 2);
+  ctx.restore();
 }
 function previewRacer(x, y, w, h, t) {
   ctx.fillStyle = '#7ec4ec'; ctx.fillRect(x, y, w, h / 2);
@@ -102,10 +120,9 @@ function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
-  if (!g) { T('MORE GAMES', x + w / 2, y + 44, '#5b5275', 1, 'center'); T('COMING SOON', x + w / 2, y + 56, '#5b5275', 1, 'center'); return; }
+  if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   (g.id === 'thief' ? previewThief : previewRacer)(x + 6, y + 8, w - 12, 62, t);
-  T(g.name, x + w / 2, y + 76, '#fff', 2, 'center', '#000');
-  T(g.sub, x + w / 2, y + 90, '#9a92b8', 1, 'center');
+  T(g.name, x + w / 2, y + 82, '#fff', 2, 'center', '#000');
   if (UI.button('play_' + g.id, x + 8, y + h - 24, w - 16, 18, 'PLAY', { accent: g.color })) play(g);
 }
 function drawHome(t) {
@@ -122,7 +139,6 @@ function drawHome(t) {
   const n = 3, gap = 8, cw = Math.min(150, Math.floor((W - 16 - gap * (n - 1)) / n)), x0 = Math.round(W / 2 - (cw * n + gap * (n - 1)) / 2);
   [GAMES[0], GAMES[1], null].forEach((g, i) => card(g, i, x0 + i * (cw + gap), 72, cw, 140, t));
   if (installPrompt && UI.button('install', 8, H - 22, 90, 16, 'INSTALL APP', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
-  T('V' + VERSION, W - 6, H - 9, '#5b5275', 1, 'right');
 }
 // --- your name and avatar ------------------------------------------------------------------
 function saveProfile() {
@@ -139,14 +155,12 @@ function drawProfile(t) {
   T('YOU', W / 2, 8, '#fff', 3, 'center', '#000');
   PX.drawAvatar(ctx, draft.avatar, 18, 40, 5);
   S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26);
-  T('YOUR NAME: A NICKNAME, NOT YOUR REAL NAME!', 108, 64, '#ff8a8a', 1);
-  T('PICK YOUR AVATAR', 108, 80, '#efe9ff', 1);
+  T('NICKNAME ONLY!', 108, 64, '#ff8a8a', 2);
   PX.AVATAR_SHAPES.forEach((shape, i) => {
     const x = 108 + (i % 8) * 34, y = 90, on = draft.avatar.shape === shape;
     if (UI.button('shape_' + shape, x, y, 30, 30, '', { on, accent: '#e0a820' })) draft.avatar.shape = shape;
     PX.drawAvatar(ctx, { shape, color: draft.avatar.color }, x + 1, y + 1, 2, null);
   });
-  T('AND ITS COLOR', 108, 130, '#efe9ff', 1);
   PX.AVATAR_COLORS.forEach((c, i) => {
     const x = 108 + i * 22, y = 140, on = draft.avatar.color === i;
     if (UI.button('color_' + i, x, y, 18, 18, '', { on })) draft.avatar.color = i;
