@@ -2,7 +2,7 @@
 
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
-The arcade (index.html) is the start screen: pick a game, and set **your name and avatar** (EDIT): all the games use them.
+The arcade (`index.html`) is the start screen: pick a game, and set **your name and avatar** (EDIT): all the games use them.
 
 | Game | |
 |---|---|
