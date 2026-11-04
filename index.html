@@ -472,12 +472,12 @@ const TRACKS = {
 // The MUSIC shop: songs you buy and pick as the music for your runs.
 const SONGS = [
   { id: 'chase', name: 'CAT CHASE', sub: 'THE ORIGINAL', price: 0 },
-  { id: 'sunny', name: 'SUNNY DAYS', sub: 'CHILL SUMMER GROOVE', price: 60 },
-  { id: 'mountain', name: 'MOUNTAIN KING', sub: 'GRIEG: SNEAKY AND FAST', price: 50 },
-  { id: 'cancan', name: 'CAN-CAN', sub: 'OFFENBACH: DANCE PARTY', price: 50 },
-  { id: 'korobeiniki', name: 'KOROBEINIKI', sub: 'RUSSIAN FOLK SONG', price: 50 },
-  { id: 'joy', name: 'ODE TO JOY', sub: 'BEETHOVEN', price: 40 },
-  { id: 'jingle', name: 'JINGLE BELLS', sub: 'HO HO HO!', price: 40 },
+  { id: 'sunny', name: 'SUNNY DAYS', sub: 'CHILL SUMMER GROOVE', price: 450 },
+  { id: 'mountain', name: 'MOUNTAIN KING', sub: 'GRIEG: SNEAKY AND FAST', price: 400 },
+  { id: 'cancan', name: 'CAN-CAN', sub: 'OFFENBACH: DANCE PARTY', price: 400 },
+  { id: 'korobeiniki', name: 'KOROBEINIKI', sub: 'RUSSIAN FOLK SONG', price: 400 },
+  { id: 'joy', name: 'ODE TO JOY', sub: 'BEETHOVEN', price: 300 },
+  { id: 'jingle', name: 'JINGLE BELLS', sub: 'HO HO HO!', price: 300 },
 ];
 const runSong = () => Save.data.songs.includes(Save.data.song) && TRACKS[Save.data.song] ? Save.data.song : 'chase';
 const Music = {
@@ -1042,7 +1042,7 @@ window.addEventListener('keydown', e => {
   Sound.unlock();
   const k = e.code;
   if (e.target === codeInput) {                  // typing a room code
-    if (k === 'Enter') Net.joinTyped(); else if (k === 'Escape') UI.back = true;
+    if (k === 'Enter') { if (state === 'about') checkDevCode(); else Net.joinTyped(); } else if (k === 'Escape') UI.back = true;
     return;
   }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
@@ -3346,6 +3346,11 @@ function drawPause() {
   if (run.tutorial) { if (UI.button('skiptut', bx, 128, bw, 24, 'SKIP TUTORIAL', { theme: 'dark' })) finishTutorial(); }
   else if (UI.button('restart', bx, 128, bw, 24, 'RESTART', { theme: 'dark' })) startRun();
   if (UI.button('quit', bx, 160, bw, 24, 'MENU', { theme: 'dark' })) go('menu');
+  if (Save.data.dev && !run.mp && !run.tutorial) {                 // developer shortcuts
+    drawText('DEV', 12, 88, '#2f9a5a', 1);
+    if (UI.button('dev_boss', 8, 96, 84, 20, 'BOSS NOW', { theme: 'dark', size: 1 })) { if (!run.boss) run.bossAt = run.time + 3.2; setPaused(false); }
+    if (!run.heaven && UI.button('dev_heaven', 8, 120, 84, 20, 'HEAVEN', { theme: 'dark', size: 1 })) { warpTo(true); setPaused(false); }
+  }
   const song = SONGS.find(g => g.id === runSong());
   if (Save.data.songs.length > 1 && UI.button('song', bx - 20, 192, bw + 40, 24, 'MUSIC: ' + song.name + ' >', { theme: 'dark', accent: '#2a7fd4' })) nextSong();
 }
@@ -4383,6 +4388,7 @@ function go(s) {
   state = s; UI.focus = 0;
   UI.screenPress = UI.pressN;        // the tap that opened this screen doesn't paint or drag anything here
   applyWorld();          // undo the run's day / night colors
+  if (Save.data.dev) { devFill(); Save.save(); }   // developer mode: stars and shields never run out
   if (['menu', 'shop', 'skinedit', 'pixeledit', 'worlds', 'settings', 'layout', 'about', 'mp'].includes(s)) Music.play('menu');
 }
 function playFromMenu() {
@@ -4423,6 +4429,7 @@ function drawMenu() {
   if (UI.button('settings', bx, 185, bw, 20, 'SETTINGS')) go('settings');
   drawText(Input.touch ? 'TAP: JUMP   SWIPE DOWN: SLIDE   (OR USE THE BUTTONS)' : 'SPACE: JUMP   ↓: SLIDE   1-3: ABILITIES', W / 2, floorY + 13, PAL.floorText, 1, 'center');
   drawText('V' + VERSION, W - 6, H - 8, PAL.verText, 1, 'right');
+  if (Save.data.dev) drawText('DEV MODE', 6, H - 8, '#2f9a5a', 1);
   if (installPrompt && UI.button('install', 8, 8, 92, 18, 'INSTALL APP', { size: 1, accent: '#2f9a5a' })) installApp();
   if (view.portrait) drawText('ROTATE YOUR PHONE FOR A BIGGER VIEW', W / 2, 66, PAL.inkSoft, 1, 'center');
 }
@@ -4971,6 +4978,38 @@ function drawSettings(dt) {
   if (UI.button('back', bx + hw + 8, y + 4, hw, 21, 'BACK') || UI.back) go('menu');
 }
 
+// --- developer mode (SETTINGS -> ABOUT -> DEV CODE) ----------------------------------
+// Unlocks everything with plenty of stars for testing. Your real progress is kept aside and comes back when you leave it.
+// Only a hash of the code is stored here, so it can't simply be read from the page.
+const DEV_HASH = 2089714590;
+function codeHash(str) { let h = 5381; for (const ch of str) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0; return h; }
+function devFill() {
+  const d = Save.data;
+  d.points = Math.max(d.points, 99999);
+  for (const a of ABILITIES) d.tiers[a.id] = a.stock ? a.max : MAX_TIER;
+  d.skins = SKINS.map(k => k.id); d.worlds = WORLDS.map(w => w.id); d.songs = SONGS.map(g => g.id); d.tutorialDone = true;
+}
+function devOn() {
+  const d = Save.data;
+  if (d.dev) return;
+  const keep = JSON.parse(JSON.stringify(d)); delete keep.devBackup;
+  d.devBackup = keep; d.dev = true; devFill(); Save.save(); applySkin(); applyWorld();
+}
+function devOff() {
+  const d = Save.data;
+  if (!d.dev) return;
+  Save.data = Object.assign(Save.defaults(), d.devBackup || {}, { dev: false });
+  delete Save.data.devBackup;
+  Save.save(); Save.load(); applySkin(); applyWorld(); Sound.apply();
+}
+let aboutMsg = { text: '', color: '#fff', t: 0 };
+function checkDevCode() {
+  const ok = codeHash(codeInput.value.toUpperCase()) === DEV_HASH;
+  codeInput.value = ''; codeInput.blur();
+  if (ok) { devOn(); sfx('buy'); aboutMsg = { text: 'DEV MODE ON: EVERYTHING UNLOCKED', color: '#2f9a5a', t: 3 }; }
+  else { sfx('deny'); aboutMsg = { text: 'WRONG CODE', color: '#e01e1e', t: 2 }; }
+}
+
 function drawAbout() {
   bgLight();
   drawText('ABOUT', W / 2, 16, PAL.ink, 4, 'center');
@@ -4982,6 +5021,16 @@ function drawAbout() {
   drawText('CREATED WITH LOVE', W / 2, 108, PAL.ink, 2, 'center');
   drawText('BY A SON AND HIS DAD', W / 2, 124, PAL.ink, 2, 'center');
   drawText('♥', W / 2, 142, '#e01e1e', 3, 'center');
+  aboutMsg.t -= 1 / 60;
+  if (Save.data.dev) {
+    drawText('DEV MODE IS ON', W / 2, 160, '#2f9a5a', 1, 'center');
+    if (UI.button('devoff', Math.round(W / 2 - 70), 168, 140, 16, 'LEAVE DEV MODE', { size: 1, accent: '#e01e1e' })) { devOff(); sfx('click'); aboutMsg = { text: 'YOUR REAL PROGRESS IS BACK', color: PAL.ink, t: 2.5 }; }
+  } else {
+    drawText('DEV CODE', W / 2 - 64, 167, PAL.inkSoft, 1, 'right');
+    placeCodeInput(W / 2 - 58, 160, 70, 20);
+    if (UI.button('devok', W / 2 + 18, 161, 40, 18, 'OK', { size: 1 })) checkDevCode();
+  }
+  if (aboutMsg.t > 0) drawText(aboutMsg.text, W / 2, 228, aboutMsg.color, 1, 'center');
   const bw = 160;
   if (UI.button('back', Math.round(W / 2 - bw / 2), 190, bw, 22, 'BACK') || UI.back) go('settings');
 }
@@ -5016,7 +5065,7 @@ function frame(now) {
     case 'run': drawRun(); break;
     case 'mp': drawMP(); break;
   }
-  if (state !== 'mp') codeInput.style.display = 'none';
+  if (state !== 'mp' && !(state === 'about' && !Save.data.dev)) codeInput.style.display = 'none';
   if (netEmit()) Net.sendSnap();
   else if (raceEmit()) Net.sendGhost();
   UI.end();
