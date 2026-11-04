@@ -34,6 +34,10 @@ New players get an interactive tutorial after the intro (replay it any time via 
   In the Hall of the Mountain King, Can-Can,
   Korobeiniki, Ode to Joy, Jingle Bells (★300–450 each). Boss fights keep their own music (Bossy Devil fights to a faster Toccata).
 - **Shields** are used up: buy them one by one (★50, up to 9); each one you raise is gone for good.
+- **Your name:** SETTINGS → NAME (a nickname, 2–10 letters). Friends see it in multiplayer and on the leaderboard.
+- **Leaderboard** (menu): you and every friend you've played online with, by most stars and by longest run. No server:
+  phones swap names, stars and best times whenever they meet in multiplayer.
+- **Mouse skins:** SHOP → SKINS, last page: dress up the mouse you carry (white, brown, zombie, robot, ninja, rainbow, golden).
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
 - **Famous looks:** THE KING, POP DIVA, FOOTBALL STAR, ROCK STAR and MOVIE STAR skins (page 2 of SKINS).
@@ -61,6 +65,10 @@ Pick a mode when creating the game (and change it any time in the lobby). All ab
 
 - Thief: jump / slide as usual, 1 FREEZE · 2 SPEED BOOST · 3 SHIELD
 - Cat: tap / Space POUNCE · 1 SPRINT · 2 TRAP (spikes pop up ahead of the thief) · 3 ROAR (stops him for a moment)
+
+**Bets:** in the lobby, set a bet with − / +; both players must tap I AGREE (same amount, enough stars). The bets
+go in the pot when the round starts and the winner takes both. Leaving in the middle of a round counts as losing.
+No betting in developer mode.
 
 **Race of two thieves:** you both run the same roofs (built from a shared seed), each chased by your own cat.
 Your friend shows up as the blue thief. Whoever survives longer wins.
