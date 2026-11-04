@@ -12,23 +12,28 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
 
 ## Pixel Heist
 
-A real 3D city (low-poly, drawn chunky like the other games), seen from behind your masked thief.
+A 3D city crime story with blocky characters, real shadows and day turning into night. Max, the boss of a crew, gives you five jobs:
 
-- **5 levels**, each one harder and with more expensive loot:
-  1. Corner shop: the cash register ($500), on a sunny day, 1 police car.
-  2. Jewelry store: the diamonds ($8,000), in the afternoon, 2 police cars.
-  3. Art museum: the golden painting ($60,000), at sunset, 3 police cars and 2 guards.
-  4. Gold shop: the gold bars ($250,000), at dusk, 4 police cars and 3 guards.
-  5. **City bank**: the vault ($1,000,000), at night, 5 police cars and 4 guards. Rob the bank and you've **completed the game**.
-- **A heist:** go to the yellow light, stand in the ring to grab the loot (that sets off the alarm), then get to your hideout
-  (green light) before the police catch you. Half the loot is enough; staying longer gets you more, but the police get closer.
-- **Cars:** get into any car (E, or the CAR button): your red sports car is parked by the hideout. Police rams break your car (CAR hearts).
-- **Busted** if a police car gets you on foot, if they box your car in, or if a guard who saw you catches you.
-  Guards walk around the building; don't step into their yellow light.
-- Every heist pays ★ into the shared arcade wallet (more for more loot).
-- Controls: WASD / arrows (up = forward, left/right = turn), E = car in/out, P = pause, M = music. On a phone: drag on the left half
-  of the screen to move, and the CAR / OUT button. The music and the sound effects each have an on/off button.
-- The 3D drawing uses [three.js](https://threejs.org) (MIT licence), kept in `vendor/`.
+1. **Corner shop**: the cash ($500), on a sunny day.
+2. **Jewelry store**: the diamonds ($8,000), in the afternoon, with a guard.
+3. **Art museum**: the golden painting ($60,000), at sunset; the vault has a code.
+4. **Gold shop**: the gold bars ($250,000), at dusk; code and lock.
+5. **City bank**: the money ($1,000,000), at night, 5 guards and 5 police cars. Rob it and you're the new boss: **game complete**.
+
+**A heist:** walk in through the front door, grab the bag, find the vault code on a yellow note (heists 3 to 5), type it on the
+keypad, pick the lock pins (press when the line is in the green), fill the bag in the vault (half is enough, more is a bonus),
+then get out before the police block the door and escape to the hideout (green light). Take any car in the street.
+
+**The stun blaster:** people you zap fall down dizzy for 20 seconds, then get up angry and chase you. A shot in the air makes
+everybody nearby put their hands up for 15 seconds. Shots, a wrong code or opening the vault set off the alarm; guards who see
+you (their yellow light) do too. An angry person or a police car that catches you: **busted**.
+
+**Controls:**
+- Phone: the left stick (left half of the screen) moves you, the right stick (right half) turns the camera; buttons SHOOT, AIR, CAR/OUT, PICK.
+- Computer: WASD to move, the arrow keys to turn the camera, Space to shoot (and pick a pin), R to shoot in the air, E to get in or out of a car, digits for the code, P to pause.
+- Music and sound effects each have an on/off button.
+
+Every heist pays ★ into the shared arcade wallet. The 3D drawing uses [three.js](https://threejs.org) (MIT licence), kept in `vendor/`.
 
 ## Pixel GP
 
