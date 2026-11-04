@@ -21,7 +21,12 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
   trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
   **WRECKED!** (in a race with a friend, the friend wins). Obstacles change every race and come back every lap;
   a blinking SHARP TURN! warns you to brake.
-- Your car has your avatar's color. Best lap, best race and wins are saved on your phone.
+- **Stars:** collect ★ on the road (once per race) and get a bonus for your place (1st ★15 … 6th ★2; online: win ★10,
+  lose ★3). **The ★ wallet is shared** with Mouse Thief and shown in the arcade.
+- **GARAGE:** abilities (NITRO and SHIELD buttons in the race, keys 1 / 2; ARMOR = more hearts; GRIP = less sliding in
+  curves; MAGNET = grab stars from further away), 6 car designs and 12 paint colors (or your avatar's color).
+- **Music:** its own chiptune racing tune, a calmer one in the menus; the note button on the title switches it off.
+- Your car has your avatar's color unless you paint it. Best lap, best race and wins are saved on your phone.
 
 ---
 

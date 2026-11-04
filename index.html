@@ -29,7 +29,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -130,6 +130,7 @@ function drawHome(t) {
   background(t);
   T('PIXEL ARCADE', W / 2 + 2, 10, '#e01e1e', 4, 'center');
   T('PIXEL ARCADE', W / 2, 8, '#fff', 4, 'center');
+  T('★ ' + PX.Wallet.get(), W - 10, 12, '#ffd23f', 2, 'right', '#000');   // one wallet for all the games
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46, rx = Math.round(W / 2 - rowW / 2);
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
