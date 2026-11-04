@@ -34,7 +34,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -61,7 +61,7 @@ const ABILITIES = [
   { id: 'shield', name: 'SHIELD', color: '#58e0a0', prices: [60, 150], active: true, key: '2',
     stat: t => ({ uses: t }), desc: s => 'BLOCKS ' + s.uses + ' HIT' + (s.uses > 1 ? 'S' : '') },
   { id: 'armor', name: 'ARMOR', color: '#ff3b5a', prices: [80, 200],
-    stat: t => ({ hp: 3 + t }), desc: s => s.hp + ' HEARTS' },
+    stat: t => ({ hp: 1 + t }), desc: s => s.hp + ' HEARTS' },
   { id: 'grip', name: 'GRIP', color: '#ffd23f', prices: [50, 110, 220],
     stat: t => ({ k: [0.8, 0.65, 0.5][t - 1] }), desc: s => Math.round((1 - s.k) * 100) + '% LESS SLIDING' },
   { id: 'magnet', name: 'MAGNET', color: '#9a5ae0', prices: [60, 140],
@@ -268,7 +268,8 @@ function rivalColors() {
 function newDriver() {
   const armor = stat('armor');
   return { x: 0, speed: 0, position: 0, dist: 0, lapStart: 0, lap: 1, lapTime: 0, lastLap: 0, bestLap: 0, time: 0, turn: 0, bump: 0, offroad: false,
-           hp: armor ? armor.hp : 3, maxHp: armor ? armor.hp : 3, spin: 0, hurtT: 0, smokeT: 0, nitroT: 0, shieldOn: false };
+           hp: armor ? armor.hp : 1, maxHp: armor ? armor.hp : 1,   // one heart: one hit and you're out (ARMOR adds more)
+           spin: 0, hurtT: 0, smokeT: 0, nitroT: 0, shieldOn: false };
 }
 const HP = 3;
 function startRace(m, seed) {

@@ -128,6 +128,8 @@ window.PX = (() => {
   const ICE_SERVERS = [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
     { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+    // a second free public relay (TURN), for phones on mobile data that can't reach each other directly
+    { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
   ];
   const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';
   function loadPeer() {

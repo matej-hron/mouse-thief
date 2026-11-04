@@ -4185,7 +4185,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.16.0';
+const VERSION = '1.17.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4225,6 +4225,8 @@ const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
   ...TURN_SERVERS,
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+  // a second free public relay, for phones on mobile data that can't reach each other directly
+  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';   // no I/O/Q/0/1: easy to mix up in pixel font
