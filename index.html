@@ -449,6 +449,42 @@ const TRACKS = {
                72 . . . 72 . . . 74 . . . 76 . . .
                74 . . . . . 72 . 72 . . . . . . .`),
   },
+  moonwalk: {
+    bpm: 116, leadType: 'square', leadVol: 0.1, drums: true, roots: [40],
+    bassType: 'sawtooth', bassVol: 0.14, bass: seq(`40 . . 40 . . 43 . 45 . . 43 . 40 38 .
+               40 . . 40 . . 43 . 45 . . 43 . 40 38 .
+               45 . . 45 . . 48 . 47 . . 45 . 43 . .
+               40 . . 40 . . 43 . 45 . 47 . 48 . 47 .`),
+    lead: seq(`. . 76 . . 74 . 76 . . 79 . 76 . . .
+               . . 76 . . 74 . 71 . . 74 . 71 . 69 .
+               . . 81 . . 79 . 81 . . 83 . 81 . 79 .
+               76 . . 74 . 76 . 79 . . 76 . . . . .`),
+  },
+  wub: {
+    bpm: 140, leadType: 'square', leadVol: 0.07, drums: true, roots: [33],
+    bassType: 'sawtooth', bassVol: 0.18, bassLen: 3.6, bassVib: 40, bassVibRate: 7, bass: seq(`33 . . . 33 . . . 33 . 33 . . . 33 .
+               29 . . . 29 . . . 29 . 29 . . . 29 .
+               36 . . . 36 . . . 36 . 36 . . . 36 .
+               31 . . . 31 . . . 31 . 31 . 31 . 31 .`),
+    lead: seq(`69 72 76 72 69 72 76 81 69 72 76 72 76 72 69 72
+               65 69 72 69 65 69 72 77 65 69 72 69 72 69 65 69
+               72 76 79 76 72 76 79 84 72 76 79 76 79 76 72 76
+               67 71 74 71 67 71 74 79 74 . 79 . 83 . 86 .`),
+  },
+  bumblebee: {
+    bpm: 140, leadType: 'square', leadVol: 0.08, drums: true, roots: [45, 40, 45, 40],
+    lead: seq(`88 87 86 85 86 85 84 83 84 83 82 81 80 79 78 77
+               76 77 76 75 76 77 76 75 76 77 78 77 76 75 74 73
+               81 80 79 78 79 78 77 76 77 76 75 74 73 72 71 70
+               69 70 69 68 69 70 69 68 69 70 71 72 73 74 75 76`),
+  },
+  toccata: {
+    bpm: 96, leadType: 'sawtooth', leadVol: 0.12, drums: false, roots: [38, 38, 45, 38],
+    lead: seq(`81 79 81 . . . . . 79 77 76 74 73 . 74 .
+               . . . . . . . . 69 67 69 . . . . .
+               64 65 61 . 62 . . . . . . . . . . .
+               57 55 57 . . . . . 55 53 52 50 49 . 50 .`),
+  },
   jingle: {
     bpm: 150, leadType: 'triangle', leadVol: 0.2, drums: true, roots: [48, 48, 48, 48, 41, 48, 43, 43, 48, 48, 48, 48, 41, 48, 43, 48],
     lead: seq(`76 . . . 76 . . . 76 . . . . . . .
@@ -473,6 +509,10 @@ const TRACKS = {
 const SONGS = [
   { id: 'chase', name: 'CAT CHASE', sub: 'THE ORIGINAL', price: 0 },
   { id: 'sunny', name: 'SUNNY DAYS', sub: 'CHILL SUMMER GROOVE', price: 450 },
+  { id: 'moonwalk', name: 'MOONWALK FUNK', sub: 'FUNKY 80S DANCE', price: 450 },
+  { id: 'wub', name: 'WUB WUB', sub: 'ELECTRO BASS', price: 450 },
+  { id: 'bumblebee', name: 'BUMBLEBEE', sub: 'RIMSKY-KORSAKOV: CRAZY FAST', price: 400 },
+  { id: 'toccata', name: 'TOCCATA', sub: 'BACH: SPOOKY ORGAN', price: 400 },
   { id: 'mountain', name: 'MOUNTAIN KING', sub: 'GRIEG: SNEAKY AND FAST', price: 400 },
   { id: 'cancan', name: 'CAN-CAN', sub: 'OFFENBACH: DANCE PARTY', price: 400 },
   { id: 'korobeiniki', name: 'KOROBEINIKI', sub: 'RUSSIAN FOLK SONG', price: 400 },
@@ -505,7 +545,10 @@ const Music = {
     const n = tr.lead[i];
     if (n) tone(midi(n), spb * 1.7, { type: tr.leadType, vol: tr.leadVol, at: t, dest, hold: 0.3 });
     const s = i % 16, root = tr.roots[Math.floor(i / 16) % tr.roots.length];
-    if (s % 2 === 0) tone(midi(root + (s % 4 === 2 ? 12 : 0)), spb * 1.6, { type: tr.drums ? 'square' : 'triangle', vol: tr.drums ? 0.06 : 0.16, at: t, dest });
+    if (tr.bass) {                                     // a song with its own bass line (funk, wobble bass...)
+      const b = tr.bass[i % tr.bass.length];
+      if (b) tone(midi(b), spb * (tr.bassLen || 1.8), { type: tr.bassType || 'square', vol: tr.bassVol || 0.12, at: t, dest, vib: tr.bassVib || 0, vibRate: tr.bassVibRate || 6, hold: 0.7 });
+    } else if (s % 2 === 0) tone(midi(root + (s % 4 === 2 ? 12 : 0)), spb * 1.6, { type: tr.drums ? 'square' : 'triangle', vol: tr.drums ? 0.06 : 0.16, at: t, dest });
     if (tr.drums) {
       if (s % 8 === 0 || s === 10) tone([150, 40], 0.12, { type: 'sine', vol: 0.5, at: t, dest });
       if (s === 4 || s === 12) noise(0.1, { freq: 1800, vol: 0.16, at: t, dest });
@@ -4012,7 +4055,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.12.0';
+const VERSION = '1.13.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4479,7 +4522,7 @@ function drawShop(dt) {
   const msgY = H - 16;
   if (shopMsg.t > 0) drawText(shopMsg.text, W / 2, msgY, shopMsg.color, 1, 'center');
   else if (shopTab === 'abil') drawText('EQUIPPED ' + Save.data.equipped.length + '/' + MAX_SLOTS + '   PAGE ' + (abilPage + 1) + '/' + Math.ceil(ABILITIES.length / ABIL_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
-  else if (shopTab === 'music') drawText('TRY: LISTEN.  USE: IT PLAYS WHILE YOU RUN.', W / 2, msgY, PAL.inkSoft, 1, 'center');
+  else if (shopTab === 'music') drawText('TRY: LISTEN.  USE: PLAYS IN RUNS.  PAGE ' + (songPage + 1) + '/' + Math.ceil(SONGS.length / SONGS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   else drawText('PAGE ' + (skinPage + 1) + '/' + Math.ceil(SKINS.length / SKINS_PER_PAGE), W / 2, msgY, PAL.inkSoft, 1, 'center');
   if (UI.button('back', 10, H - 22, 80, 18, 'BACK') || UI.back) go('menu');
   if (UI.button('go', W - 90, H - 22, 80, 18, 'PLAY', { accent: '#e01e1e' })) startRun();
@@ -4517,9 +4560,16 @@ function drawAbilityShop() {
 }
 
 // --- music --------------------------------------------------------------------
+let songPage = 0;
+const SONGS_PER_PAGE = 7;
 function drawMusicShop() {
-  const d = Save.data;
-  SONGS.forEach((g, i) => {
+  const d = Save.data, pages = Math.ceil(SONGS.length / SONGS_PER_PAGE);
+  songPage = clamp(songPage, 0, pages - 1);
+  if (pages > 1) {
+    if (UI.button('songprev', 96, H - 22, 22, 18, '<', { disabled: songPage === 0 })) { songPage--; sfx('click'); }
+    if (UI.button('songnext', W - 118, H - 22, 22, 18, '>', { disabled: songPage === pages - 1 })) { songPage++; sfx('click'); }
+  }
+  SONGS.slice(songPage * SONGS_PER_PAGE, (songPage + 1) * SONGS_PER_PAGE).forEach((g, i) => {
     const y = 30 + i * 26, owned = d.songs.includes(g.id), on = runSong() === g.id, playing = Music.track === g.id;
     ctx.fillStyle = PAL.ink; ctx.fillRect(8, y, W - 16, 24);
     ctx.fillStyle = on ? PAL.sel : PAL.paperHi; ctx.fillRect(9, y + 1, W - 18, 22);

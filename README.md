@@ -29,7 +29,8 @@ New players get an interactive tutorial after the intro (replay it any time via 
   +5% (★350). Prices went up in 1.11; tiers you already bought stay yours.
 - **Heaven** has little flying devils instead of pigeons.
 - **Music shop** (SHOP → MUSIC): buy songs and pick one as the music for your runs (TRY to listen first; switch songs
-  in the pause menu too): Sunny Days (an original chill summer groove), In the Hall of the Mountain King, Can-Can,
+  in the pause menu too): Sunny Days, Moonwalk Funk and Wub Wub (originals), Flight of the Bumblebee, Bach's Toccata,
+  In the Hall of the Mountain King, Can-Can,
   Korobeiniki, Ode to Joy, Jingle Bells (★300–450 each). Boss fights keep their own music.
 - **Shields** are used up: buy them one by one (★50, up to 9); each one you raise is gone for good.
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
