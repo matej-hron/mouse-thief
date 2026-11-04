@@ -8,6 +8,27 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
 |---|---|
 | **Mouse Thief** (`thief.html`) | You stole the cat's mouse "just for fun". She did not find it funny. Run! |
 | **Pixel GP** (`racer.html`) | A pixel open-wheel racer that looks 3D: race 5 rivals, drive freely, or race a friend online. |
+| **Pixel Heist** (`heist.html`) | A low-poly 3D city: rob 5 places, each harder and richer, and escape the police. Rob the bank to win. |
+
+## Pixel Heist
+
+A real 3D city (low-poly, drawn chunky like the other games), seen from behind your masked thief.
+
+- **5 levels**, each one harder and with more expensive loot:
+  1. Corner shop: the cash register ($500), on a sunny day, 1 police car.
+  2. Jewelry store: the diamonds ($8,000), in the afternoon, 2 police cars.
+  3. Art museum: the golden painting ($60,000), at sunset, 3 police cars and 2 guards.
+  4. Gold shop: the gold bars ($250,000), at dusk, 4 police cars and 3 guards.
+  5. **City bank**: the vault ($1,000,000), at night, 5 police cars and 4 guards. Rob the bank and you've **completed the game**.
+- **A heist:** go to the yellow light, stand in the ring to grab the loot (that sets off the alarm), then get to your hideout
+  (green light) before the police catch you. Half the loot is enough; staying longer gets you more, but the police get closer.
+- **Cars:** get into any car (E, or the CAR button): your red sports car is parked by the hideout. Police rams break your car (CAR hearts).
+- **Busted** if a police car gets you on foot, if they box your car in, or if a guard who saw you catches you.
+  Guards walk around the building; don't step into their yellow light.
+- Every heist pays ★ into the shared arcade wallet (more for more loot).
+- Controls: WASD / arrows (up = forward, left/right = turn), E = car in/out, P = pause, M = music. On a phone: drag on the left half
+  of the screen to move, and the CAR / OUT button. The music and the sound effects each have an on/off button.
+- The 3D drawing uses [three.js](https://threejs.org) (MIT licence), kept in `vendor/`.
 
 ## Pixel GP
 

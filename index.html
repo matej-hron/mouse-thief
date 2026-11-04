@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief and Pixel GP. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP and Pixel Heist. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,7 +29,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -50,6 +50,7 @@ const thiefIcon = new Image(); thiefIcon.src = 'icons/icon-192.png';
 const GAMES = [
   { id: 'thief', name: 'MOUSE THIEF', sub: 'RUN FROM THE CAT!', url: 'thief.html', color: '#e01e1e' },
   { id: 'racer', name: 'PIXEL GP', sub: 'RACE CARS!', url: 'racer.html', color: '#2a7fd4' },
+  { id: 'heist', name: 'PIXEL HEIST', sub: 'ROB THE BANK!', url: 'heist.html', color: '#ffd23f' },
 ];
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
@@ -116,12 +117,40 @@ function previewRacer(x, y, w, h, t) {
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(carX + 15, carY + 3, 4, 3);
   ctx.fillStyle = '#16161c'; ctx.fillRect(carX + 3, carY, 28, 3); ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(carX + 3, carY, 28, 1);
 }
+function previewHeist(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#14123a'; ctx.fillRect(x, y, w, h);                     // night
+  for (let i = 0; i < 8; i++) {                                           // the city, with lit windows
+    const bx = x + i * 18 - 4, bh = 18 + (i * 37) % 22, by = y + h - 14 - bh;
+    ctx.fillStyle = i % 2 ? '#2a2850' : '#33305e'; ctx.fillRect(bx, by, 16, bh);
+    for (let r = 0; r < bh - 4; r += 5) for (let c = 2; c < 14; c += 4) if ((i * 7 + r * 3 + c) % 5 < 3) { ctx.fillStyle = '#ffcf70'; ctx.fillRect(bx + c, by + 3 + r, 2, 2); }
+  }
+  const bkx = Math.round(x + w / 2 - 22), bky = y + h - 36;                // the bank
+  ctx.fillStyle = '#e8e4dc'; ctx.fillRect(bkx, bky, 44, 22); ctx.fillRect(bkx + 4, bky - 4, 36, 4); ctx.fillRect(bkx + 12, bky - 8, 20, 4);
+  ctx.fillStyle = '#b8b0a0'; for (let c = 0; c < 5; c++) ctx.fillRect(bkx + 4 + c * 9, bky + 3, 3, 19);
+  ctx.fillStyle = '#4a3a2a'; ctx.fillRect(bkx + 19, bky + 10, 6, 12);
+  ctx.fillStyle = '#4a4a55'; ctx.fillRect(x, y + h - 14, w, 14);          // the road
+  ctx.fillStyle = '#e8d36a'; for (let k = 0; k < 6; k++) ctx.fillRect(x + ((k * 24 - t * 60) % (w + 24) + w + 24) % (w + 24) - 12, y + h - 8, 10, 1);
+  const run = (t * 0.35) % 1, tx = Math.round(x + 6 + run * (w - 30)), ty = y + h - 24, leg = Math.floor(t * 10) % 2;   // the thief with the loot
+  ctx.fillStyle = '#111'; ctx.fillRect(tx + 1, ty, 6, 3);
+  ctx.fillStyle = '#f0c090'; ctx.fillRect(tx + 1, ty + 3, 6, 2);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(tx, ty + 5, 8, 6);
+  ctx.fillStyle = '#c8a060'; ctx.fillRect(tx - 4, ty + 4, 5, 6); ctx.fillStyle = '#5ab04a'; ctx.fillRect(tx - 3, ty + 6, 3, 2);
+  ctx.fillStyle = '#2a2a34'; ctx.fillRect(tx + (leg ? 0 : 2), ty + 11, 2, 3); ctx.fillRect(tx + (leg ? 6 : 4), ty + 11, 2, 3);
+  const px = Math.round(tx - 30), py = y + h - 20, fl = Math.floor(t * 6) % 2;   // the police, close behind
+  if (px > x - 24) {
+    ctx.fillStyle = '#f4f4f4'; ctx.fillRect(px, py + 2, 22, 5); ctx.fillStyle = '#111'; ctx.fillRect(px + 5, py + 3, 10, 3); ctx.fillStyle = '#22304a'; ctx.fillRect(px + 6, py - 2, 10, 4);
+    ctx.fillStyle = fl ? '#ff2a2a' : '#2a6bff'; ctx.fillRect(px + 8, py - 4, 3, 2); ctx.fillStyle = fl ? '#2a6bff' : '#ff2a2a'; ctx.fillRect(px + 12, py - 4, 3, 2);
+    ctx.fillStyle = '#151515'; ctx.fillRect(px + 2, py + 7, 4, 3); ctx.fillRect(px + 16, py + 7, 4, 3);
+  }
+  ctx.restore();
+}
 function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  (g.id === 'thief' ? previewThief : previewRacer)(x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist })[g.id](x + 6, y + 8, w - 12, 62, t);
   T(g.name, x + w / 2, y + 82, '#fff', 2, 'center', '#000');
   if (UI.button('play_' + g.id, x + 8, y + h - 24, w - 16, 18, 'PLAY', { accent: g.color })) play(g);
 }
@@ -138,7 +167,7 @@ function drawHome(t) {
   if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
   // the games
   const n = 3, gap = 8, cw = Math.min(150, Math.floor((W - 16 - gap * (n - 1)) / n)), x0 = Math.round(W / 2 - (cw * n + gap * (n - 1)) / 2);
-  [GAMES[0], GAMES[1], null].forEach((g, i) => card(g, i, x0 + i * (cw + gap), 72, cw, 140, t));
+  GAMES.forEach((g, i) => card(g, i, x0 + i * (cw + gap), 72, cw, 140, t));
   if (installPrompt && UI.button('install', 8, H - 22, 90, 16, 'INSTALL APP', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
 }
 // --- your name and avatar ------------------------------------------------------------------
