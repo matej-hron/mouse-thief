@@ -12,6 +12,7 @@ const ASSETS = [
   './heist.html',
   './pong.html',
   './football.html',
+  './hoops.html',
   './vendor/three.module.min.js',
   './vendor/three.core.min.js',
   './common.js',
