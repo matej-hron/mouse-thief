@@ -12,7 +12,7 @@ The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the sli
 | **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
 | **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
 | **Pixel Hoops** (`hoops.html`) | Arcade basketball: pull back and let go to shoot. Every basket is +2 points. |
-| **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base, or take off and defend it. With bots, 2 on one screen, or up to 6 online. |
+| **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 
 ## Pixel Wings
 
@@ -22,11 +22,16 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
 - **AIR RAID:** the attack (red) flies bombers and fighters in from the west at the island air base. The bombers must
   destroy the 6 targets (2 hangars, fuel depot, radar, control tower, ammo dump); their fighters escort them.
   The defense (blue) starts on the ground: fighters take off from the runway one after another and must shoot the
-  bombers down, or hold out for 5 minutes. AA guns on the island fire flak at the raid. Bombs also wreck planes still
+  bombers down, or hold out for 4 minutes. AA guns on the island fire flak at the raid. Bombs also wreck planes still
   waiting on the ground. While the hangars stand, they send out new fighters every 30 s. Lose the radar and the
   defense's minimap only shows enemies close by.
+- **CARRIERS:** two fleets on open sea, each a carrier and two destroyers zig-zagging north and south. Sink the enemy
+  carrier (or hurt it more in 4 minutes). Planes take off from the carrier's deck, and so do you after being shot down;
+  a hurt carrier gets its planes up more slowly. Every ship has AA guns. **Torpedo planes** carry one torpedo (a new one
+  every 6 s) that run straight through the water: aim ahead of the ship. Bombers can hit ships too (good against the
+  destroyers). Half of each side's fighter bots guard their carrier, the other half escort their torpedo planes and bombers.
 - **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
-  kill target (10 / 15 / 25 by size), or most kills after 5 minutes, wins.
+  kill target (10 / 15 / 25 by size), or most kills after 3 minutes, wins.
 - **Planes:** fighters are fast and turn tightly (2 machine guns). Bombers are slow and tough, drop bombs
   (4 at a time, one comes back every 8 s; the bomb lands a bit ahead of the plane) and have a rear gunner that shoots
   at enemy fighters by itself. A hurt plane smokes.
@@ -34,15 +39,25 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   so friends can fly together or against each other. Bots fill every other seat. SIZE (small / normal / big) and the bots'
   level (easy / normal / hard) are set before the battle. Shot down? You're back in 4 seconds (attack bombers have 2
   spare planes per human bomber pilot, then you fly a fighter).
-- **Controls:** keys: arrows or WASD to steer, up / down = speed, Space to fire (or drop bombs), P pauses.
-  Phone: drag anywhere to point where to fly (further = faster), FIRE / BOMB button in the corner.
+- **Controls:** keys: arrows or WASD to steer, up / down = faster / slower, Space to fire (or drop bombs / torpedoes), P pauses.
+  Phone: drag anywhere to point where to fly; hold + / − (above the FIRE button) for speed.
+  Every battle starts with a short reminder of the controls for your device.
   Controller: left stick points where to fly, A or RT fires, LB / RB slower / faster.
 - **2 PLAYERS, 1 SCREEN:** split screen. Player 1: WASD + Space, player 2: arrows + Enter (or two controllers; on a
   phone each one uses their half).
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
   the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
   If a player leaves, a bot takes over their plane.
-- **Stars:** a win ★8, every kill ★1 (up to 10), every target you destroy ★2.
+- **Radio:** pilots and command talk to their own side over the radio (bottom left, with a voice): bombers starting
+  their run, bombs or torpedo away, targets destroyed, "taking fire, need fighter cover!" (the nearest fighter answers
+  and comes; a HELP arrow and a blinking box show you where), "bandit on my tail!", "I'm hit, going down!", the carrier
+  being hit, one minute left. Bots have callsigns (EAGLE, LANCER, VIPER, HAMMER, SHARK, DOLPHIN), humans use their name.
+  The voices are recorded with the free [Piper](https://github.com/rhasspy/piper) voices and filtered to sound like
+  an old radio (`radio/*.mp3`, about 0.5 MB; `tools/radio/` makes them, the lines are in `tools/radio/lines.py`); VOICE OFF (title screen or pause menu) gives wordless radio chatter instead.
+  Big news (a target destroyed, a ship hit or sunk, one minute left) flashes in the middle of the screen.
+- **After a battle:** REMATCH starts the same battle again, SWAP SIDES swaps every pilot's side and starts it,
+  SETUP goes back to the lobby.
+- **Stars:** a win ★8, every kill ★1 (up to 10), every target you destroy or ship hit ★2.
 
 ## Pixel Hoops
 
