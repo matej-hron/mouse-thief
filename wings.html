@@ -41,9 +41,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const SAVE_KEY = 'pixelWings.save';
-const save = { sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
+const save = { school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -74,7 +74,7 @@ const BULLET_V = 260, BULLET_LIFE = 0.8, GUN_RATE = 0.11;
 const BOMB_FALL = 1.0, BOMB_R = 18, BOMB_DMG = 2, BOMB_MAX = 4, BOMB_RELOAD = 8, BOMB_RATE = 0.28, BOMB_DRIFT = 0.7;
 const GUNNER_RANGE = 135, GUNNER_RATE = 0.65;
 const TAKEOFF_V = 44, GROUND_ACC = 19;
-const TIMES = { raid: 240, dog: 180, carrier: 240 }, DOG_KILLS = [10, 15, 25];
+const TIMES = { raid: 240, dog: 180, carrier: 240, school: 999 }, DOG_KILLS = [10, 15, 25];
 const TORP_V = 62, TORP_LIFE = 10, TORP_DMG = 14, TORP_MAX = 1, TORP_RELOAD = 6;
 const SHIP_V = 8, DESTROYER_HP = 24, FLEET_X = [460, 3200 - 460];
 const RESPAWN = 4, HANGAR_EVERY = 30;
@@ -311,6 +311,7 @@ function newBattle(cfg, players) {
     for (const d of TARGET_DEFS) { const hp = Math.round(d.hp * size.hp); G.targets.push({ k: d.k, name: d.name, x: IX + d.dx, y: IY + d.dy, w: d.w, h: d.h, hp, max: hp }); }
     for (const [dx, dy] of AA_DEFS) G.aa.push({ x: IX + dx, y: IY + dy, hp: 3, a: Math.PI, t: rnd(0, 2) });
   }
+  if (cfg.mode === 'school') { newSchool(); return; }
   const want = cfg.mode === 'raid'
     ? { [ATT]: { [BOMBER]: size.bomb, [FIGHTER]: size.esc, [TORPEDO]: 0 }, [DEF]: { [BOMBER]: 0, [FIGHTER]: size.def, [TORPEDO]: 0 } }
     : cfg.mode === 'carrier'
@@ -395,6 +396,15 @@ function launchFromDeck(type, side, pl) {        // a plane rolls down the carri
 }
 function stepShips(dt) {
   const L = LEVELS[G.cfg.level];
+  if (G.cfg.mode === 'school') {                                  // flight school: one target ship going up and down, no guns
+    for (const q of G.ships) {
+      if (q.hp <= 0) { q.sink += dt; continue; }
+      const want = q.y < 520 ? Math.PI / 2 : q.y > WH - 520 ? -Math.PI / 2 : q.a;
+      q.a += clamp(angDiff(want, q.a), -0.12 * dt, 0.12 * dt);
+      q.x += Math.cos(q.a) * q.v * dt; q.y += Math.sin(q.a) * q.v * dt;
+    }
+    return;
+  }
   for (const f of G.fleet) {
     const side = G.fleet.indexOf(f), cv = carrierOf(side);
     if (cv.hp <= 0) continue;                                     // a sinking fleet stops
@@ -446,8 +456,8 @@ function hitShip(s, dmg, owner, x, y) {
 function stepTorps(dt) {                            // torpedoes run straight through the water
   for (const t of G.torps) {
     t.t += dt; t.x += t.vx * dt; t.y += t.vy * dt;
-    if (t.t > TORP_LIFE || t.x < 0 || t.y < 0 || t.x > WW || t.y > WH) { t.done = true; continue; }
-    if (isLand(t.x, t.y)) { t.done = true; fx({ k: 'boom', x: t.x, y: t.y, s: 1 }); continue; }
+    if (t.t > TORP_LIFE || t.x < 0 || t.y < 0 || t.x > WW || t.y > WH) { t.done = true; if (G.school) G.school.missT = G.t; continue; }
+    if (isLand(t.x, t.y)) { t.done = true; fx({ k: 'boom', x: t.x, y: t.y, s: 1 }); if (G.school) G.school.missT = G.t; continue; }
     if (t.t < 0.4) continue;                                      // still diving in
     const s = shipAt(t.x, t.y, t.side, 2);
     if (s) { t.done = true; hitShip(s, TORP_DMG, t.owner, t.x, t.y); }
@@ -455,6 +465,7 @@ function stepTorps(dt) {                            // torpedoes run straight th
   G.torps = G.torps.filter(t => !t.done);
 }
 function respawnDelay(side) {                        // a hurt carrier gets its planes up more slowly
+  if (G.cfg.mode === 'school') return 2;
   if (G.cfg.mode !== 'carrier') return RESPAWN;
   const cv = carrierOf(side);
   return RESPAWN * (1 + 1.5 * (1 - cv.hp / cv.max));
@@ -481,8 +492,9 @@ function fx(e) { G.fx.push(e); }
 function feed(text, col) { fx({ k: 'msg', text, col }); }
 // RADIO: pilots and command talk to their own side. The sim says who says what; every device plays it.
 const CALLS = [['VIPER', 'HAMMER', 'SHARK'], ['EAGLE', 'LANCER', 'DOLPHIN']];   // [side][plane type]
-const CMD_CALL = { raid: ['COMMAND', 'TOWER'], carrier: ['RED CARRIER', 'BLUE CARRIER'], dog: ['COMMAND', 'COMMAND'] };
+const CMD_CALL = { raid: ['COMMAND', 'TOWER'], carrier: ['RED CARRIER', 'BLUE CARRIER'], dog: ['COMMAND', 'COMMAND'], school: ['INSTRUCTOR', 'INSTRUCTOR'] };
 function radio(side, line, p, cd = 6) {                          // cd: this line is not repeated on this side for cd seconds
+  if (G.cfg.mode === 'school' && !line.startsWith('i_')) return;   // in flight school only the instructor talks
   const k = side + line;
   if (G.t - (G.radioCD[k] === undefined ? -99 : G.radioCD[k]) < cd) return;
   G.radioCD[k] = G.t;
@@ -523,10 +535,16 @@ function pilotName(p) { return p.pilot >= 0 ? G.players[p.pilot].name : ['A FIGH
 function stepBattle(dt, inputs) {
   if (G.over) { G.endT += dt; stepEffectsOnly(dt); return; }
   G.t += dt; G.time -= dt;
-  if (!G.said && G.t > 1.2) {
+  if (G.cfg.mode === 'school') stepSchool(dt);
+  else if (!G.said && G.t > 1.2) {
     G.said = true;
     if (G.cfg.mode === 'raid') { radio(ATT, 'start_att'); radio(DEF, 'start_def'); }
     else for (const sd of [ATT, DEF]) radio(sd, G.cfg.mode === 'carrier' ? 'start_cv' : 'start_dog');
+  }
+  if (!G.briefed && G.t > 4) {
+    G.briefed = true;
+    if (G.cfg.mode === 'raid') radio(ATT, 'brief_raid', null, 0);
+    else if (G.cfg.mode === 'carrier') { radio(ATT, 'brief_cv', null, 0); radio(DEF, 'brief_cv', null, 0); }
   }
   if (!G.minSaid && G.time < 60) { G.minSaid = true; radio(ATT, 'minute'); radio(DEF, 'minute'); flash('ONE MINUTE LEFT!', '#fff'); }
   // the defenders take off one by one
@@ -605,6 +623,7 @@ function respawnPlayer(pl) {
       p = spawnPlane(FIGHTER, DEF, RUNWAY.x0 + 16 - busy * 26, RUNWAY.y, 0, pl); p.state = 'ground'; p.alt = 0; p.v = 0;
     }
   } else if (G.cfg.mode === 'carrier') p = launchFromDeck(type, side, pl);
+  else if (G.cfg.mode === 'school') { schoolSpawn(pl); if (G.school.lesson === 6) radio(ATT, 'i_down', G.ins, 0); return; }
   else { const s = dogSpawn(side, Math.floor(rnd(0, 6)), 6); p = spawnPlane(FIGHTER, side, s.x, s.y, s.a, pl); }
   pl.planeId = p.id;
 }
@@ -623,7 +642,8 @@ function stepPlane(p, dt, inp) {
   }
   if (p.state === 'ground') {                                    // rolling down the runway (or the deck): speed up, then lift off
     p.thr = 1;
-    p.v = Math.min(ty.vmax, p.v + (p.deck ? 34 : GROUND_ACC) * dt);
+    if (G.cfg.mode === 'school' && p.pilot >= 0) { p.thr = inp.thr; p.v = clamp(p.v + (inp.thr > 0.85 ? GROUND_ACC : -GROUND_ACC) * dt, 0, ty.vmax); }   // flight school: you push the throttle
+    else p.v = Math.min(ty.vmax, p.v + (p.deck ? 34 : GROUND_ACC) * dt);
     p.x += Math.cos(p.a) * p.v * dt; p.y += Math.sin(p.a) * p.v * dt;
     if (p.deck) { p.x += Math.cos(p.deck.a) * SHIP_V * dt; p.y += Math.sin(p.deck.a) * SHIP_V * dt; }
     if (p.v >= TAKEOFF_V) { p.state = 'air'; p.alt = 0.01; p.deck = null; }
@@ -655,7 +675,7 @@ function stepPlane(p, dt, inp) {
     }
   } else {
     const torp = p.type === TORPEDO;
-    if (p.bombs < (torp ? TORP_MAX : BOMB_MAX) && (p.reloadT -= dt) <= 0) { p.bombs++; p.reloadT = torp ? TORP_RELOAD : BOMB_RELOAD; }
+    if (p.bombs < (torp ? TORP_MAX : BOMB_MAX) && (p.reloadT -= dt) <= 0) { p.bombs++; p.reloadT = G.cfg.mode === 'school' ? (torp ? 3 : 1.5) : torp ? TORP_RELOAD : BOMB_RELOAD; }
     if (inp.fire && p.bombT <= 0 && p.bombs > 0 && p.alt > 0.5) {
       p.bombs--;
       if (torp) {                                                  // the torpedo drops in the water and runs straight on
@@ -706,7 +726,7 @@ function stepBullets(dt) {
   G.bullets = G.bullets.filter(b => b.life > 0);
 }
 function damage(q, dmg, by) {
-  if (!alive(q)) return;
+  if (!alive(q) || q.instructor) return;
   q.hp -= dmg; q.lastHit = by;
   if (q.hp > 0) return;
   // shot down
@@ -727,19 +747,22 @@ function stepBombs(dt) {
     if (b.t < BOMB_FALL) continue;
     b.done = true;
     const ship = G.ships.length ? shipAt(b.x, b.y, b.side, 4) : null;
-    if (ship) hitShip(ship, BOMB_DMG * 2, b.owner, b.x, b.y);
-    else if (isLand(b.x, b.y)) { fx({ k: 'boom', x: b.x, y: b.y, s: 2 }); groundBlast(b.x, b.y, BOMB_R, BOMB_DMG, b.side, b.owner); }
+    let hit = false;
+    if (ship) { hitShip(ship, BOMB_DMG * 2, b.owner, b.x, b.y); hit = true; }
+    else if (isLand(b.x, b.y)) { fx({ k: 'boom', x: b.x, y: b.y, s: 2 }); hit = groundBlast(b.x, b.y, BOMB_R, BOMB_DMG, b.side, b.owner) > 0; }
     else fx({ k: 'splash', x: b.x, y: b.y });
+    if (G.school && !hit) G.school.missT = G.t;
   }
   G.bombs = G.bombs.filter(b => !b.done);
 }
 function groundBlast(x, y, r, dmg, side, owner) {   // a bomb lands: hurts the enemy's buildings, guns and planes on the ground
+  let n = 0;
   if (side === ATT) {
     for (const t of G.targets) {
       if (t.hp <= 0) continue;
       const cx = clamp(x, t.x - t.w / 2, t.x + t.w / 2), cy = clamp(y, t.y - t.h / 2, t.y + t.h / 2);
       if (Math.hypot(x - cx, y - cy) > r) continue;
-      t.hp -= dmg;
+      t.hp -= dmg; n++;
       const o = planeById(owner);
       if (t.hp <= 0) {
         t.hp = 0;
@@ -754,6 +777,7 @@ function groundBlast(x, y, r, dmg, side, owner) {   // a bomb lands: hurts the e
     for (const a of G.aa) if (a.hp > 0 && Math.hypot(a.x - x, a.y - y) < r + 4) { a.hp -= dmg; if (a.hp <= 0) { a.hp = 0; fx({ k: 'boom', x: a.x, y: a.y, s: 2 }); } }
   }
   for (const q of G.planes) if (q.side !== side && (q.state === 'parked' || q.state === 'ground' || (q.state === 'air' && q.alt < 0.3)) && Math.hypot(q.x - x, q.y - y) < r) damage(q, 99, owner);
+  return n;
 }
 function stepAA(dt) {                                         // the island's guns shoot flak at the attack
   const L = LEVELS[G.cfg.level];
@@ -778,6 +802,7 @@ function stepAA(dt) {                                         // the island's gu
 }
 function checkEnd() {
   let win = -1;
+  if (G.cfg.mode === 'school') return;                           // flight school ends when the lesson is done
   if (G.cfg.mode === 'raid') {
     if (G.targets.every(t => t.hp <= 0)) win = ATT;
     else if (G.time <= 0) win = DEF;
@@ -803,6 +828,8 @@ function checkEnd() {
 function botThink(p, dt) {
   const b = p.bot, L = LEVELS[G.cfg.level];
   if (p.state !== 'air') return NO_INPUT;
+  if (p.instructor) return instructorThink(p);
+  if (p.drone) return { turn: 0, aim: orbitAim(p, p.cx, p.cy, 110), thr: 0, fire: false };
   b.t -= dt;
   let aim = null, thr = 0.75, fire = false;
   if (p.type !== FIGHTER && G.cfg.mode === 'carrier') ({ aim, thr, fire } = strikeThink(p, dt));
@@ -882,7 +909,7 @@ function strikeThink(p, dt) {
 }
 function pickTarget(p) {
   const b = p.bot; b.escort = null;
-  const enemies = G.planes.filter(q => q.side !== p.side && flying(q));
+  const enemies = G.planes.filter(q => q.side !== p.side && flying(q) && !q.instructor);
   if (G.cfg.mode === 'raid' && p.side === ATT) {
     // escorts: chase enemy fighters near the bombers or near me, otherwise stay with the bombers
     const bombers = G.planes.filter(q => q.side === ATT && q.type === BOMBER && flying(q));
@@ -932,6 +959,140 @@ function pickTarget(p) {
   }
   if (!best && (guard || cv)) b.patrol = true;
   return best;
+}
+
+/* --- 5b. FLIGHT SCHOOL: seven short lessons; the instructor flies with you and talks on the radio --- */
+const LESSONS = [
+  { name: 'TAKE-OFF', plane: FIGHTER }, { name: 'TURNING', plane: FIGHTER }, { name: 'SPEED', plane: FIGHTER },
+  { name: 'GUNS', plane: FIGHTER }, { name: 'BOMBING', plane: BOMBER }, { name: 'TORPEDO', plane: TORPEDO }, { name: 'DOGFIGHT', plane: FIGHTER },
+];
+const LESSON_START = [null, [IX - 750, IY + 380, 0], [IX - 950, IY - 420, 0], [IX - 950, IY - 120, 0], [IX - 800, IY - 40, 0], [IX - 1550, IY - 60, 0], [IX - 950, IY - 350, 0]];
+function orbitAim(p, cx, cy, r) {                  // fly in a circle around (cx, cy)
+  const ang = Math.atan2(p.y - cy, p.x - cx), d = Math.hypot(p.x - cx, p.y - cy);
+  return ang + Math.PI / 2 + clamp((d - r) / r, -0.8, 0.8) * 1.2;
+}
+function newSchool() {
+  const L = G.cfg.lesson, pl = G.players[0], S = G.school = { lesson: L, phase: 0, pt: 0, ringI: 0, rings: [], close: 0, far: 0, wp: [], wpi: 0, lead: 0.55, missT: -99, saidMiss: -99 };
+  Object.assign(pl, { kills: 0, deaths: 0, hits: 0, respawn: 0, gone: false, side: ATT, plane: LESSONS[L].plane });
+  const me = schoolSpawn(pl);
+  // the instructor flies the same kind of plane as you (so he can keep up), and can't be hurt
+  const ins = spawnPlane(LESSONS[L].plane, ATT, me.x - 50, me.y + 60, me.a, null);
+  Object.assign(ins, { call: 'INSTRUCTOR', voice: 9, instructor: true });
+  if (L === 0) Object.assign(ins, { x: IX - 100, y: IY - 220 });
+  G.ins = ins;
+  const x = me.x, y = me.y;
+  if (L === 1) S.rings = [[x + 330, y], [x + 620, y - 150], [x + 600, y - 440], [x + 300, y - 560], [x + 40, y - 380]].map(([rx, ry]) => ({ x: rx, y: ry, r: 30 }));
+  if (L === 2) { S.wp = [[IX - 500, IY - 650], [IX, IY - 520], [IX + 100, IY - 150], [IX - 350, IY + 50], [IX - 800, IY - 300]].map(([wx, wy]) => ({ x: wx, y: wy })); Object.assign(ins, { x: x + 90, y: y + 10 }); }
+  if (L === 3) [[520, -70], [700, 90], [880, -160]].forEach(([dx, dy]) => {
+    const d = spawnPlane(FIGHTER, DEF, x + dx, y + dy, Math.PI, null);
+    Object.assign(d, { drone: true, cx: x + dx, cy: y + dy, hp: 3, max: 3, call: 'DRONE' });
+  });
+  if (L === 4) [[-120, 190], [80, 215], [270, -60]].forEach(([dx, dy]) => G.targets.push({ k: 'practice', name: 'TARGET', x: IX + dx, y: IY + dy, w: 24, h: 24, hp: 2, max: 2 }));
+  if (L === 5) G.ships = [{ side: DEF, k: 'destroyer', max: 14, hp: 14, len: 46, wid: 9, x: IX - 1000, y: IY + 250, a: -Math.PI / 2, v: 10, t: 0, sink: 0 }];
+  if (L === 6) { G.cfg.level = 0; spawnPlane(FIGHTER, DEF, x + 700, y + 120, Math.PI, null); }
+}
+function schoolSpawn(pl) {
+  const L = G.cfg.lesson; let p;
+  if (L === 0) { p = spawnPlane(FIGHTER, ATT, RUNWAY.x0 + 16, RUNWAY.y, 0, pl); Object.assign(p, { state: 'ground', alt: 0, v: 0 }); }
+  else { const [x, y, a] = LESSON_START[L]; p = spawnPlane(LESSONS[L].plane, ATT, x, y, a, pl); }
+  pl.planeId = p.id;
+  return p;
+}
+function instructorThink(p) {
+  const S = G.school, me = planeById(G.players[0].planeId), L = S.lesson;
+  let aim, thr = 0.5;
+  if (L === 2) {                                                   // the leader: fly the course, at the speed of the moment
+    const wp = S.wp[S.wpi];
+    if (dist(p, wp) < 90) S.wpi = (S.wpi + 1) % S.wp.length;
+    aim = Math.atan2(wp.y - p.y, wp.x - p.x); thr = S.lead;
+    if (me && dist(p, me) > 240) thr = 0;                           // wait for the student
+  } else if (L === 0 || L === 6 || !me || me.state !== 'air') {     // circle and watch
+    aim = L === 6 ? orbitAim(p, IX - 500, IY - 650, 200) : orbitAim(p, IX - 60, IY - 160, 230);
+  } else {                                                          // a wingman: off your right wing, a little behind
+    const c = Math.cos(me.a), sn = Math.sin(me.a), ox = -30, oy = 55;
+    const tx = me.x + ox * c - oy * sn, ty = me.y + ox * sn + oy * c, d = Math.hypot(tx - p.x, ty - p.y);
+    aim = d < 20 ? me.a : Math.atan2(ty - p.y, tx - p.x);
+    thr = clamp(me.thr + ((tx - p.x) * c + (ty - p.y) * sn) / 60, 0, 1);
+  }
+  return { turn: 0, aim, thr, fire: false };
+}
+function stepSchool(dt) {
+  const S = G.school, pl = G.players[0], me = planeById(pl.planeId), L = S.lesson;
+  S.pt += dt;
+  const say = (line, cd = 0) => radio(ATT, line, G.ins, cd), next = () => { S.phase++; S.pt = 0; }, finish = line => { say(line); S.phase = 99; S.pt = 0; };
+  if (S.phase === 99) { if (S.pt > 4) { G.over = true; G.winner = ATT; } return; }
+  const missed = S.missT > G.t - 0.1 && G.t - S.saidMiss > 8;
+  if (L === 0) {
+    if (S.phase === 0 && S.pt > 1) { say('i_hello'); next(); }
+    else if (S.phase === 1 && S.pt > 5) { say('i_throttle'); next(); }
+    else if (S.phase === 2 && me && me.v > 6) { say('i_rolling'); next(); }
+    else if (S.phase === 3 && me && me.state === 'air' && me.alt > 0.9) finish('i_airborne');
+  } else if (L === 1) {
+    if (S.phase === 0 && S.pt > 1) { say('i_rings'); next(); }
+    const r = S.rings[S.ringI];
+    if (S.phase >= 1 && r && me && me.state === 'air' && dist(me, r) < r.r + 4) {
+      S.ringI++; fx({ k: 'flash', text: 'RING ' + S.ringI + ' / ' + S.rings.length, col: '#ffd23f' });
+      if (S.ringI >= S.rings.length) finish('i_rings_done'); else say('i_ring', 4);
+    }
+  } else if (L === 2) {
+    if (S.phase === 0 && S.pt > 1) { say('i_follow'); next(); }
+    if (S.phase >= 1 && me && me.state === 'air') {
+      const d = dist(me, G.ins);
+      if (d < 90) S.close += dt;
+      if (d > 220) { if ((S.far += dt) > 3) { say('i_far', 10); S.far = 0; } } else S.far = 0;
+      if (S.close >= 18) finish('i_follow_done');
+      else if (S.phase === 1 && S.pt > 9) { S.lead = 0.1; say('i_slow'); next(); }
+      else if (S.phase === 2 && S.pt > 8) { S.lead = 1; say('i_fast'); next(); }
+      else if (S.phase === 3 && S.pt > 8) { S.lead = 0.55; S.phase = 1; S.pt = 0; }
+    }
+  } else if (L === 3) {
+    if (S.phase === 0 && S.pt > 1) { say('i_guns'); next(); }
+    const left = G.planes.filter(q => q.drone && alive(q)).length;
+    if (S.phase >= 1 && left < (S.left === undefined ? 3 : S.left)) { if (left) say('i_gotone', 2); else finish('i_guns_done'); }
+    S.left = left;
+  } else if (L === 4) {
+    if (S.phase === 0 && S.pt > 1) { say('i_bomber'); next(); }
+    else if (S.phase === 1 && S.pt > 6) { say('i_sight'); next(); }
+    const left = G.targets.filter(t => t.hp > 0).length;
+    if (left < (S.left === undefined ? 3 : S.left)) { if (left) say('i_bullseye', 2); else { finish('i_bomb_done'); return; } }
+    S.left = left;
+    if (missed && S.phase >= 2) { say('i_miss', 0); S.saidMiss = G.t; }
+  } else if (L === 5) {
+    if (S.phase === 0 && S.pt > 1) { say('i_torp'); next(); }
+    else if (S.phase === 1 && S.pt > 6) { say('i_torp_line'); next(); }
+    const ship = G.ships[0];
+    if (ship.hp < (S.shipHp === undefined ? ship.max : S.shipHp)) { if (ship.hp > 0) say('i_torp_hit', 2); else { finish('i_torp_done'); return; } }
+    S.shipHp = ship.hp;
+    if (missed && S.phase >= 1) { say('i_torp_miss', 0); S.saidMiss = G.t; }
+  } else if (L === 6) {
+    if (S.phase === 0 && S.pt > 1) { say('i_fight'); next(); }
+    if (!G.planes.some(q => q.side === DEF && alive(q))) finish('i_fight_done');
+  }
+}
+// what to do now, in words for this device's controls
+function ctlWord(k) {
+  const t = Ctl.touch, pad = PX.Pad.used && !t;
+  return {
+    faster: t ? 'HOLD +' : pad ? 'HOLD RB' : 'HOLD ↑ (OR W)',
+    speed: t ? '+ AND -' : pad ? 'RB AND LB' : '↑ AND ↓',
+    steer: t ? (save.cam === 'plane' ? 'DRAG LEFT OR RIGHT' : 'DRAG WHERE TO GO') : pad ? 'THE LEFT STICK' : 'THE ARROW KEYS (OR A AND D)',
+    fire: t ? 'THE FIRE BUTTON' : pad ? 'A' : 'SPACE',
+  }[k];
+}
+function schoolTask(V, me) {                       // [task text, progress text, progress label]
+  const S = V.school, L = S.lesson;
+  if (S.phase === 99) return ['LESSON COMPLETE!', '★', 'WELL DONE'];
+  if (L === 0) return [me && me.state === 'air' ? 'CLIMB AWAY FROM THE RUNWAY' : 'FULL SPEED: ' + ctlWord('faster'), Math.round(me ? me.v / TYPES[0].vmax * 100 : 0) + '%', 'SPEED'];
+  if (L === 1) return ['FLY THROUGH THE RINGS. STEER WITH ' + ctlWord('steer'), (S.ringI + 1) + '/' + S.rings.length, 'RING'];
+  if (L === 2) return ['STAY CLOSE TO THE INSTRUCTOR. SPEED: ' + ctlWord('speed'), Math.floor(S.close) + '/18', 'SECONDS'];
+  if (L === 3) return ['SHOOT THE 3 DRONES: ' + ctlWord('fire'), (3 - (S.left === undefined ? 3 : S.left)) + '/3', 'DRONES'];
+  if (L === 4) return ['PUT THE CROSSHAIR ON A TARGET, THEN ' + ctlWord('fire'), (3 - (S.left === undefined ? 3 : S.left)) + '/3', 'TARGETS'];
+  if (L === 5) { const sh = V.ships[0]; return ['AIM AHEAD OF THE SHIP. FIRE WHEN THE LINE IS GREEN: ' + ctlWord('fire'), Math.round(100 - sh.hp / sh.max * 100) + '%', 'DAMAGE']; }
+  return ['SHOOT DOWN THE ENEMY FIGHTER: ' + ctlWord('fire'), V.planes.some(q => q.side === DEF && q.state === 'air') ? '0/1' : '1/1', 'ENEMY'];
+}
+function startLesson(i) {
+  lobby = { kind: 'solo', cfg: { mode: 'school', lesson: i, size: 0, level: 0 }, players: [Object.assign(meAsPlayer(false), { side: ATT, plane: LESSONS[i].plane })] };
+  startBattle();
 }
 
 /* --- 6. EFFECTS AND SOUND ----------------------------------------------------- */
@@ -992,17 +1153,32 @@ const RADIO_TEXT = {
   ds_lost: 'WE LOST A DESTROYER!', ds_enemy: 'ENEMY DESTROYER IS GOING DOWN!', cv_lost: 'ABANDON SHIP! THE CARRIER IS GOING DOWN!',
   cv_enemy: 'THE ENEMY CARRIER IS SINKING!', minute: 'ONE MINUTE LEFT!', win: 'MISSION ACCOMPLISHED. GOOD WORK, EVERYONE!',
   lose: 'MISSION FAILED. ALL PLANES, RETURN TO BASE.',
+  brief_raid: 'BOMBERS: HIT THE HANGARS, FUEL, RADAR, TOWER AND AMMO. LOOK FOR THE YELLOW MARKERS.',
+  brief_cv: 'TORPEDO PLANES: AIM AHEAD OF THE ENEMY CARRIER. FIRE WHEN THE TORPEDO SIGHT TURNS GREEN.',
+  i_hello: "HELLO, ROOKIE! I'M YOUR FLIGHT INSTRUCTOR. DON'T WORRY, THE PLANES ARE CHEAP.",
+  i_throttle: 'FIRST, THE TAKE-OFF. PUSH THE THROTTLE ALL THE WAY UP.', i_rolling: "THAT'S IT! KEEP IT FULL AND LET HER ROLL.",
+  i_airborne: "AND YOU'RE FLYING! LOVELY TAKE-OFF!", i_rings: "NOW LET'S PRACTISE TURNING. FLY THROUGH THE YELLOW RINGS, ONE AFTER ANOTHER.",
+  i_ring: 'NICE!', i_rings_done: "ALL THE RINGS! YOU'RE A NATURAL.", i_follow: 'NOW FOLLOW ME, AND STAY CLOSE. CHANGE YOUR SPEED TO KEEP UP.',
+  i_slow: "I'M SLOWING DOWN. EASE OFF THE THROTTLE.", i_fast: 'AND NOW FASTER. FULL THROTTLE!', i_far: 'OI! WHERE ARE YOU GOING? STAY CLOSE TO ME!',
+  i_follow_done: 'GREAT FORMATION FLYING!', i_guns: 'TIME FOR THE GUNS. THREE DRONES AHEAD. GET RIGHT BEHIND THEM AND FIRE!',
+  i_gotone: 'GOT ONE!', i_guns_done: 'ALL DRONES DOWN. NICE SHOOTING!', i_bomber: "NOW YOU FLY A BOMBER. SHE'S SLOW AND HEAVY, SO PLAN AHEAD.",
+  i_sight: "SEE THE CROSSHAIR IN FRONT OF YOU? THAT'S WHERE YOUR BOMBS LAND. DROP WHEN IT TURNS GREEN.", i_bullseye: 'BULLSEYE!',
+  i_miss: 'MISSED! LINE UP AND TRY AGAIN.', i_bomb_done: 'ALL TARGETS DESTROYED. BOMBER COMMAND WILL HEAR ABOUT THIS!',
+  i_torp: 'TORPEDO PLANE NOW. TORPEDOES ARE SLOW, SO AIM AHEAD OF THE SHIP.', i_torp_line: 'FOLLOW THE DOTTED LINE. WHEN IT TURNS GREEN, FIRE!',
+  i_torp_hit: 'TORPEDO HIT!', i_torp_miss: 'THAT ONE MISSED. AIM A BIT FURTHER AHEAD.', i_torp_done: 'SHIP SUNK! SPLENDID!',
+  i_fight: 'LAST LESSON. A REAL ENEMY FIGHTER, AND HE SHOOTS BACK. KEEP MOVING!', i_down: "OUCH! NEVER MIND, HERE'S A NEW PLANE. TRY AGAIN!",
+  i_fight_done: "YOU GOT HIM! YOU'RE READY FOR REAL BATTLES. GOOD LUCK, PILOT!",
 };
 const RADIO_LOW = new Set(['run', 'bombs', 'torp', 'onway', 'tail', 'splash', 'cvhit']);   // these can be skipped when the radio is busy
 // The radio: one message at a time, a click when the mic opens and closes, the recorded voice
 // (radio/<line>_<voice>.mp3), or wordless radio chatter when the voice is off or not loaded yet.
 const Radio = {
   buf: {}, queue: [], shown: [], until: 0, cur: null,
-  clip(m) { return m.line + '_' + (m.v < 0 ? 'c' : m.v); },
+  clip(m) { return m.line + '_' + (m.v === 9 ? 'i' : m.v < 0 ? 'c' : m.v); },
   preload() {
     const c = PX.Sound.ctx; if (!c || !save.voice || this.loaded) return;
     this.loaded = true;
-    for (const line in RADIO_TEXT) for (const v of RADIO_LOW.has(line) || ['help', 'target', 'down'].includes(line) ? [0, 1, 2] : ['c']) {
+    for (const line in RADIO_TEXT) for (const v of line.startsWith('i_') ? ['i'] : RADIO_LOW.has(line) || ['help', 'target', 'down'].includes(line) ? [0, 1, 2] : ['c']) {
       const name = line + '_' + v;
       fetch('radio/' + name + '.mp3').then(r => (r.ok ? r.arrayBuffer() : Promise.reject())).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no)))
         .then(b => { this.buf[name] = b; }).catch(() => { /* no voice for this one: chatter */ });
@@ -1102,7 +1278,7 @@ function sfx(k) {
 // V is "what to draw": the battle itself (here) or what the host sent (online)
 function viewOf() { return Net.isClient() ? Net.view : G ? battleView(G) : null; }
 function battleView(G) {
-  return { planes: G.planes, bullets: G.bullets, bombs: G.bombs, targets: G.targets, aa: G.aa, ships: G.ships, torps: G.torps, players: G.players, cfg: G.cfg,
+  return { planes: G.planes, bullets: G.bullets, bombs: G.bombs, targets: G.targets, aa: G.aa, ships: G.ships, torps: G.torps, players: G.players, cfg: G.cfg, school: G.school,
            time: G.time, score: G.score, reserve: G.reserve, over: G.over, winner: G.winner };
 }
 function drawTarget(t, time) {
@@ -1135,6 +1311,8 @@ function drawTarget(t, time) {
     ctx.fillStyle = '#c8c0b0'; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = '#5ac8f0'; ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
     if (Math.floor(time * 2) % 2) { ctx.fillStyle = '#ff4040'; ctx.fillRect(x + w / 2 - 1, y + h / 2 - 1, 2, 2); }
+  } else if (t.k === 'practice') {
+    for (const [r, col] of [[13, '#f2f2f2'], [10, '#e01e1e'], [7, '#f2f2f2'], [4, '#e01e1e']]) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, TAU); ctx.fill(); }
   } else if (t.k === 'ammo') {
     for (let k = 0; k < 4; k++) { ctx.fillStyle = '#4a5a2a'; ctx.fillRect(x + (k % 2) * 15, y + (k >> 1) * 10, 13, 8); ctx.fillStyle = '#d8c040'; ctx.fillRect(x + (k % 2) * 15 + 5, y + (k >> 1) * 10 + 3, 3, 2); }
   }
@@ -1214,6 +1392,61 @@ function drawParts(top) {
     }
   }
 }
+// BOMBERS AND TORPEDO PLANES: markers on what to hit, a bomb sight (where the bombs will land) and a
+// torpedo sight (the torpedo's path, green when it will meet the ship)
+function strikeGoals(V, me) {
+  if (!me || me.type === FIGHTER || me.state !== 'air') return [];
+  if (V.cfg.mode === 'raid' || (V.cfg.mode === 'school' && V.targets.length)) return me.side === ATT ? V.targets.filter(t => t.hp > 0) : [];
+  return (V.ships || []).filter(q => q.side !== me.side && q.hp > 0);
+}
+function inShip(q, qx, qy, x, y, pad) {
+  const dx = x - qx, dy = y - qy, c = Math.cos(q.a), sn = Math.sin(q.a);
+  return Math.abs(dx * c + dy * sn) < q.len / 2 + pad && Math.abs(-dx * sn + dy * c) < q.wid / 2 + pad;
+}
+function brackets(x, y, hw, hh, col) {
+  const L = 6; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = Math.round(x + sx * hw), cy = Math.round(y + sy * hh);
+    ctx.moveTo(cx, cy - sy * L); ctx.lineTo(cx, cy); ctx.lineTo(cx - sx * L, cy);
+  }
+  ctx.stroke();
+}
+function fmtDist(d) { const m = d * 5; return m >= 1000 ? (m / 1000).toFixed(1) + ' KM' : Math.round(m / 50) * 50 + ' M'; }
+function drawStrikeAids(V, me, time, inView) {
+  const goals = strikeGoals(V, me); if (!goals.length) return;
+  const blink = Math.floor(time * 3) % 2, mark = blink ? '#ffd23f' : '#fff2a0';
+  for (const g of goals) {
+    if (!inView(g.x, g.y, 60)) continue;
+    if (g.len) upright(g.x, g.y, (x, y) => { brackets(x, y, g.len / 2 + 4, g.len / 2 + 4, mark); T(g.k === 'carrier' ? 'CARRIER' : 'DESTROYER', x, y + g.len / 2 + 8, mark, 1, 'center', '#000'); });
+    else { brackets(g.x, g.y, g.w / 2 + 5, g.h / 2 + 5, mark); upright(g.x, g.y, (x, y) => T(g.name, x, y + g.h / 2 + 9, mark, 1, 'center', '#000')); }
+  }
+  const ready = me.bombs > 0, dx = Math.cos(me.a), dy = Math.sin(me.a);
+  if (me.type === BOMBER) {
+    const lead = me.v * BOMB_DRIFT * BOMB_FALL, lx = me.x + dx * lead, ly = me.y + dy * lead;
+    const on = goals.some(g => (g.len ? inShip(g, g.x, g.y, lx, ly, 3) : Math.abs(lx - g.x) < g.w / 2 + BOMB_R * 0.7 && Math.abs(ly - g.y) < g.h / 2 + BOMB_R * 0.7));
+    const col = !ready ? 'rgba(160,150,190,0.7)' : on ? '#5ad43f' : 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = col; for (let k = 14; k < lead - 10; k += 7) ctx.fillRect(Math.round(me.x + dx * k), Math.round(me.y + dy * k), 1, 1);
+    upright(lx, ly, (x, y) => {
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 9, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 9, 0, TAU); ctx.stroke();
+      ctx.fillStyle = col; ctx.fillRect(Math.round(x) - 13, Math.round(y), 8, 1); ctx.fillRect(Math.round(x) + 6, Math.round(y), 8, 1); ctx.fillRect(Math.round(x), Math.round(y) - 13, 1, 8); ctx.fillRect(Math.round(x), Math.round(y) + 6, 1, 8);
+      if (!ready) T('RELOADING', x, y + 16, col, 1, 'center', '#000');
+      else if (on && blink) T('DROP!', x, y - 22, '#5ad43f', 2, 'center', '#000');
+    });
+  } else if (me.type === TORPEDO) {
+    // run the torpedo forward in time against each ship moving on its course
+    let hit = null, end = TORP_LIFE;
+    for (let t = 0.4; t <= TORP_LIFE && !hit; t += 0.1) {
+      const tx = me.x + dx * (8 + TORP_V * t), ty = me.y + dy * (8 + TORP_V * t);
+      if (landDepth(tx, ty) > 0 || tx < 0 || ty < 0 || tx > WW || ty > WH) { end = t; break; }
+      for (const g of goals) { const v = g.v || SHIP_V; if (inShip(g, g.x + Math.cos(g.a) * v * t, g.y + Math.sin(g.a) * v * t, tx, ty, 2)) { hit = { x: tx, y: ty }; end = t; break; } }
+    }
+    const col = !ready ? 'rgba(160,150,190,0.6)' : hit ? '#5ad43f' : 'rgba(255,255,255,0.55)', len = 8 + TORP_V * end;
+    ctx.fillStyle = col; for (let k = 16; k < len; k += 9) ctx.fillRect(Math.round(me.x + dx * k), Math.round(me.y + dy * k), 2, 2);
+    if (hit) upright(hit.x, hit.y, (x, y) => { ctx.fillStyle = col; ctx.fillRect(Math.round(x) - 4, Math.round(y) - 4, 9, 2); ctx.fillRect(Math.round(x) - 4, Math.round(y) + 3, 9, 2); if (ready && blink) T('FIRE!', x, y - 16, '#5ad43f', 2, 'center', '#000'); });
+    if (!ready) upright(me.x + dx * 40, me.y + dy * 40, (x, y) => T('RELOADING', x, y, col, 1, 'center', '#000'));
+  }
+}
 // CAMERA: NORTH UP (the map stays put) or PLANE UP (my plane always points up, the world turns around it).
 // In a plane-up view the ground is drawn turned; planes, ships, clouds and words are drawn upright
 // from their pre-turned pictures, so they stay crisp.
@@ -1283,6 +1516,19 @@ function drawWorld(V, cam, vx, vw, time, planeUp = false) {
     if (!q || q.state !== 'air' || !inView(q.x, q.y, 30) || !mySides().includes(h.side) || Math.floor(time * 4) % 2) continue;
     upright(q.x, q.y, (x, y) => { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x) - 15, Math.round(y) - 15, 30, 30); T('HELP!', x, y - 24, '#ffd23f', 1, 'center', '#000'); });
   }
+  drawStrikeAids(V, cam.plane, time, inView);
+  if (V.school) {
+    V.school.rings.forEach((r, i) => {                              // the rings: the next one bright, done ones gone
+      if (i < V.school.ringI || !inView(r.x, r.y, 40)) return;
+      const next = i === V.school.ringI, col = next ? (Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff2a0') : 'rgba(255,210,63,0.35)';
+      ctx.strokeStyle = '#111'; ctx.lineWidth = next ? 5 : 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = next ? 3 : 1; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+      upright(r.x, r.y, (x, y) => T(String(i + 1), x, y - 5, col, 2, 'center', '#000'));
+    });
+    for (const q of V.planes) if (q.side === DEF && q.state === 'air' && inView(q.x, q.y, 30))
+      upright(q.x, q.y, (x, y) => { brackets(x, y, 14, 14, '#ff5a5a'); T(q.drone ? 'DRONE' : 'ENEMY', x, y + 20, '#ff5a5a', 1, 'center', '#000'); });
+    if (G && G.ins && inView(G.ins.x, G.ins.y, 30)) upright(G.ins.x, G.ins.y, (x, y) => T('INSTRUCTOR', x, y - 18, '#7ac8ff', 1, 'center', '#000'));
+  }
   // names over the human pilots
   for (const p of V.planes) {
     if (p.pilot < 0 || p.state === 'dead' || p.state === 'fall' || !inView(p.x, p.y, 30) || p === cam.plane) continue;
@@ -1307,7 +1553,7 @@ function drawArrow(vx, vw, view, tx, ty, col, label) {            // a pointer a
   const ax = cx + dx * k, ay = cy + dy * k + 6, a = Math.atan2(dy, dx);
   ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(ax + Math.cos(a) * 8, ay + Math.sin(a) * 8); ctx.lineTo(ax + Math.cos(a + 2.4) * 7, ay + Math.sin(a + 2.4) * 7); ctx.lineTo(ax + Math.cos(a - 2.4) * 7, ay + Math.sin(a - 2.4) * 7); ctx.fill();
   ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(ax + Math.cos(a) * 6, ay + Math.sin(a) * 6); ctx.lineTo(ax + Math.cos(a + 2.4) * 5, ay + Math.sin(a + 2.4) * 5); ctx.lineTo(ax + Math.cos(a - 2.4) * 5, ay + Math.sin(a - 2.4) * 5); ctx.fill();
-  if (label) T(label, ax - Math.cos(a) * 12, ay - Math.sin(a) * 12 - 2, col, 1, 'center', '#000');
+  if (label) { const tw = PX.textWidth(label, 1); T(label, clamp(ax - Math.cos(a) * 12, vx + tw / 2 + 2, vx + vw - tw / 2 - 2), clamp(ay - Math.sin(a) * 12 - 2, 2, H - 8), col, 1, 'center', '#000'); }
 }
 function hpBar(x, y, w, k, col) { ctx.fillStyle = '#111'; ctx.fillRect(x, y, w, 6); ctx.fillStyle = col; ctx.fillRect(x + 1, y + 1, Math.round((w - 2) * clamp(k, 0, 1)), 4); }
 function fmtTime(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -1317,7 +1563,8 @@ function drawMinimap(V, me, mySide, x, y, w, h, time) {
   ctx.drawImage(mapCanvas, 0, 0, WW / 2, WH / 2, x, y, w, h);
   ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(x, y, w, h);
   for (const s of V.ships || []) { if (s.hp <= 0) continue; ctx.fillStyle = '#111'; ctx.fillRect(Math.round(x + s.x * kx) - 2, Math.round(y + s.y * ky) - 2, s.k === 'carrier' ? 5 : 4, s.k === 'carrier' ? 5 : 4); ctx.fillStyle = TEAM_COL[s.side]; ctx.fillRect(Math.round(x + s.x * kx) - 1, Math.round(y + s.y * ky) - 1, s.k === 'carrier' ? 3 : 2, s.k === 'carrier' ? 3 : 2); }
-  for (const t of V.targets) { ctx.fillStyle = t.hp > 0 ? '#ffd23f' : '#4a423a'; ctx.fillRect(Math.round(x + t.x * kx) - 1, Math.round(y + t.y * ky) - 1, 3, 2); }
+  const striker = me && me.type !== undefined && me.type !== FIGHTER && Math.floor(time * 3) % 2;
+  for (const t of V.targets) { const big = striker && t.hp > 0; ctx.fillStyle = t.hp > 0 ? (big ? '#fff' : '#ffd23f') : '#4a423a'; ctx.fillRect(Math.round(x + t.x * kx) - (big ? 2 : 1), Math.round(y + t.y * ky) - (big ? 2 : 1), big ? 4 : 3, big ? 4 : 3); }
   // the defense sees everything while its radar works; otherwise you see what is close to you
   const radar = V.cfg.mode === 'raid' && mySide === DEF && V.targets.some(t => t.k === 'radar' && t.hp > 0);
   for (const p of V.planes) {
@@ -1357,6 +1604,17 @@ function drawHUD(V, pi, vx, vw, view, time) {
     } else { T(String(V.score[ATT]), vx + 4, 37, TEAM_COL[ATT], 1); T(String(V.score[DEF]), vx + 20, 37, TEAM_COL[DEF], 1); T('TO ' + DOG_KILLS[cfg.size], vx + 36, 37, '#9a92b8', 1); }
     T(fmtTime(V.time), vx + 4, 46, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 1);
   } else {
+  if (cfg.mode === 'school' && !compact) {
+    const [task, prog, label] = schoolTask(V, me), bx0 = cx - 92;
+    ctx.fillStyle = '#111'; ctx.fillRect(bx0 - 1, 1, 186, 34); ctx.fillStyle = 'rgba(29,24,48,0.92)'; ctx.fillRect(bx0, 2, 184, 32);
+    ctx.fillStyle = '#3a3450'; ctx.fillRect(cx + 40, 6, 1, 24);
+    T('FLIGHT SCHOOL', bx0 + 6, 6, '#9a92b8', 1); T((V.school.lesson + 1) + '. ' + LESSONS[V.school.lesson].name, bx0 + 6, 17, '#ffd23f', 2);
+    T(prog, cx + 88, 8, '#fff', 2, 'right'); T(label, cx + 88, 24, '#9a92b8', 1, 'right');
+    const w = PX.textWidth(task, 1) + 12;                            // what to do now, under the box
+    ctx.fillStyle = 'rgba(13,11,19,0.8)'; ctx.fillRect(Math.round(cx - w / 2), 38, w, 13);
+    T(task, cx, 42, '#fff', 1, 'center');
+    feedY = 56;
+  } else {
   // the score: big and with pictures (left part), the clock (right part)
   const bx0 = cx - 92, timeCol = V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff';
   ctx.fillStyle = '#111'; ctx.fillRect(bx0 - 1, 1, 186, 34); ctx.fillStyle = 'rgba(29,24,48,0.92)'; ctx.fillRect(bx0, 2, 184, 32);
@@ -1393,6 +1651,7 @@ function drawHUD(V, pi, vx, vw, view, time) {
     T('TO ' + DOG_KILLS[cfg.size], cx + 88, 24, '#9a92b8', 1, 'right');
   }
   }
+  }
   if (!pl) return;
   // me: health and speed
   ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, 2, 62, 30);
@@ -1416,11 +1675,20 @@ function drawHUD(V, pi, vx, vw, view, time) {
   }
   // pointers to what matters: where to go (a bomber calling for help comes first for fighters)
   const help = live && me.type === FIGHTER ? helpMarks.filter(h => h.side === me.side).map(h => V.planes.find(q => q.id === h.id)).find(q => q && q.state === 'air') : null;
-  if (help) drawArrow(vx, vw, view, help.x, help.y, Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff', 'HELP');
+  if (live && cfg.mode === 'school') {                             // flight school: point at the next thing to do
+    const S = V.school, r = S.rings[S.ringI];
+    let tg = null, lab = '';
+    if (S.lesson === 1 && r) { tg = r; lab = 'RING ' + (S.ringI + 1); }
+    else if (S.lesson === 2 && G.ins) { tg = G.ins; lab = 'INSTRUCTOR'; }
+    else if (S.lesson === 4) { let bd = 1e9; for (const t of V.targets) if (t.hp > 0 && dist(me, t) < bd) { bd = dist(me, t); tg = t; } lab = 'TARGET'; }
+    else if (S.lesson === 5) { tg = V.ships[0].hp > 0 ? V.ships[0] : null; lab = 'SHIP'; }
+    else if (S.lesson === 3 || S.lesson === 6) { let bd = 1e9; for (const q of V.planes) if (q.side === DEF && q.state === 'air' && dist(me, q) < bd) { bd = dist(me, q); tg = q; } lab = S.lesson === 3 ? 'DRONE' : 'ENEMY'; }
+    if (tg) drawArrow(vx, vw, view, tg.x, tg.y, '#ffd23f', lab);
+  } else if (help) drawArrow(vx, vw, view, help.x, help.y, Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff', 'HELP');
   else if (live && cfg.mode === 'carrier') {
     if (me.type !== FIGHTER) {
       const cv = V.ships.find(q => q.side !== me.side && q.k === 'carrier' && q.hp > 0);
-      if (cv) drawArrow(vx, vw, view, cv.x, cv.y, '#ffd23f', 'CARRIER');
+      if (cv) drawArrow(vx, vw, view, cv.x, cv.y, '#ffd23f', 'CARRIER ' + fmtDist(dist(me, cv)));
     } else {
       let best = null, bd = 1e9;
       for (const q of V.planes) if (q.side !== me.side && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y) * (q.type === FIGHTER ? 1.6 : 1); if (d < bd) { bd = d; best = q; } }
@@ -1429,7 +1697,7 @@ function drawHUD(V, pi, vx, vw, view, time) {
   } else if (live && cfg.mode === 'raid') {
     if (me.side === ATT && me.type === BOMBER) {
       let best = null, bd = 1e9; for (const t of V.targets) if (t.hp > 0) { const d = Math.hypot(t.x - me.x, t.y - me.y); if (d < bd) { bd = d; best = t; } }
-      if (best) drawArrow(vx, vw, view, best.x, best.y, '#ffd23f', 'TARGET');
+      if (best) drawArrow(vx, vw, view, best.x, best.y, '#ffd23f', best.name + ' ' + fmtDist(bd));
     } else {
       const want = me.side === DEF ? q => q.side === ATT && q.type === BOMBER : q => q.side === DEF;
       let best = null, bd = 1e9; for (const q of V.planes) if (want(q) && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y); if (d < bd) { bd = d; best = q; } }
@@ -1440,13 +1708,14 @@ function drawHUD(V, pi, vx, vw, view, time) {
     if (best) drawArrow(vx, vw, view, best.x, best.y, TEAM_COL[best.side], '');
   }
   // the first seconds of a battle: how to steer, change speed and fire on this device
-  if (live && performance.now() - hintT < 9000 && Math.floor((performance.now() - hintT) / 400) % 6) {
+  if (live && cfg.mode !== 'school' && performance.now() - hintT < 9000 && Math.floor((performance.now() - hintT) / 400) % 6) {
     const two = Local.pilots.length > 1, li = view.local;
     const hint = Ctl.touch ? [save.cam === 'plane' ? 'DRAG LEFT / RIGHT TO TURN' : 'DRAG TO STEER', '+ / - = SPEED (HOLD)']
       : PX.Pad.used ? ['STICK = STEER   A = FIRE', 'RB = FASTER   LB = SLOWER']
       : two ? (li === 0 ? ['A D = STEER   SPACE = FIRE', 'W = FASTER   S = SLOWER'] : ['ARROWS = STEER   ENTER = FIRE', 'UP = FASTER   DOWN = SLOWER'])
       : ['ARROWS = STEER   SPACE = FIRE', '↑ = FASTER   ↓ = SLOWER'];
-    const hy = save.cam === 'plane' ? 44 : H - (Ctl.touch ? 132 : 100);
+    const hy = compact ? 64 : 44;
+    feedY = hy + 28;
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 74, hy - 4, 148, 26);
     T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
   }
@@ -1463,15 +1732,24 @@ function drawHUD(V, pi, vx, vw, view, time) {
   // the radio: the last few messages from my side, bottom left
   const msgs = Radio.shown.filter(m => m.side === pl.side && performance.now() - m.t0 < 7000);
   const maxCh = Math.floor((vw - (Ctl.touch ? 96 : 20)) / 4);
-  msgs.forEach((m, i) => {
-    const y = H - 34 - (msgs.length - 1 - i) * 10, on = m === Radio.cur;
-    const who = m.who + ': ', txt = (who + RADIO_TEXT[m.line]).slice(0, maxCh), age = performance.now() - m.t0;
+  let rows = [];                                                   // [message, text, first row?]
+  for (const m of msgs) {
+    const who = m.who + ': ', words = RADIO_TEXT[m.line].split(' '), room = maxCh - who.length;
+    let line = '', first = true;
+    for (const w of words) { if (line && (line + ' ' + w).length > room) { rows.push([m, line, first, who]); first = false; line = w; } else line = line ? line + ' ' + w : w; }
+    rows.push([m, line, first, who]);
+  }
+  rows = rows.slice(-5);
+  rows.forEach(([m, txt, first, who], i) => {
+    const y = H - 34 - (rows.length - 1 - i) * 10, on = m === Radio.cur, age = performance.now() - m.t0, x0 = vx + 11 + PX.textWidth(who, 1) + 4;
     ctx.globalAlpha = age > 6000 ? (7000 - age) / 1000 : 1;
-    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, y - 2, PX.textWidth(txt, 1) + 14, 9);
-    ctx.fillStyle = on && Math.floor(time * 6) % 2 ? '#5ad43f' : '#9a92b8';                // a little speaker
-    ctx.fillRect(vx + 4, y + 1, 2, 3); ctx.fillRect(vx + 6, y, 1, 5); if (on) { ctx.fillRect(vx + 8, y + 1, 1, 3); }
-    T(txt.slice(0, who.length), vx + 11, y, TEAM_COL[m.side], 1);
-    T(txt.slice(who.length), vx + 11 + PX.textWidth(who, 1) + 4, y, on ? '#fff' : '#cfc8e8', 1);
+    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, y - 2, x0 - vx + PX.textWidth(txt, 1) + 2, 9);
+    if (first) {
+      ctx.fillStyle = on && Math.floor(time * 6) % 2 ? '#5ad43f' : '#9a92b8';            // a little speaker
+      ctx.fillRect(vx + 4, y + 1, 2, 3); ctx.fillRect(vx + 6, y, 1, 5); if (on) { ctx.fillRect(vx + 8, y + 1, 1, 3); }
+      T(who, vx + 11, y, m.who === 'INSTRUCTOR' ? '#7ac8ff' : TEAM_COL[m.side], 1);
+    }
+    T(txt, x0, y, on ? '#fff' : '#cfc8e8', 1);
     ctx.globalAlpha = 1;
   });
   // messages
@@ -1732,7 +2010,7 @@ const Net = {
 const ST = ['air', 'ground', 'parked', 'fall', 'dead'];
 
 /* --- 10. SCREENS ------------------------------------------------------------- */
-let state = 'title';        // title | setup | online | play | over | help
+let state = 'title';        // title | setup | online | play | over | help | school
 let paused = false, leaveAsk = false;
 let lobby = { kind: 'solo', cfg: { mode: save.mode, size: save.size, level: save.level }, players: [] };
 function meAsPlayer(two) {
@@ -1776,6 +2054,12 @@ let overInfo = null;
 function toOver() {
   // what happened, for the result screen; stars for the players on this device
   const V = viewOf(); if (!V) return;
+  if (V.cfg.mode === 'school') {
+    const L = V.school.lesson, first = !save.school[L], stars = first ? 5 : 1;
+    save.school[L] = true; store(); PX.Wallet.add(stars);
+    overInfo = { mode: 'school', lesson: L, stars, first }; sfx('win'); state = 'over';
+    return;
+  }
   const players = V.players.map((p, i) => ({ name: p.name, color: p.color, side: p.side, kills: p.kills, deaths: p.deaths, hits: p.hits, i }));
   const mine = Net.isClient() ? [Net.myPid] : V.players.map((p, i) => (p.local !== undefined ? i : -1)).filter(i => i >= 0);
   let stars = 0;
@@ -1825,9 +2109,33 @@ function drawBackdrop(t, dt) {
   drawWorld(V, demo.cam, 0, S.W, t);
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, S.W, H);
 }
+function drawSchool(t, dt) {
+  const W = S.W;
+  drawBackdrop(t, dt);
+  const { x, y } = panel(300, 226, 7), bw = 260, bx = Math.round(W / 2 - bw / 2);
+  T('FLIGHT SCHOOL', W / 2, y + 7, '#7ac8ff', 2, 'center');
+  T('YOUR INSTRUCTOR FLIES WITH YOU AND TALKS ON THE RADIO', W / 2, y + 22, '#9a92b8', 1, 'center');
+  LESSONS.forEach((l, i) => {
+    const by = y + 34 + i * 23, done = save.school[i];
+    if (UI.button('les' + i, bx, by, bw, 20, (i + 1) + '. ' + l.name, { size: 1, accent: '#5ad43f', on: done })) { sfx('click'); startLesson(i); }
+    if (done) T('DONE', bx + bw - 8, by + 7, '#5ad43f', 1, 'right');
+    T(['FIGHTER', 'BOMBER', 'TORPEDO'][l.plane], bx + 8, by + 7, '#5b5275', 1);
+  });
+  if (UI.button('sback', bx, y + 198, bw, 20, 'BACK', { size: 1 }) || UI.back) { sfx('click'); state = 'title'; }
+}
 function drawTitle(t, dt) {
   const W = S.W;
   drawBackdrop(t, dt);
+  if (!save.schoolAsked) {                                           // the very first time: offer flight school
+    T('PIXEL', W / 2, 36, '#7ac8ff', 3, 'center', '#000'); T('WINGS', W / 2, 54, '#fff', 6, 'center', '#2a7fd4');
+    const { y } = panel(280, 104, 102), bx = Math.round(W / 2 - 128);
+    T('NEW PILOT?', W / 2, y + 10, '#ffd23f', 2, 'center');
+    T('THE INSTRUCTOR CAN TEACH YOU TO FLY, IN 7 SHORT LESSONS.', W / 2, y + 32, '#efe9ff', 1, 'center');
+    if (UI.button('ask_yes', bx, y + 52, 124, 24, 'FLIGHT SCHOOL', { accent: '#5ad43f', size: 1 })) { save.schoolAsked = true; store(); sfx('click'); state = 'school'; }
+    if (UI.button('ask_no', bx + 132, y + 52, 124, 24, 'NO THANKS', { size: 1 }) || UI.back) { save.schoolAsked = true; store(); sfx('click'); }
+    T('(IT IS ALWAYS ON THE TITLE SCREEN)', W / 2, y + 86, '#5b5275', 1, 'center');
+    return;
+  }
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
@@ -1839,8 +2147,9 @@ function drawTitle(t, dt) {
   if (UI.button('solo', bx, 100, bw, 24, 'PLAY (WITH BOTS)', { accent: '#5ad43f' })) { sfx('click'); openLobby('solo'); }
   if (UI.button('online', bx, 128, bw, 24, 'PLAY ONLINE', { accent: '#7ac8ff' })) { sfx('click'); Net.reset(); Net.screen = 'home'; state = 'online'; }
   if (UI.button('local', bx, 156, bw, 24, '2 PLAYERS, 1 SCREEN', { accent: '#ffd23f' })) { sfx('click'); openLobby('local'); }
-  if (UI.button('help', bx, 184, 98, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); state = 'help'; }
-  if (UI.button('games', bx + 102, 184, 98, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  if (UI.button('school', bx, 184, 64, 22, 'SCHOOL', { size: 1, accent: '#5ad43f' })) { sfx('click'); state = 'school'; }
+  if (UI.button('help', bx + 68, 184, 64, 22, 'HOW TO', { size: 1 })) { sfx('click'); state = 'help'; }
+  if (UI.button('games', bx + 136, 184, 64, 22, '< GAMES', { size: 1 }) || UI.back) location.href = './';
   T('WINS ' + save.wins + '   PLANES SHOT DOWN ' + save.kills, W / 2, 214, '#9a92b8', 1, 'center', '#000');
   T('V' + VERSION, W - 4, H - 9, '#9a92b8', 1, 'right');
 }
@@ -1980,6 +2289,18 @@ function drawLeave() {
 }
 function drawOver(t) {
   const W = S.W, o = overInfo; if (!o) return;
+  if (o.mode === 'school') {
+    const { y } = panel(260, 150), last = o.lesson === LESSONS.length - 1;
+    T('LESSON COMPLETE!', W / 2, y + 12, '#5ad43f', 2, 'center', '#000');
+    T((o.lesson + 1) + '. ' + LESSONS[o.lesson].name, W / 2, y + 36, '#ffd23f', 3, 'center', '#000');
+    T(last ? "YOU FINISHED FLIGHT SCHOOL. YOU'RE A PILOT!" : 'NEXT: ' + LESSONS[o.lesson + 1].name, W / 2, y + 66, '#efe9ff', 1, 'center');
+    T('★ +' + o.stars + (o.first ? '' : ' (AGAIN)'), W / 2, y + 82, '#ffd23f', 2, 'center', '#000');
+    const bx = Math.round(W / 2 - 124);
+    if (UI.button('smenu', bx, y + 116, 80, 22, 'LESSONS', { size: 1 }) || UI.back) { G = null; state = 'school'; }
+    if (UI.button('sagain', bx + 84, y + 116, 80, 22, 'AGAIN', { size: 1 })) startLesson(o.lesson);
+    if (UI.button('snext', bx + 168, y + 116, 80, 22, last ? 'BATTLE!' : 'NEXT', { size: 1, accent: '#5ad43f' })) { if (last) { G = null; openLobby('solo'); } else startLesson(o.lesson + 1); }
+    return;
+  }
   const { x, y } = panel(Math.min(W - 16, 380), 200);
   const names = o.mode === 'raid' ? TEAM_NAME : DOG_NAME;
   const title = o.winner === 2 ? 'A DRAW!' : names[o.winner] + ' WINS!';
@@ -2085,6 +2406,7 @@ function frame(now) {
   else if (state === 'help') drawHelp(t, dt);
   else if (state === 'setup') drawSetup(t, dt);
   else if (state === 'online') drawOnline(t, dt);
+  else if (state === 'school') drawSchool(t, dt);
   if (!(state === 'online' && Net.screen === 'join')) codeInput.style.display = 'none';
   UI.end();
   S.blit('#1b4f8a');

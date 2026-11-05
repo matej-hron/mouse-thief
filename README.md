@@ -51,6 +51,15 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
   the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
   If a player leaves, a bot takes over their plane.
+- **FLIGHT SCHOOL** (title screen; offered the first time you play): 7 short lessons, and the instructor flies with
+  you and talks on the radio: 1. take-off (push the throttle), 2. turning (fly through rings), 3. speed (stay close to
+  the instructor while he slows down and speeds up), 4. guns (3 drones), 5. bombing (practice targets with the bomb
+  sight), 6. torpedo (a moving target ship), 7. a first dogfight against an easy enemy. A banner says what to do with
+  your device's controls. ★5 for each lesson the first time, ★1 after that.
+- **Help for bombers and torpedo planes:** blinking yellow markers with names on every target (or enemy ship) still
+  standing, a **bomb sight** (where your bombs will land; green with DROP! when it's on a target), a **torpedo sight**
+  (the torpedo's path; green with FIRE! when it will meet the moving ship), the distance on the target arrow, blinking
+  targets on the minimap, and a briefing on the radio at the start.
 - **Radio:** pilots and command talk to their own side over the radio (bottom left, with a voice): bombers starting
   their run, bombs or torpedo away, targets destroyed, "taking fire, need fighter cover!" (the nearest fighter answers
   and comes; a HELP arrow and a blinking box show you where), "bandit on my tail!", "I'm hit, going down!", the carrier
