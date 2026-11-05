@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { sfx: true, wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -64,21 +64,26 @@ const WW = 3200, WH = 2000;                        // the world, in screen pixel
 const ATT = 0, DEF = 1;                            // the two sides
 const TEAM_COL = ['#e0402a', '#2a7fd4'], TEAM_DARK = ['#8a2014', '#164a80'];
 const TEAM_NAME = ['ATTACK', 'DEFENSE'], DOG_NAME = ['RED', 'BLUE'];
-const FIGHTER = 0, BOMBER = 1;
+const FIGHTER = 0, BOMBER = 1, TORPEDO = 2;
 const TYPES = [
   { name: 'FIGHTER', vmin: 70, vmax: 150, turn: 2.5, hp: 8, r: 8, acc: 70 },
   { name: 'BOMBER', vmin: 55, vmax: 95, turn: 1.15, hp: 16, r: 11, acc: 35 },
+  { name: 'TORPEDO', vmin: 60, vmax: 115, turn: 1.7, hp: 14, r: 9, acc: 45 },
 ];
 const BULLET_V = 330, BULLET_LIFE = 0.62, GUN_RATE = 0.11;
 const BOMB_FALL = 1.0, BOMB_R = 18, BOMB_DMG = 2, BOMB_MAX = 4, BOMB_RELOAD = 8, BOMB_RATE = 0.28, BOMB_DRIFT = 0.7;
 const GUNNER_RANGE = 135, GUNNER_RATE = 0.65;
 const TAKEOFF_V = 62, GROUND_ACC = 26;
-const BATTLE_TIME = 300, DOG_KILLS = [10, 15, 25];
+const TIMES = { raid: 240, dog: 180, carrier: 240 }, DOG_KILLS = [10, 15, 25];
+const TORP_V = 80, TORP_LIFE = 8, TORP_DMG = 10, TORP_MAX = 2, TORP_RELOAD = 7;
+const SHIP_V = 10, DESTROYER_HP = 24, FLEET_X = [460, 3200 - 460];
 const RESPAWN = 4, HANGAR_EVERY = 30;
-const SIZES = [                                     // per size: raid bombers, raid escorts, raid defenders, dogfight per team
-  { name: 'SMALL', bomb: 3, esc: 4, def: 4, dog: 3, hp: 1 },
-  { name: 'NORMAL', bomb: 5, esc: 5, def: 7, dog: 5, hp: 1.5 },
-  { name: 'BIG', bomb: 8, esc: 7, def: 12, dog: 8, hp: 2.5 },
+// per size: raid bombers, escorts, defenders, raid target strength; dogfight per team;
+// carriers: fighters, torpedo planes, bombers per side and the carrier's strength
+const SIZES = [
+  { name: 'SMALL', bomb: 3, esc: 4, def: 4, dog: 3, hp: 1, cF: 3, cT: 2, cB: 0, cv: 60 },
+  { name: 'NORMAL', bomb: 5, esc: 5, def: 7, dog: 5, hp: 1.5, cF: 4, cT: 2, cB: 1, cv: 80 },
+  { name: 'BIG', bomb: 8, esc: 7, def: 12, dog: 8, hp: 2.5, cF: 6, cT: 4, cB: 2, cv: 90 },
 ];
 const LEVELS = [                                   // how good the bots are
   { name: 'EASY', turn: 0.72, err: 0.32, cone: 0.1, react: 0.9, gun: 0.6, aa: 2.2 },
@@ -102,14 +107,17 @@ const APRON = { x: IX - 200, y: IY + 32, dx: 20 };   // where the defenders wait
 const ISLETS = [[700, 460, 70], [1100, 1560, 90], [1500, 700, 50], [2900, 320, 60], [2850, 1720, 80], [320, 1450, 45]];
 function seeded(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function islandR(ang) { return 390 + 48 * Math.sin(3 * ang + 1) + 30 * Math.sin(5 * ang + 2) + 16 * Math.sin(9 * ang + 0.5) + 8 * Math.sin(17 * ang); }
+let mapKind = 'island';                             // 'island' (air raid, dogfight) or 'sea' (carriers: only the islets)
 function landDepth(x, y) {                          // > 0 on land (how far in), < 0 in water
-  const dx = (x - IX) / 1.25, dy = y - IY, d = Math.hypot(dx, dy);
-  let best = islandR(Math.atan2(dy, dx)) - d;
+  let best = -1e9;
+  if (mapKind === 'island') { const dx = (x - IX) / 1.25, dy = y - IY; best = islandR(Math.atan2(dy, dx)) - Math.hypot(dx, dy); }
   for (const [ix, iy, r] of ISLETS) best = Math.max(best, r + 8 * Math.sin(Math.atan2(y - iy, x - ix) * 4 + ix) - Math.hypot(x - ix, y - iy));
   return best;
 }
 const isLand = (x, y) => landDepth(x, y) > 0;
 let mapCanvas = null;                               // the map, drawn once at half size (each texel is 2x2 pixels)
+const maps = {};
+function setMapKind(k) { if (mapKind === k && mapCanvas) return; mapKind = k; mapCanvas = maps[k] || (maps[k] = buildMap()); }
 function buildMap() {
   const w = WW / 2, h = WH / 2, c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d'), img = g.createImageData(w, h), d = img.data, rand = seeded(7);
@@ -133,6 +141,7 @@ function buildMap() {
   g.putImageData(img, 0, 0);
   // the air base: concrete apron, taxiway and the runway (half-size coordinates)
   const R = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(Math.round(x / 2), Math.round(y / 2), Math.round(ww / 2), Math.round(hh / 2)); };
+  if (mapKind === 'island') {
   R(IX - 270, IY - 90, 220, 70, '#9a9a8e'); R(IX - 270, IY - 90, 220, 2, '#b4b4a8');            // hangar apron
   R(IX - 220, IY + 20, 200, 26, '#9a9a8e');                                                      // the waiting line
   R(IX - 60, IY - 30, 22, 52, '#9a9a8e'); R(IX + 40, IY - 100, 80, 60, '#8e8e82');
@@ -140,6 +149,7 @@ function buildMap() {
   R(RUNWAY.x0, RUNWAY.y - RUNWAY.w / 2, RUNWAY.x1 - RUNWAY.x0, RUNWAY.w, '#4a4a4f');
   for (let x = RUNWAY.x0 + 30; x < RUNWAY.x1 - 20; x += 28) R(x, RUNWAY.y - 1, 14, 2, '#f2f2f2');
   for (let k = 0; k < 4; k++) { R(RUNWAY.x0 + 6, RUNWAY.y - 10 + k * 6, 14, 2, '#f2f2f2'); R(RUNWAY.x1 - 20, RUNWAY.y - 10 + k * 6, 14, 2, '#f2f2f2'); }
+  }
   // little boats here and there
   const boats = seeded(3);
   for (let k = 0; k < 14; k++) {
@@ -147,7 +157,7 @@ function buildMap() {
     if (landDepth(bx, by) > -40) continue;
     R(bx, by, 12, 4, '#e8e8e8'); R(bx + 2, by - 2, 4, 2, '#c84a3a'); R(bx - 8, by, 8, 2, '#5aa0d8');
   }
-  mapCanvas = c;
+  return c;
 }
 
 /* --- 3. SPRITES: planes drawn at 32 angles, so they stay crisp pixel art ------------------- */
@@ -189,13 +199,64 @@ const SPR = [
    '.........##..........',
    '.........tt..........',
    '.....................'],
+  ['.................',
+   '.......tt........',
+   '.......##........',
+   '.......##........',
+   '.......###.......',
+   '..t....###.......',
+   '..#....###.......',
+   '.##...######...p.',
+   '####d###kkkww##p.',
+   '.##...######...p.',
+   '..#....###.......',
+   '..t....###.......',
+   '.......###.......',
+   '.......##........',
+   '.......##........',
+   '.......tt........',
+   '.................'],
 ];
 const DIRS = 32, sprCache = {};
 function planeFrames(type, side, accent) {
   const key = type + '|' + side + '|' + accent;
-  if (sprCache[key]) return sprCache[key];
-  const rows = SPR[type], n = rows.length, half = (n - 1) / 2, size = Math.ceil(n * 1.45) | 1, c0 = (size - 1) / 2;
-  const pal = { '#': TEAM_COL[side], d: TEAM_DARK[side], t: accent, w: '#bff0ff', p: '#d8d8d8' };
+  return sprCache[key] || (sprCache[key] = rotFrames(SPR[type], { '#': TEAM_COL[side], d: TEAM_DARK[side], t: accent, w: '#bff0ff', p: '#d8d8d8', k: '#2a2a30' }));
+}
+// ships are drawn the same way: a pixel picture facing east, turned to 32 angles
+function shipRows(kind) {
+  const L = kind === 'carrier' ? 96 : 48, W = kind === 'carrier' ? 22 : 10, rows = [];
+  for (let y = 0; y < W; y++) {
+    let r = '';
+    for (let x = 0; x < L; x++) {
+      const cy = Math.abs(y - (W - 1) / 2), halfW = W / 2 * (x > L - 14 ? Math.max(0.15, (L - x) / 14) : x < 3 ? 0.8 : 1);
+      let ch = '.';
+      if (cy <= halfW - 0.5) {
+        ch = '#';
+        if (kind === 'carrier') {
+          if (cy <= halfW - 2.5 && x > 3 && x < L - 8) ch = 'g';                    // the flight deck
+          if (ch === 'g' && y === W >> 1 && x % 8 < 4 && x > 12) ch = 'w';            // its middle line
+          if (ch === 'g' && x < 12) ch = 't';
+          if (x >= 58 && x <= 70 && y >= 1 && y <= 5) ch = 'k';                      // the island (bridge)
+          if (x >= 62 && x <= 65 && y >= 2 && y <= 3) ch = 'w';
+        } else {
+          if (cy <= halfW - 2) ch = 'g';
+          if (x >= 18 && x <= 26 && cy < 3) ch = 'k';                                // bridge and guns
+          if ((x === 9 || x === 10 || x === 34 || x === 35 || x === 40 || x === 41) && cy < 2) ch = 'k';
+          if (x < 6 && cy <= halfW - 2) ch = 't';
+        }
+      }
+      r += ch;
+    }
+    rows.push(r);
+  }
+  return rows;
+}
+function shipFrames(kind, side) {
+  const key = 'ship|' + kind + '|' + side;
+  return sprCache[key] || (sprCache[key] = rotFrames(shipRows(kind), { '#': '#5d6570', g: kind === 'carrier' ? '#6f737c' : '#868d97', w: '#e8e8e8', k: '#3a3f48', t: TEAM_COL[side] }));
+}
+function rotFrames(rows, pal) {
+  const w = rows[0].length, h = rows.length, hx = (w - 1) / 2, hy = (h - 1) / 2, size = (Math.ceil(Math.hypot(w, h)) + 3) | 1, c0 = (size - 1) / 2;
   const frames = [], shadows = [];
   for (let f = 0; f < DIRS; f++) {
     const a = f / DIRS * TAU, ca = Math.cos(a), sa = Math.sin(a);
@@ -203,15 +264,15 @@ function planeFrames(type, side, accent) {
     const s = document.createElement('canvas'); s.width = s.height = size;
     const g = c.getContext('2d'), gs = s.getContext('2d');
     gs.fillStyle = 'rgba(0,0,0,0.32)';
-    const at = (x, y) => (x >= 0 && y >= 0 && x < n && y < n ? rows[y][x] : '.');
+    const at = (x, y) => (x >= 0 && y >= 0 && x < w && y < h ? rows[y][x] : '.');
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const dx = x - c0, dy = y - c0, sx = Math.round(dx * ca + dy * sa + half), sy = Math.round(-dx * sa + dy * ca + half);
+      const dx = x - c0, dy = y - c0, sx = Math.round(dx * ca + dy * sa + hx), sy = Math.round(-dx * sa + dy * ca + hy);
       const ch = at(sx, sy);
       if (ch === '.') {                                               // a dark outline around the plane
         let edge = false;
         for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const ex = x + ox - c0, ey = y + oy - c0;
-          if (at(Math.round(ex * ca + ey * sa + half), Math.round(-ex * sa + ey * ca + half)) !== '.') edge = true;
+          if (at(Math.round(ex * ca + ey * sa + hx), Math.round(-ex * sa + ey * ca + hy)) !== '.') edge = true;
         }
         if (edge) { g.fillStyle = 'rgba(17,17,17,0.85)'; g.fillRect(x, y, 1, 1); }
         continue;
@@ -220,7 +281,7 @@ function planeFrames(type, side, accent) {
     }
     frames.push(c); shadows.push(s);
   }
-  return (sprCache[key] = { frames, shadows, size });
+  return { frames, shadows, size };
 }
 const frameOf = a => ((Math.round(a / TAU * DIRS) % DIRS) + DIRS) % DIRS;
 let clouds = [];
@@ -241,7 +302,8 @@ function buildClouds() {
 let G = null;          // the battle being simulated here (solo, two on one screen, or the online host)
 let nextId = 1;
 function newBattle(cfg, players) {
-  G = { cfg, time: cfg.mode === 'raid' ? BATTLE_TIME : BATTLE_TIME, planes: [], bullets: [], bombs: [], flak: [], fx: [],
+  setMapKind(cfg.mode === 'carrier' ? 'sea' : 'island');
+  G = { cfg, time: TIMES[cfg.mode], planes: [], bullets: [], bombs: [], flak: [], fx: [], ships: [], torps: [], fleet: [],
         targets: [], aa: [], players, launchT: 2, over: false, winner: -1, score: [0, 0], reserve: 0, endT: 0, t: 0 };
   nextId = 1;
   const size = SIZES[cfg.size];
@@ -250,13 +312,17 @@ function newBattle(cfg, players) {
     for (const [dx, dy] of AA_DEFS) G.aa.push({ x: IX + dx, y: IY + dy, hp: 3, a: Math.PI, t: rnd(0, 2) });
   }
   const want = cfg.mode === 'raid'
-    ? { [ATT]: { [BOMBER]: size.bomb, [FIGHTER]: size.esc }, [DEF]: { [BOMBER]: 0, [FIGHTER]: size.def } }
-    : { [ATT]: { [BOMBER]: 0, [FIGHTER]: size.dog }, [DEF]: { [BOMBER]: 0, [FIGHTER]: size.dog } };
+    ? { [ATT]: { [BOMBER]: size.bomb, [FIGHTER]: size.esc, [TORPEDO]: 0 }, [DEF]: { [BOMBER]: 0, [FIGHTER]: size.def, [TORPEDO]: 0 } }
+    : cfg.mode === 'carrier'
+      ? { [ATT]: { [FIGHTER]: size.cF, [TORPEDO]: size.cT, [BOMBER]: size.cB }, [DEF]: { [FIGHTER]: size.cF, [TORPEDO]: size.cT, [BOMBER]: size.cB } }
+      : { [ATT]: { [BOMBER]: 0, [FIGHTER]: size.dog, [TORPEDO]: 0 }, [DEF]: { [BOMBER]: 0, [FIGHTER]: size.dog, [TORPEDO]: 0 } };
   for (const pl of players) {
     pl.kills = 0; pl.deaths = 0; pl.hits = 0; pl.respawn = 0; pl.planeId = 0; pl.gone = false;
-    if (cfg.mode !== 'raid' || pl.side === DEF) pl.plane = FIGHTER;
+    if (cfg.mode === 'dog' || (cfg.mode === 'raid' && pl.side === DEF)) pl.plane = FIGHTER;
+    if (cfg.mode === 'raid' && pl.plane === TORPEDO) pl.plane = BOMBER;
     want[pl.side][pl.plane] = Math.max(0, want[pl.side][pl.plane] - 1);
   }
+  if (cfg.mode === 'carrier') { newCarrierBattle(want); return; }
   const humanBombers = players.filter(p => p.side === ATT && p.plane === BOMBER).length;
   G.reserve = humanBombers * 2;
   // the attack: bombers in a V, fighters around them, coming from the west
@@ -289,6 +355,102 @@ function newBattle(cfg, players) {
     }
   }
 }
+// CARRIERS: two fleets (a carrier and two destroyers each) steam north and south in a slow zig-zag
+function makeShips(cfg) {
+  const out = [];
+  for (const side of [ATT, DEF]) {
+    const f = side === ATT ? 1 : -1;
+    out.push({ side, k: 'carrier', max: SIZES[cfg.size].cv, ox: 0, oy: 0, len: 94, wid: 18 });
+    out.push({ side, k: 'destroyer', max: DESTROYER_HP, ox: 80, oy: 95 * f, len: 46, wid: 9 });
+    out.push({ side, k: 'destroyer', max: DESTROYER_HP, ox: -80, oy: -95 * f, len: 46, wid: 9 });
+  }
+  return out;
+}
+function newCarrierBattle(want) {
+  G.ships = makeShips(G.cfg).map(d => Object.assign(d, { x: 0, y: 0, a: 0, hp: d.max, t: rnd(0, 2), sink: 0 }));
+  G.fleet = [ATT, DEF].map(side => ({ x: FLEET_X[side], y: WH / 2 + (side === ATT ? -150 : 150), a: side === ATT ? Math.PI / 2 : -Math.PI / 2, dir: side === ATT ? 1 : -1, t: rnd(0, 20) }));
+  placeShips();
+  G.botWant = [ATT, DEF].map(side => Object.assign({}, want[side]));
+  G.botWait = [0, 0];
+  for (const side of [ATT, DEF]) {
+    // the humans start on the deck; the bots are already up, in front of their carrier
+    for (const pl of G.players.filter(q => q.side === side)) pl.planeId = launchFromDeck(pl.plane, side, pl).id;
+    const types = []; for (const ty of [FIGHTER, TORPEDO, BOMBER]) for (let i = 0; i < want[side][ty]; i++) types.push(ty);
+    const fl = G.fleet[side], dx = side === ATT ? 1 : -1;
+    types.forEach((ty, i) => spawnPlane(ty, side, fl.x + dx * (110 + (i % 3) * 34), fl.y + (i - (types.length - 1) / 2) * 44, side === ATT ? 0 : Math.PI, null));
+  }
+}
+const carrierOf = side => G.ships.find(s => s.side === side && s.k === 'carrier');
+function placeShips() {
+  for (const s of G.ships) {
+    const f = G.fleet[s.side], c = Math.cos(f.a), sn = Math.sin(f.a);
+    s.x = f.x + s.ox * c - s.oy * sn; s.y = f.y + s.ox * sn + s.oy * c; s.a = f.a;
+  }
+}
+function launchFromDeck(type, side, pl) {        // a plane rolls down the carrier's deck and takes off
+  const cv = carrierOf(side), busy = G.planes.filter(q => q.deck === cv && q.state === 'ground').length;
+  const back = 38 - busy * 16, p = spawnPlane(type, side, cv.x - Math.cos(cv.a) * back, cv.y - Math.sin(cv.a) * back, cv.a, pl);
+  p.state = 'ground'; p.alt = 0; p.v = 20; p.deck = cv;
+  return p;
+}
+function stepShips(dt) {
+  const L = LEVELS[G.cfg.level];
+  for (const f of G.fleet) {
+    const side = G.fleet.indexOf(f), cv = carrierOf(side);
+    if (cv.hp <= 0) continue;                                     // a sinking fleet stops
+    f.t += dt;
+    if (f.y < 420) f.dir = 1; else if (f.y > WH - 420) f.dir = -1;
+    const corr = clamp((FLEET_X[side] - f.x) / 300, -0.4, 0.4) + Math.sin(f.t * 0.12 + side * 2) * 0.45;
+    const want = f.dir * Math.PI / 2 - f.dir * corr;
+    f.a += clamp(angDiff(want, f.a), -0.15 * dt, 0.15 * dt);
+    f.x += Math.cos(f.a) * SHIP_V * dt; f.y += Math.sin(f.a) * SHIP_V * dt;
+  }
+  placeShips();
+  for (const s of G.ships) {
+    if (s.hp <= 0) { s.sink += dt; continue; }
+    // the ship's AA guns fire flak at enemy planes close by
+    let best = null, bd = 220;
+    for (const q of G.planes) if (q.side !== s.side && flying(q)) { const d = dist(s, q); if (d < bd) { bd = d; best = q; } }
+    if (!best || (s.t -= dt) > 0) continue;
+    s.t = L.aa * (s.k === 'carrier' ? 1.3 : 1.1) + rnd(0, 0.6);
+    const lead = 0.55, e = 22 * (1 + L.err * 2);
+    G.flak.push({ x: best.x + Math.cos(best.a) * best.v * lead + rnd(-e, e), y: best.y + Math.sin(best.a) * best.v * lead + rnd(-e, e), t: lead, side: s.side });
+    fx({ k: 'aa', x: s.x, y: s.y });
+  }
+}
+function shipAt(x, y, side, pad) {                 // an enemy ship (of side) under this point
+  for (const s of G.ships) {
+    if (s.side === side || s.hp <= 0) continue;
+    const dx = x - s.x, dy = y - s.y, c = Math.cos(s.a), sn = Math.sin(s.a);
+    if (Math.abs(dx * c + dy * sn) < s.len / 2 + pad && Math.abs(-dx * sn + dy * c) < s.wid / 2 + pad) return s;
+  }
+  return null;
+}
+function hitShip(s, dmg, owner, x, y) {
+  s.hp = Math.max(0, s.hp - dmg);
+  fx({ k: 'boom', x, y, s: 2 });
+  const o = planeById(owner), who = o && o.pilot >= 0 ? G.players[o.pilot] : null;
+  if (who) who.hits++;
+  const name = DOG_NAME[s.side] + (s.k === 'carrier' ? ' CARRIER' : ' DESTROYER');
+  if (s.hp <= 0) { fx({ k: 'boom', x: s.x, y: s.y, s: 3 }); feed(name + (s.k === 'carrier' ? ' IS SINKING!' : ' SUNK!'), '#ffd23f'); }
+  else if (who) feed(who.name + ' HIT THE ' + name + '!', TEAM_COL[o.side]);
+}
+function stepTorps(dt) {                            // torpedoes run straight through the water
+  for (const t of G.torps) {
+    t.t += dt; t.x += t.vx * dt; t.y += t.vy * dt;
+    if (t.t > TORP_LIFE || t.x < 0 || t.y < 0 || t.x > WW || t.y > WH) { t.done = true; continue; }
+    if (isLand(t.x, t.y)) { t.done = true; fx({ k: 'boom', x: t.x, y: t.y, s: 1 }); continue; }
+    if (t.t < 0.4) continue;                                      // still diving in
+    const s = shipAt(t.x, t.y, t.side, 2);
+    if (s) { t.done = true; hitShip(s, TORP_DMG, t.owner, t.x, t.y); }
+  }
+  G.torps = G.torps.filter(t => !t.done);
+}
+function respawnDelay(side) {                        // a hurt carrier gets its planes up more slowly
+  if (G.cfg.mode !== 'carrier') return RESPAWN;
+  const cv = carrierOf(side);
+  return RESPAWN * (1 + 1.5 * (1 - cv.hp / cv.max));
+}
 function dogSpawn(side, i, total) {
   const y = WH / 2 + (i - (total - 1) / 2) * 70 + rnd(-20, 20);
   return side === ATT ? { x: 140, y, a: 0 } : { x: WW - 140, y, a: Math.PI };
@@ -296,7 +458,7 @@ function dogSpawn(side, i, total) {
 function spawnPlane(type, side, x, y, a, pl) {
   const ty = TYPES[type];
   const p = { id: nextId++, type, side, x, y, a, v: ty.vmin + (ty.vmax - ty.vmin) * 0.6, thr: 0.6, hp: ty.hp, max: ty.hp, state: 'air', alt: 1,
-              pilot: pl ? G.players.indexOf(pl) : -1, gunT: 0, gunSide: 1, bombs: type === BOMBER ? BOMB_MAX : 0, bombT: 0, reloadT: BOMB_RELOAD,
+              pilot: pl ? G.players.indexOf(pl) : -1, gunT: 0, gunSide: 1, bombs: type === BOMBER ? BOMB_MAX : type === TORPEDO ? TORP_MAX : 0, bombT: 0, reloadT: BOMB_RELOAD,
               gunnerT: rnd(0, 0.4), fallT: 0, spin: 0, bot: { t: 0, tg: null, err: 0, tgT: -1, wob: rnd(0, 6) }, lastHit: -1 };
   G.planes.push(p);
   return p;
@@ -306,7 +468,7 @@ const flying = p => p.state === 'air';
 const alive = p => p.state === 'air' || p.state === 'ground' || p.state === 'parked';
 function fx(e) { G.fx.push(e); }
 function feed(text, col) { fx({ k: 'msg', text, col }); }
-function pilotName(p) { return p.pilot >= 0 ? G.players[p.pilot].name : (p.type === BOMBER ? 'A BOMBER' : 'A FIGHTER'); }
+function pilotName(p) { return p.pilot >= 0 ? G.players[p.pilot].name : ['A FIGHTER', 'A BOMBER', 'A TORPEDO PLANE'][p.type]; }
 
 // one step of the whole battle; inputs[i] is what human player i does
 function stepBattle(dt, inputs) {
@@ -339,12 +501,13 @@ function stepBattle(dt, inputs) {
   }
   G.planes = G.planes.filter(p => p.state !== 'dead');
   stepBullets(dt); stepBombs(dt); stepAA(dt);
+  if (G.ships.length) { stepShips(dt); stepTorps(dt); }
   // players come back after being shot down
   for (const pl of G.players) {
     if (pl.gone) continue;
     const p = planeById(pl.planeId);
     if (p && alive(p)) continue;
-    if (pl.respawn <= 0) pl.respawn = RESPAWN;
+    if (pl.respawn <= 0) pl.respawn = respawnDelay(pl.side);
     else if ((pl.respawn -= dt) <= 0) respawnPlayer(pl);
   }
   if (G.cfg.mode === 'dog') {                                   // in a dogfight the bots come back too
@@ -356,6 +519,13 @@ function stepBattle(dt, inputs) {
       else G.botWait[side] = 0;
     }
   }
+  if (G.cfg.mode === 'carrier') {                              // the carriers launch new bots
+    for (const side of [ATT, DEF]) {
+      const missing = [FIGHTER, TORPEDO, BOMBER].find(ty => G.planes.filter(p => p.side === side && p.pilot < 0 && p.type === ty && alive(p)).length < G.botWant[side][ty]);
+      if (missing === undefined) { G.botWait[side] = 0; continue; }
+      if ((G.botWait[side] += dt) > respawnDelay(side) + 1) { G.botWait[side] = 0; launchFromDeck(missing, side, null); }
+    }
+  }
   if (G.cfg.mode === 'raid' && !G.warned && G.planes.some(p => p.side === ATT && flying(p) && Math.hypot(p.x - IX, p.y - IY) < 1100)) { G.warned = true; feed('RADAR: THE RAID IS COMING!', '#ffd23f'); }
   checkEnd();
 }
@@ -363,6 +533,7 @@ function stepEffectsOnly(dt) {
   for (const p of G.planes) if (p.state === 'fall') stepPlane(p, dt, NO_INPUT);
   G.planes = G.planes.filter(p => p.state !== 'dead');
   stepBullets(dt); stepBombs(dt);
+  if (G.ships.length) { for (const s of G.ships) if (s.hp <= 0) s.sink += dt; stepTorps(dt); }
 }
 const NO_INPUT = { turn: 0, aim: null, thr: 0.6, fire: false };
 function respawnPlayer(pl) {
@@ -378,7 +549,8 @@ function respawnPlayer(pl) {
       const busy = G.planes.filter(q => q.state === 'ground').length;
       p = spawnPlane(FIGHTER, DEF, RUNWAY.x0 + 16 - busy * 26, RUNWAY.y, 0, pl); p.state = 'ground'; p.alt = 0; p.v = 0;
     }
-  } else { const s = dogSpawn(side, Math.floor(rnd(0, 6)), 6); p = spawnPlane(FIGHTER, side, s.x, s.y, s.a, pl); }
+  } else if (G.cfg.mode === 'carrier') p = launchFromDeck(type, side, pl);
+  else { const s = dogSpawn(side, Math.floor(rnd(0, 6)), 6); p = spawnPlane(FIGHTER, side, s.x, s.y, s.a, pl); }
   pl.planeId = p.id;
 }
 function stepPlane(p, dt, inp) {
@@ -394,11 +566,12 @@ function stepPlane(p, dt, inp) {
     }
     return;
   }
-  if (p.state === 'ground') {                                    // rolling down the runway: speed up, then lift off
+  if (p.state === 'ground') {                                    // rolling down the runway (or the deck): speed up, then lift off
     p.thr = 1;
-    p.v = Math.min(ty.vmax, p.v + GROUND_ACC * dt);
-    p.x += p.v * dt;
-    if (p.v >= TAKEOFF_V) { p.state = 'air'; p.alt = 0.01; }
+    p.v = Math.min(ty.vmax, p.v + (p.deck ? 46 : GROUND_ACC) * dt);
+    p.x += Math.cos(p.a) * p.v * dt; p.y += Math.sin(p.a) * p.v * dt;
+    if (p.deck) { p.x += Math.cos(p.deck.a) * SHIP_V * dt; p.y += Math.sin(p.deck.a) * SHIP_V * dt; }
+    if (p.v >= TAKEOFF_V) { p.state = 'air'; p.alt = 0.01; p.deck = null; }
     return;
   }
   // in the air
@@ -425,14 +598,22 @@ function stepPlane(p, dt, inp) {
       if (p.gunSide > 0) fx({ k: 'gun', x: p.x, y: p.y });
     }
   } else {
-    if (p.bombs < BOMB_MAX && (p.reloadT -= dt) <= 0) { p.bombs++; p.reloadT = BOMB_RELOAD; }
+    const torp = p.type === TORPEDO;
+    if (p.bombs < (torp ? TORP_MAX : BOMB_MAX) && (p.reloadT -= dt) <= 0) { p.bombs++; p.reloadT = torp ? TORP_RELOAD : BOMB_RELOAD; }
     if (inp.fire && p.bombT <= 0 && p.bombs > 0 && p.alt > 0.5) {
-      p.bombT = BOMB_RATE; p.bombs--;
-      G.bombs.push({ x: p.x, y: p.y, vx: Math.cos(p.a) * p.v * BOMB_DRIFT, vy: Math.sin(p.a) * p.v * BOMB_DRIFT, t: 0, side: p.side, owner: p.id });
-      fx({ k: 'drop', x: p.x, y: p.y });
+      p.bombs--;
+      if (torp) {                                                  // the torpedo drops in the water and runs straight on
+        p.bombT = 0.8;
+        G.torps.push({ x: p.x + Math.cos(p.a) * 8, y: p.y + Math.sin(p.a) * 8, vx: Math.cos(p.a) * TORP_V, vy: Math.sin(p.a) * TORP_V, t: 0, side: p.side, owner: p.id });
+        fx({ k: 'torp', x: p.x + Math.cos(p.a) * 8, y: p.y + Math.sin(p.a) * 8 });
+      } else {
+        p.bombT = BOMB_RATE;
+        G.bombs.push({ x: p.x, y: p.y, vx: Math.cos(p.a) * p.v * BOMB_DRIFT, vy: Math.sin(p.a) * p.v * BOMB_DRIFT, t: 0, side: p.side, owner: p.id });
+        fx({ k: 'drop', x: p.x, y: p.y });
+      }
     }
-    // the rear gunner shoots by himself at enemy fighters close by
-    if (p.gunnerT <= 0) {
+    // the rear gunner (bombers only) shoots by himself at enemy fighters close by
+    if (!torp && p.gunnerT <= 0) {
       p.gunnerT = GUNNER_RATE;
       let best = null, bd = GUNNER_RANGE;
       for (const q of G.planes) if (q.side !== p.side && flying(q) && q.type === FIGHTER) { const d = dist(p, q); if (d < bd) { bd = d; best = q; } }
@@ -477,14 +658,16 @@ function damage(q, dmg, by) {
   if (q.state === 'air') { q.state = 'fall'; q.fallT = 1.3; q.spin = rnd(2, 4) * (Math.random() < 0.5 ? -1 : 1); fx({ k: 'boom', x: q.x, y: q.y, s: 1 }); }
   else { q.state = 'dead'; q.fallT = -1; fx({ k: 'boom', x: q.x, y: q.y, s: 2 }); }
   if ((killer && killer.pilot >= 0) || q.pilot >= 0) feed((killer ? pilotName(killer) : 'FLAK') + ' > ' + pilotName(q), killer ? TEAM_COL[killer.side] : '#ffd23f');
-  else if (q.type === BOMBER) feed('A BOMBER IS DOWN!', TEAM_COL[DEF]);
+  else if (q.type === BOMBER && G.cfg.mode === 'raid') feed('A BOMBER IS DOWN!', TEAM_COL[DEF]);
 }
 function stepBombs(dt) {
   for (const b of G.bombs) {
     b.t += dt; b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.t < BOMB_FALL) continue;
     b.done = true;
-    if (isLand(b.x, b.y)) { fx({ k: 'boom', x: b.x, y: b.y, s: 2 }); groundBlast(b.x, b.y, BOMB_R, BOMB_DMG, b.side, b.owner); }
+    const ship = G.ships.length ? shipAt(b.x, b.y, b.side, 4) : null;
+    if (ship) hitShip(ship, BOMB_DMG * 2, b.owner, b.x, b.y);
+    else if (isLand(b.x, b.y)) { fx({ k: 'boom', x: b.x, y: b.y, s: 2 }); groundBlast(b.x, b.y, BOMB_R, BOMB_DMG, b.side, b.owner); }
     else fx({ k: 'splash', x: b.x, y: b.y });
   }
   G.bombs = G.bombs.filter(b => !b.done);
@@ -519,13 +702,13 @@ function stepAA(dt) {                                         // the island's gu
     if ((a.t -= dt) > 0) continue;
     a.t = L.aa + rnd(0, 0.6);
     const lead = 0.55, e = 22 * (1 + L.err * 2);
-    G.flak.push({ x: best.x + Math.cos(best.a) * best.v * lead + rnd(-e, e), y: best.y + Math.sin(best.a) * best.v * lead + rnd(-e, e), t: lead });
+    G.flak.push({ x: best.x + Math.cos(best.a) * best.v * lead + rnd(-e, e), y: best.y + Math.sin(best.a) * best.v * lead + rnd(-e, e), t: lead, side: DEF });
     fx({ k: 'aa', x: a.x, y: a.y });
   }
   for (const f of G.flak) {
     if ((f.t -= dt) > 0) continue;
     f.done = true; fx({ k: 'flak', x: f.x, y: f.y });
-    for (const q of G.planes) if (q.side === ATT && flying(q) && Math.hypot(q.x - f.x, q.y - f.y) < 18) damage(q, 1, -1);
+    for (const q of G.planes) if (q.side !== f.side && flying(q) && Math.hypot(q.x - f.x, q.y - f.y) < 18) damage(q, 1, -1);
   }
   G.flak = G.flak.filter(f => !f.done);
 }
@@ -539,6 +722,10 @@ function checkEnd() {
       const waiting = G.players.some(pl => !pl.gone && pl.side === ATT && pl.plane === BOMBER && pl.respawn > 0) && G.reserve > 0;
       if (!bombers && !waiting && G.reserve <= 0) win = DEF;
     }
+  } else if (G.cfg.mode === 'carrier') {
+    const a = carrierOf(ATT), d = carrierOf(DEF);
+    if (a.hp <= 0 && d.hp <= 0) win = 2; else if (d.hp <= 0) win = ATT; else if (a.hp <= 0) win = DEF;
+    else if (G.time <= 0) { const fa = a.hp / a.max, fd = d.hp / d.max; win = fa > fd + 0.001 ? ATT : fd > fa + 0.001 ? DEF : 2; }
   } else {
     const goal = DOG_KILLS[G.cfg.size];
     if (G.score[ATT] >= goal) win = ATT; else if (G.score[DEF] >= goal) win = DEF;
@@ -553,7 +740,8 @@ function botThink(p, dt) {
   if (p.state !== 'air') return NO_INPUT;
   b.t -= dt;
   let aim = null, thr = 0.75, fire = false;
-  if (p.type === BOMBER) {
+  if (p.type !== FIGHTER && G.cfg.mode === 'carrier') ({ aim, thr, fire } = strikeThink(p, dt));
+  else if (p.type === BOMBER) {
     // fly at a target and drop a stick of bombs on it
     let tg = b.tg !== null ? G.targets[b.tg] : null;
     if (!tg || tg.hp <= 0) {
@@ -586,8 +774,9 @@ function botThink(p, dt) {
       fire = d < 210 && off < L.cone && Math.random() < L.gun + 0.2;
       thr = d > 260 ? 1 : d < 90 ? 0.35 : 0.8;
       if (d < 40 && off > 1.5) thr = 1;                                  // it's behind me: speed up and turn
-    } else if (b.patrol) {                                           // circle over the base, west of the runway
-      const ox = IX - 260, oy = IY, ang = Math.atan2(p.y - oy, p.x - ox), r = Math.hypot(p.x - ox, p.y - oy);
+    } else if (b.patrol) {                                           // circle over the base (or my carrier)
+      const cv = G.cfg.mode === 'carrier' ? carrierOf(p.side) : null;
+      const ox = cv ? cv.x : IX - 260, oy = cv ? cv.y : IY, ang = Math.atan2(p.y - oy, p.x - ox), r = Math.hypot(p.x - ox, p.y - oy);
       aim = ang + Math.PI / 2 + clamp((r - 200) / 200, -0.8, 0.8) * 1.2;
       thr = 0.55;
     } else aim = Math.atan2(IY - p.y, IX - p.x);
@@ -600,6 +789,31 @@ function botThink(p, dt) {
     if (aim === null || Math.abs(angDiff(aim, home)) > 1.4) aim = home;
   }
   return { turn: 0, aim: aim === null ? null : p.a + angDiff(aim, p.a) * L.turn, thr, fire };
+}
+// torpedo planes and bombers in a carrier battle: attack the enemy ships
+function strikeThink(p, dt) {
+  const b = p.bot;
+  if (b.evade > 0) { b.evade -= dt; return { aim: b.evadeA, thr: 1, fire: false }; }
+  let s = b.ship && b.ship.hp > 0 ? b.ship : null;
+  if (!s) {
+    const enemy = G.ships.filter(x => x.side !== p.side && x.hp > 0), escorts = enemy.filter(x => x.k !== 'carrier');
+    s = p.type === BOMBER && escorts.length ? escorts[p.id % escorts.length] : enemy.find(x => x.k === 'carrier');
+    b.ship = s;
+  }
+  if (!s) return { aim: p.a, thr: 0.7, fire: false };
+  const svx = Math.cos(s.a) * SHIP_V, svy = Math.sin(s.a) * SHIP_V, d = dist(p, s);
+  if (p.type === TORPEDO) {
+    const t = d / TORP_V, aim = Math.atan2(s.y + svy * t - p.y, s.x + svx * t - p.x);
+    const fire = d < 390 && d > 100 && Math.abs(angDiff(aim, p.a)) < 0.12 && p.bombs > 0 && !isLand(p.x, p.y);
+    if (fire || d < 90) { b.evade = 2.2; b.evadeA = p.a + (p.id % 2 ? 1.7 : -1.7); }
+    return { aim, thr: d > 420 ? 0.95 : 0.6, fire };
+  }
+  const lx = p.x + Math.cos(p.a) * p.v * BOMB_DRIFT * BOMB_FALL, ly = p.y + Math.sin(p.a) * p.v * BOMB_DRIFT * BOMB_FALL;
+  let aim = Math.atan2(s.y - p.y, s.x - p.x);
+  if (d < 60 && Math.abs(angDiff(aim, p.a)) > 1.2) aim = p.a + 0.15;
+  const c = Math.cos(s.a), sn = Math.sin(s.a), dx = lx - s.x, dy = ly - s.y;
+  const fire = Math.abs(dx * c + dy * sn) < s.len / 2 && Math.abs(-dx * sn + dy * c) < s.wid / 2 + 3;
+  return { aim, thr: 0.65, fire };
 }
 function pickTarget(p) {
   const b = p.bot; b.escort = null;
@@ -627,18 +841,31 @@ function pickTarget(p) {
     if (behind && Math.random() < 0.7) return q;
   }
   const guard = G.cfg.mode === 'raid' && p.side === DEF;
+  const cv = G.cfg.mode === 'carrier' ? carrierOf(p.side) : null, keeper = cv && p.id % 2 === 0;   // half the fighters guard the carrier
+  if (cv && !keeper) {                                             // the other half escort our torpedo planes and bombers
+    const strikers = G.planes.filter(q => q.side === p.side && q.type !== FIGHTER && flying(q));
+    if (strikers.length) {
+      let best = null, bd = 300;
+      for (const q of enemies) for (const st of strikers) { const d = Math.min(dist(q, st), dist(p, q) * 1.2); if (d < bd) { bd = d; best = q; } }
+      if (best) return best;
+      b.escort = { lead: strikers[p.id % strikers.length], side: p.id % 4 < 2 ? 1 : -1 };
+      return null;
+    }
+  }
   b.patrol = false;
   const nearFighter = enemies.some(q => q.type === FIGHTER && dist(p, q) < 220);
   let best = null, bd = 1e9;
   for (const q of enemies) {
     if (guard && Math.hypot(q.x - IX, q.y - IY) > 700 && dist(p, q) > 260) continue;   // the defense waits over the base
+    if (keeper && dist(q, cv) > 800 && dist(p, q) > 260) continue;
     let d = dist(p, q);
+    if (cv && q.type !== FIGHTER) d *= dist(q, cv) < 700 ? 0.45 : 0.85;   // stop the planes going for my carrier
     if (guard && q.type === BOMBER && !nearFighter) d *= 0.85;           // defenders go for the bombers (if no fighter is close)
     if (q.pilot >= 0) d *= 0.9;
     d *= 1 + Math.abs(angDiff(Math.atan2(q.y - p.y, q.x - p.x), p.a)) * 0.25;     // easier if it is in front of me
     if (d < bd) { bd = d; best = q; }
   }
-  if (!best && guard) b.patrol = true;
+  if (!best && (guard || cv)) b.patrol = true;
   return best;
 }
 
@@ -676,6 +903,11 @@ function handleFx(e) {
     case 'gun': if (nearCam(e.x, e.y, 220) && performance.now() - gunSndT > 70) { gunSndT = performance.now(); sfx(e.q ? 'gunner' : 'gun'); } break;
     case 'aa': if (nearCam(e.x, e.y, 260)) sfx('aa'); break;
     case 'drop': if (nearCam(e.x, e.y, 220)) sfx('drop'); break;
+    case 'torp':
+      for (let i = 0; i < 8; i++) P(e.x, e.y, rnd(-20, 20), rnd(-20, 20), rnd(0.3, 0.5), 'spray', 2);
+      P(e.x, e.y, 0, 0, 0.4, 'wring', 8);
+      if (nearCam(e.x, e.y, 220)) sfx('splash');
+      break;
     case 'msg': feedList.push({ text: e.text, col: e.col, t: 0 }); if (feedList.length > 4) feedList.shift(); break;
     case 'end': endFx = e.w; break;
   }
@@ -714,7 +946,7 @@ function sfx(k) {
 // V is "what to draw": the battle itself (here) or what the host sent (online)
 function viewOf() { return Net.isClient() ? Net.view : G ? battleView(G) : null; }
 function battleView(G) {
-  return { planes: G.planes, bullets: G.bullets, bombs: G.bombs, targets: G.targets, aa: G.aa, players: G.players, cfg: G.cfg,
+  return { planes: G.planes, bullets: G.bullets, bombs: G.bombs, targets: G.targets, aa: G.aa, ships: G.ships, torps: G.torps, players: G.players, cfg: G.cfg,
            time: G.time, score: G.score, reserve: G.reserve, over: G.over, winner: G.winner };
 }
 function drawTarget(t, time) {
@@ -762,6 +994,25 @@ function drawAA(a) {
   ctx.fillStyle = '#4a4a50'; ctx.fillRect(a.x - 2, a.y - 2, 4, 4);
   ctx.strokeStyle = '#2a2a30'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + Math.cos(a.a) * 8, a.y + Math.sin(a.a) * 8); ctx.stroke();
 }
+function drawShip(s, time) {
+  if (s.hp <= 0 && s.sink > 4) return;
+  const fr = shipFrames(s.k, s.side), f = frameOf(s.a), half = (fr.size - 1) / 2;
+  if (s.hp <= 0) ctx.globalAlpha = Math.max(0, 1 - s.sink / 4);
+  ctx.drawImage(fr.frames[f], Math.round(s.x - half), Math.round(s.y - half));
+  ctx.globalAlpha = 1;
+  // fires on a hurt ship (more fires, more damage)
+  const fires = s.hp <= 0 ? 5 : Math.floor((1 - s.hp / s.max) * 5);
+  for (let i = 0; i < fires; i++) {
+    const along = ((i * 37) % 70 - 35) / 80 * s.len, across = ((i * 13) % 7 - 3) / 8 * s.wid;
+    const x = s.x + Math.cos(s.a) * along - Math.sin(s.a) * across, y = s.y + Math.sin(s.a) * along + Math.cos(s.a) * across;
+    if (Math.floor(time * 10 + i * 3) % 3) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3); ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(x), Math.round(y), 1, 1); }
+    if (Math.random() < 0.15) parts.push({ x, y, vx: 6, vy: -8, t: 0, life: rnd(1, 2), kind: 'smoke', size: rnd(3, 6) });
+  }
+  if (s.hp > 0 && s.hp < s.max) {                                  // its health bar
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(s.x - 20), Math.round(s.y - s.len / 2 - 14), 40, 4);
+    ctx.fillStyle = s.hp / s.max > 0.5 ? '#5ad43f' : s.hp / s.max > 0.25 ? '#ffd23f' : '#ff4040'; ctx.fillRect(Math.round(s.x - 19), Math.round(s.y - s.len / 2 - 13), Math.round(38 * s.hp / s.max), 2);
+  }
+}
 function accentOf(p, V) { return p.pilot >= 0 && V.players[p.pilot] ? V.players[p.pilot].color : '#f2f2f2'; }
 function drawPlane(p, V, shadowPass) {
   const fr = planeFrames(p.type, p.side, accentOf(p, V)), f = frameOf(p.a), half = (fr.size - 1) / 2;
@@ -778,6 +1029,13 @@ function drawPlane(p, V, shadowPass) {
   }
 }
 function planeTrails(V, dt) {                                      // smoke from hurt planes, made on every device
+  for (const s of V.ships || []) {                                 // white water behind the ships
+    if (s.hp <= 0) { if (s.sink < 4 && Math.random() < 0.5) parts.push({ x: s.x + rnd(-s.len / 3, s.len / 3), y: s.y + rnd(-6, 6), vx: 0, vy: 0, t: 0, life: 0.6, kind: 'spray', size: 2 }); continue; }
+    if (Math.random() < dt * 20) {
+      const bx = s.x - Math.cos(s.a) * s.len / 2, by = s.y - Math.sin(s.a) * s.len / 2;
+      parts.push({ x: bx + rnd(-3, 3), y: by + rnd(-3, 3), vx: -Math.cos(s.a) * 4 + rnd(-3, 3), vy: -Math.sin(s.a) * 4 + rnd(-3, 3), t: 0, life: rnd(1.5, 2.5), kind: 'foam', size: 2 });
+    }
+  }
   for (const p of V.planes) {
     if (p.state === 'fall') { if (Math.random() < 0.9) parts.push({ x: p.x, y: p.y, vx: rnd(-5, 5), vy: rnd(-5, 5), t: 0, life: rnd(0.8, 1.5), kind: Math.random() < 0.3 ? 'fire' : 'smoke', size: rnd(2, 5) }); }
     else if (p.state === 'air' && p.hp / p.max < 0.45 && Math.random() < dt * 30) parts.push({ x: p.x - Math.cos(p.a) * 5, y: p.y - Math.sin(p.a) * 5, vx: rnd(-3, 3), vy: rnd(-3, 3), t: 0, life: rnd(0.6, 1.1), kind: 'trail', size: rnd(2, 3) });
@@ -791,6 +1049,7 @@ function drawParts(top) {
       ctx.fillStyle = p.kind === 'flaksmoke' ? `rgba(40,36,40,${0.7 * (1 - k)})` : p.kind === 'trail' ? `rgba(60,60,60,${0.6 * (1 - k)})` : `rgba(50,46,46,${0.55 * (1 - k)})`;
       const s = Math.round(p.size * (1 + k)); ctx.fillRect(x - (s >> 1), y - (s >> 1), s, s);
     } else if (p.kind === 'spark') { ctx.fillStyle = '#fff4a0'; ctx.fillRect(x, y, 1, 1); }
+    else if (p.kind === 'foam') { ctx.fillStyle = `rgba(235,245,255,${0.7 * (1 - k)})`; const s = 2 + Math.round(k * 3); ctx.fillRect(x - (s >> 1), y - (s >> 1), s, 2); }
     else if (p.kind === 'spray') { ctx.fillStyle = `rgba(255,255,255,${1 - k})`; ctx.fillRect(x, y, 2, 2); }
     else if (p.kind === 'flash') { ctx.fillStyle = '#ffe080'; ctx.beginPath(); ctx.arc(x, y, p.size * (1 - k), 0, TAU); ctx.fill(); }
     else if (p.kind === 'ring' || p.kind === 'wring') {
@@ -822,6 +1081,13 @@ function drawWorld(V, cam, vx, vw, time) {
   const inView = (x, y, r) => x > sx - r && x < sx + vw + r && y > sy - r && y < sy + H + r;
   for (const t of V.targets) if (inView(t.x, t.y, 40)) drawTarget(t, time);
   for (const a of V.aa) if (inView(a.x, a.y, 20)) drawAA(a);
+  for (const sh of V.ships || []) if (inView(sh.x, sh.y, 80)) drawShip(sh, time);
+  for (const t of V.torps || []) {                                 // torpedoes: a dark fish with a white trail
+    if (!inView(t.x, t.y, 30)) continue;
+    const a = Math.atan2(t.vy, t.vx);
+    ctx.fillStyle = 'rgba(235,245,255,0.6)'; for (let k = 3; k < 22; k += 3) ctx.fillRect(Math.round(t.x - Math.cos(a) * k), Math.round(t.y - Math.sin(a) * k), 2, 1);
+    ctx.fillStyle = '#1a1a20'; ctx.fillRect(Math.round(t.x) - 1, Math.round(t.y) - 1, 3, 3);
+  }
   for (const p of V.planes) if (p.alt < 0.05 && p.state !== 'dead' && inView(p.x, p.y, 20)) drawPlane(p, V, false);
   for (const b of V.bombs) {                                       // falling bombs get smaller
     if (!inView(b.x, b.y, 10)) continue;
@@ -862,12 +1128,14 @@ function drawArrow(vx, vw, sx, sy, tx, ty, col, label) {          // a pointer a
   ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(ax + Math.cos(a) * 6, ay + Math.sin(a) * 6); ctx.lineTo(ax + Math.cos(a + 2.4) * 5, ay + Math.sin(a + 2.4) * 5); ctx.lineTo(ax + Math.cos(a - 2.4) * 5, ay + Math.sin(a - 2.4) * 5); ctx.fill();
   if (label) T(label, ax - Math.cos(a) * 12, ay - Math.sin(a) * 12 - 2, col, 1, 'center', '#000');
 }
+function hpBar(x, y, w, k, col) { ctx.fillStyle = '#111'; ctx.fillRect(x, y, w, 6); ctx.fillStyle = col; ctx.fillRect(x + 1, y + 1, Math.round((w - 2) * clamp(k, 0, 1)), 4); }
 function fmtTime(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function drawMinimap(V, me, mySide, x, y, w, h, time) {
   const kx = w / WW, ky = h / WH;
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.drawImage(mapCanvas, 0, 0, WW / 2, WH / 2, x, y, w, h);
   ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(x, y, w, h);
+  for (const s of V.ships || []) { if (s.hp <= 0) continue; ctx.fillStyle = '#111'; ctx.fillRect(Math.round(x + s.x * kx) - 2, Math.round(y + s.y * ky) - 2, s.k === 'carrier' ? 5 : 4, s.k === 'carrier' ? 5 : 4); ctx.fillStyle = TEAM_COL[s.side]; ctx.fillRect(Math.round(x + s.x * kx) - 1, Math.round(y + s.y * ky) - 1, s.k === 'carrier' ? 3 : 2, s.k === 'carrier' ? 3 : 2); }
   for (const t of V.targets) { ctx.fillStyle = t.hp > 0 ? '#ffd23f' : '#4a423a'; ctx.fillRect(Math.round(x + t.x * kx) - 1, Math.round(y + t.y * ky) - 1, 3, 2); }
   // the defense sees everything while its radar works; otherwise you see what is close to you
   const radar = V.cfg.mode === 'raid' && mySide === DEF && V.targets.some(t => t.k === 'radar' && t.hp > 0);
@@ -891,14 +1159,22 @@ function drawHUD(V, pi, vx, vw, view, time) {
   if (compact) {                                                   // split screen: the mission goes under my health
     feedY = 58;
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, 34, 62, 20);
-    if (cfg.mode === 'raid') {
+    if (cfg.mode === 'carrier') {
+      for (const sd of [ATT, DEF]) { const cv = (V.ships || []).find(q => q.side === sd && q.k === 'carrier'); hpBar(vx + 4 + sd * 30, 38, 26, cv ? cv.hp / cv.max : 0, TEAM_COL[sd]); }
+    } else if (cfg.mode === 'raid') {
       const left = V.targets.filter(t => t.hp > 0).length, bombers = V.planes.filter(p => p.side === ATT && p.type === BOMBER && p.state !== 'dead' && p.state !== 'fall').length;
       T('TGT ' + left, vx + 4, 37, '#ffd23f', 1); T('BMB ' + bombers + (V.reserve ? '+' + V.reserve : ''), vx + 30, 37, TEAM_COL[ATT], 1);
     } else { T(String(V.score[ATT]), vx + 4, 37, TEAM_COL[ATT], 1); T(String(V.score[DEF]), vx + 20, 37, TEAM_COL[DEF], 1); T('TO ' + DOG_KILLS[cfg.size], vx + 36, 37, '#9a92b8', 1); }
     T(fmtTime(V.time), vx + 4, 46, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 1);
   } else {
   ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 62, 2, 124, 20);
-  if (cfg.mode === 'raid') {
+  if (cfg.mode === 'carrier') {
+    for (const sd of [ATT, DEF]) {
+      const cv = (V.ships || []).find(q => q.side === sd && q.k === 'carrier');
+      T(DOG_NAME[sd], cx - 58, 5 + sd * 9, TEAM_COL[sd], 1); hpBar(cx - 36, 5 + sd * 9, 44, cv ? cv.hp / cv.max : 0, TEAM_COL[sd]);
+    }
+    T(fmtTime(V.time), cx + 58, 7, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 2, 'right');
+  } else if (cfg.mode === 'raid') {
     const left = V.targets.filter(t => t.hp > 0).length, bombers = V.planes.filter(p => p.side === ATT && p.type === BOMBER && p.state !== 'dead' && p.state !== 'fall').length;
     T('TARGETS ' + left, cx - 58, 5, '#ffd23f', 1); T('BOMBERS ' + bombers + (V.reserve ? '+' + V.reserve : ''), cx - 58, 14, TEAM_COL[ATT], 1);
     T(fmtTime(V.time), cx + 58, 7, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 2, 'right');
@@ -921,7 +1197,7 @@ function drawHUD(V, pi, vx, vw, view, time) {
     const thr = Local.pilots[view.local] ? Local.pilots[view.local].thr : me.thr;
     ctx.fillStyle = '#fff'; ctx.fillRect(vx + 21 + Math.round(38 * thr), 20, 1, 6);
     T('SPD', vx + 4, 21, '#9a92b8', 1);
-    if (me.type === BOMBER) for (let i = 0; i < BOMB_MAX; i++) { ctx.fillStyle = i < me.bombs ? '#ffd23f' : '#3a3450'; ctx.fillRect(vx + 4 + i * 5, 28, 3, 3); }
+    if (me.type !== FIGHTER) for (let i = 0; i < (me.type === TORPEDO ? TORP_MAX : BOMB_MAX); i++) { ctx.fillStyle = i < me.bombs ? '#ffd23f' : '#3a3450'; ctx.fillRect(vx + 4 + i * (me.type === TORPEDO ? 10 : 5), 28, me.type === TORPEDO ? 8 : 3, 3); }
     if (me.state === 'ground') T('TAKING OFF...', cx, 40, '#fff', 1, 'center', '#000');
     if (me.x < 110 || me.x > WW - 110 || me.y < 110 || me.y > WH - 110) T('TURN BACK!', cx, 60, '#ff4040', 2, 'center', '#000');
   } else if (!V.over) {
@@ -930,7 +1206,16 @@ function drawHUD(V, pi, vx, vw, view, time) {
     if (wait > 0) T('BACK IN THE AIR IN ' + wait, cx, H / 2 + 4, '#fff', 1, 'center', '#000');
   }
   // pointers to what matters: where to go
-  if (live && cfg.mode === 'raid') {
+  if (live && cfg.mode === 'carrier') {
+    if (me.type !== FIGHTER) {
+      const cv = V.ships.find(q => q.side !== me.side && q.k === 'carrier' && q.hp > 0);
+      if (cv) drawArrow(vx, vw, view.sx, view.sy, cv.x, cv.y, '#ffd23f', 'CARRIER');
+    } else {
+      let best = null, bd = 1e9;
+      for (const q of V.planes) if (q.side !== me.side && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y) * (q.type === FIGHTER ? 1.6 : 1); if (d < bd) { bd = d; best = q; } }
+      if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, TEAM_COL[best.side], best.type === TORPEDO ? 'TORPEDO' : best.type === BOMBER ? 'BOMBER' : '');
+    }
+  } else if (live && cfg.mode === 'raid') {
     if (me.side === ATT && me.type === BOMBER) {
       let best = null, bd = 1e9; for (const t of V.targets) if (t.hp > 0) { const d = Math.hypot(t.x - me.x, t.y - me.y); if (d < bd) { bd = d; best = t; } }
       if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, '#ffd23f', 'TARGET');
@@ -942,6 +1227,17 @@ function drawHUD(V, pi, vx, vw, view, time) {
   } else if (live) {
     let best = null, bd = 1e9; for (const q of V.planes) if (q.side !== me.side && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y); if (d < bd) { bd = d; best = q; } }
     if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, TEAM_COL[best.side], '');
+  }
+  // the first seconds of a battle: how to steer, change speed and fire on this device
+  if (live && performance.now() - hintT < 9000 && Math.floor((performance.now() - hintT) / 400) % 6) {
+    const two = Local.pilots.length > 1, li = view.local;
+    const hint = Ctl.touch ? ['DRAG TO STEER', '+ / - = SPEED (HOLD)']
+      : PX.Pad.used ? ['STICK = STEER   A = FIRE', 'RB = FASTER   LB = SLOWER']
+      : two ? (li === 0 ? ['A D = STEER   SPACE = FIRE', 'W = FASTER   S = SLOWER'] : ['ARROWS = STEER   ENTER = FIRE', 'UP = FASTER   DOWN = SLOWER'])
+      : ['ARROWS = STEER   SPACE = FIRE', '↑ = FASTER   ↓ = SLOWER'];
+    const hy = H - (Ctl.touch ? 132 : 64);
+    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 74, hy - 4, 148, 26);
+    T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
   }
   // the minimap
   const mw = vw < 300 ? 56 : 72, mh = Math.round(mw * WH / WW);
@@ -956,7 +1252,7 @@ function drawHUD(V, pi, vx, vw, view, time) {
 // each local player (1 or 2 on this device) is a "pilot" with a throttle and the last stick
 const Local = {
   pilots: [],
-  reset(n) { this.pilots = []; for (let i = 0; i < n; i++) this.pilots.push({ thr: 0.6, aim: null, turn: 0, fire: false, padAim: null, padFire: false, padThr: 0, stick: null, fireId: null }); },
+  reset(n) { this.pilots = []; for (let i = 0; i < n; i++) this.pilots.push({ thr: 0.6, aim: null, turn: 0, fire: false, padAim: null, padFire: false, padThr: 0, stick: null, fireId: null, spdId: null, spdDir: 0 }); },
   input(i) { const p = this.pilots[i]; return p ? { turn: p.turn, aim: p.stick && p.stick.aim !== null ? p.stick.aim : p.padAim, thr: p.thr, fire: p.fire || p.padFire || p.fireId !== null } : NO_INPUT; },
 };
 const keys = new Set();
@@ -972,7 +1268,7 @@ function readKeys(dt) {
     const p = Local.pilots[i]; if (!p) return;
     const any = a => a.some(k);
     p.turn = (any(s.r) ? 1 : 0) - (any(s.l) ? 1 : 0);
-    const dth = (any(s.u) ? 1 : 0) - (any(s.d) ? 1 : 0);
+    const dth = (any(s.u) ? 1 : 0) - (any(s.d) ? 1 : 0) + (p.spdId !== null ? p.spdDir : 0);
     if (dth) p.thr = clamp(p.thr + dth * dt * 0.9, 0, 1);
     p.fire = any(s.f);
   });
@@ -988,13 +1284,14 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => { keys.clear(); if (state === 'play' && Net.mode === 'off') setPause(true); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play' && Net.mode === 'off') setPause(true); });
-// touch: in your part of the screen, drag anywhere to steer (the plane turns to where you point, further = faster);
-// the FIRE / BOMB button sits in the bottom corner of your part
+// touch: in your part of the screen, drag anywhere to steer (the plane turns to where you point);
+// the FIRE / BOMB button sits in the bottom corner of your part, with - / + (slower / faster) above it
 function regions() {
   const n = state === 'play' ? Local.pilots.length : 1;
   return n > 1 ? [{ x: 0, w: S.W / 2 }, { x: S.W / 2, w: S.W / 2 }] : [{ x: 0, w: S.W }];
 }
 function fireBtn(r) { return { x: r.x + r.w - 38, y: H - 40, r: 25 }; }
+function speedBtns(r) { const f = fireBtn(r); return [{ x: f.x - 19, y: f.y - 46, r: 14, dir: -1, label: '-' }, { x: f.x + 19, y: f.y - 46, r: 14, dir: 1, label: '+' }]; }
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
   if (e.pointerType === 'touch') Ctl.touch = true;
@@ -1006,6 +1303,7 @@ UI.onDown = (e, x, y) => {
     const p = Local.pilots[i]; if (!p) return;
     const fb = fireBtn(r);
     if (Math.hypot(x - fb.x, y - fb.y) < fb.r + 8) { p.fireId = e.pointerId; return; }
+    for (const b of speedBtns(r)) if (Math.hypot(x - b.x, y - b.y) < b.r + 5) { p.spdId = e.pointerId; p.spdDir = b.dir; return; }
     if (!p.stick) p.stick = { id: e.pointerId, x0: x, y0: y, x, y, aim: null };
   });
 };
@@ -1013,17 +1311,24 @@ UI.onMove = (e, x, y) => {
   for (const p of Local.pilots) if (p.stick && p.stick.id === e.pointerId) {
     const s = p.stick; s.x = x; s.y = y;
     const dx = x - s.x0, dy = y - s.y0, d = Math.hypot(dx, dy);
-    if (d > 6) { s.aim = Math.atan2(dy, dx); p.thr = clamp((d - 10) / 34, 0, 1); }
+    if (d > 6) s.aim = Math.atan2(dy, dx);
     if (d > 50) { s.x0 = x - dx / d * 50; s.y0 = y - dy / d * 50; }          // the stick follows your finger
   }
 };
-UI.onUp = e => { for (const p of Local.pilots) { if (p.stick && p.stick.id === e.pointerId) p.stick = null; if (p.fireId === e.pointerId) p.fireId = null; } };
+UI.onUp = e => { for (const p of Local.pilots) { if (p.stick && p.stick.id === e.pointerId) p.stick = null; if (p.fireId === e.pointerId) p.fireId = null; if (p.spdId === e.pointerId) p.spdId = null; } };
 function drawTouch(li, vx, vw, me) {
   const p = Local.pilots[li]; if (!p) return;
   const fb = fireBtn({ x: vx, w: vw }), on = p.fireId !== null;
   ctx.fillStyle = on ? 'rgba(255,90,60,0.7)' : 'rgba(13,11,19,0.45)'; ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, TAU); ctx.fill();
   ctx.strokeStyle = '#efe9ff'; ctx.lineWidth = 2; ctx.stroke();
-  T(me && me.type === BOMBER ? 'BOMB' : 'FIRE', fb.x, fb.y - 3, '#fff', 1, 'center');
+  T(me && me.type === BOMBER ? 'BOMB' : me && me.type === TORPEDO ? 'TORP' : 'FIRE', fb.x, fb.y - 3, '#fff', 1, 'center');
+  for (const b of speedBtns({ x: vx, w: vw })) {                  // slower / faster: hold
+    const held = p.spdId !== null && p.spdDir === b.dir;
+    ctx.fillStyle = held ? 'rgba(122,200,255,0.75)' : 'rgba(13,11,19,0.45)'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#efe9ff'; ctx.lineWidth = 2; ctx.stroke();
+    T(b.label, b.x + 1, b.y - 5, '#fff', 2, 'center');
+  }
+  T('SPEED', fb.x, fb.y - 66, 'rgba(239,233,255,0.8)', 1, 'center', '#000');
   if (p.stick) {
     const s = p.stick;
     ctx.strokeStyle = 'rgba(239,233,255,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x0, s.y0, 44, 0, TAU); ctx.stroke();
@@ -1082,10 +1387,10 @@ const Net = {
       case 'hi':
         if (m.v !== VERSION) { c.send({ t: 'old', v: VERSION }); setTimeout(() => c.close(), 300); return; }
         if (pi >= 0 || state === 'play') return;
-        lobby.players.push({ name: PX.cleanName(m.name) || 'PILOT', av: m.av, color: /^#[0-9a-f]{6}$/i.test(m.c) ? m.c : '#2a7fd4', side: m.side === DEF ? DEF : ATT, plane: m.plane === BOMBER ? BOMBER : FIGHTER, conn: c });
+        lobby.players.push({ name: PX.cleanName(m.name) || 'PILOT', av: m.av, color: /^#[0-9a-f]{6}$/i.test(m.c) ? m.c : '#2a7fd4', side: m.side === DEF ? DEF : ATT, plane: [FIGHTER, BOMBER, TORPEDO].includes(m.plane) ? m.plane : FIGHTER, conn: c });
         this.lobbySync(); sfx('click');
         break;
-      case 'pick': if (pi >= 0 && state !== 'play') { const p = lobby.players[pi]; p.side = m.side === DEF ? DEF : ATT; p.plane = m.plane === BOMBER ? BOMBER : FIGHTER; this.lobbySync(); } break;
+      case 'pick': if (pi >= 0 && state !== 'play') { const p = lobby.players[pi]; p.side = m.side === DEF ? DEF : ATT; p.plane = [FIGHTER, BOMBER, TORPEDO].includes(m.plane) ? m.plane : FIGHTER; this.lobbySync(); } break;
       case 'in': { const gi = G && state === 'play' ? G.players.findIndex(p => p.conn === c) : -1; if (gi >= 0) this.inputs[gi] = { turn: clamp(+m.tu || 0, -1, 1), aim: typeof m.ai === 'number' ? m.ai : null, thr: clamp(+m.th || 0, 0, 1), fire: !!m.f }; break; }
       case 'bye': c.close(); break;
     }
@@ -1120,7 +1425,7 @@ const Net = {
         break;
       case 'go': startClientBattle(m); break;
       case 's': this.snaps.push({ at: performance.now(), s: m }); if (this.snaps.length > 30) this.snaps.shift(); for (const e of m.fx || []) this.fxq.push({ at: performance.now() + INTERP_MS, e }); break;
-      case 'end': this.result = m; setTimeout(() => { if (state === 'play') toOver(); }, 1600); break;
+      case 'end': { this.result = m; const n = this.battleNo; setTimeout(() => { if (state === 'play' && this.battleNo === n) toOver(); }, 1600); break; }
       case 'back': if (state === 'over' || state === 'play') { state = 'setup'; } break;
     }
   },
@@ -1136,6 +1441,8 @@ const Net = {
       bo: G.bombs.map(b => [r(b.x), r(b.y), r(b.vx), r(b.vy), r2(b.t)]),
       tg: G.targets.map(t => t.hp), aa: G.aa.map(a => [a.hp, r2(a.a)]),
       pl: G.players.map(p => [p.planeId, p.kills, p.deaths, r2(p.respawn), p.hits]),
+      sh: G.ships.map(q => [r(q.x), r(q.y), r2(q.a), q.hp, r2(q.sink)]),
+      to: G.torps.map(t => [r(t.x), r(t.y), r(t.vx), r(t.vy)]),
       fx: this.fxOut || [],
     };
     this.fxOut = [];
@@ -1167,15 +1474,21 @@ const Net = {
     const V = this.view || { targets: [], aa: [] };
     const cfg = lobby.cfg;
     if (!this.view || V.cfgMode !== cfg.mode || V.cfgSize !== cfg.size) {
+      V.ships = cfg.mode === 'carrier' ? makeShips(cfg).map(d => Object.assign(d, { x: 0, y: 0, a: 0, hp: d.max, sink: 0 })) : [];
       V.targets = cfg.mode === 'raid' ? TARGET_DEFS.map(d => { const hp = Math.round(d.hp * SIZES[cfg.size].hp); return { k: d.k, name: d.name, x: IX + d.dx, y: IY + d.dy, w: d.w, h: d.h, hp, max: hp }; }) : [];
       V.cfgSize = cfg.size;
       V.aa = cfg.mode === 'raid' ? AA_DEFS.map(([dx, dy]) => ({ x: IX + dx, y: IY + dy, hp: 3, a: Math.PI })) : [];
       V.cfgMode = cfg.mode;
     }
     b.s.tg.forEach((hp, i) => { if (V.targets[i]) V.targets[i].hp = hp; });
+    (b.s.sh || []).forEach((u, i) => {
+      const q = V.ships[i], o = (a.s.sh || [])[i] || u; if (!q) return;
+      q.x = o[0] + (u[0] - o[0]) * k; q.y = o[1] + (u[1] - o[1]) * k; q.a = o[2] + angDiff(u[2], o[2]) * k; q.hp = u[3]; q.sink = u[4];
+    });
+    const torps = (b.s.to || []).map(u => ({ x: u[0] + u[2] * dtb, y: u[1] + u[3] * dtb, vx: u[2], vy: u[3] }));
     b.s.aa.forEach((u, i) => { if (V.aa[i]) { V.aa[i].hp = u[0]; V.aa[i].a = u[1]; } });
     const players = this.roster.map((r, i) => { const u = b.s.pl[i] || [0, 0, 0, 0, 0]; return Object.assign(r, { planeId: u[0], kills: u[1], deaths: u[2], respawn: u[3], hits: u[4] }); });
-    this.view = Object.assign(V, { planes, bullets, bombs, players, cfg, time: b.s.tm - dtb * (b.s.ov ? 0 : 1), score: b.s.sc, reserve: b.s.rs, over: !!b.s.ov, winner: b.s.w });
+    this.view = Object.assign(V, { planes, bullets, bombs, torps, players, cfg, time: b.s.tm - dtb * (b.s.ov ? 0 : 1), score: b.s.sc, reserve: b.s.rs, over: !!b.s.ov, winner: b.s.w });
   },
 };
 const ST = ['air', 'ground', 'parked', 'fall', 'dead'];
@@ -1212,13 +1525,15 @@ function startBattle() {
   if (Net.mode === 'host') Net.broadcast({ t: 'go', cfg, players: players.map(p => ({ name: p.name, av: p.av, color: p.color, side: p.side, plane: p.plane })) });
 }
 function startClientBattle(m) {
-  lobby.cfg = m.cfg;
+  lobby.cfg = m.cfg; Net.battleNo = (Net.battleNo || 0) + 1;
+  setMapKind(m.cfg.mode === 'carrier' ? 'sea' : 'island');
   Net.roster = m.players.map(p => ({ name: PX.cleanName(p.name) || 'PILOT', av: p.av, color: p.color, side: p.side, plane: p.plane }));
   Net.snaps = []; Net.fxq = []; Net.view = null; Net.result = null;
   Local.reset(1); resetEffects();
   state = 'play'; paused = false; leaveAsk = false;
 }
-function resetEffects() { parts = []; feedList = []; shake = 0; endFx = -1; cams = []; overInfo = null; }
+let hintT = 0;
+function resetEffects() { hintT = performance.now(); parts = []; feedList = []; shake = 0; endFx = -1; cams = []; overInfo = null; }
 let overInfo = null;
 function toOver() {
   // what happened, for the result screen; stars for the players on this device
@@ -1254,6 +1569,7 @@ function panel(w, h, y) {
 // behind the menus: a few bots fly about over the island
 let demo = null;
 function drawBackdrop(t, dt) {
+  setMapKind('island');
   if (!demo) {
     const keep = G; demo = true;
     newBattle({ mode: 'raid', size: 0, level: 1 }, []);
@@ -1295,21 +1611,22 @@ function drawHelp(t, dt) {
   const L = (s, i, c = '#efe9ff') => T(s, x + 8, y + 22 + i * 10, c, 1);
   T('HOW TO PLAY', W / 2, y + 7, '#7ac8ff', 2, 'center');
   [['YOUR PLANE ALWAYS FLIES FORWARD. YOU STEER IT AND SET ITS SPEED.', '#ffd23f'],
-   ['KEYS: ARROWS OR WASD STEER (UP/DOWN = SPEED), SPACE FIRES.'],
-   ['2 PLAYERS: WASD + SPACE, AND ARROWS + ENTER. P = PAUSE.'],
-   ['PHONE: DRAG TO POINT WHERE TO FLY (FURTHER = FASTER), FIRE BUTTON.'],
+   ['KEYS: ARROWS OR WASD STEER, UP/DOWN SPEED, SPACE FIRES, P PAUSES.'],
+   ['2 PLAYERS: WASD + SPACE, AND ARROWS + ENTER.'],
+   ['PHONE: DRAG TO STEER, HOLD + / - FOR SPEED, FIRE BUTTON.'],
    ['CONTROLLER: STICK STEERS, A/RT FIRES, LB/RB SPEED.'],
    ['AIR RAID', '#ffd23f'],
-   ['ATTACK (RED): BOMBERS DESTROY THE 6 TARGETS ON THE ISLAND,'],
-   ['FIGHTERS PROTECT THE BOMBERS. BOMBERS HAVE A REAR GUNNER.'],
-   ['DEFENSE (BLUE): TAKE OFF FROM THE RUNWAY AND SHOOT THE BOMBERS'],
-   ['DOWN BEFORE THE BASE IS GONE, OR HOLD OUT FOR 5 MINUTES.'],
+   ['RED BOMBERS DESTROY THE 6 TARGETS ON THE ISLAND, FIGHTERS ESCORT.'],
+   ['BLUE TAKES OFF AND STOPS THE BOMBERS, OR HOLDS OUT FOR 4:00.'],
    ['THE AA GUNS HELP. LOSE THE RADAR AND YOUR MAP GOES DARK.'],
+   ['CARRIERS', '#ffd23f'],
+   ['SINK THE ENEMY CARRIER. TORPEDOES RUN STRAIGHT THROUGH THE WATER:'],
+   ['AIM AHEAD OF THE SHIP. A HURT CARRIER LAUNCHES PLANES SLOWER.'],
    ['DOGFIGHT', '#ffd23f'],
-   ['RED FIGHTERS AGAINST BLUE FIGHTERS. FIRST TEAM TO THE KILLS WINS.'],
-   ['SHOT DOWN? YOU ARE BACK IN A NEW PLANE IN 4 SECONDS.'],
-   ['ONLINE: UP TO 6 PLAYERS, ON ANY SIDE. BOTS FILL THE REST.'],
-   ['STARS: A WIN ★8, A KILL ★1, A TARGET ★2.', '#ffd23f']].forEach(([s, c], i) => L(s, i, c));
+   ['RED FIGHTERS AGAINST BLUE. FIRST TEAM TO THE KILLS WINS.'],
+   ['SHOT DOWN? YOU ARE BACK IN A NEW PLANE IN A FEW SECONDS.'],
+   ['ONLINE: UP TO 6 PLAYERS ON ANY SIDE. BOTS FILL THE REST.'],
+   ['STARS: A WIN ★8, A KILL ★1, A TARGET OR SHIP HIT ★2.', '#ffd23f']].forEach(([s, c], i) => L(s, i, c));
   if (UI.button('ok', Math.round(W / 2 - 50), y + 196, 100, 20, 'OK', { size: 1 }) || UI.back) state = 'title';
 }
 function drawSetup(t, dt) {
@@ -1325,7 +1642,8 @@ function drawSetup(t, dt) {
   const saveCfg = () => { save.mode = cfg.mode; save.size = cfg.size; save.level = cfg.level; store(); if (kind === 'host') Net.lobbySync(); };
   T('MODE', x + 8, y + 31, '#9a92b8', 1);
   opt('m0', x + 50, y + 26, 80, 'AIR RAID', cfg.mode === 'raid', () => { cfg.mode = 'raid'; });
-  opt('m1', x + 134, y + 26, 80, 'DOGFIGHT', cfg.mode === 'dog', () => { cfg.mode = 'dog'; });
+  opt('m2', x + 134, y + 26, 80, 'CARRIERS', cfg.mode === 'carrier', () => { cfg.mode = 'carrier'; });
+  opt('m1', x + 218, y + 26, 80, 'DOGFIGHT', cfg.mode === 'dog', () => { cfg.mode = 'dog'; });
   T('SIZE', x + 8, y + 51, '#9a92b8', 1);
   SIZES.forEach((s, i) => opt('s' + i, x + 50 + i * 48, y + 46, 46, s.name, cfg.size === i, () => { cfg.size = i; }));
   T('BOTS', x + 202, y + 51, '#9a92b8', 1);
@@ -1347,11 +1665,19 @@ function drawSetup(t, dt) {
     };
     const raid = cfg.mode === 'raid';
     const bx = x + 140;
+    if (cfg.mode === 'carrier') {                                  // carriers: pick a side, then a plane
+      const avail = pw - 152, sw = 34, pwid = Math.floor((avail - 2 * (sw + 2)) / 3) - 2;
+      [ATT, DEF].forEach((sd, j) => { if (UI.button('cs' + i + '_' + j, bx + j * (sw + 2), ry, sw, 15, DOG_NAME[sd], { size: 1, on: p.side === sd, disabled: !can && p.side !== sd, textColor: TEAM_COL[sd] })) if (can) pick(sd, p.plane); });
+      [[FIGHTER, 'FIGHTER'], [TORPEDO, 'TORPEDO'], [BOMBER, 'BOMBER']].forEach(([pt, label], j) => {
+        if (UI.button('cp' + i + '_' + j, bx + 2 * (sw + 2) + 4 + j * (pwid + 2), ry, pwid, 15, label, { size: 1, on: p.plane === pt, disabled: !can && p.plane !== pt })) if (can) pick(p.side, pt);
+      });
+      return;
+    }
     const roles = raid ? [[ATT, BOMBER, 'ATTACK BOMBER'], [ATT, FIGHTER, 'ATTACK FIGHTER'], [DEF, FIGHTER, 'DEFENSE FIGHTER']]
                        : [[ATT, FIGHTER, 'RED TEAM'], [DEF, FIGHTER, 'BLUE TEAM']];
     const bwid = Math.min(100, Math.floor((pw - 152) / roles.length) - 2);
     roles.forEach(([sd, pt, label], j) => {
-      const on = p.side === sd && (raid ? p.plane === pt || (sd === DEF) : true);
+      const on = p.side === sd && (raid ? (p.plane === TORPEDO ? BOMBER : p.plane) === pt || (sd === DEF) : true);
       if (UI.button('r' + i + '_' + j, bx + j * (bwid + 2), ry, bwid, 15, label, { size: 1, on, disabled: !can && !on, textColor: TEAM_COL[sd] })) if (can) pick(sd, pt);
     });
   });
@@ -1359,8 +1685,10 @@ function drawSetup(t, dt) {
   // what the battle is
   const size = SIZES[cfg.size];
   const desc = cfg.mode === 'raid'
-    ? ['ATTACK: ' + size.bomb + ' BOMBERS + ' + size.esc + ' FIGHTERS. DESTROY THE 6 TARGETS ON THE ISLAND.', 'DEFENSE: ' + size.def + ' FIGHTERS TAKE OFF. STOP THE BOMBERS OR HOLD OUT 5:00.']
-    : ['DOGFIGHT: ' + size.dog + ' FIGHTERS A TEAM, EVERYONE COMES BACK.', 'FIRST TEAM TO ' + DOG_KILLS[cfg.size] + ' KILLS (OR MOST AFTER 5:00) WINS.'];
+    ? ['ATTACK: ' + size.bomb + ' BOMBERS + ' + size.esc + ' FIGHTERS. DESTROY THE 6 TARGETS ON THE ISLAND.', 'DEFENSE: ' + size.def + ' FIGHTERS TAKE OFF. STOP THE BOMBERS OR HOLD OUT 4:00.']
+    : cfg.mode === 'carrier'
+      ? ['EACH SIDE: A CARRIER, 2 DESTROYERS, ' + size.cF + ' FIGHTERS, ' + size.cT + ' TORPEDO PLANES' + (size.cB ? ', ' + size.cB + ' BOMBER' + (size.cB > 1 ? 'S' : '') : '') + '.', 'SINK THE ENEMY CARRIER (OR HURT IT MORE IN 4:00).']
+      : ['DOGFIGHT: ' + size.dog + ' FIGHTERS A TEAM, EVERYONE COMES BACK.', 'FIRST TEAM TO ' + DOG_KILLS[cfg.size] + ' KILLS (OR MOST AFTER 3:00) WINS.'];
   T(desc[0], x + 8, y + 190, '#efe9ff', 1); T(desc[1], x + 8, y + 200, '#efe9ff', 1);
   if (UI.button('back', x + 8, y + 210, 90, 16, 'BACK', { size: 1 }) || UI.back) { sfx('click'); toTitle(); return; }
   if (host) { if (UI.button('start', x + pw - 128, y + 208, 120, 20, 'TAKE OFF!', { accent: '#5ad43f' })) { sfx('click'); startBattle(); } }
@@ -1414,23 +1742,33 @@ function drawOver(t) {
   T(title, W / 2, y + 10, o.winner === 2 ? '#fff' : TEAM_COL[o.winner], 3, 'center', '#000');
   T(o.won ? 'VICTORY!' : o.mine.length ? 'DEFEAT' : '', W / 2, y + 34, o.won ? '#9be36b' : '#ff8a6a', 2, 'center');
   T('PILOT', x + 10, y + 56, '#9a92b8', 1); T('SIDE', x + 120, y + 56, '#9a92b8', 1); T('KILLS', x + 210, y + 56, '#9a92b8', 1); T('DOWN', x + 260, y + 56, '#9a92b8', 1);
-  if (o.mode === 'raid') T('TARGETS', x + 305, y + 56, '#9a92b8', 1);
+  if (o.mode !== 'dog') T(o.mode === 'raid' ? 'TARGETS' : 'HITS', x + 305, y + 56, '#9a92b8', 1);
   o.players.forEach((p, i) => {
     const ry = y + 68 + i * 11;
     T(p.name, x + 10, ry, p.color, 1); T(names[p.side], x + 120, ry, TEAM_COL[p.side], 1);
     T(String(p.kills), x + 222, ry, '#fff', 1, 'center'); T(String(p.deaths), x + 270, ry, '#fff', 1, 'center');
-    if (o.mode === 'raid') T(String(p.hits), x + 325, ry, '#fff', 1, 'center');
+    if (o.mode !== 'dog') T(String(p.hits), x + 325, ry, '#fff', 1, 'center');
   });
   if (o.stars) T('★ +' + o.stars, W / 2, y + 140, '#ffd23f', 2, 'center', '#000');
   const host = Net.mode !== 'client';
-  if (UI.button('menu', Math.round(W / 2 - 112), y + 168, 108, 22, 'MENU', { size: 1 }) || UI.back) toTitle();
-  if (host) { if (UI.button('again', Math.round(W / 2 + 4), y + 168, 108, 22, 'AGAIN', { accent: '#5ad43f', size: 1 })) { G = null; state = 'setup'; if (Net.mode === 'host') { Net.broadcast({ t: 'back' }); Net.lobbySync(); } } }
-  else T('THE HOST CAN START AGAIN', Math.round(W / 2 + 58), y + 175, '#9a92b8', 1, 'center');
+  const bx = Math.round(W / 2 - 176), bw = 86;
+  if (UI.button('menu', bx, y + 168, bw, 22, 'MENU', { size: 1 }) || UI.back) toTitle();
+  if (host) {
+    if (UI.button('setup', bx + 90, y + 168, bw, 22, 'SETUP', { size: 1 })) { G = null; state = 'setup'; if (Net.mode === 'host') { Net.broadcast({ t: 'back' }); Net.lobbySync(); } }
+    if (UI.button('again', bx + 180, y + 168, bw, 22, 'REMATCH', { accent: '#5ad43f', size: 1 })) { sfx('click'); startBattle(); }
+    if (UI.button('swap', bx + 270, y + 168, bw, 22, 'SWAP SIDES', { accent: '#ffd23f', size: 1 })) {
+      sfx('click');
+      lobby.players.forEach(p => { p.side = 1 - p.side; if (p.local === 1) save.side2 = p.side; else if (p.local === 0) save.side = p.side; });
+      store(); if (Net.mode === 'host') Net.lobbySync();
+      startBattle();
+    }
+  } else T('THE HOST STARTS THE NEXT ONE', bx + 230, y + 175, '#9a92b8', 1, 'center');
 }
 // the battle screen: one view, or two side by side
 function drawPlay(t, dt) {
   const V = viewOf();
   if (!V) { ctx.fillStyle = '#1b4f8a'; ctx.fillRect(0, 0, S.W, H); T('GETTING READY...', S.W / 2, H / 2, '#fff', 2, 'center'); return; }
+  setMapKind(V.cfg.mode === 'carrier' ? 'sea' : 'island');
   planeTrails(V, dt);
   const locals = Net.isClient() ? [Net.myPid] : V.players.map((p, i) => (p.local !== undefined ? i : -1)).filter(i => i >= 0);
   const n = Math.max(1, locals.length), vw = Math.floor(S.W / n);
@@ -1504,7 +1842,7 @@ function frame(now) {
   S.blit('#1b4f8a');
   requestAnimationFrame(frame);
 }
-buildMap(); buildClouds();
+setMapKind('island'); buildClouds();
 requestAnimationFrame(frame);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
