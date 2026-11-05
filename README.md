@@ -9,6 +9,20 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
 | **Mouse Thief** (`thief.html`) | You stole the cat's mouse "just for fun". She did not find it funny. Run! |
 | **Pixel GP** (`racer.html`) | A pixel open-wheel racer that looks 3D: race 5 rivals, drive freely, or race a friend online. |
 | **Pixel Heist** (`heist.html`) | A low-poly 3D city: rob 5 places, each harder and richer, and escape the police. Rob the bank to win. |
+| **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
+
+## Pixel Pong
+
+Table tennis seen from above. Get the ball past the other bat to score; **first to 7 wins**.
+
+- **Play a bot** (easy, normal or the mega bot), a **random player** online, a **friend online** (one makes a game and gets a
+  4-letter code, the other joins with it), or **2 players on this phone** (each drags on their own half).
+- Move your bat by dragging anywhere (keyboard: WASD or arrows; two players: WASD and arrows). Where the ball hits the bat
+  aims it, and moving into the ball hits harder. The ball gets faster with every hit.
+- **Power-ups**: every hit fills the yellow bar. SMASH (2): your next hit is super fast. CURVE (2): your next hit curves.
+  BIG BAT (3): a bigger bat for 7 seconds. FREEZE (4): the other bat freezes for a moment. Keys 1 2 3 4 (player 2: 7 8 9 0).
+- Wins pay ★ into the arcade wallet: 3 / 6 / 10 against the bots, 10 for winning online (2 for playing).
+- Random players: the game looks for someone waiting in one of a few public "lobby" rooms, or waits in a free one.
 
 ## Pixel Heist
 
