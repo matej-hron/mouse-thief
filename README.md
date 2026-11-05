@@ -27,8 +27,8 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   defense's minimap only shows enemies close by.
 - **CARRIERS:** two fleets on open sea, each a carrier and two destroyers zig-zagging north and south. Sink the enemy
   carrier (or hurt it more in 4 minutes). Planes take off from the carrier's deck, and so do you after being shot down;
-  a hurt carrier gets its planes up more slowly. Every ship has AA guns. **Torpedo planes** drop torpedoes (2, one comes
-  back every 7 s) that run straight through the water: aim ahead of the ship. Bombers can hit ships too (good against the
+  a hurt carrier gets its planes up more slowly. Every ship has AA guns. **Torpedo planes** carry one torpedo (a new one
+  every 6 s) that run straight through the water: aim ahead of the ship. Bombers can hit ships too (good against the
   destroyers). Half of each side's fighter bots guard their carrier, the other half escort their torpedo planes and bombers.
 - **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
   kill target (10 / 15 / 25 by size), or most kills after 3 minutes, wins.

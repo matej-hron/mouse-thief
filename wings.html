@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { sfx: true, wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -66,24 +66,24 @@ const TEAM_COL = ['#e0402a', '#2a7fd4'], TEAM_DARK = ['#8a2014', '#164a80'];
 const TEAM_NAME = ['ATTACK', 'DEFENSE'], DOG_NAME = ['RED', 'BLUE'];
 const FIGHTER = 0, BOMBER = 1, TORPEDO = 2;
 const TYPES = [
-  { name: 'FIGHTER', vmin: 70, vmax: 150, turn: 2.5, hp: 8, r: 8, acc: 70 },
-  { name: 'BOMBER', vmin: 55, vmax: 95, turn: 1.15, hp: 16, r: 11, acc: 35 },
-  { name: 'TORPEDO', vmin: 60, vmax: 115, turn: 1.7, hp: 14, r: 9, acc: 45 },
+  { name: 'FIGHTER', vmin: 50, vmax: 105, turn: 2.1, hp: 8, r: 8, acc: 50 },
+  { name: 'BOMBER', vmin: 38, vmax: 66, turn: 1.0, hp: 16, r: 11, acc: 25 },
+  { name: 'TORPEDO', vmin: 42, vmax: 80, turn: 1.45, hp: 14, r: 9, acc: 32 },
 ];
-const BULLET_V = 330, BULLET_LIFE = 0.62, GUN_RATE = 0.11;
+const BULLET_V = 260, BULLET_LIFE = 0.8, GUN_RATE = 0.11;
 const BOMB_FALL = 1.0, BOMB_R = 18, BOMB_DMG = 2, BOMB_MAX = 4, BOMB_RELOAD = 8, BOMB_RATE = 0.28, BOMB_DRIFT = 0.7;
 const GUNNER_RANGE = 135, GUNNER_RATE = 0.65;
-const TAKEOFF_V = 62, GROUND_ACC = 26;
+const TAKEOFF_V = 44, GROUND_ACC = 19;
 const TIMES = { raid: 240, dog: 180, carrier: 240 }, DOG_KILLS = [10, 15, 25];
-const TORP_V = 80, TORP_LIFE = 8, TORP_DMG = 10, TORP_MAX = 2, TORP_RELOAD = 7;
-const SHIP_V = 10, DESTROYER_HP = 24, FLEET_X = [460, 3200 - 460];
+const TORP_V = 62, TORP_LIFE = 10, TORP_DMG = 14, TORP_MAX = 1, TORP_RELOAD = 6;
+const SHIP_V = 8, DESTROYER_HP = 24, FLEET_X = [460, 3200 - 460];
 const RESPAWN = 4, HANGAR_EVERY = 30;
 // per size: raid bombers, escorts, defenders, raid target strength; dogfight per team;
 // carriers: fighters, torpedo planes, bombers per side and the carrier's strength
 const SIZES = [
-  { name: 'SMALL', bomb: 3, esc: 4, def: 4, dog: 3, hp: 1, cF: 3, cT: 2, cB: 0, cv: 60 },
-  { name: 'NORMAL', bomb: 5, esc: 5, def: 7, dog: 5, hp: 1.5, cF: 4, cT: 2, cB: 1, cv: 80 },
-  { name: 'BIG', bomb: 8, esc: 7, def: 12, dog: 8, hp: 2.5, cF: 6, cT: 4, cB: 2, cv: 90 },
+  { name: 'SMALL', bomb: 3, esc: 4, def: 4, dog: 3, hp: 1, cF: 3, cT: 2, cB: 0, cv: 40 },
+  { name: 'NORMAL', bomb: 5, esc: 5, def: 7, dog: 5, hp: 1.5, cF: 4, cT: 3, cB: 1, cv: 50 },
+  { name: 'BIG', bomb: 8, esc: 7, def: 12, dog: 8, hp: 2.5, cF: 5, cT: 4, cB: 2, cv: 65 },
 ];
 const LEVELS = [                                   // how good the bots are
   { name: 'EASY', turn: 0.72, err: 0.32, cone: 0.1, react: 0.9, gun: 0.6, aa: 2.2 },
@@ -568,7 +568,7 @@ function stepPlane(p, dt, inp) {
   }
   if (p.state === 'ground') {                                    // rolling down the runway (or the deck): speed up, then lift off
     p.thr = 1;
-    p.v = Math.min(ty.vmax, p.v + (p.deck ? 46 : GROUND_ACC) * dt);
+    p.v = Math.min(ty.vmax, p.v + (p.deck ? 34 : GROUND_ACC) * dt);
     p.x += Math.cos(p.a) * p.v * dt; p.y += Math.sin(p.a) * p.v * dt;
     if (p.deck) { p.x += Math.cos(p.deck.a) * SHIP_V * dt; p.y += Math.sin(p.deck.a) * SHIP_V * dt; }
     if (p.v >= TAKEOFF_V) { p.state = 'air'; p.alt = 0.01; p.deck = null; }
