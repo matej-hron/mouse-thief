@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist and Pixel Pong. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong and Pixel Football. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -52,6 +52,7 @@ const GAMES = [
   { id: 'racer', name: 'PIXEL GP', sub: 'RACE CARS!', url: 'racer.html', color: '#2a7fd4' },
   { id: 'heist', name: 'PIXEL HEIST', sub: 'ROB THE BANK!', url: 'heist.html', color: '#ffd23f' },
   { id: 'pong', name: 'PIXEL PONG', sub: 'TABLE TENNIS!', url: 'pong.html', color: '#1ec8e0' },
+  { id: 'football', name: 'PIXEL FOOTBALL', sub: 'RUN YOUR CLUB!', url: 'football.html', color: '#3fae4a' },
 ];
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
@@ -161,13 +162,39 @@ function previewPong(x, y, w, h, t) {
   ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(Math.round(bx - (k < 1 ? 8 : -2)), Math.round(by) - 1, 6, 2);
   ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bx) - 2, Math.round(by) - 2, 5, 5); ctx.fillStyle = '#ffe23a'; ctx.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 3, 3);
 }
+function previewFootball(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#231c3a'; ctx.fillRect(x, y, w, 14);                    // the crowd
+  for (let i = 0; i < w; i += 4) { ctx.fillStyle = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f'][(i / 4) % 4]; ctx.fillRect(x + i, y + 4 + ((i / 4) % 2) * 4 - (Math.floor(t * 6 + i) % 5 === 0 ? 1 : 0), 3, 2); }
+  for (let r = 14; r < h; r++) for (let i = -1; i < 6; i++) {               // striped grass, slightly in perspective
+    const k = (r - 14) / (h - 14), sw = (w / 4) * (0.8 + 0.2 * k), ox = ((t * 14) % (sw * 2));
+    ctx.fillStyle = i % 2 ? '#3c9e46' : '#45ab4f'; ctx.fillRect(Math.round(x + i * sw - ox + sw), y + r, Math.ceil(sw), 1);
+  }
+  ctx.fillStyle = '#e8f6e8'; ctx.fillRect(x, y + 16, w, 1); ctx.fillRect(x, y + h - 3, w, 1);
+  const gx = x + w - 10; ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(gx, y + 26, 8, 16);    // the goal
+  ctx.fillStyle = '#fff'; ctx.fillRect(gx - 1, y + 24, 2, 20); ctx.fillRect(gx - 1, y + 24, 9, 2);
+  const man = (mx, my, kit, leg) => {
+    ctx.fillStyle = '#111'; ctx.fillRect(mx - 3, my - 13, 7, 13);
+    ctx.fillStyle = '#f2c9a0'; ctx.fillRect(mx - 1, my - 12, 3, 3);
+    ctx.fillStyle = kit; ctx.fillRect(mx - 2, my - 9, 5, 4);
+    ctx.fillStyle = '#fff'; ctx.fillRect(mx - 2, my - 5, 5, 2);
+    ctx.fillStyle = '#f2c9a0'; ctx.fillRect(mx - 2 + leg, my - 3, 2, 3); ctx.fillRect(mx + 1 - leg, my - 3, 2, 3);
+  };
+  const run = (t * 0.3) % 1, px = Math.round(x + 8 + run * (w - 34)), leg = Math.floor(t * 10) % 2;
+  man(px, y + 42, PX.AVATAR_COLORS[profile.avatar.color], leg);
+  man(Math.round(px - 14 + Math.sin(t * 3) * 2), y + 54, '#2a7fd4', 1 - leg);
+  const bx = px + 5 + (run > 0.85 ? (run - 0.85) * 120 : 0), by = y + 41 - (run > 0.85 ? Math.sin((run - 0.85) / 0.15 * Math.PI) * 8 : 0);
+  ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 4, 4); ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(bx), Math.round(by), 2, 2);
+  ctx.restore();
+}
 function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong })[g.id](x + 6, y + 8, w - 12, 62, t);
-  T(g.name, x + w / 2, y + 82, '#fff', 2, 'center', '#000');
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball })[g.id](x + 6, y + 8, w - 12, 62, t);
+  if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 82, '#fff', 2, 'center', '#000');
+  else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   if (UI.button('play_' + g.id, x + 8, y + h - 24, w - 16, 18, 'PLAY', { accent: g.color })) play(g);
 }
 function drawHome(t) {

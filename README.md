@@ -10,6 +10,28 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
 | **Pixel GP** (`racer.html`) | A pixel open-wheel racer that looks 3D: race 5 rivals, drive freely, or race a friend online. |
 | **Pixel Heist** (`heist.html`) | A low-poly 3D city: rob 5 places, each harder and richer, and escape the police. Rob the bank to win. |
 | **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
+| **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
+
+## Pixel Football
+
+A retro football game seen from the side, six a side, plus running your own club.
+
+- **The match:** you control the player with the arrow over his head; control jumps to whoever is nearest the ball.
+  With the ball: **PASS** (to the teammate you face) and **SHOOT** (hold to power up, let go to shoot; hold up or down to aim).
+  Without it: **TACKLE** (a sliding tackle) and **SWITCH**. Running into the player with the ball can win it too.
+  Keepers save (or not), the ball hits posts, and there are throw-ins, corners and goal kicks.
+- **Controls:** phone: drag anywhere on the left to run, two buttons on the right. Computer: arrows or WASD, X = pass,
+  Z or Space = shoot, P = pause. Two players on one keyboard: WASD + C / V and arrows + . / (or K / L).
+- **Your club:** a squad of 6 to 12 players with stats (pace, shooting, passing, defending, keeping), an age, a potential
+  and a value. The top 6 in SQUAD play (GK, 2 defenders, 2 midfielders, 1 forward). Young players improve as they play;
+  you can also pay to TRAIN players (3 sessions per round). Name your club and pick its kit in MY CLUB.
+- **League:** 8 clubs, 14 rounds. A win pays $1,500, a draw $700, a loss $300 (plus ★ into the arcade wallet).
+  Prize money at the end of the season ($20,000 for the title, plus a trophy and ★50); then everyone gets a year older.
+- **Transfers:** a new list of players for sale after every round (or pay $300 for a new list). Sell your players for 75% of their value.
+- **Online:** a friend with a code, or a random player. In the lobby: PLAY A MATCH (your real squads against each other)
+  or TRADE PLAYERS: pick players on both sides plus money, send the offer, the other player accepts or says no.
+  There is no server, so trades only happen while both phones are connected, and each phone trusts the other.
+- **2 players on this phone:** you play your club, player 2 picks a league club.
 
 ## Pixel Pong
 
@@ -157,4 +179,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html`; online play checks it).
