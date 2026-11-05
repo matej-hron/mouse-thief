@@ -695,6 +695,13 @@ requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
 }
+PX.Pad.setup({
+  title: 'Pixel Pong: controller', ui: UI, menu: () => state !== 'play' || paused,
+  // 2 players on one screen: the second controller is player 2
+  keys: n => n === 1 ? (M && M.mode === 'local' ? { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', A: 'Digit7', B: 'Digit8', X: 'Digit9', Y: 'Digit0' } : null)
+                     : { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', A: 'Digit1', B: 'Digit2', X: 'Digit3', Y: 'Digit4', START: 'KeyP' },
+  help: [['STICK|D-PAD', 'MOVE YOUR BAT'], ['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK'], ['2ND PAD', 'PLAYER 2 IN 2 PLAYERS']],
+});
 </script>
 </body>
 </html>

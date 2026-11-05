@@ -4189,6 +4189,12 @@ const VERSION = '1.17.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
+PX.Pad.setup({
+  title: 'Mouse Thief: controller', menu: () => !playing(),
+  menuKeys: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', A: 'Enter', B: 'Escape', START: 'KeyP' },
+  keys: () => ({ A: 'Space', up: 'ArrowUp', B: 'ArrowDown', down: 'ArrowDown', X: 'Digit1', Y: 'Digit2', RB: 'Digit3', START: 'KeyP' }),
+  help: [['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['B', 'SLIDE (OR STICK DOWN)'], ['X|Y|RB', 'ABILITIES 1, 2, 3'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
 }
