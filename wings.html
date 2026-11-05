@@ -41,9 +41,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const SAVE_KEY = 'pixelWings.save';
-const save = { scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
+const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -1841,6 +1841,7 @@ function readKeys(dt) {
 window.addEventListener('keydown', e => {
   PX.Sound.unlock();
   if (state === 'scene') sceneSkip = true;
+  if (state === 'intro') introTap = true;
   if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); return; }
   keys.add(e.code);
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -1862,6 +1863,7 @@ function speedBtns(r) { const f = fireBtn(r); return [{ x: f.x - 19, y: f.y - 46
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
   if (state === 'scene') sceneSkip = true;
+  if (state === 'intro') introTap = true;
   if (e.pointerType === 'touch') Ctl.touch = true;
   if (state !== 'play' || paused || leaveAsk || UI.downId !== null) return;
   if (e.pointerType === 'mouse' && !Ctl.touch) return;
@@ -2062,7 +2064,7 @@ const Net = {
 const ST = ['air', 'ground', 'parked', 'fall', 'dead'];
 
 /* --- 10. SCREENS ------------------------------------------------------------- */
-let state = 'title';        // title | setup | online | play | over | help | school | scene
+let state = 'title';        // title | setup | online | play | over | help | school | scene | intro
 let paused = false, leaveAsk = false;
 let lobby = { kind: 'solo', cfg: { mode: save.mode, size: save.size, level: save.level }, players: [] };
 function meAsPlayer(two) {
@@ -2262,6 +2264,138 @@ function drawBackdrop(t, dt) {
   drawWorld(V, demo.cam, 0, S.W, t);
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, S.W, H);
 }
+// --- THE INTRO: a narrator, then Captain Hawk and the Rookie on the radio, over two battles playing out live ---
+const INTRO = [
+  { who: 'NARRATOR', clip: 'intro_n1', shot: 0, pre: 1.6, text: "THE PIXEL ARCHIPELAGO. A THOUSAND TINY ISLANDS... AND TWO SQUADRONS WHO CAN'T SHARE THE SKY." },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h1', shot: 1, pre: 1.4, radio: true, text: 'ROOKIE, YOU AWAKE BACK THERE?' },
+  { who: 'ROOKIE', clip: 'intro_r1', shot: 1, pre: 0.4, radio: true, text: 'YES SIR! ...WHAT ARE WE DOING, SIR?' },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h2', shot: 2, pre: 0.9, radio: true, text: "RED SQUADRON WANTS BLUE ISLAND'S AIR BASE. BLUE ISLAND WANTS TO KEEP IT. WE FLY BOMBERS, THEY FLY FIGHTERS." },
+  { who: 'ROOKIE', clip: 'intro_r2', shot: 2, pre: 0.4, radio: true, text: 'WHICH SIDE ARE WE ON?' },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h3', shot: 2, pre: 0.5, radio: true, text: 'TODAY? WHICHEVER ONE YOU PICKED.' },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h4', shot: 3, pre: 1.0, radio: true, text: 'OUT AT SEA, BOTH SIDES HAVE CARRIERS. SINK THEIRS, KEEP YOURS FLOATING. SIMPLE.' },
+  { who: 'ROOKIE', clip: 'intro_r3', shot: 4, pre: 1.0, radio: true, text: 'AND IF I GET SHOT DOWN?' },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h5', shot: 4, pre: 0.4, radio: true, text: 'THEN YOU PARACHUTE, YOU GET A NEW PLANE, AND THE MECHANICS COMPLAIN.' },
+  { who: 'CAPTAIN HAWK', clip: 'intro_h6', shot: 5, pre: 0.9, radio: true, text: 'STAY ON MY WING, AIM BEFORE YOU SHOOT, AND... HERE THEY COME. GOOD LUCK, ROOKIE!' },
+  { title: true, shot: 5, pre: 0.6, dur: 5 },
+];
+const SHOT_NAME = ['THE PIXEL ARCHIPELAGO', 'RED SQUADRON, OVER THE SEA', 'BLUE ISLAND AIR BASE', 'THE CARRIER FLEETS', 'OVER BLUE ISLAND', ''];
+const WHO_COL = { NARRATOR: '#c8c0e0', 'CAPTAIN HAWK': '#7ac8ff', ROOKIE: '#ffd23f' };
+let intro = null, introTap = false;
+function startIntro() {
+  const ready = PX.Sound.ctx && PX.Sound.ctx.state === 'running';
+  intro = { phase: ready ? 'load' : 'wait', t: 0, i: -1, at: 0, end: 0, shot: 0, st: 0, cam: { x: 420, y: 470 }, bufs: {}, music: null };
+  introTap = false; state = 'intro';
+  if (ready) introLoad();
+}
+function introLoad() {                                       // fetch the voices, then roll
+  intro.phase = 'load';
+  const c = PX.Sound.ctx, done = () => { if (intro && intro.phase === 'load') introPlay(); };
+  if (!c || !save.voice) { done(); return; }
+  Promise.all(INTRO.filter(l => l.clip).map(l => fetch('radio/' + l.clip + '.mp3').then(r => (r.ok ? r.arrayBuffer() : Promise.reject()))
+    .then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { if (intro) intro.bufs[l.clip] = b; }).catch(() => { /* text only */ }))).then(done);
+  setTimeout(done, 5000);
+}
+function makeSim(cfg) { const keep = G, kn = nextId; newBattle(cfg, []); const sim = G; sim.nid = nextId; G = keep; nextId = kn; return sim; }
+function stepSim(sim, dt) {                                   // run one of the intro's battles (each keeps its own plane numbers)
+  const keep = G, kn = nextId; G = sim; nextId = sim.nid;
+  stepBattle(dt, []); for (const e of G.fx) if (e.k !== 'radio' && e.k !== 'msg' && e.k !== 'flash') handleFx(e); G.fx = [];
+  sim.nid = nextId; G = keep; nextId = kn;
+}
+function introPlay() {
+  intro.phase = 'play'; intro.t = 0; resetEffects(); Radio.reset();
+  intro.raid = makeSim({ mode: 'raid', size: 1, level: 1 }); intro.sea = makeSim({ mode: 'carrier', size: 1, level: 1 });
+  const c = PX.Sound.ctx;
+  if (c && save.sfx) {                                          // soft music: a slow, low chord
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.05, c.currentTime + 3); g.connect(PX.Sound.out);
+    const oscs = [110, 164.8, 220, 261.6].map((f, i) => { const o = c.createOscillator(); o.type = i ? 'sine' : 'triangle'; o.frequency.value = f; o.detune.value = rnd(-6, 6); o.connect(g); o.start(); return o; });
+    intro.music = { g, oscs };
+  }
+}
+function introEnd() {
+  const m = intro && intro.music, c = PX.Sound.ctx;
+  if (m && c) { m.g.gain.cancelScheduledValues(c.currentTime); m.g.gain.setValueAtTime(m.g.gain.value, c.currentTime); m.g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 1.2); m.oscs.forEach(o => o.stop(c.currentTime + 1.3)); }
+  intro = null; introTap = false; save.introSeen = true; store(); resetEffects(); state = 'title';
+}
+function introLine(l) {                                       // play one line; returns how long it lasts
+  const b = intro.bufs[l.clip], c = PX.Sound.ctx, len = b ? b.duration : Math.min(6, 1 + l.text.length * 0.055);
+  if (c && save.sfx) {
+    const t0 = c.currentTime + 0.02;
+    if (l.radio) Radio.click(t0);
+    if (b) { const src = c.createBufferSource(), g = c.createGain(); src.buffer = b; g.gain.value = l.radio ? 1.4 : 1.2; src.connect(g); g.connect(PX.Sound.out); src.start(t0 + (l.radio ? 0.09 : 0)); }
+    else if (l.radio) Radio.chatter(t0 + 0.09, len, 0);
+    if (l.radio) Radio.click(t0 + 0.12 + len);
+  }
+  return len + (l.radio ? 0.15 : 0);
+}
+function drawIntro(t, dt) {
+  const W = S.W, it = intro; if (!it) { state = 'title'; return; }
+  const bar = 26;
+  if (it.phase !== 'play') {                                   // waiting for a tap (sound needs one) or loading the voices
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    T('PIXEL WINGS', W / 2, H / 2 - 30, '#7ac8ff', 2, 'center');
+    if (it.phase === 'wait') {
+      if (Math.floor(t * 2) % 2) T('TAP TO BEGIN', W / 2, H / 2, '#fff', 2, 'center');
+      T('(TURN THE SOUND ON)', W / 2, H / 2 + 20, '#5b5275', 1, 'center');
+      if (UI.button('istart', W / 2 - 40, H / 2 + 36, 80, 18, 'START', { size: 1 }) || introTap) { introTap = false; PX.Sound.unlock(); introLoad(); }
+      if (UI.button('iskip0', W - 52, H - 22, 46, 16, 'SKIP', { size: 1 }) || UI.back) introEnd();
+    } else T('LOADING' + '.'.repeat(Math.floor(t * 3) % 4), W / 2, H / 2, '#9a92b8', 1, 'center');
+    return;
+  }
+  it.t += dt; it.st += dt;
+  const now = it.t;
+  // the script: when a line is over, wait a moment, then the next one (the camera cuts on the wait)
+  if (now >= it.end) {
+    if (it.i + 1 >= INTRO.length) { introEnd(); return; }
+    if (!it.next) { it.next = INTRO[it.i + 1]; it.at = now + it.next.pre; if (it.next.shot !== it.shot) { it.shot = it.next.shot; it.st = 0; it.cut = true; } }
+    if (now >= it.at) { it.i++; const l = it.next; it.next = null; it.end = now + (l.title ? l.dur : introLine(l)); it.line = l; it.lineEnd = it.end + 0.6; }
+  }
+  // the battles keep going under the camera
+  stepSim(it.raid, Math.min(dt, 0.05));
+  if (it.shot === 3) { if (!it.seaWarm) { it.seaWarm = true; for (let i = 0; i < 6 * 30; i++) stepSim(it.sea, 1 / 30); } stepSim(it.sea, Math.min(dt, 0.05)); }
+  stepParts(dt);
+  // the camera
+  const sim = it.shot === 3 ? it.sea : it.raid, cam = it.cam;
+  const lead = () => sim.planes.filter(q => q.side === ATT && q.type === BOMBER && q.state === 'air').sort((a, b) => a.id - b.id)[0];
+  let tx = cam.x, ty = cam.y;
+  if (it.shot === 0) { tx = 360 + it.st * 45; ty = 470; }
+  else if (it.shot === 1 || it.shot === 5) { const l = lead(); if (l) { tx = l.x + 70; ty = l.y + 10; } }
+  else if (it.shot === 2) { tx = IX - 330 + it.st * 28; ty = IY + 10; }
+  else if (it.shot === 3) { const cv = sim.ships.find(q => q.side === ATT && q.k === 'carrier'); if (cv) { tx = cv.x + 90; ty = cv.y; } }
+  else if (it.shot === 4) {
+    if (!it.hero || !alive(it.hero) || it.hero.state !== 'air') it.hero = sim.planes.filter(q => q.type === FIGHTER && q.state === 'air').sort((a, b) => Math.hypot(a.x - IX, a.y - IY) - Math.hypot(b.x - IX, b.y - IY))[0];
+    if (it.hero) { tx = it.hero.x; ty = it.hero.y; }
+  }
+  const k = it.cut ? 1 : Math.min(1, dt * 2.5); it.cut = false;
+  cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k; cams = [cam];
+  setMapKind(it.shot === 3 ? 'sea' : 'island');
+  drawWorld(battleView(sim), cam, 0, W, t, false);
+  // dawn at the start, a short fade at every cut
+  if (it.shot === 0) { ctx.fillStyle = `rgba(16,14,40,${Math.max(0.15, 0.8 - it.st * 0.08)})`; ctx.fillRect(0, 0, W, H); }
+  const fade = it.i < 0 ? Math.max(0, 1 - it.t / 1.5) : Math.max(0, 1 - it.st * 3);
+  if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fade})`; ctx.fillRect(0, 0, W, H); }
+  // film bars, the place, the words
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, bar); ctx.fillRect(0, H - bar, W, bar);
+  if (SHOT_NAME[it.shot] && it.st < 4.5) T(SHOT_NAME[it.shot], 8, 10, '#9a92b8', 1);
+  const l = it.line;
+  if (l && !l.title && now < it.lineEnd) {
+    const col = WHO_COL[l.who], playing = now < it.end;
+    if (l.radio) { ctx.fillStyle = playing && Math.floor(t * 6) % 2 ? '#5ad43f' : '#5b5275'; ctx.fillRect(8, H - bar + 6, 2, 3); ctx.fillRect(10, H - bar + 5, 1, 5); }
+    T(l.who + ':', 14, H - bar + 5, col, 1);
+    const x0 = 14 + PX.textWidth(l.who + ':', 1) + 5, room = Math.floor((W - x0 - 8) / 4), words = l.text.split(' ');
+    let line = '', rows = [];
+    for (const w of words) { if (line && (line + ' ' + w).length > room) { rows.push(line); line = w; } else line = line ? line + ' ' + w : w; }
+    rows.push(line);
+    rows.slice(0, 2).forEach((r, i) => T(r, x0, H - bar + 5 + i * 9, '#fff', 1));
+  }
+  if (l && l.title) {                                           // the title flies in
+    const a = now - (it.end - l.dur), sz = Math.min(6, 1 + Math.floor(a * 9));
+    ctx.fillStyle = `rgba(13,11,19,${Math.min(0.55, a * 0.6)})`; ctx.fillRect(0, bar, W, H - 2 * bar);
+    T('PIXEL', W / 2, H / 2 - 30, '#7ac8ff', Math.max(1, Math.round(sz / 2)), 'center', '#000');
+    T('WINGS', W / 2, H / 2 - 12, '#fff', sz, 'center', '#2a7fd4');
+    if (a > 1 && Math.floor(t * 2) % 2) T('TAP TO START', W / 2, H - bar + 9, '#ffd23f', 1, 'center');
+  }
+  if (UI.button('iskip', W - 52, 5, 46, 16, l && l.title ? 'START' : 'SKIP', { size: 1 }) || UI.back || introTap) { introTap = false; introEnd(); }
+}
 function drawSchool(t, dt) {
   const W = S.W;
   drawBackdrop(t, dt);
@@ -2293,6 +2427,7 @@ function drawTitle(t, dt) {
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
   if (UI.button('voice', W - 74, 30, 68, 16, save.voice ? 'VOICE ON' : 'VOICE OFF', { size: 1, on: save.voice })) { save.voice = !save.voice; store(); if (save.voice) Radio.preload(); }
+  if (UI.button('intro', W - 74, 90, 68, 16, 'INTRO', { size: 1 })) { sfx('click'); startIntro(); }
   if (UI.button('scenes', W - 74, 70, 68, 16, save.scenes !== false ? 'SCENES ON' : 'SCENES OFF', { size: 1, on: save.scenes !== false })) { save.scenes = save.scenes === false; store(); }
   if (UI.button('cam', W - 74, 50, 68, 16, save.cam === 'plane' ? 'CAM: PLANE' : 'CAM: NORTH', { size: 1, on: save.cam === 'plane' })) toggleCam();
   T('PIXEL', W / 2, 36, '#7ac8ff', 3, 'center', '#000');
@@ -2563,12 +2698,14 @@ function frame(now) {
   else if (state === 'online') drawOnline(t, dt);
   else if (state === 'school') drawSchool(t, dt);
   else if (state === 'scene') drawScene(t, dt);
+  else if (state === 'intro') drawIntro(t, dt);
   if (!(state === 'online' && Net.screen === 'join')) codeInput.style.display = 'none';
   UI.end();
   S.blit('#1b4f8a');
   requestAnimationFrame(frame);
 }
 setMapKind('island'); buildClouds();
+if (!save.introSeen) startIntro();                     // the very first time: the intro
 requestAnimationFrame(frame);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

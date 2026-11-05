@@ -55,6 +55,9 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
   the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
   If a player leaves, a bot takes over their plane.
+- **Intro** (the first time the game starts, and the INTRO button on the title screen; tap to skip): a narrator, then
+  Captain Hawk and the Rookie talk on the radio about the battle for the Pixel Archipelago, while the camera flies over
+  a raid and the carrier fleets playing out live. The voices are made by `tools/radio/intro.py`.
 - **FLIGHT SCHOOL** (title screen; offered the first time you play): 7 short lessons, and the instructor flies with
   you and talks on the radio: 1. take-off (push the throttle), 2. turning (fly through rings), 3. speed (stay close to
   the instructor while he slows down and speeds up), 4. guns (3 drones), 5. bombing (practice targets with the bomb
