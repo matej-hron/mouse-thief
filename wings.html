@@ -41,9 +41,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const SAVE_KEY = 'pixelWings.save';
-const save = { sfx: true, voice: true, wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
+const save = { sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -1152,9 +1152,9 @@ function drawAA(a) {
 }
 function drawShip(s, time) {
   if (s.hp <= 0 && s.sink > 4) return;
-  const fr = shipFrames(s.k, s.side), f = frameOf(s.a), half = (fr.size - 1) / 2;
+  const fr = shipFrames(s.k, s.side), f = frameOf(s.a + viewRot), half = (fr.size - 1) / 2;
   if (s.hp <= 0) ctx.globalAlpha = Math.max(0, 1 - s.sink / 4);
-  ctx.drawImage(fr.frames[f], Math.round(s.x - half), Math.round(s.y - half));
+  upright(s.x, s.y, (x, y) => ctx.drawImage(fr.frames[f], Math.round(x - half), Math.round(y - half)));
   ctx.globalAlpha = 1;
   // fires on a hurt ship (more fires, more damage)
   const fires = s.hp <= 0 ? 5 : Math.floor((1 - s.hp / s.max) * 5);
@@ -1164,21 +1164,21 @@ function drawShip(s, time) {
     if (Math.floor(time * 10 + i * 3) % 3) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3); ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(x), Math.round(y), 1, 1); }
     if (Math.random() < 0.15) parts.push({ x, y, vx: 6, vy: -8, t: 0, life: rnd(1, 2), kind: 'smoke', size: rnd(3, 6) });
   }
-  if (s.hp > 0 && s.hp < s.max) {                                  // its health bar
-    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(s.x - 20), Math.round(s.y - s.len / 2 - 14), 40, 4);
-    ctx.fillStyle = s.hp / s.max > 0.5 ? '#5ad43f' : s.hp / s.max > 0.25 ? '#ffd23f' : '#ff4040'; ctx.fillRect(Math.round(s.x - 19), Math.round(s.y - s.len / 2 - 13), Math.round(38 * s.hp / s.max), 2);
-  }
+  if (s.hp > 0 && s.hp < s.max) upright(s.x, s.y, (x, y) => {      // its health bar
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(x - 20), Math.round(y - s.len / 2 - 14), 40, 4);
+    ctx.fillStyle = s.hp / s.max > 0.5 ? '#5ad43f' : s.hp / s.max > 0.25 ? '#ffd23f' : '#ff4040'; ctx.fillRect(Math.round(x - 19), Math.round(y - s.len / 2 - 13), Math.round(38 * s.hp / s.max), 2);
+  });
 }
 function accentOf(p, V) { return p.pilot >= 0 && V.players[p.pilot] ? V.players[p.pilot].color : '#f2f2f2'; }
 function drawPlane(p, V, shadowPass) {
-  const fr = planeFrames(p.type, p.side, accentOf(p, V)), f = frameOf(p.a), half = (fr.size - 1) / 2;
-  if (shadowPass) {
+  const fr = planeFrames(p.type, p.side, accentOf(p, V)), f = frameOf(p.a + viewRot), half = (fr.size - 1) / 2;
+  if (shadowPass) {                                                // the sun stays put: the shadow falls the same way on the ground
     if (p.alt <= 0.02) return;
     const o = 4 + 12 * p.alt;
-    ctx.drawImage(fr.shadows[f], Math.round(p.x + o * 0.6 - half), Math.round(p.y + o - half));
+    upright(p.x + o * 0.6, p.y + o, (x, y) => ctx.drawImage(fr.shadows[f], Math.round(x - half), Math.round(y - half)));
     return;
   }
-  ctx.drawImage(fr.frames[f], Math.round(p.x - half), Math.round(p.y - half));
+  upright(p.x, p.y, (x, y) => ctx.drawImage(fr.frames[f], Math.round(x - half), Math.round(y - half)));
   if (p.state === 'air' && p.v > 20) {                            // the spinning propeller
     const ty = TYPES[p.type];
     if (Math.random() < 0.5) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(Math.round(p.x + Math.cos(p.a) * (ty.r - 1)), Math.round(p.y + Math.sin(p.a) * (ty.r - 1)), 1, 1); }
@@ -1214,18 +1214,38 @@ function drawParts(top) {
     }
   }
 }
+// CAMERA: NORTH UP (the map stays put) or PLANE UP (my plane always points up, the world turns around it).
+// In a plane-up view the ground is drawn turned; planes, ships, clouds and words are drawn upright
+// from their pre-turned pictures, so they stay crisp.
+let viewRot = 0;
+function upright(x, y, fn) { if (!viewRot) return fn(x, y); ctx.save(); ctx.translate(x, y); ctx.rotate(-viewRot); fn(0, 0); ctx.restore(); }
 // one player's view of the battle, in the rectangle vx..vx+vw
-function drawWorld(V, cam, vx, vw, time) {
-  const sx = Math.round(clamp(cam.x - vw / 2 + (shake ? rnd(-shake, shake) : 0), 0, WW - vw)), sy = Math.round(clamp(cam.y - H / 2 + (shake ? rnd(-shake, shake) : 0), 0, WH - H));
+function drawWorld(V, cam, vx, vw, time, planeUp = false) {
+  const shx = shake ? rnd(-shake, shake) : 0, shy = shake ? rnd(-shake, shake) : 0;
+  let sx, sy, bw = vw, bh = H, proj, R = 0;
   ctx.save(); ctx.beginPath(); ctx.rect(vx, 0, vw, H); ctx.clip();
-  // the map (half size, so whole texels)
-  const mx = Math.floor(sx / 2), my = Math.floor(sy / 2);
-  const mw = Math.min(Math.ceil(vw / 2) + 2, WW / 2 - mx), mh = Math.min(Math.ceil(H / 2) + 2, WH / 2 - my);
-  ctx.drawImage(mapCanvas, mx, my, mw, mh, vx + mx * 2 - sx, my * 2 - sy, mw * 2, mh * 2);
-  ctx.translate(vx - sx, -sy);
+  if (!planeUp) {
+    sx = Math.round(clamp(cam.x - vw / 2 + shx, 0, WW - vw)); sy = Math.round(clamp(cam.y - H / 2 + shy, 0, WH - H));
+    // the map (half size, so whole texels)
+    const mx = Math.floor(sx / 2), my = Math.floor(sy / 2);
+    const mw = Math.min(Math.ceil(vw / 2) + 2, WW / 2 - mx), mh = Math.min(Math.ceil(H / 2) + 2, WH / 2 - my);
+    ctx.drawImage(mapCanvas, mx, my, mw, mh, vx + mx * 2 - sx, my * 2 - sy, mw * 2, mh * 2);
+    ctx.translate(vx - sx, -sy);
+    proj = (x, y) => [x - sx + vx, y - sy];
+  } else {
+    const rot = -Math.PI / 2 - cam.ang, ax = vx + vw / 2, ay = Math.round(H * 0.64), c = Math.cos(rot), sn = Math.sin(rot);
+    R = Math.hypot(vw / 2, Math.max(ay, H - ay)) + 8;
+    ctx.fillStyle = '#163f70'; ctx.fillRect(vx, 0, vw, H);                     // beyond the edge of the map
+    ctx.translate(ax + shx, ay + shy); ctx.rotate(rot); ctx.translate(-cam.x, -cam.y);
+    const x0 = clamp(Math.floor((cam.x - R) / 2), 0, WW / 2), y0 = clamp(Math.floor((cam.y - R) / 2), 0, WH / 2);
+    const x1 = clamp(Math.ceil((cam.x + R) / 2), 0, WW / 2), y1 = clamp(Math.ceil((cam.y + R) / 2), 0, WH / 2);
+    if (x1 > x0 && y1 > y0) ctx.drawImage(mapCanvas, x0, y0, x1 - x0, y1 - y0, x0 * 2, y0 * 2, (x1 - x0) * 2, (y1 - y0) * 2);
+    sx = cam.x - R; sy = cam.y - R; bw = bh = 2 * R; viewRot = rot;
+    proj = (x, y) => { const dx = x - cam.x, dy = y - cam.y; return [ax + dx * c - dy * sn, ay + dx * sn + dy * c]; };
+  }
   // little waves that come and go
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  for (let gy = Math.floor(sy / 30) * 30; gy < sy + H; gy += 30) for (let gx = Math.floor(sx / 30) * 30; gx < sx + vw; gx += 30) {
+  for (let gy = Math.floor(sy / 30) * 30; gy < sy + bh; gy += 30) for (let gx = Math.floor(sx / 30) * 30; gx < sx + bw; gx += 30) {
     const hsh = (gx * 73856093 ^ gy * 19349663) >>> 0;
     if (hsh % 4) continue;
     const ph = (time * 0.8 + (hsh % 100) / 100) % 2;
@@ -1234,7 +1254,7 @@ function drawWorld(V, cam, vx, vw, time) {
     if (landDepth(wx, wy) > -6) continue;
     ctx.fillRect(wx, wy, Math.round(2 + Math.sin(ph * Math.PI) * 5), 1);
   }
-  const inView = (x, y, r) => x > sx - r && x < sx + vw + r && y > sy - r && y < sy + H + r;
+  const inView = (x, y, r) => x > sx - r && x < sx + bw + r && y > sy - r && y < sy + bh + r;
   for (const t of V.targets) if (inView(t.x, t.y, 40)) drawTarget(t, time);
   for (const a of V.aa) if (inView(a.x, a.y, 20)) drawAA(a);
   for (const sh of V.ships || []) if (inView(sh.x, sh.y, 80)) drawShip(sh, time);
@@ -1261,29 +1281,28 @@ function drawWorld(V, cam, vx, vw, time) {
   for (const h of helpMarks) {                                    // a plane calling for help: a blinking box around it
     const q = V.planes.find(p => p.id === h.id);
     if (!q || q.state !== 'air' || !inView(q.x, q.y, 30) || !mySides().includes(h.side) || Math.floor(time * 4) % 2) continue;
-    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(q.x) - 15, Math.round(q.y) - 15, 30, 30);
-    T('HELP!', q.x, q.y - 24, '#ffd23f', 1, 'center', '#000');
+    upright(q.x, q.y, (x, y) => { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x) - 15, Math.round(y) - 15, 30, 30); T('HELP!', x, y - 24, '#ffd23f', 1, 'center', '#000'); });
   }
   // names over the human pilots
   for (const p of V.planes) {
     if (p.pilot < 0 || p.state === 'dead' || p.state === 'fall' || !inView(p.x, p.y, 30) || p === cam.plane) continue;
     const pl = V.players[p.pilot]; if (!pl) continue;
-    T(pl.name, p.x, p.y - 18, pl.color, 1, 'center', '#000');
+    upright(p.x, p.y, (x, y) => T(pl.name, x, y - 18, pl.color, 1, 'center', '#000'));
   }
   // clouds, above everything (they drift with the wind)
   ctx.globalAlpha = 0.55;
   for (const c of clouds) {
     const x = ((c.x + time * c.v) % (WW + 300)) - 150;
-    if (x + c.c.width < sx || x > sx + vw || c.y + c.c.height < sy || c.y > sy + H) continue;
-    ctx.drawImage(c.c, Math.round(x), Math.round(c.y));
+    if (x + c.c.width < sx || x > sx + bw || c.y + c.c.height < sy || c.y > sy + bh) continue;
+    upright(x + c.c.width / 2, c.y + c.c.height / 2, (px, py) => ctx.drawImage(c.c, Math.round(px - c.c.width / 2), Math.round(py - c.c.height / 2)));
   }
   ctx.globalAlpha = 1;
-  ctx.restore();
-  return { sx, sy };
+  ctx.restore(); viewRot = 0;
+  return { sx, sy, proj };
 }
-function drawArrow(vx, vw, sx, sy, tx, ty, col, label) {          // a pointer at the edge of the view to something off screen
-  const cx = vx + vw / 2, cy = H / 2, dx = tx - (sx + vw / 2), dy = ty - (sy + H / 2);
-  if (Math.abs(dx) < vw / 2 - 10 && Math.abs(dy) < H / 2 - 10) return;
+function drawArrow(vx, vw, view, tx, ty, col, label) {            // a pointer at the edge of the view to something off screen
+  const [px, py] = view.proj(tx, ty), cx = vx + vw / 2, cy = H / 2, dx = px - cx, dy = py - cy;
+  if (px > vx + 10 && px < vx + vw - 10 && py > 10 && py < H - 10) return;
   const k = Math.min((vw / 2 - 14) / Math.max(1, Math.abs(dx)), (H / 2 - 30) / Math.max(1, Math.abs(dy)));
   const ax = cx + dx * k, ay = cy + dy * k + 6, a = Math.atan2(dy, dx);
   ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(ax + Math.cos(a) * 8, ay + Math.sin(a) * 8); ctx.lineTo(ax + Math.cos(a + 2.4) * 7, ay + Math.sin(a + 2.4) * 7); ctx.lineTo(ax + Math.cos(a - 2.4) * 7, ay + Math.sin(a - 2.4) * 7); ctx.fill();
@@ -1307,6 +1326,9 @@ function drawMinimap(V, me, mySide, x, y, w, h, time) {
     if (!friend && !radar && me && Math.hypot(p.x - me.x, p.y - me.y) > 520) continue;
     const s = p.type === BOMBER ? 2 : 1;
     ctx.fillStyle = TEAM_COL[p.side]; ctx.fillRect(Math.round(x + p.x * kx) - (s >> 1), Math.round(y + p.y * ky) - (s >> 1), s + 1, s + 1);
+  }
+  if (me && me.a !== undefined) {                                    // me, and which way I'm flying
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + me.x * kx, y + me.y * ky); ctx.lineTo(x + me.x * kx + Math.cos(me.a) * 5, y + me.y * ky + Math.sin(me.a) * 5); ctx.stroke();
   }
   if (me && Math.floor(time * 4) % 2) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(x + me.x * kx) - 1, Math.round(y + me.y * ky) - 1, 3, 3); }
   for (const h of helpMarks) {                                     // a friend calling for help: a blinking ring
@@ -1394,37 +1416,37 @@ function drawHUD(V, pi, vx, vw, view, time) {
   }
   // pointers to what matters: where to go (a bomber calling for help comes first for fighters)
   const help = live && me.type === FIGHTER ? helpMarks.filter(h => h.side === me.side).map(h => V.planes.find(q => q.id === h.id)).find(q => q && q.state === 'air') : null;
-  if (help) drawArrow(vx, vw, view.sx, view.sy, help.x, help.y, Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff', 'HELP');
+  if (help) drawArrow(vx, vw, view, help.x, help.y, Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff', 'HELP');
   else if (live && cfg.mode === 'carrier') {
     if (me.type !== FIGHTER) {
       const cv = V.ships.find(q => q.side !== me.side && q.k === 'carrier' && q.hp > 0);
-      if (cv) drawArrow(vx, vw, view.sx, view.sy, cv.x, cv.y, '#ffd23f', 'CARRIER');
+      if (cv) drawArrow(vx, vw, view, cv.x, cv.y, '#ffd23f', 'CARRIER');
     } else {
       let best = null, bd = 1e9;
       for (const q of V.planes) if (q.side !== me.side && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y) * (q.type === FIGHTER ? 1.6 : 1); if (d < bd) { bd = d; best = q; } }
-      if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, TEAM_COL[best.side], best.type === TORPEDO ? 'TORPEDO' : best.type === BOMBER ? 'BOMBER' : '');
+      if (best) drawArrow(vx, vw, view, best.x, best.y, TEAM_COL[best.side], best.type === TORPEDO ? 'TORPEDO' : best.type === BOMBER ? 'BOMBER' : '');
     }
   } else if (live && cfg.mode === 'raid') {
     if (me.side === ATT && me.type === BOMBER) {
       let best = null, bd = 1e9; for (const t of V.targets) if (t.hp > 0) { const d = Math.hypot(t.x - me.x, t.y - me.y); if (d < bd) { bd = d; best = t; } }
-      if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, '#ffd23f', 'TARGET');
+      if (best) drawArrow(vx, vw, view, best.x, best.y, '#ffd23f', 'TARGET');
     } else {
       const want = me.side === DEF ? q => q.side === ATT && q.type === BOMBER : q => q.side === DEF;
       let best = null, bd = 1e9; for (const q of V.planes) if (want(q) && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y); if (d < bd) { bd = d; best = q; } }
-      if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, TEAM_COL[best.side], me.side === DEF ? 'BOMBER' : '');
+      if (best) drawArrow(vx, vw, view, best.x, best.y, TEAM_COL[best.side], me.side === DEF ? 'BOMBER' : '');
     }
   } else if (live) {
     let best = null, bd = 1e9; for (const q of V.planes) if (q.side !== me.side && q.state === 'air') { const d = Math.hypot(q.x - me.x, q.y - me.y); if (d < bd) { bd = d; best = q; } }
-    if (best) drawArrow(vx, vw, view.sx, view.sy, best.x, best.y, TEAM_COL[best.side], '');
+    if (best) drawArrow(vx, vw, view, best.x, best.y, TEAM_COL[best.side], '');
   }
   // the first seconds of a battle: how to steer, change speed and fire on this device
   if (live && performance.now() - hintT < 9000 && Math.floor((performance.now() - hintT) / 400) % 6) {
     const two = Local.pilots.length > 1, li = view.local;
-    const hint = Ctl.touch ? ['DRAG TO STEER', '+ / - = SPEED (HOLD)']
+    const hint = Ctl.touch ? [save.cam === 'plane' ? 'DRAG LEFT / RIGHT TO TURN' : 'DRAG TO STEER', '+ / - = SPEED (HOLD)']
       : PX.Pad.used ? ['STICK = STEER   A = FIRE', 'RB = FASTER   LB = SLOWER']
       : two ? (li === 0 ? ['A D = STEER   SPACE = FIRE', 'W = FASTER   S = SLOWER'] : ['ARROWS = STEER   ENTER = FIRE', 'UP = FASTER   DOWN = SLOWER'])
       : ['ARROWS = STEER   SPACE = FIRE', '↑ = FASTER   ↓ = SLOWER'];
-    const hy = H - (Ctl.touch ? 132 : 100);
+    const hy = save.cam === 'plane' ? 44 : H - (Ctl.touch ? 132 : 100);
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 74, hy - 4, 148, 26);
     T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
   }
@@ -1463,7 +1485,12 @@ function drawHUD(V, pi, vx, vw, view, time) {
 const Local = {
   pilots: [],
   reset(n) { this.pilots = []; for (let i = 0; i < n; i++) this.pilots.push({ thr: 0.6, aim: null, turn: 0, fire: false, padAim: null, padFire: false, padThr: 0, stick: null, fireId: null, spdId: null, spdDir: 0 }); },
-  input(i) { const p = this.pilots[i]; return p ? { turn: p.turn, aim: p.stick && p.stick.aim !== null ? p.stick.aim : p.padAim, thr: p.thr, fire: p.fire || p.padFire || p.fireId !== null } : NO_INPUT; },
+  input(i) {
+    const p = this.pilots[i]; if (!p) return NO_INPUT;
+    let aim = p.stick && p.stick.aim !== null ? p.stick.aim : p.padAim;
+    if (aim !== null && cams[i]) aim -= cams[i].rot;               // plane up: "up on the screen" is where my plane points
+    return { turn: p.turn, aim, thr: p.thr, fire: p.fire || p.padFire || p.fireId !== null };
+  },
 };
 const keys = new Set();
 const Ctl = { touch: false };
@@ -1488,6 +1515,7 @@ window.addEventListener('keydown', e => {
   if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); return; }
   keys.add(e.code);
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyC' && state === 'play' && !e.repeat) toggleCam();
   if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play') { if (Net.mode === 'off') setPause(!paused); else leaveAsk = !leaveAsk; }
   else if (e.code === 'Escape') UI.back = true;
 });
@@ -1804,6 +1832,7 @@ function drawTitle(t, dt) {
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
   if (UI.button('voice', W - 74, 30, 68, 16, save.voice ? 'VOICE ON' : 'VOICE OFF', { size: 1, on: save.voice })) { save.voice = !save.voice; store(); if (save.voice) Radio.preload(); }
+  if (UI.button('cam', W - 74, 50, 68, 16, save.cam === 'plane' ? 'CAM: PLANE' : 'CAM: NORTH', { size: 1, on: save.cam === 'plane' })) toggleCam();
   T('PIXEL', W / 2, 36, '#7ac8ff', 3, 'center', '#000');
   T('WINGS', W / 2, 54, '#fff', 6, 'center', '#2a7fd4');
   const bw = 200, bx = Math.round(W / 2 - bw / 2);
@@ -1823,7 +1852,7 @@ function drawHelp(t, dt) {
   T('HOW TO PLAY', W / 2, y + 7, '#7ac8ff', 2, 'center');
   [['YOUR PLANE ALWAYS FLIES FORWARD. YOU STEER IT AND SET ITS SPEED.', '#ffd23f'],
    ['KEYS: ARROWS OR WASD STEER, UP/DOWN SPEED, SPACE FIRES, P PAUSES.'],
-   ['2 PLAYERS: WASD + SPACE, AND ARROWS + ENTER.'],
+   ['2 PLAYERS: WASD + SPACE, ARROWS + ENTER. C = CAMERA (NORTH/PLANE UP).'],
    ['PHONE: DRAG TO STEER, HOLD + / - FOR SPEED, FIRE BUTTON.'],
    ['CONTROLLER: STICK STEERS, A/RT FIRES, LB/RB SPEED.'],
    ['AIR RAID', '#ffd23f'],
@@ -1931,19 +1960,23 @@ function drawOnline(t, dt) {
     if (UI.button('nb', bx, y + 136, bw, 22, 'OK') || UI.back) { Net.reset(); Net.screen = 'home'; }
   }
 }
+function toggleCam() { save.cam = save.cam === 'plane' ? 'north' : 'plane'; store(); hintT = performance.now(); sfx('click'); }
+function camLabel() { return save.cam === 'plane' ? 'CAMERA: PLANE UP' : 'CAMERA: NORTH UP'; }
 function drawPause() {
-  const W = S.W, { y } = panel(200, 132), bw = 150, bx = Math.round(W / 2 - bw / 2);
+  const W = S.W, { y } = panel(200, 156), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
   if (UI.button('pvoice', bx, y + 68, bw, 18, save.voice ? 'RADIO VOICE: ON' : 'RADIO VOICE: OFF', { size: 1, on: save.voice })) { save.voice = !save.voice; store(); if (save.voice) Radio.preload(); }
-  if (UI.button('quit', bx, y + 96, bw, 22, 'QUIT BATTLE')) toTitle();
+  if (UI.button('pcam', bx, y + 92, bw, 18, camLabel(), { size: 1, on: save.cam === 'plane' })) toggleCam();
+  if (UI.button('quit', bx, y + 120, bw, 22, 'QUIT BATTLE')) toTitle();
 }
 function drawLeave() {
-  const W = S.W, { y } = panel(220, 100), bw = 160, bx = Math.round(W / 2 - bw / 2);
+  const W = S.W, { y } = panel(220, 124), bw = 160, bx = Math.round(W / 2 - bw / 2);
   T('LEAVE THE BATTLE?', W / 2, y + 12, '#fff', 2, 'center');
   T(Net.mode === 'host' ? '(YOU ARE THE HOST: IT ENDS FOR EVERYONE)' : '(THE BATTLE GOES ON WITHOUT YOU)', W / 2, y + 32, '#9a92b8', 1, 'center');
   if (UI.button('stay', bx, y + 46, bw, 20, 'KEEP FLYING', { accent: '#5ad43f', size: 1 }) || UI.back) leaveAsk = false;
   if (UI.button('go', bx, y + 72, bw, 20, 'LEAVE', { size: 1 })) toTitle();
+  if (UI.button('lcam', bx, y + 98, bw, 16, camLabel(), { size: 1, on: save.cam === 'plane' })) toggleCam();
 }
 function drawOver(t) {
   const W = S.W, o = overInfo; if (!o) return;
@@ -1983,19 +2016,23 @@ function drawPlay(t, dt) {
   planeTrails(V, dt);
   const locals = Net.isClient() ? [Net.myPid] : V.players.map((p, i) => (p.local !== undefined ? i : -1)).filter(i => i >= 0);
   const n = Math.max(1, locals.length), vw = Math.floor(S.W / n);
-  while (cams.length < n) cams.push({ x: IX, y: IY, plane: null });
+  while (cams.length < n) cams.push({ x: IX, y: IY, plane: null, ang: -Math.PI / 2, rot: 0 });
   cams.length = n;
   locals.forEach((pi, li) => {
     const pl = V.players[pi], me = pl ? V.planes.find(p => p.id === pl.planeId) : null, cam = cams[li];
     if (me && me.state !== 'dead') {
-      const lx = me.x + Math.cos(me.a) * 40, ly = me.y + Math.sin(me.a) * 30;
+      const up = save.cam === 'plane';
+      const lx = up ? me.x : me.x + Math.cos(me.a) * 40, ly = up ? me.y : me.y + Math.sin(me.a) * 30;
       const first = !cam.plane || cam.plane.id !== me.id;
-      const k = first && (!cam.plane || Math.hypot(lx - cam.x, ly - cam.y) > 400) ? 1 : Math.min(1, dt * 4);
+      const jump = first && (!cam.plane || Math.hypot(lx - cam.x, ly - cam.y) > 400);
+      const k = jump ? 1 : Math.min(1, dt * (up ? 10 : 4));
       cam.x += (lx - cam.x) * k; cam.y += (ly - cam.y) * k; cam.plane = me;
+      cam.ang = jump ? me.a : cam.ang + angDiff(me.a, cam.ang) * Math.min(1, dt * 5);   // the view turns a little behind the plane
     }
+    cam.rot = save.cam === 'plane' ? -Math.PI / 2 - cam.ang : 0;
     const vx = li * vw, w = li === n - 1 ? S.W - vx : vw;
-    const view = drawWorld(V, cam, vx, w, t);
-    drawHUD(V, pi, vx, w, { sx: view.sx, sy: view.sy, local: li, cam }, t);
+    const view = drawWorld(V, cam, vx, w, t, save.cam === 'plane');
+    drawHUD(V, pi, vx, w, { sx: view.sx, sy: view.sy, proj: view.proj, local: li, cam }, t);
   });
   if (n > 1) { ctx.fillStyle = '#111'; ctx.fillRect(vw - 1, 0, 2, H); }
   if (V.over) {

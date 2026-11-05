@@ -43,6 +43,9 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   Phone: drag anywhere to point where to fly; hold + / − (above the FIRE button) for speed.
   Every battle starts with a short reminder of the controls for your device.
   Controller: left stick points where to fly, A or RT fires, LB / RB slower / faster.
+- **Camera:** NORTH UP (the map stays put) or PLANE UP (your plane always points up and the world turns around it;
+  steering is then left / right on every device, and on a phone you drag left or right of where you put your finger).
+  Switch it on the title screen, in the pause menu, or with C during a battle. The minimap always stays north up.
 - **2 PLAYERS, 1 SCREEN:** split screen. Player 1: WASD + Space, player 2: arrows + Enter (or two controllers; on a
   phone each one uses their half).
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
