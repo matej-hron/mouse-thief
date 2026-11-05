@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const SAVE_KEY = 'pixelFootball.save.v1';
 const profile = PX.Profile.get();
 const canvas = document.getElementById('screen');
@@ -1339,7 +1339,7 @@ function drawPrematch(now) {
   T('ROUND ' + (save.lg.round + 1), W / 2, 8, '#9a92b8', 1, 'center');
   vsBox(save.club, opp, 22);
   lineup(save.club, W / 2 - 140, 66, '#ffd23f'); lineup(opp, W / 2 + 40, 66, '#ffd23f');
-  wrap(Ctl.touch ? 'LEFT THUMB: DRAG TO RUN. PASS / SHOOT BUTTONS (HOLD SHOOT FOR POWER). WITHOUT THE BALL: TACKLE / SWITCH.'
+  wrap(Pads.used ? 'CONTROLLER: STICK OR D-PAD RUNS. A: PASS (OR TACKLE). B OR X: SHOOT, HOLD FOR POWER (OR SWITCH PLAYER). START: PAUSE.' : Ctl.touch ? 'LEFT THUMB: DRAG TO RUN. PASS / SHOOT BUTTONS (HOLD SHOOT FOR POWER). WITHOUT THE BALL: TACKLE / SWITCH.'
                  : 'ARROWS OR WASD: RUN. X: PASS (OR TACKLE). Z OR SPACE: SHOOT, HOLD FOR POWER (OR SWITCH PLAYER). P: PAUSE.', W / 2, 140, 320, '#9a92b8');
   const bw = 140;
   if (UI.button('ko', Math.round(W / 2 + 4), 200, bw, 26, 'KICK OFF!', { accent: '#5ad43f' })) startMatch('league', save.club, opp, { opp: f.opp });
@@ -1588,13 +1588,77 @@ window.addEventListener('keyup', e => {
 });
 function keyMove() {
   for (const [side, k] of keySets()) {
-    if (Ctl.stick[side]) continue;
+    if (Ctl.stick[side] || Pads.active[side]) continue;
     const on = a => a.some(c => keys[c]);
     let dx = (on(k.right) ? 1 : 0) - (on(k.left) ? 1 : 0), dy = (on(k.down) ? 1 : 0) - (on(k.up) ? 1 : 0);
     const d = hyp(dx, dy) || 1; if (M.mirror) dx = -dx;
     Inp[side].mx = dx / d; Inp[side].my = dy / d;
   }
 }
+// Game controllers (Xbox and others, on an Xbox, a PC or a phone): the left stick or the d-pad runs,
+// A passes (or tackles), B or X shoots, hold for power (or switches player), START pauses.
+// In the menus the stick moves between the buttons, A presses, B goes back.
+// Two controllers in 2 PLAYERS: the first is player 1, the second player 2.
+const Pads = { prev: [{}, {}], active: [false, false], used: false, focus: null, list: [], navT: 0 };
+try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
+function padNav(dx, dy) {
+  const list = Pads.list.filter(b => !b.disabled);
+  if (!list.length) return;
+  const cur = list.find(b => b.id === Pads.focus);
+  let best = null, bs = 1e9;
+  if (cur) {
+    const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+    for (const b of list) {
+      if (b === cur) continue;
+      const ox = b.x + b.w / 2 - cx, oy = b.y + b.h / 2 - cy, along = ox * dx + oy * dy;
+      if (along <= 2) continue;
+      const s = along + Math.abs(ox * dy - oy * dx) * 4;
+      if (s < bs) { bs = s; best = b; }
+    }
+  }
+  if (!cur) return;
+  if (best) { Pads.focus = best.id; sfx('click'); }
+}
+function padPoll(dt) {
+  let pads = [];
+  try { pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; } catch (e) { pads = []; }
+  const inMenu = state !== 'play' || paused;
+  pads.slice(0, 2).forEach((gp, n) => {
+    const now = {}; for (const i of [0, 1, 2, 3, 8, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const prev = Pads.prev[n], edge = i => now[i] && !prev[i], up = i => !now[i] && prev[i];
+    let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    if (now[14]) ax = -1; if (now[15]) ax = 1; if (now[12]) ay = -1; if (now[13]) ay = 1;
+    const m = hyp(ax, ay);
+    if (m > 0.4 || Object.values(now).some(Boolean)) { if (!Pads.used) { Pads.used = true; PX.Sound.unlock(); if (!Music.cur && state !== 'play') Music.play('menu'); } }
+    if (inMenu) {
+      if (n === 0 || state === 'over') {
+        if (m > 0.6) { if ((Pads.navT -= dt) <= 0) { Pads.navT = Pads.navT < -1 ? 0.35 : 0.2; Math.abs(ax) > Math.abs(ay) ? padNav(Math.sign(ax), 0) : padNav(0, Math.sign(ay)); } }
+        else Pads.navT = 0;
+        if (edge(0) && Pads.focus) UI.click = Pads.focus;
+        if (edge(1)) UI.back = true;
+        if (edge(9) && paused) setPause(false);
+      }
+    } else if (M) {
+      const sides = localSides(), side = M.mode === 'local' ? n : (n === 0 ? sides[0] : undefined);
+      if (side !== undefined) {
+        const inp = Inp[side];
+        if (m > 0.25) { const k = Math.min(1, (m - 0.25) / 0.55) / m; inp.mx = ax * k * (M.mirror ? -1 : 1); inp.my = ay * k; Pads.active[side] = true; }
+        else if (Pads.active[side]) { inp.mx = inp.my = 0; Pads.active[side] = false; }
+        if (edge(0)) inp.a++;
+        if ((edge(1) || edge(2)) && !inp.held) { inp.bp++; inp.held = true; }
+        if ((up(1) || up(2)) && inp.held && !now[1] && !now[2]) { inp.br++; inp.held = false; }
+        if (edge(9) && M.mode !== 'online') setPause(true);
+      }
+    }
+    Pads.prev[n] = now;
+  });
+  // in the menus: keep a button picked, and show it as picked (the buttons light up under the "mouse")
+  if (Pads.used && inMenu) {
+    if (!Pads.list.some(b => b.id === Pads.focus && !b.disabled)) { Pads.focus = null; let big = 0; for (const b of Pads.list) if (!b.disabled && b.w * b.h > big) { big = b.w * b.h; Pads.focus = b.id; } }
+    const b = Pads.list.find(q => q.id === Pads.focus); if (b) { UI.mx = b.x + b.w / 2; UI.my = b.y + b.h / 2; }
+  }
+}
+window.addEventListener('pointerdown', () => { Pads.used = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (state === 'play') setPause(true); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') setPause(true); });
 
@@ -1604,6 +1668,7 @@ let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   UI.begin();
+  padPoll(dt);
   if ((state === 'play' || state === 'over') && M) {
     if (!paused) {
       acc += dt;
@@ -1619,6 +1684,7 @@ function frame(now) {
   drawToast(dt);
   if (!(state === 'net' && Net.screen === 'join')) codeInput.style.display = 'none';
   if (state !== 'club') nameInput.style.display = 'none';
+  Pads.list = UI.list.slice();
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);

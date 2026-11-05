@@ -22,6 +22,9 @@ A retro football game seen from the side, six a side, plus running your own club
   Keepers save (or not), the ball hits posts, and there are throw-ins, corners and goal kicks.
 - **Controls:** phone: drag anywhere on the left to run, two buttons on the right. Computer: arrows or WASD, X = pass,
   Z or Space = shoot, P = pause. Two players on one keyboard: WASD + C / V and arrows + . / (or K / L).
+- **Game controllers** (Xbox and others; on an Xbox open the arcade in the Edge browser, or connect a controller to a PC or phone):
+  left stick or d-pad runs, A = pass / tackle, B or X = shoot (hold for power) / switch, START = pause.
+  In the menus the stick moves between buttons, A presses, B goes back. In 2 PLAYERS the second controller is player 2.
 - **Your club:** a squad of 6 to 12 players with stats (pace, shooting, passing, defending, keeping), an age, a potential
   and a value. The top 6 in SQUAD play (GK, 2 defenders, 2 midfielders, 1 forward). Young players improve as they play;
   you can also pay to TRAIN players (3 sessions per round). Name your club and pick its kit in MY CLUB.
