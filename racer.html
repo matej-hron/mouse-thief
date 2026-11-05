@@ -1001,6 +1001,11 @@ function frame(now) {
 }
 buildTrack();
 requestAnimationFrame(frame);
+PX.Pad.setup({
+  title: 'Pixel GP: controller', ui: UI, menu: () => state !== 'race' || paused,
+  keys: () => ({ left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', B: 'ArrowDown', LT: 'ArrowDown', X: 'Digit1', RB: 'Digit1', Y: 'Digit2', LB: 'Digit2', START: 'KeyP' }),
+  help: [['STICK|D-PAD', 'STEER (GAS IS AUTOMATIC)'], ['B|LT', 'BRAKE'], ['X|RB', 'NITRO'], ['Y|LB', 'SHIELD'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
 </script>
 </body>
 </html>

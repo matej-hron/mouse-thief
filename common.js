@@ -268,6 +268,113 @@ window.PX = (() => {
     spend(n) { if (this.get() < n) return false; this.add(-n); return true; },
   };
 
-  return { Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, Profile, cleanName,
+  // --- game controllers (Xbox and others): one layer for all the games ---------------------------
+  // A game calls PX.Pad.setup({...}) once:
+  //   menu()        true when the controller should move between the menu buttons
+  //   ui            the game's PX.makeUI (menus: the stick picks a button, A presses it, B goes back)
+  //   menuKeys      or, for a game with its own keyboard menus: keys to press in the menus
+  //   keys(n)       the keys controller n (0 or 1) presses while playing, e.g. { A: 'Space', left: 'ArrowLeft' }
+  //   onPlay(gp, n, dt) extra, game-specific handling while playing (e.g. analog aiming)
+  //   help          [[button, what it does], ...] for the little help box (the VIEW button shows it)
+  // (help: several buttons for one thing are written 'B|X'.)
+  // Buttons: A B X Y LB RB LT RT VIEW START, up/down/left/right (left stick and d-pad), rup/rdown/rleft/rright (right stick).
+  const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, START: 9 };
+  const KEYNAME = { Space: ' ', Enter: 'Enter', Escape: 'Escape', Backspace: 'Backspace', Tab: 'Tab' };
+  const keyOf = code => KEYNAME[code] || (code.startsWith('Key') ? code.slice(3).toLowerCase() : code.startsWith('Digit') ? code.slice(5) : code);
+  const Pad = {
+    cfg: null, used: false, down: new Map(), prevBtn: [{}, {}], focus: null, navT: 0, last: 0, helpEl: null, helpUntil: 0, helpPinned: false,
+    setup(cfg) {
+      this.cfg = cfg;
+      try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
+      window.addEventListener('pointerdown', () => { this.used = false; this.hideHelp(); });
+      const loop = now => { this.poll(now); requestAnimationFrame(loop); };
+      requestAnimationFrame(loop);
+    },
+    pads() { try { return navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected).slice(0, 2) : []; } catch (e) { return []; } },
+    state(gp) {                                                       // what is held on one controller
+      const b = i => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5)), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0, rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
+      const h = {}; for (const k in BTN) h[k] = b(BTN[k]);
+      h.up = b(12) || ay < -0.5; h.down = b(13) || ay > 0.5; h.left = b(14) || ax < -0.5; h.right = b(15) || ax > 0.5;
+      h.rup = ry < -0.5; h.rdown = ry > 0.5; h.rleft = rx < -0.5; h.rright = rx > 0.5;
+      h.ax = b(14) ? -1 : b(15) ? 1 : ax; h.ay = b(12) ? -1 : b(13) ? 1 : ay; h.rx = rx; h.ry = ry;
+      return h;
+    },
+    key(type, code) { try { window.dispatchEvent(new KeyboardEvent(type, { code, key: keyOf(code), bubbles: true, cancelable: true })); } catch (e) { /* old browser */ } },
+    poll(now) {
+      const cfg = this.cfg, dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
+      const pads = this.pads(), want = new Map();
+      const inMenu = !!(cfg.menu && cfg.menu());
+      pads.forEach((gp, n) => {
+        const h = this.state(gp), prev = this.prevBtn[n], edge = k => h[k] && !prev[k];
+        const anything = Object.keys(BTN).some(k => h[k]) || Math.hypot(h.ax, h.ay) > 0.5;
+        if (anything && !this.used) { this.used = true; this.focus = null; if (!this.helpShown) { this.helpShown = true; this.showHelp(7); } }
+        if (edge('VIEW')) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
+        if (inMenu && cfg.ui) this.menuNav(h, edge, dt);
+        else {
+          const map = inMenu ? cfg.menuKeys : cfg.keys && cfg.keys(n);
+          if (map) for (const k in map) if (h[k]) for (const code of [].concat(map[k])) want.set(code, inMenu && ['up', 'down', 'left', 'right'].includes(k));
+          if (!inMenu && cfg.onPlay) cfg.onPlay(h, n, dt, edge);
+        }
+        this.prevBtn[n] = h;
+      });
+      // press and let go of the keys, so the game sees a keyboard (menus: held directions repeat)
+      for (const [code, rep] of want) {
+        const d = this.down.get(code);
+        if (!d) { this.key('keydown', code); this.down.set(code, { t: 0, rep }); }
+        else if (rep && (d.t += dt) > 0.4) { d.t = 0.25; this.key('keydown', code); }
+      }
+      for (const code of [...this.down.keys()]) if (!want.has(code)) { this.key('keyup', code); this.down.delete(code); }
+      if (this.helpUntil && now > this.helpUntil) this.hideHelp();
+    },
+    menuNav(h, edge, dt) {                                            // move between the buttons of a PX.makeUI screen
+      const UI = this.cfg.ui, list = (UI.list || []).filter(b => !b.disabled);
+      if (!list.some(b => b.id === this.focus)) { this.focus = null; let big = 0; for (const b of list) if (b.w * b.h > big) { big = b.w * b.h; this.focus = b.id; } }
+      const m = Math.hypot(h.ax, h.ay);
+      if (m > 0.6) {
+        if ((this.navT -= dt) <= 0) {
+          this.navT = this.navT < -1 ? 0.35 : 0.2;
+          const [dx, dy] = Math.abs(h.ax) > Math.abs(h.ay) ? [Math.sign(h.ax), 0] : [0, Math.sign(h.ay)];
+          const cur = list.find(b => b.id === this.focus);
+          if (cur) {
+            const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2; let best = null, bs = 1e9;
+            for (const b of list) {
+              if (b === cur) continue;
+              const ox = b.x + b.w / 2 - cx, oy = b.y + b.h / 2 - cy, along = ox * dx + oy * dy;
+              if (along <= 2) continue;
+              const sc = along + Math.abs(ox * dy - oy * dx) * 4;
+              if (sc < bs) { bs = sc; best = b; }
+            }
+            if (best) this.focus = best.id;
+          }
+        }
+      } else this.navT = 0;
+      const f = list.find(b => b.id === this.focus);
+      if (f && this.used) { UI.mx = f.x + f.w / 2; UI.my = f.y + f.h / 2; }
+      if (edge('A') && f) UI.click = f.id;
+      if (edge('B')) UI.back = true;
+      if (edge('START')) { this.key('keydown', 'KeyP'); this.key('keyup', 'KeyP'); }
+    },
+    // the little help box: what each button does
+    showHelp(sec) {
+      const cfg = this.cfg; if (!cfg || !cfg.help) return;
+      if (!this.helpEl) {
+        const el = document.createElement('div');
+        Object.assign(el.style, { position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 50, display: 'none', pointerEvents: 'none',
+          background: '#1d1830', color: '#efe9ff', border: '3px solid #efe9ff', boxShadow: '6px 6px 0 #000', padding: '14px 20px',
+          font: 'bold 15px/1.5 ui-monospace, Menlo, Consolas, monospace', textTransform: 'uppercase', maxWidth: '86vw' });
+        document.body.appendChild(el); this.helpEl = el;
+      }
+      const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      const COL = { A: '#5ad43f', B: '#ff5a5a', X: '#4aa8ff', Y: '#ffd23f' };
+      const chip = b => b.split('|').map(p => `<span style="display:inline-block;min-width:1.6em;padding:0 .35em;margin:0 .15em 0 0;text-align:center;border:2px solid ${COL[p] || '#efe9ff'};color:${COL[p] || '#efe9ff'}">${esc(p)}</span>`).join('');
+      this.helpEl.innerHTML = `<div style="color:#ffd23f;font-size:18px;margin-bottom:8px">🎮 ${esc(cfg.title || 'Controller')}</div>` +
+        cfg.help.map(([b, what]) => `<div>${chip(b)} ${esc(what)}</div>`).join('') +
+        `<div style="color:#9a92b8;margin-top:8px;font-size:12px">VIEW button (two squares): show / hide this help</div>`;
+      this.helpEl.style.display = 'block'; this.helpUntil = sec ? performance.now() + sec * 1000 : 0;
+    },
+    hideHelp() { if (this.helpEl) this.helpEl.style.display = 'none'; this.helpUntil = 0; },
+  };
+
+  return { Pad, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

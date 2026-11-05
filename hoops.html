@@ -397,6 +397,21 @@ requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
 }
+PX.Pad.setup({
+  title: 'Pixel Hoops: controller', ui: UI, menu: () => state !== 'play' || paused,
+  keys: () => ({ START: 'KeyP' }),
+  onPlay: (h, n, dt, edge) => {                    // the stick aims (where to throw, further = harder), A throws
+    if (n !== 0) return;
+    const m = Math.hypot(h.ax, h.ay), mine = aim && aim.id === 'pad';
+    if (m > 0.2 && (!aim || mine)) {
+      if (!mine) aim = { id: 'pad', x0: S.W / 2, y0: H / 2, x: S.W / 2, y: H / 2 };
+      const k = Math.min(1, m) / m; aim.x = aim.x0 - h.ax * k * MAX_PULL; aim.y = aim.y0 - h.ay * k * MAX_PULL;
+    }
+    if (edge('A') && mine) { const v = aimVelocity(); if (v && G && G.spot) shoot(v.vx, v.vy); aim = null; }
+    else if (m <= 0.2 && mine) aim = null;
+  },
+  help: [['STICK', 'AIM: POINT WHERE TO THROW, FURTHER = HARDER'], ['A', 'THROW'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
 </script>
 </body>
 </html>
