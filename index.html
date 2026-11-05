@@ -230,7 +230,11 @@ function card(g, i, x, y, w, h, t) {
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');
-  if (UI.button('play_' + g.id, x + 8, y + h - 26, w - 16, 20, 'PLAY', { accent: g.color })) play(g);
+  if (pad.used && pad.focus === i) {                                    // the game the controller picked
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 3, y - 3, w + 6, 2); ctx.fillRect(x - 3, y + h + 1, w + 6, 2); ctx.fillRect(x - 3, y - 3, 2, h + 6); ctx.fillRect(x + w + 1, y - 3, 2, h + 6);
+    UI.mx = x + w / 2; UI.my = y + h - 16;
+  }
+  if (UI.button('play_' + g.id, x + 8, y + h - 26, w - 16, 20, pad.used && pad.focus === i ? 'A: PLAY' : 'PLAY', { accent: g.color })) play(g);
 }
 function drawHome(t) {
   const W = S.W;
@@ -309,6 +313,47 @@ UI.onUp = e => {
   if (scroll.drag && scroll.drag.id === e.pointerId) { if (performance.now() - scroll.drag.t > 80) scroll.v = 0; scroll.drag = null; }
   scroll.bar = false;
 };
+// --- game controllers (an Xbox, or a controller on a PC or phone) ------------------------------
+// The stick or d-pad picks a game (the screen scrolls to it), A plays it, the right stick scrolls.
+const pad = { used: false, focus: 0, prev: {}, navT: 0 };
+try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
+function cardBox(i) {
+  const L = layout(), r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, GAMES.length - r * L.cols);
+  const x = Math.round(L.cx - (L.cw * inRow + L.gap * (inRow - 1)) / 2) + c * (L.cw + L.gap), y = L.pad + r * (CARD_H + L.gap);
+  return { x, y, w: L.cw, r, c };
+}
+function padFocus(i) {
+  pad.focus = Math.max(0, Math.min(GAMES.length - 1, i));
+  const L = layout(), b = cardBox(pad.focus);                          // scroll so the whole card shows
+  if (b.y - scroll.y < 0) scrollTo(b.y - L.pad); else if (b.y + CARD_H - scroll.y > L.view) scrollTo(b.y + CARD_H + L.pad - L.view);
+  scroll.v = 0; PX.Sound.tone(660, 0.05, { vol: 0.06 });
+}
+function padPoll(dt) {
+  let gps = [];
+  try { gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; } catch (e) { gps = []; }
+  for (const gp of gps.slice(0, 2)) {
+    const now = {}; for (const i of [0, 1, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const edge = i => now[i] && !pad.prev[i];
+    let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    if (now[14]) ax = -1; if (now[15]) ax = 1; if (now[12]) ay = -1; if (now[13]) ay = 1;
+    const any = Math.hypot(ax, ay) > 0.5 || Object.values(now).some(Boolean);
+    if (any && !pad.used) { pad.used = true; PX.Sound.unlock(); padFocus(pad.focus); }
+    if (screen === 'home') {
+      const cols = layout().cols;
+      if (Math.hypot(ax, ay) > 0.6) {
+        if ((pad.navT -= dt) <= 0) {
+          pad.navT = pad.navT < -1 ? 0.35 : 0.22;
+          if (Math.abs(ax) > Math.abs(ay)) padFocus(pad.focus + Math.sign(ax));
+          else { const n = pad.focus + Math.sign(ay) * cols; if (n >= 0 && n < GAMES.length) padFocus(n); else if (ay > 0 && Math.floor(pad.focus / cols) < Math.floor((GAMES.length - 1) / cols)) padFocus(GAMES.length - 1); }
+        }
+      } else pad.navT = 0;
+      const ry = gp.axes[3] || 0; if (Math.abs(ry) > 0.25) { scroll.v = 0; scrollTo(scroll.y + ry * 300 * dt); }
+      if (edge(0) || edge(9)) play(GAMES[pad.focus]);
+    } else if (edge(1)) UI.back = true;
+    pad.prev = now;
+  }
+}
+window.addEventListener('pointerdown', () => { pad.used = false; });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   if (screen !== 'home') return;
@@ -350,6 +395,7 @@ function drawProfile(t) {
 let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
+  padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
   if (screen === 'home') drawHome(t); else drawProfile(t);
