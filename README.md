@@ -12,6 +12,37 @@ The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the sli
 | **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
 | **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
 | **Pixel Hoops** (`hoops.html`) | Arcade basketball: pull back and let go to shoot. Every basket is +2 points. |
+| **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base, or take off and defend it. With bots, 2 on one screen, or up to 6 online. |
+
+## Pixel Wings
+
+An air battle seen from above. Your plane always flies forward: you steer it and set its speed. Each player's camera
+follows their own plane, with a minimap in the corner and arrows pointing at what matters (your next target, the nearest bomber).
+
+- **AIR RAID:** the attack (red) flies bombers and fighters in from the west at the island air base. The bombers must
+  destroy the 6 targets (2 hangars, fuel depot, radar, control tower, ammo dump); their fighters escort them.
+  The defense (blue) starts on the ground: fighters take off from the runway one after another and must shoot the
+  bombers down, or hold out for 5 minutes. AA guns on the island fire flak at the raid. Bombs also wreck planes still
+  waiting on the ground. While the hangars stand, they send out new fighters every 30 s. Lose the radar and the
+  defense's minimap only shows enemies close by.
+- **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
+  kill target (10 / 15 / 25 by size), or most kills after 5 minutes, wins.
+- **Planes:** fighters are fast and turn tightly (2 machine guns). Bombers are slow and tough, drop bombs
+  (4 at a time, one comes back every 8 s; the bomb lands a bit ahead of the plane) and have a rear gunner that shoots
+  at enemy fighters by itself. A hurt plane smokes.
+- **Pilots and bots:** every human picks a role (ATTACK BOMBER, ATTACK FIGHTER, DEFENSE FIGHTER; in a dogfight RED or BLUE),
+  so friends can fly together or against each other. Bots fill every other seat. SIZE (small / normal / big) and the bots'
+  level (easy / normal / hard) are set before the battle. Shot down? You're back in 4 seconds (attack bombers have 2
+  spare planes per human bomber pilot, then you fly a fighter).
+- **Controls:** keys: arrows or WASD to steer, up / down = speed, Space to fire (or drop bombs), P pauses.
+  Phone: drag anywhere to point where to fly (further = faster), FIRE / BOMB button in the corner.
+  Controller: left stick points where to fly, A or RT fires, LB / RB slower / faster.
+- **2 PLAYERS, 1 SCREEN:** split screen. Player 1: WASD + Space, player 2: arrows + Enter (or two controllers; on a
+  phone each one uses their half).
+- **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
+  the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
+  If a player leaves, a bot takes over their plane.
+- **Stars:** a win ★8, every kill ★1 (up to 10), every target you destroy ★2.
 
 ## Pixel Hoops
 
@@ -207,4 +238,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html`; online play checks it).
