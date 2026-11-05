@@ -20,7 +20,9 @@ A retro football game seen from the side, six a side, plus running your own club
   With the ball: **PASS** (to the teammate you face) and **SHOOT** (hold to power up, let go to shoot; hold up or down to aim).
   Without it: **TACKLE** (a sliding tackle) and **SWITCH**. Running into the player with the ball can win it too.
   Keepers save (or not), the ball hits posts, and there are throw-ins, corners and goal kicks.
-- **Controls:** phone: drag anywhere on the left to run, two buttons on the right. Computer: arrows or WASD, X = pass,
+- **Controls:** phone: drag on the left to run; on the right, anywhere: **tap = pass** (without the ball: switch player),
+  **swipe = shoot that way**, a faster swipe shoots harder (without the ball: a sliding tackle that way). The old buttons
+  are still there: MY CLUB > PHONE > BUTTONS (or in the pause menu). Computer: arrows or WASD, X = pass,
   Z or Space = shoot, P = pause. Two players on one keyboard: WASD + C / V and arrows + . / (or K / L).
 - **Game controllers** (Xbox and others; on an Xbox open the arcade in the Edge browser, or connect a controller to a PC or phone):
   left stick or d-pad runs, A = pass / tackle, B or X = shoot (hold for power) / switch, START = pause.

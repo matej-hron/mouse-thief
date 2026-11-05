@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.2';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelFootball.save.v1';
 const profile = PX.Profile.get();
 const canvas = document.getElementById('screen');
@@ -231,9 +231,10 @@ function endSeason() {
 // mode: 'league' | 'local' (two players, one phone) | 'online' | 'attract' (the title screen)
 const BASE = [[0.035, 0.5], [0.19, 0.27], [0.19, 0.73], [0.38, 0.22], [0.38, 0.78], [0.55, 0.5]];
 let M = null;
-const mkInp = () => ({ mx: 0, my: 0, a: 0, a0: 0, bp: 0, bp0: 0, br: 0, br0: 0, held: false });
+// a = PASS presses, bp / br = SHOOT pressed / released, tp = taps and g = swipes (gx, gy, gp: direction and power)
+const mkInp = () => ({ mx: 0, my: 0, a: 0, a0: 0, bp: 0, bp0: 0, br: 0, br0: 0, held: false, tp: 0, tp0: 0, g: 0, g0: 0, gx: 1, gy: 0, gp: 0 });
 let Inp = [mkInp(), mkInp()];
-const consume = i => { i.a0 = i.a; i.bp0 = i.bp; i.br0 = i.br; };
+const consume = i => { i.a0 = i.a; i.bp0 = i.bp; i.br0 = i.br; i.tp0 = i.tp; i.g0 = i.g; };
 
 function makeTeam(side, club, human) {
   const t = { side, dir: side === 0 ? 1 : -1, name: club.name, kit: club.kit, shorts: club.shorts, gkKit: '#c8e03a', human, ctrl: 5, switchT: 0, chaser: null, players: [] };
@@ -377,21 +378,38 @@ function pickCover(t) {
   return best;
 }
 function humanPlayer(t, p, dt, inp) {
-  const a = inp.a !== inp.a0, bp = inp.bp !== inp.bp0, br = inp.br !== inp.br0; consume(inp);
+  const a = inp.a !== inp.a0, bp = inp.bp !== inp.bp0, br = inp.br !== inp.br0, tap = inp.tp !== inp.tp0, sw = inp.g !== inp.g0; consume(inp);
   const m = hyp(inp.mx, inp.my);
   if (m > 0.1) { p.mx = inp.mx / Math.max(1, m); p.my = inp.my / Math.max(1, m); }
   else if (p.recv > 0 && !M.owner) goTo(p, M.ball.x, M.ball.y, 1);
   else p.mx = p.my = 0;
   if (M.owner === p) {
-    if (a) { doPass(p, humanTarget(p)); return; }
+    if (sw) { swipeKick(p, inp.gx, inp.gy, inp.gp); return; }
+    if (a || tap) { doPass(p, humanTarget(p)); return; }
     if (bp) { p.charging = true; p.charge = 0; }
     if (p.charging) p.charge = Math.min(1, p.charge + dt / 0.7);
     if (br && p.charging) shoot(p, p.charge, Math.abs(inp.my) > 0.35 ? inp.my : null);
   } else {
     p.charging = false; p.charge = 0;
     if (a && p.slideCd <= 0 && p.down <= 0 && p.slide <= 0) startSlide(p);
-    if (bp) switchNearest(t);
+    if (sw && p.slideCd <= 0 && p.down <= 0 && p.slide <= 0) { const d = hyp(inp.gx, inp.gy) || 1; p.fx = inp.gx / d; p.fy = inp.gy / d; startSlide(p); }
+    if (bp || tap) switchNearest(t);
   }
+}
+// a swipe with the ball: kick it that way, harder for a faster swipe; towards the goal it's a shot
+function swipeKick(p, dx, dy, pw) {
+  const t = M.t[p.team], b = M.ball, d = hyp(dx, dy) || 1, gx = t.dir > 0 ? L : 0;
+  dx /= d; dy /= d; p.fx = dx; p.fy = dy;
+  let a = Math.atan2(dy, dx);
+  const shot = dx * t.dir > 0.35;
+  if (shot) {                                                            // a little help: nearly on target = on target
+    const yc = b.y + dy / dx * (gx - b.x);
+    if (Math.abs(yc - WD / 2) < GW / 2 + 28) a = Math.atan2(clamp(yc, G1 + 4, G2 - 4) - b.y, gx - b.x);
+    a += (1 - p.sho / 100) * 0.16 * rnd(-1, 1) * (0.7 + pw * 0.6);
+    const v = 170 + pw * (120 + p.sho * 1.5);
+    kickBall(p, Math.cos(a) * v, Math.sin(a) * v, 14 + pw * 80 + rnd(0, 10 + pw * 20));
+  } else { const v = 150 + pw * 210; kickBall(p, Math.cos(a) * v, Math.sin(a) * v, 20 + pw * 100); }
+  fx('shoot');
 }
 // who does a human's PASS go to? the teammate most in the direction you face
 function humanTarget(p) {
@@ -862,8 +880,21 @@ function drawPads() {
       ctx.fillStyle = on ? col : 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
       T(label, x, y - 2, on ? '#111' : '#fff', 1, 'center');
     };
+    if (swipeMode()) {
+      const W = S.W, hx = M.mode === 'local' ? (side === 0 ? W * 3 / 8 : W * 5 / 8) : W - 70;
+      T(has ? 'TAP: PASS' : 'TAP: SWITCH', hx, H - 22, has ? '#7af0ff' : '#efe9ff', 1, 'center', '#000');
+      T(has ? 'SWIPE: SHOOT' : 'SWIPE: TACKLE', hx, H - 12, has ? '#ffd23f' : '#efe9ff', 1, 'center', '#000');
+      continue;
+    }
     btn(lay.pass, has ? 'PASS' : 'TACKLE', '#7af0ff', Inp[side].a !== Inp[side].a0 || has);
     btn(lay.shoot, has ? 'SHOOT' : 'SWITCH', '#ffd23f', Inp[side].held || has);
+  }
+  const tr = Ctl.trail;                                                 // what your finger just did
+  if (tr && tr.t > 0) {
+    tr.t -= 1 / 60; ctx.globalAlpha = clamp(tr.t / 0.3, 0, 1);
+    if (tr.tap) { ctx.strokeStyle = '#7af0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tr.x, tr.y, 10 + (0.25 - tr.t) * 60, 0, 7); ctx.stroke(); }
+    else { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(tr.x0, tr.y0); ctx.lineTo(tr.x, tr.y); ctx.stroke(); }
+    ctx.globalAlpha = 1;
   }
 }
 function drawGame(now) {
@@ -1002,7 +1033,7 @@ const Net = {
       const b = M.ball, o = M.owner, g = M.t[1].players[M.t[1].ctrl];
       this.send({ t: 's', p, b: [r(b.x), r(b.y), r(b.z)], sc: M.score, ck: r(M.clock), ph: M.phase, c: [M.t[0].ctrl, M.t[1].ctrl], ow: o ? o.team * 6 + o.idx : -1,
                   ch: g.charging ? Math.round(g.charge * 100) / 100 : -1, ms: M.msgT > 0 ? M.msg : '' });
-    } else { const i = Inp[1]; this.send({ t: 'in', mx: r(i.mx), my: r(i.my), a: i.a, bp: i.bp, br: i.br }); }
+    } else { const i = Inp[1]; this.send({ t: 'in', mx: r(i.mx), my: r(i.my), a: i.a, bp: i.bp, br: i.br, tp: i.tp, g: i.g, gx: Math.round(i.gx * 100) / 100, gy: Math.round(i.gy * 100) / 100, gp: Math.round(i.gp * 100) / 100 }); }
   },
   onData(m) {
     if (!m || typeof m !== 'object') return;
@@ -1017,7 +1048,7 @@ const Net = {
       case 'club': if (this.friend) { const c = sanClub(m.club); if (c) { this.friend.club = c; this.sel.theirs = this.sel.theirs.filter(id => c.players.some(p => p.id === id)); } } break;
       case 'ready': this.friendReady = true; if (this.isHost && this.meReady) this.start(); else sfx('click'); break;
       case 'go': if (this.friend) startOnline(clamp(m.len | 0, 2, 8)); break;
-      case 'in': if (M && this.isHost) { const i = Inp[1]; i.mx = clamp(+m.mx || 0, -1, 1); i.my = clamp(+m.my || 0, -1, 1); i.a = m.a | 0; i.bp = m.bp | 0; i.br = m.br | 0; } break;
+      case 'in': if (M && this.isHost) { const i = Inp[1]; i.mx = clamp(+m.mx || 0, -1, 1); i.my = clamp(+m.my || 0, -1, 1); i.a = m.a | 0; i.bp = m.bp | 0; i.br = m.br | 0; i.tp = m.tp | 0; i.gx = +m.gx || 1; i.gy = +m.gy || 0; i.gp = clamp(+m.gp || 0, 0, 1); i.g = m.g | 0; } break;
       case 's': if (M && !this.isHost) this.snap = m; break;
       case 'fx': if (M) sfx(m.k); break;
       case 'end': if (M && !this.isHost && M.phase !== 'over') { M.score = m.sc; endMatch(); } break;
@@ -1315,8 +1346,10 @@ function drawClub() {
   kitMan(W - 50, 60, c.kit, c.shorts, 1); kitMan(W - 30, 60, c.kit, c.shorts, -1);
   T('MATCH LENGTH', 20, 130, '#9a92b8');
   [2, 4, 6, 8].forEach((m, i) => { if (UI.button('len' + m, 100 + i * 42, 124, 38, 18, m + ' MIN', { size: 1, on: save.len === m })) { save.len = m; store(); } });
-  T('SEASONS ' + c.seasons + '   TROPHIES ' + c.trophies + '   WON ' + (c.w | 0) + ' DRAWN ' + (c.d | 0) + ' LOST ' + (c.l | 0), 20, 154, '#c8c0e0');
-  if (UI.button('reset', 20, 176, 150, 20, armed === 'reset' ? 'SURE? ALL IS LOST!' : 'START A NEW CLUB', { size: 1, accent: '#ff6b6b' })) {
+  T('PHONE', 20, 154, '#9a92b8');
+  [['swipe', 'SWIPES'], ['buttons', 'BUTTONS']].forEach(([k, n], i) => { if (UI.button('ctl' + k, 100 + i * 64, 148, 60, 18, n, { size: 1, on: (save.ctl || 'swipe') === k })) { save.ctl = k; store(); } });
+  T('SEASONS ' + c.seasons + '   TROPHIES ' + c.trophies + '   WON ' + (c.w | 0) + ' DRAWN ' + (c.d | 0) + ' LOST ' + (c.l | 0), 20, 174, '#c8c0e0');
+  if (UI.button('reset', 20, 186, 150, 20, armed === 'reset' ? 'SURE? ALL IS LOST!' : 'START A NEW CLUB', { size: 1, accent: '#ff6b6b' })) {
     if (armed !== 'reset') armed = 'reset';
     else { const keep = { sfx: save.sfx, music: save.music, len: save.len }; save = Object.assign(keep, { club: newClub(), lg: newLeague(), market: genMarket(1), trainLeft: 3, news: null }); attract = null; store(); armed = ''; nameInput.value = save.club.name; toast('A NEW CLUB IS BORN!'); }
   }
@@ -1339,7 +1372,9 @@ function drawPrematch(now) {
   T('ROUND ' + (save.lg.round + 1), W / 2, 8, '#9a92b8', 1, 'center');
   vsBox(save.club, opp, 22);
   lineup(save.club, W / 2 - 140, 66, '#ffd23f'); lineup(opp, W / 2 + 40, 66, '#ffd23f');
-  wrap(Pads.used ? 'CONTROLLER: STICK OR D-PAD RUNS. A: PASS (OR TACKLE). B OR X: SHOOT, HOLD FOR POWER (OR SWITCH PLAYER). START: PAUSE.' : Ctl.touch ? 'LEFT THUMB: DRAG TO RUN. PASS / SHOOT BUTTONS (HOLD SHOOT FOR POWER). WITHOUT THE BALL: TACKLE / SWITCH.'
+  wrap(Pads.used ? 'CONTROLLER: STICK OR D-PAD RUNS. A: PASS (OR TACKLE). B OR X: SHOOT, HOLD FOR POWER (OR SWITCH PLAYER). START: PAUSE.'
+     : Ctl.touch && swipeMode() ? 'LEFT THUMB: DRAG TO RUN. RIGHT THUMB, ANYWHERE: TAP TO PASS, SWIPE TO SHOOT THAT WAY (FASTER = HARDER). WITHOUT THE BALL: TAP SWITCHES, SWIPE TACKLES.'
+     : Ctl.touch ? 'LEFT THUMB: DRAG TO RUN. PASS / SHOOT BUTTONS (HOLD SHOOT FOR POWER). WITHOUT THE BALL: TACKLE / SWITCH.'
                  : 'ARROWS OR WASD: RUN. X: PASS (OR TACKLE). Z OR SPACE: SHOOT, HOLD FOR POWER (OR SWITCH PLAYER). P: PAUSE.', W / 2, 140, 320, '#9a92b8');
   const bw = 140;
   if (UI.button('ko', Math.round(W / 2 + 4), 200, bw, 26, 'KICK OFF!', { accent: '#5ad43f' })) startMatch('league', save.club, opp, { opp: f.opp });
@@ -1356,7 +1391,7 @@ function drawLocal(now) {
     ctx.fillStyle = c.kit; ctx.fillRect(x + 6, y + 8, 8, 10);
     T(c.name, x + 20, y + 7, '#fff'); T('OVR ' + Math.round(strength(c)), x + 20, y + 16, '#ffd23f');
   }
-  wrap(Ctl.touch ? 'EACH PLAYER USES THEIR OWN HALF OF THE SCREEN: DRAG TO RUN, TWO BUTTONS IN THE MIDDLE.'
+  wrap(Ctl.touch ? (swipeMode() ? 'EACH PLAYER HAS HALF THE SCREEN: THE OUTER PART TO RUN, THE MIDDLE TO TAP (PASS) AND SWIPE (SHOOT).' : 'EACH PLAYER USES THEIR OWN HALF OF THE SCREEN: DRAG TO RUN, TWO BUTTONS IN THE MIDDLE.')
                  : 'PLAYER 1: WASD, C = PASS, V = SHOOT.  PLAYER 2: ARROWS, . = PASS, / = SHOOT (OR K AND L).', W / 2, 166, 320, '#9a92b8');
   if (UI.button('back', Math.round(W / 2 - 60), 206, 120, 22, 'BACK', { size: 1 }) || UI.back) go('title');
 }
@@ -1367,7 +1402,7 @@ function drawHelp(now) {
   let y = 28;
   for (const s of [
     'SIX A SIDE. YOU CONTROL THE PLAYER WITH THE ARROW OVER HIS HEAD. IT SWITCHES TO WHOEVER IS NEAREST THE BALL.',
-    'WITH THE BALL: PASS GOES TO THE TEAMMATE YOU FACE. SHOOT: HOLD TO POWER UP, LET GO TO SHOOT. HOLD UP OR DOWN TO AIM HIGH OR LOW IN THE GOAL.',
+    'WITH THE BALL: PASS GOES TO THE TEAMMATE YOU FACE. SHOOT: HOLD TO POWER UP, LET GO TO SHOOT (HOLD UP OR DOWN TO AIM). ON A PHONE: TAP ON THE RIGHT TO PASS, SWIPE TO SHOOT THAT WAY, FASTER = HARDER.',
     'WITHOUT THE BALL: TACKLE IS A SLIDING TACKLE, SWITCH JUMPS TO ANOTHER PLAYER. RUNNING INTO THE PLAYER WITH THE BALL CAN WIN IT TOO.',
     'YOUR CLUB: PICK WHO PLAYS IN SQUAD, TRAIN PLAYERS, BUY AND SELL IN TRANSFERS. YOUNG PLAYERS GET BETTER AS THEY PLAY (UP TO THEIR POTENTIAL).',
     'ONLINE: PLAY YOUR SQUAD AGAINST A FRIEND\'S, OR TRADE PLAYERS AND MONEY WITH THEM. BOTH OF YOU MUST AGREE.',
@@ -1414,7 +1449,7 @@ function drawOver(now) {
   } else if (UI.button('cont', Math.round(W / 2 - bw / 2), by, bw, 22, 'CONTINUE', { accent: '#5ad43f' }) || UI.back) toTitle();
 }
 function drawPause() {
-  const W = S.W, { y } = panel(220, 128), bw = 160, bx = Math.round(W / 2 - bw / 2);
+  const W = S.W, { y } = panel(220, Ctl.touch ? 164 : 128), bw = 160, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   soundButtons(Math.round(W / 2 + 52), y + 8);
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
@@ -1424,6 +1459,7 @@ function drawPause() {
     else toTitle();
   }
   T(M.mode === 'league' ? 'QUITTING A LEAGUE MATCH = LOSING 0-3' : '', W / 2, y + 104, '#9a92b8', 1, 'center');
+  if (Ctl.touch && UI.button('ctl', bx, y + 136, bw, 20, 'PHONE: ' + (swipeMode() ? 'SWIPES' : 'BUTTONS'), { size: 1, accent: '#7af0ff' })) { save.ctl = swipeMode() ? 'buttons' : 'swipe'; store(); }
 }
 let toastMsg = '', toastT = 0;
 const toast = s => { toastMsg = s; toastT = 2.2; };
@@ -1541,11 +1577,32 @@ function setStick(side, st) {
   if (d < 4) { i.mx = i.my = 0; return; }
   const k = Math.min(1, d / 16) / d; i.mx = dx * k * (M.mirror ? -1 : 1); i.my = dy * k;
 }
+// SWIPE controls (the default): the left part of your side is the stick, the rest is for gestures.
+// Tap = pass (or switch player without the ball). Swipe = shoot / kick that way (or a sliding tackle).
+const swipeMode = () => save.ctl !== 'buttons';
+function gestureSide(x) {                                // which player's gesture area is x in? (null = a stick area)
+  const W = S.W;
+  if (M.mode === 'local') return x < W / 4 ? null : x < W / 2 ? 0 : x < W * 3 / 4 ? 1 : null;
+  return x >= W * 0.45 ? localSides()[0] : null;
+}
+function fireSwipe(c, x, y) {
+  const dt = Math.max(0.03, (performance.now() - c.t0) / 1000), sdx = x - c.x0, sdy = y - c.y0, inp = Inp[c.side];
+  inp.gx = sdx * (M.mirror ? -1 : 1) / 1.1; inp.gy = sdy / 0.6;               // the screen squashes the pitch's depth
+  inp.gp = clamp((hyp(sdx, sdy) / dt - 150) / 600, 0, 1); inp.g++;
+  c.done = true; Ctl.trail = { side: c.side, x0: c.x0, y0: c.y0, x, y, t: 0.35 };
+}
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock(); if (!Music.cur && state !== 'play') Music.play('menu');
   if (e.pointerType === 'touch') Ctl.touch = true;
   if (state !== 'play' || paused || UI.downId !== null || !M) return;
   const sides = localSides(); if (!sides.length) return;
+  if (swipeMode()) {
+    const gs = gestureSide(x);
+    if (gs !== null && gs !== undefined) { Ctl.ptrs.set(e.pointerId, { side: gs, kind: 'gesture', x0: x, y0: y, t0: performance.now(), done: false }); return; }
+    const side = M.mode === 'local' ? (x < S.W / 2 ? 0 : 1) : sides[0];
+    if (!Ctl.stick[side]) { Ctl.stick[side] = { ox: x, oy: y, x, y }; Ctl.ptrs.set(e.pointerId, { side, kind: 'stick' }); }
+    return;
+  }
   const side = M.mode === 'local' ? (x < S.W / 2 ? 0 : 1) : sides[0], lay = padLayout(side), inp = Inp[side];
   const near = b => hyp(x - b[0], y - b[1]) < b[2] + 8;
   if (near(lay.pass)) { inp.a++; Ctl.ptrs.set(e.pointerId, { side, kind: 'pass' }); }
@@ -1553,7 +1610,9 @@ UI.onDown = (e, x, y) => {
   else if (!Ctl.stick[side]) { const st = { ox: x, oy: y, x, y }; Ctl.stick[side] = st; Ctl.ptrs.set(e.pointerId, { side, kind: 'stick' }); }
 };
 UI.onMove = (e, x, y) => {
-  const c = Ctl.ptrs.get(e.pointerId); if (!c || c.kind !== 'stick' || !M) return;
+  const c = Ctl.ptrs.get(e.pointerId); if (!c || !M) return;
+  if (c.kind === 'gesture') { if (!c.done && hyp(x - c.x0, y - c.y0) > 26) fireSwipe(c, x, y); return; }
+  if (c.kind !== 'stick') return;
   const st = Ctl.stick[c.side]; if (!st) return;
   st.x = x; st.y = y; setStick(c.side, st);
 };
@@ -1561,6 +1620,10 @@ UI.onUp = e => {
   const c = Ctl.ptrs.get(e.pointerId); if (!c) return;
   Ctl.ptrs.delete(e.pointerId);
   const inp = Inp[c.side];
+  if (c.kind === 'gesture' && !c.done && M) {
+    const { x, y } = S.toLogical(e), d = hyp(x - c.x0, y - c.y0);
+    if (d > 12) fireSwipe(c, x, y); else { inp.tp++; Ctl.trail = { side: c.side, x0: x, y0: y, x, y, t: 0.25, tap: true }; }
+  }
   if (c.kind === 'stick') { Ctl.stick[c.side] = null; inp.mx = inp.my = 0; }
   else if (c.kind === 'shoot') { inp.br++; inp.held = false; }
 };
