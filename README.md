@@ -29,7 +29,7 @@ Arcade basketball, seen from the side. **Every basket is +2 points.**
 
 Every game works with a game controller (Xbox and others): on an Xbox open the arcade in the Edge browser, or connect a
 controller to a PC or a phone. In the menus the stick or d-pad picks a button, A presses it, B goes back. The first time you
-use a controller a little help box shows what each button does in that game; the **VIEW** button (two squares) shows it again.
+use a controller a little help box shows what each button does in that game; **Y** in the menus shows it again. On an Xbox the arcade goes full screen at the first click, because Edge only hands the controller to web games in full screen (otherwise the stick moves a mouse pointer).
 `common.js` has the shared layer (`PX.Pad`): it turns the controller into the game's keyboard keys and moves between menu buttons.
 
 ## Pixel Football

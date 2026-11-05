@@ -287,6 +287,12 @@ window.PX = (() => {
       this.cfg = cfg;
       try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
       window.addEventListener('pointerdown', () => { this.used = false; this.hideHelp(); });
+      // On an Xbox, Edge drives a mouse pointer with the controller; in full screen web games get the controller.
+      // So there we go full screen at the first click or key (browsers only allow it then).
+      if (/xbox/i.test(navigator.userAgent)) {
+        const full = () => { const d = document, el = d.documentElement; if (!d.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => { /* not allowed */ }); };
+        window.addEventListener('pointerup', full); window.addEventListener('keyup', full);
+      }
       const loop = now => { this.poll(now); requestAnimationFrame(loop); };
       requestAnimationFrame(loop);
     },
@@ -308,7 +314,7 @@ window.PX = (() => {
         const h = this.state(gp), prev = this.prevBtn[n], edge = k => h[k] && !prev[k];
         const anything = Object.keys(BTN).some(k => h[k]) || Math.hypot(h.ax, h.ay) > 0.5;
         if (anything && !this.used) { this.used = true; this.focus = null; if (!this.helpShown) { this.helpShown = true; this.showHelp(7); } }
-        if (edge('VIEW')) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
+        if (edge('VIEW') || (edge('Y') && (inMenu || !cfg.keys))) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
         if (inMenu && cfg.ui) this.menuNav(h, edge, dt);
         else {
           const map = inMenu ? cfg.menuKeys : cfg.keys && cfg.keys(n);
@@ -369,7 +375,7 @@ window.PX = (() => {
       const chip = b => b.split('|').map(p => `<span style="display:inline-block;min-width:1.6em;padding:0 .35em;margin:0 .15em 0 0;text-align:center;border:2px solid ${COL[p] || '#efe9ff'};color:${COL[p] || '#efe9ff'}">${esc(p)}</span>`).join('');
       this.helpEl.innerHTML = `<div style="color:#ffd23f;font-size:18px;margin-bottom:8px">🎮 ${esc(cfg.title || 'Controller')}</div>` +
         cfg.help.map(([b, what]) => `<div>${chip(b)} ${esc(what)}</div>`).join('') +
-        `<div style="color:#9a92b8;margin-top:8px;font-size:12px">VIEW button (two squares): show / hide this help</div>`;
+        `<div style="color:#9a92b8;margin-top:8px;font-size:12px">Y in the menus: show / hide this help</div>`;
       this.helpEl.style.display = 'block'; this.helpUntil = sec ? performance.now() + sec * 1000 : 0;
     },
     hideHelp() { if (this.helpEl) this.helpEl.style.display = 'none'; this.helpUntil = 0; },
