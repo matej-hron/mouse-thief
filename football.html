@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const SAVE_KEY = 'pixelFootball.save.v1';
 const profile = PX.Profile.get();
 const canvas = document.getElementById('screen');
@@ -346,12 +346,14 @@ function switchNearest(t) {
 function pickControl(t) {
   if (!t.human) return;
   if (M.owner && M.owner.team === t.side) { if (M.owner.idx !== 0) t.ctrl = M.owner.idx; return; }
+  // only switch when another player is clearly nearer the ball (not a guess where it goes), at most every 0.8 s
   const c = t.players[t.ctrl];
   if (c.recv > 0 || t.switchT > 0) return;
-  const b = M.ball, px = b.x + b.vx * 0.25, py = b.y + b.vy * 0.25;
-  let best = c, bd = hyp(px - c.x, py - c.y) - 18;
-  for (const p of t.players) { if (p.idx === 0) continue; const d = hyp(px - p.x, py - p.y); if (d < bd) { bd = d; best = p; } }
-  if (best !== c) { c.charging = false; t.ctrl = best.idx; }
+  const b = M.ball, mine = hyp(b.x - c.x, b.y - c.y);
+  if (mine < 30) return;
+  let best = c, bd = mine - Math.max(35, mine * 0.35);
+  for (const p of t.players) { if (p.idx === 0) continue; const d = hyp(b.x - p.x, b.y - p.y); if (d < bd) { bd = d; best = p; } }
+  if (best !== c) { c.charging = false; t.ctrl = best.idx; t.switchT = 0.8; }
 }
 function pickChaser(t) {
   const b = M.ball;
@@ -770,12 +772,19 @@ function drawGoal(gx) {
 const OUT = '#111';
 function drawMan(p, t, X, Y, marker) {
   X = Math.round(X); Y = Math.round(Y);
+  const OL = marker || OUT;
+  if (marker) {                                                          // a bright ring on the grass under your player
+    const since = (performance.now() - (p.swAt || 0)) / 1000;
+    ctx.strokeStyle = OUT; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(X + 0.5, Y, 9, 4, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = marker; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(X + 0.5, Y, 9, 4, 0, 0, 7); ctx.stroke();
+    if (since < 0.5) { const k = since / 0.5; ctx.globalAlpha = 1 - k; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X + 0.5, Y - 8, 10 + 26 * k, 6 + 14 * k, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+  }
   const kit = p.idx === 0 ? t.gkKit : t.kit, face = (M.mirror ? -p.fx : p.fx) >= 0 ? 1 : -1;
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(X - 4, Y - 1, 9, 2);
   if (p.slide > 0 || p.dive > 0 || p.down > 0) {                         // lying on the grass
     const h = p.dive > 0 ? -5 : 0, d = face;
     const parts = [[d > 0 ? 2 : -6, -4 + h, 4, 3, p.skin], [-3, -4 + h, 5, 3, kit], [d > 0 ? -5 : 2, -4 + h, 2, 3, t.shorts], [d > 0 ? -8 : 4, -3 + h, 3, 2, p.skin]];
-    ctx.fillStyle = OUT; for (const [x, y, w, hh] of parts) ctx.fillRect(X + x - 1, Y + y - 1, w + 2, hh + 2);
+    ctx.fillStyle = OL; for (const [x, y, w, hh] of parts) ctx.fillRect(X + x - 1, Y + y - 1, w + 2, hh + 2);
     for (const [x, y, w, hh, c] of parts) { ctx.fillStyle = c; ctx.fillRect(X + x, Y + y, w, hh); }
     ctx.fillStyle = p.hair; ctx.fillRect(X + (d > 0 ? 5 : -6), Y - 4 + h, 1, 3);
   } else {
@@ -783,15 +792,16 @@ function drawMan(p, t, X, Y, marker) {
     const hands = p.idx === 0 ? '#f2f2f2' : p.skin;
     const parts = [[-2 + l, -5, 2, 2, p.skin], [-2 + l, -3, 2, 2, kit], [-2 + l, -1, 2, 1, OUT], [1 - l, -5, 2, 2, p.skin], [1 - l, -3, 2, 2, kit], [1 - l, -1, 2, 1, OUT],
                    [-3, -7, 6, 2, t.shorts], [-3, -12, 6, 5, kit], [-4, -12 - l, 1, 2, kit], [-4, -10 - l, 1, 2, hands], [3, -12 + l, 1, 2, kit], [3, -10 + l, 1, 2, hands], [-2, -16, 4, 4, p.skin]];
-    ctx.fillStyle = OUT; for (const [x, y, w, h] of parts) ctx.fillRect(X + x - 1, Y + y - 1, w + 2, h + 2);
+    ctx.fillStyle = OL; for (const [x, y, w, h] of parts) ctx.fillRect(X + x - 1, Y + y - 1, w + 2, h + 2);
     for (const [x, y, w, h, c] of parts) { ctx.fillStyle = c; ctx.fillRect(X + x, Y + y, w, h); }
     ctx.fillStyle = p.hair; ctx.fillRect(X - 2, Y - 16, 4, 1); ctx.fillRect(X + (face > 0 ? -2 : 1), Y - 15, 1, 1);
     ctx.fillStyle = OUT; ctx.fillRect(X + (face > 0 ? 1 : -2), Y - 14, 1, 1);
   }
   if (marker) {
-    ctx.fillStyle = OUT; ctx.fillRect(X - 3, Y - 23, 7, 2); ctx.fillRect(X - 2, Y - 21, 5, 1); ctx.fillRect(X - 1, Y - 20, 3, 1);
-    ctx.fillStyle = marker; ctx.fillRect(X - 2, Y - 22, 5, 1); ctx.fillRect(X - 1, Y - 21, 3, 1); ctx.fillRect(X, Y - 20, 1, 1);
-    if (p.charging) { ctx.fillStyle = OUT; ctx.fillRect(X - 8, Y - 29, 16, 4); ctx.fillStyle = p.charge > 0.8 ? '#ff5a2a' : '#ffd23f'; ctx.fillRect(X - 7, Y - 28, Math.round(14 * p.charge), 2); }
+    const ay = Y - 26 + Math.round(Math.sin(performance.now() / 120));   // a big bobbing arrow
+    ctx.fillStyle = OUT; ctx.fillRect(X - 5, ay - 1, 11, 3); ctx.fillRect(X - 4, ay + 2, 9, 1); ctx.fillRect(X - 3, ay + 3, 7, 1); ctx.fillRect(X - 2, ay + 4, 5, 1); ctx.fillRect(X - 1, ay + 5, 3, 1);
+    ctx.fillStyle = marker; ctx.fillRect(X - 4, ay, 9, 2); ctx.fillRect(X - 3, ay + 2, 7, 1); ctx.fillRect(X - 2, ay + 3, 5, 1); ctx.fillRect(X - 1, ay + 4, 3, 1);
+    if (p.charging) { ctx.fillStyle = OUT; ctx.fillRect(X - 8, Y - 33, 16, 4); ctx.fillStyle = p.charge > 0.8 ? '#ff5a2a' : '#ffd23f'; ctx.fillRect(X - 7, Y - 32, Math.round(14 * p.charge), 2); }
   }
 }
 function drawBall() {
@@ -807,6 +817,7 @@ function drawField(now) {
   drawStands(now); drawPitch();
   drawGoal(0); drawGoal(L);
   const list = [];
+  for (const t of M.t) { if (t.drawnCtrl !== t.ctrl) { if (t.drawnCtrl !== undefined) t.players[t.ctrl].swAt = performance.now(); t.drawnCtrl = t.ctrl; } }
   for (const t of M.t) for (const p of t.players) list.push([p.y, () => { const [x, y] = proj(p.x, p.y); drawMan(p, t, x, y, t.human && p.idx === t.ctrl && M.mode !== 'attract' && (M.mode === 'local' || t.side === M.me) ? MARK[M.mode === 'local' ? t.side : 0] : null); }]);
   list.push([M.ball.y + 0.5, drawBall]);
   list.sort((a, b) => a[0] - b[0]).forEach(e => e[1]());
