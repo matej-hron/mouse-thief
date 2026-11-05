@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.7.1';
+const CACHE = 'pixel-arcade-v2.8.0';
 const ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const ASSETS = [
   './heist.html',
   './pong.html',
   './football.html',
+  './hoops.html',
   './vendor/three.module.min.js',
   './vendor/three.core.min.js',
   './common.js',

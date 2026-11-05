@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong and Pixel Football. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football and Pixel Hoops. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,7 +29,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -44,8 +44,20 @@ nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.to
 window.addEventListener('keydown', e => {
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
   if (e.key === 'Escape') UI.back = true;
+  if (screen === 'home') {
+    const step = { ArrowDown: 40, ArrowUp: -40, PageDown: 150, PageUp: -150 }[e.key];
+    if (step) { e.preventDefault(); scroll.v = 0; scrollTo(scroll.y + step); }
+    if (e.key === 'Home') scrollTo(0); else if (e.key === 'End') scrollTo(1e9);
+  }
 });
-UI.onDown = () => PX.Sound.unlock();
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (screen !== 'home') return;
+  const L = layout();
+  if (y < L.top) return;
+  if (L.max > 0 && x >= S.W - 18) { scroll.bar = true; scroll.v = 0; UI.downId = null; barTo(y); return; }
+  scroll.v = 0; scroll.drag = { id: e.pointerId, last: y, t: performance.now(), moved: 0 };
+};
 const thiefIcon = new Image(); thiefIcon.src = 'icons/icon-192.png';
 const GAMES = [
   { id: 'thief', name: 'MOUSE THIEF', sub: 'RUN FROM THE CAT!', url: 'thief.html', color: '#e01e1e' },
@@ -53,6 +65,7 @@ const GAMES = [
   { id: 'heist', name: 'PIXEL HEIST', sub: 'ROB THE BANK!', url: 'heist.html', color: '#ffd23f' },
   { id: 'pong', name: 'PIXEL PONG', sub: 'TABLE TENNIS!', url: 'pong.html', color: '#1ec8e0' },
   { id: 'football', name: 'PIXEL FOOTBALL', sub: 'RUN YOUR CLUB!', url: 'football.html', color: '#3fae4a' },
+  { id: 'hoops', name: 'PIXEL HOOPS', sub: 'SHOOT BASKETS!', url: 'hoops.html', color: '#ff8a2a' },
 ];
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
@@ -187,15 +200,37 @@ function previewFootball(x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 4, 4); ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(bx), Math.round(by), 2, 2);
   ctx.restore();
 }
+function previewHoops(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#2b1d4a'; ctx.fillRect(x, y, w, h);
+  for (let i = 0; i < w; i += 6) { ctx.fillStyle = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f'][(i / 6) % 4]; ctx.fillRect(x + i + 1, y + 3 - (Math.floor(t * 4 + i) % 7 === 0 ? 1 : 0), 4, 4); }
+  const gy = y + h - 10;
+  ctx.fillStyle = '#c8874a'; ctx.fillRect(x, gy, w, 10); ctx.fillStyle = '#b5763c'; ctx.fillRect(x, gy + 5, w, 1);
+  const bx = x + w - 12, ry = y + 26, front = bx - 20;                     // the hoop
+  ctx.fillStyle = '#4a4a55'; ctx.fillRect(bx + 4, ry - 10, 3, gy - ry + 10);
+  ctx.fillStyle = '#f4f4f4'; ctx.fillRect(bx, ry - 18, 3, 24); ctx.fillStyle = '#e01e1e'; ctx.fillRect(bx, ry - 10, 2, 8);
+  const k = (t * 0.6) % 1, x0 = x + 14, y0 = gy - 22, x1 = front + 10, y1 = ry + 10;   // the ball: up and in
+  const bxp = x0 + (x1 - x0) * k, byp = y0 + (y1 - y0) * k - Math.sin(k * Math.PI) * 34 - (k > 0.8 ? 0 : 0);
+  const drawB = () => { ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bxp) - 3, Math.round(byp) - 3, 7, 7); ctx.fillStyle = '#f08a24'; ctx.fillRect(Math.round(bxp) - 2, Math.round(byp) - 2, 5, 5); ctx.fillStyle = '#5a2a0a'; ctx.fillRect(Math.round(bxp) - 2, Math.round(byp), 5, 1); };
+  if (k < 0.85) drawB();
+  ctx.fillStyle = '#f4f4f4'; for (let i = 0; i < 4; i++) ctx.fillRect(front + 2 + i * 5, ry + 1, 1, 9);
+  ctx.fillStyle = '#ff6a1a'; ctx.fillRect(front, ry, 21, 2);
+  if (k >= 0.85) drawB();
+  ctx.fillStyle = '#111'; ctx.fillRect(x0 - 5, gy - 18, 9, 18);              // the shooter, in your color
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(x0 - 4, gy - 14, 7, 8);
+  ctx.fillStyle = '#f0c090'; ctx.fillRect(x0 - 3, gy - 18, 5, 4); ctx.fillRect(x0 - 3, gy - 6, 2, 6); ctx.fillRect(x0 + 1, gy - 6, 2, 6);
+  ctx.restore();
+}
 function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball })[g.id](x + 6, y + 8, w - 12, 62, t);
-  if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 82, '#fff', 2, 'center', '#000');
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops })[g.id](x + 6, y + 8, w - 12, 62, t);
+  if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
-  if (UI.button('play_' + g.id, x + 8, y + h - 24, w - 16, 18, 'PLAY', { accent: g.color })) play(g);
+  T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');
+  if (UI.button('play_' + g.id, x + 8, y + h - 26, w - 16, 20, 'PLAY', { accent: g.color })) play(g);
 }
 function drawHome(t) {
   const W = S.W;
@@ -208,11 +243,78 @@ function drawHome(t) {
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
   T(profile.name, rx + 36, 44, '#fff', 2, 'left', '#000');
   if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
-  // the games
-  const n = GAMES.length, gap = 6, cw = Math.min(150, Math.floor((W - 16 - gap * (n - 1)) / n)), x0 = Math.round(W / 2 - (cw * n + gap * (n - 1)) / 2);
-  GAMES.forEach((g, i) => card(g, i, x0 + i * (cw + gap), 72, cw, 140, t));
-  if (installPrompt && UI.button('install', 8, H - 22, 90, 16, 'INSTALL APP', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
+  // the games: rows of cards in a box you can swipe (or scroll, or drag the slider on the right)
+  const L = layout(), { top, bottom } = L;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, bottom - top); ctx.clip();
+  const first = UI.list.length;
+  GAMES.forEach((g, i) => {
+    const r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, GAMES.length - r * L.cols);
+    const rx0 = Math.round(L.cx - (L.cw * inRow + L.gap * (inRow - 1)) / 2);
+    const y = Math.round(top + L.pad + r * (CARD_H + L.gap) - scroll.y);
+    if (y > bottom || y + CARD_H < top) return;
+    card(g, i, rx0 + c * (L.cw + L.gap), y, L.cw, CARD_H, t);
+  });
+  ctx.restore();
+  // buttons scrolled out of the box can't be pressed
+  for (let k = UI.list.length - 1; k >= first; k--) {
+    const b = UI.list[k], y0 = Math.max(b.y, top), y1 = Math.min(b.y + b.h, bottom);
+    if (y1 - y0 < 4) UI.list.splice(k, 1); else { b.y = y0; b.h = y1 - y0; }
+  }
+  // fade the edges of the box, and the slider
+  ctx.fillStyle = 'rgba(13,11,19,0.5)';
+  if (scroll.y > 1) ctx.fillRect(0, top, W - 16, 2);
+  if (scroll.y < L.max - 1) ctx.fillRect(0, bottom - 2, W - 16, 2);
+  if (L.max > 0) {
+    const tx = W - 11, th = Math.max(20, Math.round(L.view * L.view / (L.view + L.max))), ty = Math.round(top + (L.view - th) * scroll.y / L.max);
+    ctx.fillStyle = '#111'; ctx.fillRect(tx - 1, top - 1, 8, L.view + 2);
+    ctx.fillStyle = '#1d1830'; ctx.fillRect(tx, top, 6, L.view);
+    const hot = scroll.bar || (UI.mx >= tx - 6 && UI.my >= ty && UI.my < ty + th);
+    ctx.fillStyle = hot ? '#ffd23f' : '#8070b0'; ctx.fillRect(tx, ty, 6, th);
+    ctx.fillStyle = hot ? '#fff' : '#b0a4d8'; ctx.fillRect(tx, ty, 6, 1);
+    ctx.fillStyle = '#3a2f5c'; for (let k = -1; k <= 1; k++) ctx.fillRect(tx + 1, ty + Math.round(th / 2) + k * 3, 4, 1);
+    if (scroll.y < 4 && Math.floor(t * 2) % 2) T('↓', tx + 3, bottom - 10, '#ffd23f', 1, 'center');
+  }
+  if (installPrompt && UI.button('install', 8, 8, 72, 16, 'INSTALL', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
 }
+// --- swiping through the games -----------------------------------------------------------
+const CARD_H = 140;
+const scroll = { y: 0, v: 0, drag: null, bar: false };
+function layout() {
+  const W = S.W, top = 66, bottom = H, gap = 8, pad = 4, slider = 16;
+  const avail = W - 16 - slider, cols = Math.max(2, Math.floor((avail + gap) / (116 + gap)));
+  const cw = Math.min(150, Math.floor((avail - gap * (cols - 1)) / cols)), rows = Math.ceil(GAMES.length / cols);
+  const view = bottom - top, content = pad * 2 + rows * CARD_H + (rows - 1) * gap;
+  return { top, bottom, gap, pad, cols, cw, cx: 8 + avail / 2, view, max: Math.max(0, content - view) };
+}
+function scrollTo(y) { const m = layout().max; scroll.y = Math.max(0, Math.min(m, y)); }
+function barTo(y) { const L = layout(), th = Math.max(20, Math.round(L.view * L.view / (L.view + L.max))); scrollTo((y - L.top - th / 2) / Math.max(1, L.view - th) * L.max); }
+function scrollStep(dt) {
+  if (scroll.drag || scroll.bar) return;
+  if (Math.abs(scroll.v) < 4) { scroll.v = 0; return; }
+  const before = scroll.y; scrollTo(scroll.y + scroll.v * dt);
+  if (scroll.y === before) scroll.v = 0;
+  scroll.v *= Math.exp(-4 * dt);
+}
+UI.onMove = (e, x, y) => {
+  if (screen !== 'home') return;
+  if (scroll.bar) { barTo(y); return; }
+  const d = scroll.drag; if (!d || d.id !== e.pointerId) return;
+  const now = performance.now(), dy = y - d.last, dt = Math.max(1, now - d.t) / 1000;
+  scrollTo(scroll.y - dy);
+  scroll.v = scroll.v * 0.3 + (-dy / dt) * 0.7;
+  d.moved += Math.abs(dy); d.last = y; d.t = now;
+  if (d.moved > 6) UI.downId = null;               // a swipe, not a tap: don't press the button under the finger
+};
+UI.onUp = e => {
+  if (scroll.drag && scroll.drag.id === e.pointerId) { if (performance.now() - scroll.drag.t > 80) scroll.v = 0; scroll.drag = null; }
+  scroll.bar = false;
+};
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (screen !== 'home') return;
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 200 : 1;
+  scroll.v = 0; scrollTo(scroll.y + e.deltaY * k * S.view.dpr / S.view.scale);
+}, { passive: false });
 // --- your name and avatar ------------------------------------------------------------------
 function saveProfile() {
   const name = PX.cleanName(nameInput.value);
@@ -245,9 +347,10 @@ function drawProfile(t) {
   if (UI.button('cancel', Math.round(W / 2 + 4), 190, bw, 22, 'BACK') || UI.back) { nameInput.blur(); screen = 'home'; }
 }
 
-let t0 = performance.now();
+let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
+  scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
   if (screen === 'home') drawHome(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';

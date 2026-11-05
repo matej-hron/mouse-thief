@@ -2,7 +2,7 @@
 
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
-The arcade (`index.html`) is the start screen: pick a game, and set **your name and avatar** (EDIT): all the games use them.
+The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
 
 | Game | |
 |---|---|
@@ -11,6 +11,19 @@ The arcade (`index.html`) is the start screen: pick a game, and set **your name 
 | **Pixel Heist** (`heist.html`) | A low-poly 3D city: rob 5 places, each harder and richer, and escape the police. Rob the bank to win. |
 | **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
 | **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
+| **Pixel Hoops** (`hoops.html`) | Arcade basketball: pull back and let go to shoot. Every basket is +2 points. |
+
+## Pixel Hoops
+
+Arcade basketball, seen from the side. **Every basket is +2 points.**
+
+- **Shooting:** put your finger (or the mouse) anywhere, pull back like a slingshot and let go. The dots show where the
+  ball starts to go, the bar over your player shows the power. You can have a few balls in the air at once.
+- **TIME ATTACK:** 60 seconds, as many baskets as you can. The more you make, the further away you shoot from,
+  and in the last 30 seconds the hoop moves up and down. 10 points = ★1 into the arcade wallet.
+- **FREE SHOOT:** no clock and a longer aiming line, just shoot. Your baskets and shooting % are counted.
+- No rim or backboard touched = **SWISH!** Three in a row and you're **ON FIRE**.
+- P or Escape pauses.
 
 ## Pixel Football
 
