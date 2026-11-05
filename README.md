@@ -32,12 +32,15 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   destroyers). Half of each side's fighter bots guard their carrier, the other half escort their torpedo planes and bombers.
 - **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
   kill target (10 / 15 / 25 by size), or most kills after 3 minutes, wins.
-- **Planes:** fighters are fast and turn tightly (2 machine guns). Bombers are slow and tough, drop bombs
+- **Planes:** fighters are fast and turn tightly (2 machine guns with 40 rounds: they come back slowly when you stop
+  firing, and an empty gun takes 3 s to reload, so aim first and fire short bursts; bots do the same). Bombers are slow and tough, drop bombs
   (4 at a time, one comes back every 8 s; the bomb lands a bit ahead of the plane) and have a rear gunner that shoots
   at enemy fighters by itself. A hurt plane smokes.
 - **Pilots and bots:** every human picks a role (ATTACK BOMBER, ATTACK FIGHTER, DEFENSE FIGHTER; in a dogfight RED or BLUE),
   so friends can fly together or against each other. Bots fill every other seat. SIZE (small / normal / big) and the bots'
-  level (easy / normal / hard) are set before the battle. Shot down? You're back in 4 seconds (attack bombers have 2
+  level (easy / normal / hard) are set before the battle. Shot down? You're back in 4 seconds (defenders come back on a
+  reserve airstrip at the far end of the island, away from the targets; every new plane is protected, with a blinking
+  ring, while it takes off and for 3 s after) (attack bombers have 2
   spare planes per human bomber pilot, then you fly a fighter).
 - **Controls:** keys: arrows or WASD to steer, up / down = faster / slower, Space to fire (or drop bombs / torpedoes), P pauses.
   Phone: drag anywhere to point where to fly; hold + / − (above the FIRE button) for speed.
@@ -45,12 +48,25 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   Controller: left stick points where to fly, A or RT fires, LB / RB slower / faster.
 - **Camera:** NORTH UP (the map stays put) or PLANE UP (your plane always points up and the world turns around it;
   steering is then left / right on every device, and on a phone you drag left or right of where you put your finger).
-  Switch it on the title screen, in the pause menu, or with C during a battle. The minimap always stays north up.
+  Switch it on the title screen, in the pause menu, or with C during a battle. In plane up the minimap becomes a round
+  navigation map around you that turns with you (N marks north).
 - **2 PLAYERS, 1 SCREEN:** split screen. Player 1: WASD + Space, player 2: arrows + Enter (or two controllers; on a
   phone each one uses their half).
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
   the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
   If a player leaves, a bot takes over their plane.
+- **Intro** (the first time the game starts, and the INTRO button on the title screen; tap to skip): a narrator, then
+  Captain Hawk and the Rookie talk on the radio about the battle for the Pixel Archipelago, while the camera flies over
+  a raid and the carrier fleets playing out live. The voices are made by `tools/radio/intro.py`.
+- **FLIGHT SCHOOL** (title screen; offered the first time you play): 7 short lessons, and the instructor flies with
+  you and talks on the radio: 1. take-off (push the throttle), 2. turning (fly through rings), 3. speed (stay close to
+  the instructor while he slows down and speeds up), 4. guns (3 drones), 5. bombing (practice targets with the bomb
+  sight), 6. torpedo (a moving target ship), 7. a first dogfight against an easy enemy. A banner says what to do with
+  your device's controls. ★5 for each lesson the first time, ★1 after that.
+- **Help for bombers and torpedo planes:** blinking yellow markers with names on every target (or enemy ship) still
+  standing, a **bomb sight** (where your bombs will land; green with DROP! when it's on a target), a **torpedo sight**
+  (the torpedo's path; green with FIRE! when it will meet the moving ship), the distance on the target arrow, blinking
+  targets on the minimap, and a briefing on the radio at the start.
 - **Radio:** pilots and command talk to their own side over the radio (bottom left, with a voice): bombers starting
   their run, bombs or torpedo away, targets destroyed, "taking fire, need fighter cover!" (the nearest fighter answers
   and comes; a HELP arrow and a blinking box show you where), "bandit on my tail!", "I'm hit, going down!", the carrier
@@ -58,6 +74,12 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   The voices are recorded with the free [Piper](https://github.com/rhasspy/piper) voices and filtered to sound like
   an old radio (`radio/*.mp3`, about 0.5 MB; `tools/radio/` makes them, the lines are in `tools/radio/lines.py`); VOICE OFF (title screen or pause menu) gives wordless radio chatter instead.
   Big news (a target destroyed, a ship hit or sunk, one minute left) flashes in the middle of the screen.
+- **Stats:** your kills and how often you were shot down are under your health during a battle; your career (battles,
+  wins, planes shot down, times shot down, medals) is on the title screen.
+- **After the battle, a scene** (tap to go on; SCENES ON / OFF on the title screen): win and your pilot gets a medal
+  from the general (BRONZE STAR, SILVER WINGS for 2+ kills or hits, ACE PILOT for 5+ kills) with a fanfare and confetti;
+  lose and there's a memorial stone with your name, flowers, a flag at half mast and a missing-man fly-over (good news:
+  you parachuted out). Both show your stats.
 - **After a battle:** REMATCH starts the same battle again, SWAP SIDES swaps every pilot's side and starts it,
   SETUP goes back to the lobby.
 - **Stars:** a win ★8, every kill ★1 (up to 10), every target you destroy or ship hit ★2.
