@@ -50,6 +50,9 @@ A retro football game seen from the side, six a side, plus running your own club
 - **Your club:** a squad of 6 to 12 players with stats (pace, shooting, passing, defending, keeping), an age, a potential
   and a value. The top 6 in SQUAD play (GK, 2 defenders, 2 midfielders, 1 forward). Young players improve as they play;
   you can also pay to TRAIN players (3 sessions per round). Name your club and pick its kit in MY CLUB.
+- **Computer level:** EASY, NORMAL or HARD, picked before each match. The computer's team runs slower, thinks slower, passes
+  and shoots less accurately and tackles less on easier levels (EASY also helps your keeper and tackles a bit). EASY pays
+  60% of the match money, HARD 130%.
 - **League:** 8 clubs, 14 rounds. A win pays $1,500, a draw $700, a loss $300 (plus ★ into the arcade wallet).
   Prize money at the end of the season ($20,000 for the title, plus a trophy and ★50); then everyone gets a year older.
 - **Transfers:** a new list of players for sale after every round (or pay $300 for a new list). Sell your players for 75% of their value.
