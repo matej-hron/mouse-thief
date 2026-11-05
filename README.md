@@ -48,6 +48,13 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
 - **Online:** up to 6 players. One creates a game and gets a 4-letter code, the others join with it. The host's device runs
   the battle; the others send their controls and draw what the host sends (~0.1 s behind, smoothed).
   If a player leaves, a bot takes over their plane.
+- **Radio:** pilots and command talk to their own side over the radio (bottom left, with a voice): bombers starting
+  their run, bombs or torpedo away, targets destroyed, "taking fire, need fighter cover!" (the nearest fighter answers
+  and comes; a HELP arrow and a blinking box show you where), "bandit on my tail!", "I'm hit, going down!", the carrier
+  being hit, one minute left. Bots have callsigns (EAGLE, LANCER, VIPER, HAMMER, SHARK, DOLPHIN), humans use their name.
+  The voices are recorded with the free [Piper](https://github.com/rhasspy/piper) voices and filtered to sound like
+  an old radio (`radio/*.mp3`, about 0.5 MB; `tools/radio/` makes them, the lines are in `tools/radio/lines.py`); VOICE OFF (title screen or pause menu) gives wordless radio chatter instead.
+  Big news (a target destroyed, a ship hit or sunk, one minute left) flashes in the middle of the screen.
 - **After a battle:** REMATCH starts the same battle again, SWAP SIDES swaps every pilot's side and starts it,
   SETUP goes back to the lobby.
 - **Stars:** a win ★8, every kill ★1 (up to 10), every target you destroy or ship hit ★2.

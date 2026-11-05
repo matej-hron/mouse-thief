@@ -1,0 +1,30 @@
+# the radio lines: id -> spoken text. P = pilots (3 voices), C = command (1 voice)
+P = {
+ 'run': "Target in sight. Starting our run!",
+ 'bombs': "Bombs away!",
+ 'torp': "Torpedo away!",
+ 'target': "Direct hit! Target destroyed!",
+ 'help': "Taking fire! Need fighter cover!",
+ 'onway': "Hang on, I'm on my way!",
+ 'tail': "Bandit on my tail! Get him off me!",
+ 'down': "I'm hit! Going down!",
+ 'splash': "Splash one!",
+ 'cvhit': "Hit! We hit the enemy carrier!",
+}
+C = {
+ 'start_att': "All planes, form up. Heading for the target.",
+ 'start_def': "All fighters, you are clear for takeoff.",
+ 'radar_raid': "Enemy raid on radar. All fighters, scramble!",
+ 'start_cv': "Launch all planes! Find the enemy carrier!",
+ 'start_dog': "All fighters, weapons free. Good hunting!",
+ 'radar_down': "Radar is down. We are flying blind!",
+ 'base_hit': "They hit the base! Stop those bombers!",
+ 'cv_hit': "The carrier is hit! We are taking water!",
+ 'ds_lost': "We lost a destroyer!",
+ 'ds_enemy': "Enemy destroyer is going down!",
+ 'cv_lost': "Abandon ship! The carrier is going down!",
+ 'cv_enemy': "The enemy carrier is sinking!",
+ 'minute': "One minute left!",
+ 'win': "Mission accomplished. Good work, everyone!",
+ 'lose': "Mission failed. All planes, return to base.",
+}

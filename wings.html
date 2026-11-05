@@ -41,9 +41,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelWings.save';
-const save = { sfx: true, wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
+const save = { sfx: true, voice: true, wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -304,7 +304,7 @@ let nextId = 1;
 function newBattle(cfg, players) {
   setMapKind(cfg.mode === 'carrier' ? 'sea' : 'island');
   G = { cfg, time: TIMES[cfg.mode], planes: [], bullets: [], bombs: [], flak: [], fx: [], ships: [], torps: [], fleet: [],
-        targets: [], aa: [], players, launchT: 2, over: false, winner: -1, score: [0, 0], reserve: 0, endT: 0, t: 0 };
+        targets: [], aa: [], players, radioCD: {}, callN: [0, 0, 0, 0, 0, 0], launchT: 2, over: false, winner: -1, score: [0, 0], reserve: 0, endT: 0, t: 0 };
   nextId = 1;
   const size = SIZES[cfg.size];
   if (cfg.mode === 'raid') {
@@ -432,8 +432,16 @@ function hitShip(s, dmg, owner, x, y) {
   const o = planeById(owner), who = o && o.pilot >= 0 ? G.players[o.pilot] : null;
   if (who) who.hits++;
   const name = DOG_NAME[s.side] + (s.k === 'carrier' ? ' CARRIER' : ' DESTROYER');
-  if (s.hp <= 0) { fx({ k: 'boom', x: s.x, y: s.y, s: 3 }); feed(name + (s.k === 'carrier' ? ' IS SINKING!' : ' SUNK!'), '#ffd23f'); }
-  else if (who) feed(who.name + ' HIT THE ' + name + '!', TEAM_COL[o.side]);
+  const cv = s.k === 'carrier';
+  if (s.hp <= 0) {
+    fx({ k: 'boom', x: s.x, y: s.y, s: 3 }); flash(name + (cv ? ' IS SINKING!' : ' SUNK!'), TEAM_COL[s.side]);
+    radio(s.side, cv ? 'cv_lost' : 'ds_lost', null, 0); radio(1 - s.side, cv ? 'cv_enemy' : 'ds_enemy', null, 0);
+  } else if (cv) {
+    flash(name + ' HIT!', TEAM_COL[s.side]);
+    radio(s.side, 'cv_hit', null, 10);
+    if (o && alive(o)) radio(o.side, 'cvhit', o, 6);
+  }
+  if (who) feed(who.name + ' HIT THE ' + name + '!', TEAM_COL[o.side]);
 }
 function stepTorps(dt) {                            // torpedoes run straight through the water
   for (const t of G.torps) {
@@ -459,7 +467,10 @@ function spawnPlane(type, side, x, y, a, pl) {
   const ty = TYPES[type];
   const p = { id: nextId++, type, side, x, y, a, v: ty.vmin + (ty.vmax - ty.vmin) * 0.6, thr: 0.6, hp: ty.hp, max: ty.hp, state: 'air', alt: 1,
               pilot: pl ? G.players.indexOf(pl) : -1, gunT: 0, gunSide: 1, bombs: type === BOMBER ? BOMB_MAX : type === TORPEDO ? TORP_MAX : 0, bombT: 0, reloadT: BOMB_RELOAD,
-              gunnerT: rnd(0, 0.4), fallT: 0, spin: 0, bot: { t: 0, tg: null, err: 0, tgT: -1, wob: rnd(0, 6) }, lastHit: -1 };
+              gunnerT: rnd(0, 0.4), fallT: 0, spin: 0, bot: { t: 0, tg: null, err: 0, tgT: -1, wob: rnd(0, 6) }, lastHit: -1, chkT: rnd(0, 0.5) };
+  // a callsign and a voice for the radio
+  if (pl) { p.call = pl.name; p.voice = [...pl.name].reduce((h, c) => h + c.charCodeAt(0), 0) % 3; }
+  else { const n = ++G.callN[side * 3 + type]; p.call = CALLS[side][type] + ' ' + ((n - 1) % 9 + 1); p.voice = (n + type) % 3; }
   G.planes.push(p);
   return p;
 }
@@ -468,12 +479,56 @@ const flying = p => p.state === 'air';
 const alive = p => p.state === 'air' || p.state === 'ground' || p.state === 'parked';
 function fx(e) { G.fx.push(e); }
 function feed(text, col) { fx({ k: 'msg', text, col }); }
+// RADIO: pilots and command talk to their own side. The sim says who says what; every device plays it.
+const CALLS = [['VIPER', 'HAMMER', 'SHARK'], ['EAGLE', 'LANCER', 'DOLPHIN']];   // [side][plane type]
+const CMD_CALL = { raid: ['COMMAND', 'TOWER'], carrier: ['RED CARRIER', 'BLUE CARRIER'], dog: ['COMMAND', 'COMMAND'] };
+function radio(side, line, p, cd = 6) {                          // cd: this line is not repeated on this side for cd seconds
+  const k = side + line;
+  if (G.t - (G.radioCD[k] === undefined ? -99 : G.radioCD[k]) < cd) return;
+  G.radioCD[k] = G.t;
+  fx({ k: 'radio', side, line, who: p ? p.call : CMD_CALL[G.cfg.mode][side], v: p ? p.voice : -1 });
+}
+function flash(text, col) { fx({ k: 'flash', text, col: col || '#ffd23f' }); }
+function goalOf(p) {                                 // what a bomber or torpedo plane is flying at
+  let best = null, bd = 1e9;
+  const list = G.cfg.mode === 'raid' ? (p.side === ATT ? G.targets.filter(t => t.hp > 0) : [])
+    : G.ships.filter(s => s.side !== p.side && s.hp > 0 && (p.type === BOMBER || s.k === 'carrier'));
+  for (const t of list) { const d = dist(p, t); if (d < bd) { bd = d; best = t; } }
+  return best;
+}
+function radioChecks(p) {                            // twice a second: does this pilot have something to say?
+  if (p.type !== FIGHTER) {
+    const goal = goalOf(p);
+    if (goal && dist(p, goal) < 330) radio(p.side, 'run', p, 14);
+    if (p.hp < p.max * 0.75 && G.t - (p.helpT === undefined ? -99 : p.helpT) > 15) {
+      const threat = G.planes.find(q => q.side !== p.side && q.type === FIGHTER && flying(q) && dist(p, q) < 220);
+      if (threat) {
+        p.helpT = G.t; radio(p.side, 'help', p, 5); fx({ k: 'help', id: p.id, side: p.side });
+        // the closest fighter bot answers and comes to help
+        let best = null, bd = 900;
+        for (const q of G.planes) if (q.side === p.side && q.type === FIGHTER && q.pilot < 0 && flying(q)) { const d = dist(p, q); if (d < bd) { bd = d; best = q; } }
+        if (best) { radio(p.side, 'onway', best, 5); Object.assign(best.bot, { target: threat, escort: null, patrol: false, t: 4 }); }
+      }
+    }
+  } else {
+    for (const q of G.planes) {
+      if (q.side === p.side || q.type !== FIGHTER || !flying(q) || dist(p, q) > 140) continue;
+      if (Math.abs(angDiff(Math.atan2(p.y - q.y, p.x - q.x), q.a)) < 0.4 && Math.abs(angDiff(p.a, q.a)) < 0.9) { radio(p.side, 'tail', p, 10); break; }
+    }
+  }
+}
 function pilotName(p) { return p.pilot >= 0 ? G.players[p.pilot].name : ['A FIGHTER', 'A BOMBER', 'A TORPEDO PLANE'][p.type]; }
 
 // one step of the whole battle; inputs[i] is what human player i does
 function stepBattle(dt, inputs) {
   if (G.over) { G.endT += dt; stepEffectsOnly(dt); return; }
   G.t += dt; G.time -= dt;
+  if (!G.said && G.t > 1.2) {
+    G.said = true;
+    if (G.cfg.mode === 'raid') { radio(ATT, 'start_att'); radio(DEF, 'start_def'); }
+    else for (const sd of [ATT, DEF]) radio(sd, G.cfg.mode === 'carrier' ? 'start_cv' : 'start_dog');
+  }
+  if (!G.minSaid && G.time < 60) { G.minSaid = true; radio(ATT, 'minute'); radio(DEF, 'minute'); flash('ONE MINUTE LEFT!', '#fff'); }
   // the defenders take off one by one
   if (G.cfg.mode === 'raid') {
     G.launchT -= dt;
@@ -526,7 +581,7 @@ function stepBattle(dt, inputs) {
       if ((G.botWait[side] += dt) > respawnDelay(side) + 1) { G.botWait[side] = 0; launchFromDeck(missing, side, null); }
     }
   }
-  if (G.cfg.mode === 'raid' && !G.warned && G.planes.some(p => p.side === ATT && flying(p) && Math.hypot(p.x - IX, p.y - IY) < 1100)) { G.warned = true; feed('RADAR: THE RAID IS COMING!', '#ffd23f'); }
+  if (G.cfg.mode === 'raid' && !G.warned && G.planes.some(p => p.side === ATT && flying(p) && Math.hypot(p.x - IX, p.y - IY) < 1100)) { G.warned = true; radio(DEF, 'radar_raid', null, 99); }
   checkEnd();
 }
 function stepEffectsOnly(dt) {
@@ -588,6 +643,7 @@ function stepPlane(p, dt, inp) {
   const lowAlt = p.alt < 0.6 ? 0.4 : 1;
   p.a = (p.a + rate * ty.turn * slow * lowAlt * dt + TAU) % TAU;
   p.x = clamp(p.x + Math.cos(p.a) * p.v * dt, 10, WW - 10); p.y = clamp(p.y + Math.sin(p.a) * p.v * dt, 10, WH - 10);
+  if ((p.chkT -= dt) <= 0) { p.chkT = 0.5; radioChecks(p); }
   // weapons
   p.gunT -= dt; p.bombT -= dt; p.gunnerT -= dt;
   if (p.type === FIGHTER) {
@@ -606,10 +662,13 @@ function stepPlane(p, dt, inp) {
         p.bombT = 0.8;
         G.torps.push({ x: p.x + Math.cos(p.a) * 8, y: p.y + Math.sin(p.a) * 8, vx: Math.cos(p.a) * TORP_V, vy: Math.sin(p.a) * TORP_V, t: 0, side: p.side, owner: p.id });
         fx({ k: 'torp', x: p.x + Math.cos(p.a) * 8, y: p.y + Math.sin(p.a) * 8 });
+        radio(p.side, 'torp', p, 3);
       } else {
         p.bombT = BOMB_RATE;
         G.bombs.push({ x: p.x, y: p.y, vx: Math.cos(p.a) * p.v * BOMB_DRIFT, vy: Math.sin(p.a) * p.v * BOMB_DRIFT, t: 0, side: p.side, owner: p.id });
         fx({ k: 'drop', x: p.x, y: p.y });
+        if (G.t - (p.dropT || -9) > 3) radio(p.side, 'bombs', p, 3);
+        p.dropT = G.t;
       }
     }
     // the rear gunner (bombers only) shoots by himself at enemy fighters close by
@@ -655,6 +714,8 @@ function damage(q, dmg, by) {
   if (killer && killer.pilot >= 0) G.players[killer.pilot].kills++;
   if (q.pilot >= 0) G.players[q.pilot].deaths++;
   if (killer && G.cfg.mode === 'dog') G.score[killer.side]++;
+  if (q.state === 'air') radio(q.side, 'down', q, q.pilot >= 0 ? 0 : 7);
+  if (killer && killer.type === FIGHTER) radio(killer.side, 'splash', killer, 5);
   if (q.state === 'air') { q.state = 'fall'; q.fallT = 1.3; q.spin = rnd(2, 4) * (Math.random() < 0.5 ? -1 : 1); fx({ k: 'boom', x: q.x, y: q.y, s: 1 }); }
   else { q.state = 'dead'; q.fallT = -1; fx({ k: 'boom', x: q.x, y: q.y, s: 2 }); }
   if ((killer && killer.pilot >= 0) || q.pilot >= 0) feed((killer ? pilotName(killer) : 'FLAK') + ' > ' + pilotName(q), killer ? TEAM_COL[killer.side] : '#ffd23f');
@@ -683,7 +744,10 @@ function groundBlast(x, y, r, dmg, side, owner) {   // a bomb lands: hurts the e
       if (t.hp <= 0) {
         t.hp = 0;
         fx({ k: 'boom', x: t.x, y: t.y, s: t.k === 'fuel' || t.k === 'ammo' ? 3 : 2 });
-        feed(t.name + ' DESTROYED!' + (o && o.pilot >= 0 ? ' (' + G.players[o.pilot].name + ')' : ''), '#ffd23f');
+        flash(t.name + ' DESTROYED!', '#ffd23f');
+        if (o && o.pilot >= 0) feed(G.players[o.pilot].name + ' DESTROYED THE ' + t.name, TEAM_COL[ATT]);
+        if (o && alive(o)) radio(ATT, 'target', o, 3);
+        radio(DEF, t.k === 'radar' ? 'radar_down' : 'base_hit', null, t.k === 'radar' ? 0 : 8);
         if (o && o.pilot >= 0) G.players[o.pilot].hits++;
       }
     }
@@ -731,6 +795,7 @@ function checkEnd() {
     if (G.score[ATT] >= goal) win = ATT; else if (G.score[DEF] >= goal) win = DEF;
     else if (G.time <= 0) win = G.score[ATT] > G.score[DEF] ? ATT : G.score[DEF] > G.score[ATT] ? DEF : 2;
   }
+  if (win === ATT || win === DEF) { radio(win, 'win', null, 0); radio(1 - win, 'lose', null, 0); }
   if (win >= 0) { G.over = true; G.winner = win; G.time = Math.max(0, G.time); fx({ k: 'end', w: win }); }
 }
 
@@ -910,7 +975,95 @@ function handleFx(e) {
       break;
     case 'msg': feedList.push({ text: e.text, col: e.col, t: 0 }); if (feedList.length > 4) feedList.shift(); break;
     case 'end': endFx = e.w; break;
+    case 'radio': if (mySides().includes(e.side) && RADIO_TEXT[e.line]) Radio.push({ side: e.side, line: e.line, who: e.who, v: e.v }); break;
+    case 'flash': flashes.push({ text: e.text, col: e.col, t: 0 }); if (flashes.length > 2) flashes.shift(); break;
+    case 'help': helpMarks.push({ id: e.id, side: e.side, until: performance.now() + 8000 }); break;
   }
+}
+// what the radio says (the text shown; the voice clips say the same)
+const RADIO_TEXT = {
+  run: 'TARGET IN SIGHT. STARTING OUR RUN!', bombs: 'BOMBS AWAY!', torp: 'TORPEDO AWAY!', target: 'DIRECT HIT! TARGET DESTROYED!',
+  help: 'TAKING FIRE! NEED FIGHTER COVER!', onway: "HANG ON, I'M ON MY WAY!", tail: 'BANDIT ON MY TAIL! GET HIM OFF ME!',
+  down: "I'M HIT! GOING DOWN!", splash: 'SPLASH ONE!', cvhit: 'HIT! WE HIT THE ENEMY CARRIER!',
+  start_att: 'ALL PLANES, FORM UP. HEADING FOR THE TARGET.', start_def: 'ALL FIGHTERS, YOU ARE CLEAR FOR TAKEOFF.',
+  radar_raid: 'ENEMY RAID ON RADAR. ALL FIGHTERS, SCRAMBLE!', start_cv: 'LAUNCH ALL PLANES! FIND THE ENEMY CARRIER!',
+  start_dog: 'ALL FIGHTERS, WEAPONS FREE. GOOD HUNTING!', radar_down: 'RADAR IS DOWN. WE ARE FLYING BLIND!',
+  base_hit: 'THEY HIT THE BASE! STOP THOSE BOMBERS!', cv_hit: 'THE CARRIER IS HIT! WE ARE TAKING WATER!',
+  ds_lost: 'WE LOST A DESTROYER!', ds_enemy: 'ENEMY DESTROYER IS GOING DOWN!', cv_lost: 'ABANDON SHIP! THE CARRIER IS GOING DOWN!',
+  cv_enemy: 'THE ENEMY CARRIER IS SINKING!', minute: 'ONE MINUTE LEFT!', win: 'MISSION ACCOMPLISHED. GOOD WORK, EVERYONE!',
+  lose: 'MISSION FAILED. ALL PLANES, RETURN TO BASE.',
+};
+const RADIO_LOW = new Set(['run', 'bombs', 'torp', 'onway', 'tail', 'splash', 'cvhit']);   // these can be skipped when the radio is busy
+// The radio: one message at a time, a click when the mic opens and closes, the recorded voice
+// (radio/<line>_<voice>.mp3), or wordless radio chatter when the voice is off or not loaded yet.
+const Radio = {
+  buf: {}, queue: [], shown: [], until: 0, cur: null,
+  clip(m) { return m.line + '_' + (m.v < 0 ? 'c' : m.v); },
+  preload() {
+    const c = PX.Sound.ctx; if (!c || !save.voice || this.loaded) return;
+    this.loaded = true;
+    for (const line in RADIO_TEXT) for (const v of RADIO_LOW.has(line) || ['help', 'target', 'down'].includes(line) ? [0, 1, 2] : ['c']) {
+      const name = line + '_' + v;
+      fetch('radio/' + name + '.mp3').then(r => (r.ok ? r.arrayBuffer() : Promise.reject())).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no)))
+        .then(b => { this.buf[name] = b; }).catch(() => { /* no voice for this one: chatter */ });
+    }
+  },
+  reset() { this.queue = []; this.shown = []; this.until = 0; this.cur = null; },
+  push(m) {
+    m.at = performance.now(); m.low = RADIO_LOW.has(m.line);
+    if (this.queue.length >= 3) { const i = this.queue.findIndex(q => q.low); if (i >= 0) this.queue.splice(i, 1); else if (m.low) return; else this.queue.shift(); }
+    this.queue.push(m);
+  },
+  step(now) {
+    if (this.cur && now < this.until) return;
+    this.cur = null;
+    this.queue = this.queue.filter(q => now - q.at < (q.low ? 2500 : 6000));
+    const m = this.queue.shift(); if (!m) return;
+    this.cur = m; m.t0 = now;
+    this.shown.push(m); if (this.shown.length > 3) this.shown.shift();
+    let dur = Math.min(2.2, 0.5 + RADIO_TEXT[m.line].length * 0.045);
+    const c = PX.Sound.ctx;
+    if (c && save.sfx) {
+      const t0 = c.currentTime + 0.02, b = save.voice && this.buf[this.clip(m)];
+      this.click(t0);
+      if (b) {
+        const src = c.createBufferSource(), g = c.createGain(); src.buffer = b; g.gain.value = 1.4;
+        src.connect(g); g.connect(PX.Sound.out); src.start(t0 + 0.09); dur = b.duration;
+      } else this.chatter(t0 + 0.09, dur, m.v);
+      this.click(t0 + 0.12 + dur);
+    }
+    this.until = now + (dur + 0.35) * 1000;
+  },
+  click(t) {                                                  // the mic opens / closes: a short burst of static
+    const c = PX.Sound.ctx, len = Math.ceil(c.sampleRate * 0.07), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 0.8; g.gain.value = 0.35;
+    src.connect(f); f.connect(g); g.connect(PX.Sound.out); src.start(t);
+  },
+  chatter(t, dur, v) {                                        // garbled voice-like syllables through a narrow radio band, over a hiss
+    const c = PX.Sound.ctx, base = v < 0 ? 105 : [130, 150, 205][v % 3];
+    const band = c.createBiquadFilter(), g = c.createGain();
+    band.type = 'bandpass'; band.frequency.value = 1200; band.Q.value = 1.6; g.gain.value = 0.9;
+    band.connect(g); g.connect(PX.Sound.out);
+    let x = t;
+    while (x < t + dur - 0.08) {
+      const len = rnd(0.07, 0.16), o = c.createOscillator(), e = c.createGain();
+      o.type = 'sawtooth'; const f0 = base * rnd(0.9, 1.25);
+      o.frequency.setValueAtTime(f0, x); o.frequency.linearRampToValueAtTime(f0 * rnd(0.8, 1.15), x + len);
+      e.gain.setValueAtTime(0.0001, x); e.gain.exponentialRampToValueAtTime(0.28, x + 0.02); e.gain.exponentialRampToValueAtTime(0.0001, x + len);
+      o.connect(e); e.connect(band); o.start(x); o.stop(x + len + 0.02);
+      x += len + rnd(0.015, 0.07);
+    }
+    const len = Math.ceil(c.sampleRate * dur), nb = c.createBuffer(1, len, c.sampleRate), d = nb.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.12;
+    const ns = c.createBufferSource(); ns.buffer = nb; ns.connect(band); ns.start(t);
+  },
+};
+let flashes = [], helpMarks = [];
+function mySides() {                                // the sides of the players on this device
+  if (Net.isClient()) { const r = Net.roster && Net.roster[Net.myPid]; return r ? [r.side] : []; }
+  return G ? G.players.filter(p => p.local !== undefined).map(p => p.side) : [];
 }
 function stepParts(dt) {
   for (const p of parts) {
@@ -921,6 +1074,9 @@ function stepParts(dt) {
   parts = parts.filter(p => p.t < p.life);
   if (parts.length > 900) parts.splice(0, parts.length - 900);
   for (const f of feedList) f.t += dt;
+  for (const f of flashes) f.t += dt;
+  flashes = flashes.filter(f => f.t < 2.4);
+  helpMarks = helpMarks.filter(h => h.until > performance.now());
   feedList = feedList.filter(f => f.t < 6);
   shake = Math.max(0, shake - dt * 10);
 }
@@ -1102,6 +1258,12 @@ function drawWorld(V, cam, vx, vw, time) {
   ctx.beginPath();
   for (const b of V.bullets) if (inView(b.x, b.y, 4)) { ctx.moveTo(Math.round(b.x), Math.round(b.y)); ctx.lineTo(Math.round(b.x - b.vx * 0.012), Math.round(b.y - b.vy * 0.012)); }
   ctx.stroke();
+  for (const h of helpMarks) {                                    // a plane calling for help: a blinking box around it
+    const q = V.planes.find(p => p.id === h.id);
+    if (!q || q.state !== 'air' || !inView(q.x, q.y, 30) || !mySides().includes(h.side) || Math.floor(time * 4) % 2) continue;
+    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(q.x) - 15, Math.round(q.y) - 15, 30, 30);
+    T('HELP!', q.x, q.y - 24, '#ffd23f', 1, 'center', '#000');
+  }
   // names over the human pilots
   for (const p of V.planes) {
     if (p.pilot < 0 || p.state === 'dead' || p.state === 'fall' || !inView(p.x, p.y, 30) || p === cam.plane) continue;
@@ -1147,6 +1309,12 @@ function drawMinimap(V, me, mySide, x, y, w, h, time) {
     ctx.fillStyle = TEAM_COL[p.side]; ctx.fillRect(Math.round(x + p.x * kx) - (s >> 1), Math.round(y + p.y * ky) - (s >> 1), s + 1, s + 1);
   }
   if (me && Math.floor(time * 4) % 2) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(x + me.x * kx) - 1, Math.round(y + me.y * ky) - 1, 3, 3); }
+  for (const h of helpMarks) {                                     // a friend calling for help: a blinking ring
+    if (h.side !== mySide) continue;
+    const q = V.planes.find(p => p.id === h.id); if (!q || q.state !== 'air') continue;
+    ctx.strokeStyle = Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff'; ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(x + q.x * kx) - 3, Math.round(y + q.y * ky) - 3, 7, 7);
+  }
   if (radar) T('RADAR', x + 2, y + 2, '#9be36b', 1);
 }
 // the HUD of one local player: health, speed, bombs, mission, minimap, messages, touch controls
@@ -1155,7 +1323,7 @@ function drawHUD(V, pi, vx, vw, view, time) {
   const live = me && me.state !== 'dead' && me.state !== 'fall';
   // the mission, top middle
   const cx = vx + vw / 2, compact = vw < 300;
-  let feedY = 38;
+  let feedY = 40;
   if (compact) {                                                   // split screen: the mission goes under my health
     feedY = 58;
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, 34, 62, 20);
@@ -1167,21 +1335,40 @@ function drawHUD(V, pi, vx, vw, view, time) {
     } else { T(String(V.score[ATT]), vx + 4, 37, TEAM_COL[ATT], 1); T(String(V.score[DEF]), vx + 20, 37, TEAM_COL[DEF], 1); T('TO ' + DOG_KILLS[cfg.size], vx + 36, 37, '#9a92b8', 1); }
     T(fmtTime(V.time), vx + 4, 46, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 1);
   } else {
-  ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 62, 2, 124, 20);
+  // the score: big and with pictures (left part), the clock (right part)
+  const bx0 = cx - 92, timeCol = V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff';
+  ctx.fillStyle = '#111'; ctx.fillRect(bx0 - 1, 1, 186, 34); ctx.fillStyle = 'rgba(29,24,48,0.92)'; ctx.fillRect(bx0, 2, 184, 32);
+  ctx.fillStyle = '#3a3450'; ctx.fillRect(cx + 40, 6, 1, 24);
+  T(fmtTime(V.time), cx + 88, 8, timeCol, 2, 'right');
   if (cfg.mode === 'carrier') {
     for (const sd of [ATT, DEF]) {
-      const cv = (V.ships || []).find(q => q.side === sd && q.k === 'carrier');
-      T(DOG_NAME[sd], cx - 58, 5 + sd * 9, TEAM_COL[sd], 1); hpBar(cx - 36, 5 + sd * 9, 44, cv ? cv.hp / cv.max : 0, TEAM_COL[sd]);
+      const cv = (V.ships || []).find(q => q.side === sd && q.k === 'carrier'), k = cv ? cv.hp / cv.max : 0, y = 5 + sd * 15;
+      T(DOG_NAME[sd], bx0 + 4, y + 1, TEAM_COL[sd], 2);
+      ctx.fillStyle = '#111'; ctx.fillRect(bx0 + 52, y, 74, 11); ctx.fillStyle = '#2a2440'; ctx.fillRect(bx0 + 53, y + 1, 72, 9);
+      ctx.fillStyle = TEAM_COL[sd]; ctx.fillRect(bx0 + 53, y + 1, Math.round(72 * clamp(k, 0, 1)), 9);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx0 + 53, y + 1, Math.round(72 * clamp(k, 0, 1)), 2);
     }
-    T(fmtTime(V.time), cx + 58, 7, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 2, 'right');
+    T('CARRIERS', cx + 88, 24, '#9a92b8', 1, 'right');
   } else if (cfg.mode === 'raid') {
-    const left = V.targets.filter(t => t.hp > 0).length, bombers = V.planes.filter(p => p.side === ATT && p.type === BOMBER && p.state !== 'dead' && p.state !== 'fall').length;
-    T('TARGETS ' + left, cx - 58, 5, '#ffd23f', 1); T('BOMBERS ' + bombers + (V.reserve ? '+' + V.reserve : ''), cx - 58, 14, TEAM_COL[ATT], 1);
-    T(fmtTime(V.time), cx + 58, 7, V.time < 30 && Math.floor(time * 4) % 2 ? '#ff4040' : '#fff', 2, 'right');
+    V.targets.forEach((t, i) => {                                  // one building per target: yellow standing, crossed out when gone
+      const x = bx0 + 5 + i * 15, y = 5;
+      ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, 13, 13);
+      ctx.fillStyle = t.hp > 0 ? '#ffd23f' : '#3a3450'; ctx.fillRect(x, y + 4, 11, 7); ctx.fillRect(x + 2, y + 1, 7, 3);
+      if (t.hp <= 0) { ctx.fillStyle = '#ff4040'; for (let k = 0; k < 11; k++) { ctx.fillRect(x + k, y + k, 1, 1); ctx.fillRect(x + 10 - k, y + k, 1, 1); } }
+      else if (t.hp < t.max) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(x + 1, y + 9, Math.round(9 * t.hp / t.max), 2); }
+    });
+    const bombers = V.planes.filter(p => p.side === ATT && p.type === BOMBER && p.state !== 'dead' && p.state !== 'fall').length;
+    for (let i = 0; i < Math.min(bombers, 9); i++) {               // one little bomber per bomber still flying
+      const x = bx0 + 6 + i * 10, y = 24;
+      ctx.fillStyle = TEAM_COL[ATT]; ctx.fillRect(x, y + 2, 8, 2); ctx.fillRect(x + 3, y, 2, 6); ctx.fillRect(x, y + 1, 1, 4);
+    }
+    T((bombers > 9 ? '+' + (bombers - 9) : '') + (V.reserve ? ' +' + V.reserve : ''), bx0 + 8 + Math.min(bombers, 9) * 10, 25, TEAM_COL[ATT], 1);
+    if (!bombers && !V.reserve) T('NO BOMBERS', bx0 + 6, 25, TEAM_COL[ATT], 1);
+    T('TARGETS', cx + 88, 24, '#9a92b8', 1, 'right');
   } else {
-    T(String(V.score[ATT]), cx - 40, 6, TEAM_COL[ATT], 2, 'center', '#000'); T(':', cx - 28, 6, '#fff', 2, 'center');
-    T(String(V.score[DEF]), cx - 16, 6, TEAM_COL[DEF], 2, 'center', '#000');
-    T(fmtTime(V.time), cx + 58, 4, '#fff', 1, 'right'); T('TO ' + DOG_KILLS[cfg.size], cx + 58, 13, '#9a92b8', 1, 'right');
+    T(String(V.score[ATT]), cx - 44, 7, TEAM_COL[ATT], 3, 'right', '#000'); T(':', cx - 34, 7, '#fff', 3, 'center');
+    T(String(V.score[DEF]), cx - 24, 7, TEAM_COL[DEF], 3, 'left', '#000');
+    T('TO ' + DOG_KILLS[cfg.size], cx + 88, 24, '#9a92b8', 1, 'right');
   }
   }
   if (!pl) return;
@@ -1205,8 +1392,10 @@ function drawHUD(V, pi, vx, vw, view, time) {
     T('SHOT DOWN!', cx, H / 2 - 20, '#ff4040', 3, 'center', '#000');
     if (wait > 0) T('BACK IN THE AIR IN ' + wait, cx, H / 2 + 4, '#fff', 1, 'center', '#000');
   }
-  // pointers to what matters: where to go
-  if (live && cfg.mode === 'carrier') {
+  // pointers to what matters: where to go (a bomber calling for help comes first for fighters)
+  const help = live && me.type === FIGHTER ? helpMarks.filter(h => h.side === me.side).map(h => V.planes.find(q => q.id === h.id)).find(q => q && q.state === 'air') : null;
+  if (help) drawArrow(vx, vw, view.sx, view.sy, help.x, help.y, Math.floor(time * 4) % 2 ? '#ffd23f' : '#fff', 'HELP');
+  else if (live && cfg.mode === 'carrier') {
     if (me.type !== FIGHTER) {
       const cv = V.ships.find(q => q.side !== me.side && q.k === 'carrier' && q.hp > 0);
       if (cv) drawArrow(vx, vw, view.sx, view.sy, cv.x, cv.y, '#ffd23f', 'CARRIER');
@@ -1235,13 +1424,34 @@ function drawHUD(V, pi, vx, vw, view, time) {
       : PX.Pad.used ? ['STICK = STEER   A = FIRE', 'RB = FASTER   LB = SLOWER']
       : two ? (li === 0 ? ['A D = STEER   SPACE = FIRE', 'W = FASTER   S = SLOWER'] : ['ARROWS = STEER   ENTER = FIRE', 'UP = FASTER   DOWN = SLOWER'])
       : ['ARROWS = STEER   SPACE = FIRE', '↑ = FASTER   ↓ = SLOWER'];
-    const hy = H - (Ctl.touch ? 132 : 64);
+    const hy = H - (Ctl.touch ? 132 : 100);
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 74, hy - 4, 148, 26);
     T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
   }
   // the minimap
   const mw = vw < 300 ? 56 : 72, mh = Math.round(mw * WH / WW);
   drawMinimap(V, live ? me : view.cam, pl.side, vx + vw - mw - 4, 4, mw, mh, time);
+  // big news in the middle of the screen
+  const fl = flashes[flashes.length - 1];
+  if (fl && (fl.t < 1.8 || Math.floor(fl.t * 8) % 2)) {
+    const sz = compact ? 1 : 2, w = PX.textWidth(fl.text, sz) + 16, y = compact ? 64 : 52;
+    ctx.fillStyle = 'rgba(13,11,19,0.75)'; ctx.fillRect(Math.round(cx - w / 2), y - 5, w, sz * 5 + 10);
+    T(fl.text, cx, y, fl.col, sz, 'center', '#000');
+  }
+  // the radio: the last few messages from my side, bottom left
+  const msgs = Radio.shown.filter(m => m.side === pl.side && performance.now() - m.t0 < 7000);
+  const maxCh = Math.floor((vw - (Ctl.touch ? 96 : 20)) / 4);
+  msgs.forEach((m, i) => {
+    const y = H - 34 - (msgs.length - 1 - i) * 10, on = m === Radio.cur;
+    const who = m.who + ': ', txt = (who + RADIO_TEXT[m.line]).slice(0, maxCh), age = performance.now() - m.t0;
+    ctx.globalAlpha = age > 6000 ? (7000 - age) / 1000 : 1;
+    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, y - 2, PX.textWidth(txt, 1) + 14, 9);
+    ctx.fillStyle = on && Math.floor(time * 6) % 2 ? '#5ad43f' : '#9a92b8';                // a little speaker
+    ctx.fillRect(vx + 4, y + 1, 2, 3); ctx.fillRect(vx + 6, y, 1, 5); if (on) { ctx.fillRect(vx + 8, y + 1, 1, 3); }
+    T(txt.slice(0, who.length), vx + 11, y, TEAM_COL[m.side], 1);
+    T(txt.slice(who.length), vx + 11 + PX.textWidth(who, 1) + 4, y, on ? '#fff' : '#cfc8e8', 1);
+    ctx.globalAlpha = 1;
+  });
   // messages
   feedList.forEach((f, i) => { if (f.t < 5.5 || Math.floor(f.t * 6) % 2) T(f.text.slice(0, Math.floor(vw / 4)), vx + 4, feedY + i * 9, f.col, 1, 'left', '#000'); });
   // touch controls
@@ -1533,7 +1743,7 @@ function startClientBattle(m) {
   state = 'play'; paused = false; leaveAsk = false;
 }
 let hintT = 0;
-function resetEffects() { hintT = performance.now(); parts = []; feedList = []; shake = 0; endFx = -1; cams = []; overInfo = null; }
+function resetEffects() { Radio.reset(); Radio.preload(); flashes = []; helpMarks = []; hintT = performance.now(); parts = []; feedList = []; shake = 0; endFx = -1; cams = []; overInfo = null; }
 let overInfo = null;
 function toOver() {
   // what happened, for the result screen; stars for the players on this device
@@ -1593,6 +1803,7 @@ function drawTitle(t, dt) {
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  if (UI.button('voice', W - 74, 30, 68, 16, save.voice ? 'VOICE ON' : 'VOICE OFF', { size: 1, on: save.voice })) { save.voice = !save.voice; store(); if (save.voice) Radio.preload(); }
   T('PIXEL', W / 2, 36, '#7ac8ff', 3, 'center', '#000');
   T('WINGS', W / 2, 54, '#fff', 6, 'center', '#2a7fd4');
   const bw = 200, bx = Math.round(W / 2 - bw / 2);
@@ -1721,11 +1932,11 @@ function drawOnline(t, dt) {
   }
 }
 function drawPause() {
-  const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
-  ctx.fillStyle = 'rgba(13,11,19,0.0)';
+  const W = S.W, { y } = panel(200, 132), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
-  if (UI.button('quit', bx, y + 70, bw, 22, 'QUIT BATTLE')) toTitle();
+  if (UI.button('pvoice', bx, y + 68, bw, 18, save.voice ? 'RADIO VOICE: ON' : 'RADIO VOICE: OFF', { size: 1, on: save.voice })) { save.voice = !save.voice; store(); if (save.voice) Radio.preload(); }
+  if (UI.button('quit', bx, y + 96, bw, 22, 'QUIT BATTLE')) toTitle();
 }
 function drawLeave() {
   const W = S.W, { y } = panel(220, 100), bw = 160, bx = Math.round(W / 2 - bw / 2);
@@ -1823,14 +2034,14 @@ function frame(now) {
         toOver();
       }
     } else acc = 0;
-    if (!paused) stepParts(dt);
+    if (!paused) { stepParts(dt); Radio.step(performance.now()); }
     if (state === 'play') {
       drawPlay(t, dt);
       if (paused) drawPause(); else if (leaveAsk) drawLeave();
     } else if (state === 'over') { drawPlay(t, 0); drawOver(t); }
   } else if (state === 'over') {
     if (Net.isClient()) Net.buildView(now); else if (G) { stepBattle(STEP, []); G.fx = []; }
-    stepParts(dt);
+    stepParts(dt); Radio.step(performance.now());
     drawPlay(t, 0); ctx.fillStyle = 'rgba(13,11,19,0.4)'; ctx.fillRect(0, 0, S.W, H);
     drawOver(t);
   } else if (state === 'title') drawTitle(t, dt);
