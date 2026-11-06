@@ -202,25 +202,33 @@ function previewFootball(x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 4, 4); ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(bx), Math.round(by), 2, 2);
   ctx.restore();
 }
-function previewHoops(x, y, w, h, t) {
+function previewHoops(x, y, w, h, t) {           // seen from behind the shooter, in perspective
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.fillStyle = '#2b1d4a'; ctx.fillRect(x, y, w, h);
-  for (let i = 0; i < w; i += 6) { ctx.fillStyle = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f'][(i / 6) % 4]; ctx.fillRect(x + i + 1, y + 3 - (Math.floor(t * 4 + i) % 7 === 0 ? 1 : 0), 4, 4); }
-  const gy = y + h - 10;
-  ctx.fillStyle = '#c8874a'; ctx.fillRect(x, gy, w, 10); ctx.fillStyle = '#b5763c'; ctx.fillRect(x, gy + 5, w, 1);
-  const bx = x + w - 12, ry = y + 26, front = bx - 20;                     // the hoop
-  ctx.fillStyle = '#4a4a55'; ctx.fillRect(bx + 4, ry - 10, 3, gy - ry + 10);
-  ctx.fillStyle = '#f4f4f4'; ctx.fillRect(bx, ry - 18, 3, 24); ctx.fillStyle = '#e01e1e'; ctx.fillRect(bx, ry - 10, 2, 8);
-  const k = (t * 0.6) % 1, x0 = x + 14, y0 = gy - 22, x1 = front + 10, y1 = ry + 10;   // the ball: up and in
-  const bxp = x0 + (x1 - x0) * k, byp = y0 + (y1 - y0) * k - Math.sin(k * Math.PI) * 34 - (k > 0.8 ? 0 : 0);
-  const drawB = () => { ctx.fillStyle = '#111'; ctx.fillRect(Math.round(bxp) - 3, Math.round(byp) - 3, 7, 7); ctx.fillStyle = '#f08a24'; ctx.fillRect(Math.round(bxp) - 2, Math.round(byp) - 2, 5, 5); ctx.fillStyle = '#5a2a0a'; ctx.fillRect(Math.round(bxp) - 2, Math.round(byp), 5, 1); };
-  if (k < 0.85) drawB();
-  ctx.fillStyle = '#f4f4f4'; for (let i = 0; i < 4; i++) ctx.fillRect(front + 2 + i * 5, ry + 1, 1, 9);
-  ctx.fillStyle = '#ff6a1a'; ctx.fillRect(front, ry, 21, 2);
-  if (k >= 0.85) drawB();
-  ctx.fillStyle = '#111'; ctx.fillRect(x0 - 5, gy - 18, 9, 18);              // the shooter, in your color
-  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(x0 - 4, gy - 14, 7, 8);
-  ctx.fillStyle = '#f0c090'; ctx.fillRect(x0 - 3, gy - 18, 5, 4); ctx.fillRect(x0 - 3, gy - 6, 2, 6); ctx.fillRect(x0 + 1, gy - 6, 2, 6);
+  const cx = x + w / 2, hor = y + 30;
+  ctx.fillStyle = '#251842'; ctx.fillRect(x, y, w, hor - y);                    // the crowd
+  const cols = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f', '#3fae4a', '#ff8a2a'];
+  for (let r = 0; r < 4; r++) for (let i = 0; i < w; i += 5) {
+    ctx.fillStyle = cols[(i / 5 + r * 2) % cols.length | 0];
+    ctx.fillRect(x + i + (r % 2) * 2, y + 4 + r * 6 - (Math.floor(t * 3 + i + r) % 9 === 0 ? 1 : 0), 3, 3);
+  }
+  ctx.fillStyle = '#e01e1e'; ctx.fillRect(x, hor - 4, w, 4); ctx.fillStyle = '#2a7fd4'; for (let i = 0; i < w; i += 24) ctx.fillRect(x + i, hor - 4, 12, 4);
+  ctx.fillStyle = '#c8874a'; ctx.fillRect(x, hor, w, y + h - hor);              // the floor, its paint in perspective
+  ctx.fillStyle = '#3d64b8'; ctx.beginPath(); ctx.moveTo(cx - 12, hor); ctx.lineTo(cx + 12, hor); ctx.lineTo(cx + 34, y + h); ctx.lineTo(cx - 34, y + h); ctx.fill();
+  ctx.fillStyle = '#4a4a55'; ctx.fillRect(cx - 1, y + 16, 2, hor - y - 12);     // the hoop
+  ctx.fillStyle = '#111'; ctx.fillRect(cx - 12, y + 3, 24, 16); ctx.fillStyle = '#f4f4f4'; ctx.fillRect(cx - 11, y + 4, 22, 14);
+  ctx.strokeStyle = '#e01e1e'; ctx.lineWidth = 1; ctx.strokeRect(cx - 4.5, y + 9.5, 9, 6);
+  const k = (t * 0.6) % 1, x0 = cx + 18, y0 = y + h - 16, x1 = cx, y1 = y + 19;  // the ball: up and in, getting smaller
+  const bx = x0 + (x1 - x0) * k, by = y0 + (y1 - y0) * k - Math.sin(k * Math.PI) * 26, br = 4 - 2 * k;
+  const ball = () => { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(bx, by, br + 1, 0, 7); ctx.fill(); ctx.fillStyle = '#f08a24'; ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); };
+  if (k < 0.85) ball();
+  ctx.fillStyle = '#f4f4f4'; for (let i = 0; i < 4; i++) ctx.fillRect(cx - 4 + i * 2.5, y + 21, 1, 6);
+  ctx.fillStyle = '#ff6a1a'; ctx.fillRect(cx - 6, y + 19, 12, 2);
+  if (k >= 0.85) ball();
+  const sx = cx + 22, sy = y + h;                                               // the shooter, from behind, in your color
+  ctx.fillStyle = '#111'; ctx.fillRect(sx - 9, sy - 13, 18, 13);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(sx - 8, sy - 12, 16, 12);
+  ctx.fillStyle = '#f0c090'; ctx.fillRect(sx - 4, sy - 22, 8, 9);
+  ctx.fillRect(sx - 9, sy - (k < 0.2 ? 30 : 14), 3, k < 0.2 ? 18 : 8); ctx.fillRect(sx + 6, sy - (k < 0.2 ? 30 : 14), 3, k < 0.2 ? 18 : 8);
   ctx.restore();
 }
 function previewWings(x, y, w, h, t) {

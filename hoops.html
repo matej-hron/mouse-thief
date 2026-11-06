@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Hoops: arcade basketball. Pull back and let go to shoot. Every basket is 2 points.">
+<meta name="description" content="Pixel Hoops: arcade basketball that looks 3D. Pull back and let go to shoot. Every basket is 2 points.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -25,15 +25,18 @@
 'use strict';
 /* ==========================================================================
    PIXEL HOOPS: arcade basketball (part of the PIXEL ARCADE).
-   Pull back anywhere on the screen and let go to shoot (like a slingshot).
-   Every basket is +2 points.
+   It is drawn flat in 2D, but the court, the hoop and the ball live in 3D
+   (in metres) and every frame they are projected through a camera standing
+   behind your player, so it looks 3D (like Pixel GP).
+   Pull back (down) anywhere on the screen and let go to shoot (like a slingshot).
+   Pull further for a harder throw, sideways to aim the other way. Every basket is +2 points.
      TIME ATTACK: 60 seconds, as many baskets as you can. Late in the game the hoop moves.
      FREE SHOOT: no clock, just shoot.
      1. Setup   2. The game   3. Physics   4. Drawing   5. Screens   6. Input   7. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const SAVE_KEY = 'pixelHoops.save';
 const save = { best: 0, made: 0, shots: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -49,11 +52,17 @@ const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) =
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rnd = (a, b) => a + Math.random() * (b - a);
 
-const GY = 214;                 // the floor
-const BR = 6.5;                 // ball radius
-const GRAV = 520;
-const RIM_W = 30, RIM_R = 2;    // rim opening and the size of its two ends
-const PULL = 6, MAX_PULL = 92;  // speed per pixel of pull, longest pull
+// the world, in metres: the hoop is at x = 0, z = 0, the court runs towards +z, y is up
+const GRAV = 9.8;
+const BR = 0.12;                                // ball radius
+const RIM_R = 0.27, RIM_T = 0.02, RIM_Y = 3.05; // rim radius (a bit bigger than a real one), its thickness, its height
+const BOARD_Z = -0.4, BOARD_HW = 0.9, BOARD_Y0 = 2.9, BOARD_Y1 = 3.97;
+const POLE_Z = -1.9;
+const BASE_Z = -1.575, HALF_Z = 12.4, SIDE_X = 7.5, KEY_Z = 4.225;
+const REL_Y = 2.12, ANGLE = 52 * Math.PI / 180;  // the ball leaves your hands this high, at this angle
+const MAX_PULL = 100;                            // longest pull (screen pixels)
+// the camera: F = focal length in pixels, HOR = the horizon on the screen; it looks over your shoulder (CAM_BACK behind you, CAM_SIDE to your left)
+const F = 340, HOR = 80, CAM_Y = 3.2, CAM_BACK = 3.6, CAM_SIDE = 0.7, NEAR = 0.3;
 const GAME_TIME = 60;
 const POINTS = 2;
 
@@ -61,37 +70,41 @@ const POINTS = 2;
 let state = 'title';            // title | play | over
 let paused = false;
 let G = null;
-function hoop() {               // where the hoop is right now (it moves late in TIME ATTACK)
-  const W = S.W, bx = W - 26;
-  let ry = 104;
-  if (G && G.mode === 'timed' && G.time < 30) ry += Math.sin(G.hoopT * 1.3) * 26 * Math.min(1, (30 - G.time) / 4);
-  return { bx, ry, front: bx - 3 - RIM_W, back: bx - 3, top: ry - 46, bot: ry + 8 };
+function hoop() {               // where the hoop is right now (it slides left and right late in TIME ATTACK)
+  let x = 0;
+  if (G && G.mode === 'timed' && G.time < 30) x = Math.sin(G.hoopT * 1.3) * 1.2 * Math.min(1, (30 - G.time) / 4);
+  return { x, z: 0 };
+}
+function shooterAt(a, d) { return { a, d, x: Math.sin(a) * d, z: Math.cos(a) * d }; }   // a = angle around the hoop, d = distance
+function handPos(me) {          // where your player holds the ball (right hand, a bit in front)
+  const fx = -Math.sin(me.a), fz = -Math.cos(me.a), rx = Math.cos(me.a), rz = -Math.sin(me.a);
+  return { x: me.x + rx * 0.12 + fx * 0.2, y: REL_Y, z: me.z + rz * 0.12 + fz * 0.2 };
 }
 function newGame(mode) {
   G = { mode, score: 0, made: 0, shots: 0, streak: 0, bestStreak: 0, time: GAME_TIME, hoopT: 0,
-        balls: [], spot: null, next: 0, pops: [], net: 0, stars: 0, newBest: false, overT: 0, buzz: 3 };
+        balls: [], spot: null, me: null, cam: null, throwT: 9, next: 0, pops: [], net: 0, stars: 0, newBest: false, overT: 0, buzz: 3 };
   newSpot();
+  G.cam = { a: G.me.a, d: G.me.d + CAM_BACK };
   state = 'play'; paused = false; aim = null;
 }
-function newSpot() {
-  const W = S.W, h = hoop();
+function newSpot() {            // a new place to shoot from: the camera glides there behind you
   const far = G.mode === 'timed' ? clamp(0.35 + G.made * 0.03, 0.35, 1) : 1;   // in TIME ATTACK the spots move further away
-  const minX = 36, maxX = h.front - 90, x = Math.round(maxX - (maxX - minX) * rnd(0.1, 1) * far);
-  G.spot = { x, bx: x + 4, by: GY - 50 };
+  const d = 2.8 + 4.2 * rnd(0.1, 1) * far, a = rnd(-0.85, 0.85);
+  G.me = shooterAt(a, d); G.spot = G.me;
 }
-function shoot(vx, vy) {
-  const sp = G.spot;
-  G.balls.push({ x: sp.bx, y: sp.by, vx, vy, rot: 0, age: 0, rest: 0, touched: false, scored: false, fire: G.streak >= 3 });
+function shoot(v) {
+  const p = handPos(G.me);
+  G.balls.push({ x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z, rot: 0, age: 0, rest: 0, touched: false, scored: false, fire: G.streak >= 3 });
   G.shots++; save.shots++;
-  G.spot = null; G.next = 0.35;
+  G.spot = null; G.next = 0.6; G.throwT = 0;
   sfx('throw');
 }
 function scored(b) {
   b.scored = true; G.made++; save.made++; G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak);
   G.score += POINTS; G.net = 1;
   const h = hoop();
-  G.pops.push({ x: h.front + RIM_W / 2, y: h.ry - 14, text: '+' + POINTS, t: 0, color: '#ffd23f' });
-  if (!b.touched) G.pops.push({ x: h.front + RIM_W / 2 - 40, y: h.ry - 30, text: 'SWISH!', t: 0, color: '#7af0ff' });
+  G.pops.push({ wx: h.x, wy: RIM_Y + 0.5, wz: h.z, text: '+' + POINTS, t: 0, color: '#ffd23f' });
+  if (!b.touched) G.pops.push({ wx: h.x, wy: RIM_Y - 0.9, wz: h.z, text: 'SWISH!', t: 0, color: '#7af0ff' });
   if (G.streak === 3) G.pops.push({ x: S.W / 2, y: 70, text: 'ON FIRE!', t: 0, color: '#ff6a2a', big: true });
   sfx(b.touched ? 'score' : 'swish');
   store();
@@ -104,46 +117,48 @@ function endGame() {
   store(); sfx('buzzer');
 }
 
-/* --- 3. PHYSICS --------------------------------------------------------------- */
-function bounceOff(b, px, py, minD, k) {   // push the ball out of a point and bounce
-  const dx = b.x - px, dy = b.y - py, d = Math.hypot(dx, dy);
+/* --- 3. PHYSICS (in 3D) --------------------------------------------------------- */
+function bounceOff(b, px, py, pz, minD, k) {   // push the ball out of a point and bounce
+  const dx = b.x - px, dy = b.y - py, dz = b.z - pz, d = Math.hypot(dx, dy, dz);
   if (d >= minD || d === 0) return false;
-  const nx = dx / d, ny = dy / d;
-  b.x = px + nx * minD; b.y = py + ny * minD;
-  const vn = b.vx * nx + b.vy * ny;
+  const nx = dx / d, ny = dy / d, nz = dz / d;
+  b.x = px + nx * minD; b.y = py + ny * minD; b.z = pz + nz * minD;
+  const vn = b.vx * nx + b.vy * ny + b.vz * nz;
   if (vn < 0) {
-    b.vx -= (1 + k) * vn * nx; b.vy -= (1 + k) * vn * ny;
-    b.vx *= 0.92; b.vy *= 0.92;
-    return Math.abs(vn) > 40;
+    b.vx -= (1 + k) * vn * nx; b.vy -= (1 + k) * vn * ny; b.vz -= (1 + k) * vn * nz;
+    b.vx *= 0.92; b.vy *= 0.92; b.vz *= 0.92;
+    return Math.abs(vn) > 1;
   }
   return false;
 }
 function stepBall(b, dt, h) {
   const py = b.y;
-  b.vy += GRAV * dt;
-  b.x += b.vx * dt; b.y += b.vy * dt;
-  b.rot += b.vx * dt * 0.15; b.age += dt;
-  // the rim: two little points
-  for (const rx of [h.front, h.back]) if (bounceOff(b, rx, h.ry, BR + RIM_R, 0.55)) { b.touched = true; sfx('rim'); }
-  // the backboard: a box
-  const cx = clamp(b.x, h.bx, h.bx + 4), cy = clamp(b.y, h.top, h.bot);
-  if (bounceOff(b, cx, cy, BR, 0.6)) { b.touched = true; sfx('board'); }
+  b.vy -= GRAV * dt;
+  b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+  b.rot += dt * 9; b.age += dt;
+  // the rim: a ring; bounce off its nearest point
+  const dx = b.x - h.x, dz = b.z - h.z, r = Math.hypot(dx, dz);
+  if (r > 1e-6 && Math.abs(b.y - RIM_Y) < BR + RIM_T && Math.abs(r - RIM_R) < BR + RIM_T)
+    if (bounceOff(b, h.x + dx / r * RIM_R, RIM_Y, h.z + dz / r * RIM_R, BR + RIM_T, 0.5)) { b.touched = true; sfx('rim'); }
+  // the backboard: a thin box
+  const bz = h.z + BOARD_Z;
+  if (bounceOff(b, clamp(b.x, h.x - BOARD_HW, h.x + BOARD_HW), clamp(b.y, BOARD_Y0, BOARD_Y1), clamp(b.z, bz - 0.04, bz), BR, 0.6)) { b.touched = true; sfx('board'); }
   // went down through the hoop?
-  if (!b.scored && py < h.ry && b.y >= h.ry && b.vy > 0 && b.x > h.front + RIM_R && b.x < h.back - RIM_R) scored(b);
-  // floor and walls
-  if (b.y > GY - BR) {
-    b.y = GY - BR;
-    if (b.vy > 60) sfx('bounce');
-    b.vy = -b.vy * 0.62; b.vx *= 0.85;
-    if (Math.abs(b.vy) < 40) { b.vy = 0; b.rest += dt; }
+  if (!b.scored && py > RIM_Y && b.y <= RIM_Y && b.vy < 0 && Math.hypot(b.x - h.x, b.z - h.z) < RIM_R) scored(b);
+  // the floor, and the boards around the court
+  if (b.y < BR) {
+    b.y = BR;
+    if (b.vy < -1.5) sfx('bounce');
+    b.vy = -b.vy * 0.62; b.vx *= 0.85; b.vz *= 0.85;
+    if (Math.abs(b.vy) < 1) { b.vy = 0; b.rest += dt; }
   }
-  if (b.x < BR) { b.x = BR; b.vx = Math.abs(b.vx) * 0.6; }
-  if (b.y < -200) b.vy = Math.max(b.vy, 0);
-  return b.rest < 0.5 && b.age < 7 && b.x < S.W + 20;
+  if (b.z < -3) { b.z = -3; b.vz = Math.abs(b.vz) * 0.5; }
+  if (Math.abs(b.x) > 9.3) { b.x = Math.sign(b.x) * 9.3; b.vx = -b.vx * 0.5; }
+  return b.rest < 0.5 && b.age < 7 && b.z < 16;
 }
 function step(dt) {
   const h = hoop();
-  G.hoopT += dt;
+  G.hoopT += dt; G.throwT += dt;
   if (G.mode === 'timed' && state === 'play') {
     G.time -= dt;
     if (G.time <= G.buzz && G.buzz > 0) { sfx('tick'); G.buzz--; }
@@ -155,104 +170,283 @@ function step(dt) {
     return keep;
   });
   if (!G.spot && state === 'play') { G.next -= dt; if (G.next <= 0) newSpot(); }
+  const k = Math.min(1, dt * 4);              // the camera glides behind you, circling the hoop
+  G.cam.a += (G.me.a - G.cam.a) * k; G.cam.d += (G.me.d + CAM_BACK - G.cam.d) * k;
   G.net = Math.max(0, G.net - dt * 2.5);
   for (const p of G.pops) p.t += dt;
   G.pops = G.pops.filter(p => p.t < 1.1);
 }
 
-/* --- 4. DRAWING --------------------------------------------------------------- */
-function drawCourt(t) {
+/* --- 4. DRAWING: 3D points projected onto the flat screen ---------------------------- */
+const cam = { x: 0, z: 8, fx: 0, fz: -1, rx: 1, rz: 0, yaw: 0 };
+function setCam(a, d) {         // stand at angle a, distance d from the hoop (a bit to the side) and look at the hoop
+  const rx = Math.cos(a), rz = -Math.sin(a);
+  cam.x = Math.sin(a) * d - rx * CAM_SIDE; cam.z = Math.cos(a) * d - rz * CAM_SIDE;
+  const l = Math.hypot(cam.x, cam.z);
+  cam.fx = -cam.x / l; cam.fz = -cam.z / l; cam.rx = -cam.fz; cam.rz = cam.fx;
+  cam.yaw = Math.atan2(cam.fx, -cam.fz);
+}
+function view(x, y, z) {        // world -> camera: [right, up, depth]
+  const dx = x - cam.x, dz = z - cam.z;
+  return [dx * cam.rx + dz * cam.rz, y - CAM_Y, dx * cam.fx + dz * cam.fz];
+}
+function scr(v) { const k = F / v[2]; return { x: S.W / 2 + v[0] * k, y: HOR - v[1] * k, k }; }   // k = pixels per metre there
+function proj(x, y, z) { const v = view(x, y, z); return v[2] < NEAR ? null : scr(v); }
+function cut(a, b) { const t = (NEAR - a[2]) / (b[2] - a[2]); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, NEAR]; }
+function poly(pts, fill) {      // a flat 3D polygon, cut where it goes behind the camera
+  const vs = pts.map(p => view(p[0], p[1], p[2])), out = [];
+  for (let i = 0; i < vs.length; i++) {
+    const a = vs[i], b = vs[(i + 1) % vs.length];
+    if (a[2] >= NEAR) out.push(a);
+    if ((a[2] >= NEAR) !== (b[2] >= NEAR)) out.push(a[2] < NEAR ? cut(a, b) : cut(b, a));
+  }
+  if (out.length < 3) return;
+  ctx.fillStyle = fill; ctx.beginPath();
+  out.forEach((v, i) => { const s = scr(v); if (i) ctx.lineTo(s.x, s.y); else ctx.moveTo(s.x, s.y); });
+  ctx.closePath(); ctx.fill();
+}
+function path3(pts, color, w = 1, closed = false) {   // 3D lines
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath();
+  const n = pts.length;
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    let a = view(...pts[i]), b = view(...pts[(i + 1) % n]);
+    if (a[2] < NEAR && b[2] < NEAR) continue;
+    if (a[2] < NEAR) a = cut(a, b); else if (b[2] < NEAR) b = cut(b, a);
+    const sa = scr(a), sb = scr(b);
+    ctx.moveTo(sa.x, sa.y); ctx.lineTo(sb.x, sb.y);
+  }
+  ctx.stroke();
+}
+function arc3(cx, cz, r, a0, a1, n = 24) {   // points on a floor circle (angle 0 = towards the court)
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; pts.push([cx + Math.sin(a) * r, 0, cz + Math.cos(a) * r]); }
+  return pts;
+}
+function ellipse(x, y, rx, ry, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2); ctx.fill(); }
+
+// the arena, built once
+const T3 = Math.asin(6.6 / 6.75);
+const COURT_LINES = [
+  { pts: [[-SIDE_X, 0, BASE_Z], [SIDE_X, 0, BASE_Z], [SIDE_X, 0, HALF_Z], [-SIDE_X, 0, HALF_Z]], closed: true },
+  { pts: [[-2.45, 0, BASE_Z], [2.45, 0, BASE_Z], [2.45, 0, KEY_Z], [-2.45, 0, KEY_Z]], closed: true },   // the key
+  { pts: arc3(0, KEY_Z, 1.8, 0, Math.PI * 2, 28), closed: true },                                     // free-throw circle
+  { pts: [[-6.6, 0, BASE_Z], ...arc3(0, 0, 6.75, -T3, T3, 36), [6.6, 0, BASE_Z]] },                    // the three-point line
+  { pts: arc3(0, HALF_Z, 1.8, Math.PI / 2, Math.PI * 1.5, 14) },                                     // centre circle
+  { pts: arc3(0, 0, 1.25, -Math.PI / 2, Math.PI / 2, 12) },
+];
+const TRIBUNES = [              // the stands on three sides, rising away from the court
+  { c: [0, 3, -6], pts: [[-9.5, 0.9, -3.1], [9.5, 0.9, -3.1], [15.1, 5.4, -8.7], [-15.1, 5.4, -8.7]], fans: [] },
+  { c: [12.3, 3, 5], pts: [[9.5, 0.9, -3.1], [9.5, 0.9, 16], [15.1, 5.4, 16], [15.1, 5.4, -8.7]], fans: [] },
+  { c: [-12.3, 3, 5], pts: [[-9.5, 0.9, -3.1], [-9.5, 0.9, 16], [-15.1, 5.4, 16], [-15.1, 5.4, -8.7]], fans: [] },
+];
+const BOARDS = [];              // advertising boards around the court
+(function buildArena() {
+  const cols = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f', '#3fae4a', '#ff8a2a', '#b25ad4'];
+  const skins = ['#f0c090', '#c98a5a', '#8a5a3a', '#f4d2b0'];
+  let n = 0;
+  const fan = (tr, x, y, z, r) => { n++; tr.fans.push({ x, y, z, r, c: cols[(n * 7 + r * 3) % cols.length], s: skins[(n * 5) % skins.length], j: n % 3 === 0 }); };
+  for (let r = 7; r >= 0; r--) {          // the back rows first (they are further away)
+    const t = (r + 0.5) / 8, y = 0.9 + t * 4.5, o = 9.5 + t * 5.6, back = -3.1 - t * 5.6;
+    for (let x = -o + 0.3; x < o; x += 0.62) fan(TRIBUNES[0], x, y, back, r);
+    for (let z = back + 0.4; z < 16; z += 0.62) { fan(TRIBUNES[1], o, y, z, r); fan(TRIBUNES[2], -o, y, z, r); }
+  }
+  const bc = ['#e01e1e', '#2a7fd4', '#ffd23f', '#3fae4a', '#ff8a2a'];
+  for (let i = 0; i < 10; i++) { const x0 = -9.5 + i * 1.9; BOARDS.push({ c: bc[i % 5], pts: [[x0, 0, -3.1], [x0 + 1.9, 0, -3.1], [x0 + 1.9, 0.9, -3.1], [x0, 0.9, -3.1]] }); }
+  for (let i = 0; i < 10; i++) for (const sx of [-9.5, 9.5]) {
+    const z0 = -3.1 + i * 1.91;
+    BOARDS.push({ c: bc[(i + 2) % 5], pts: [[sx, 0, z0], [sx, 0, z0 + 1.91], [sx, 0.9, z0 + 1.91], [sx, 0.9, z0]] });
+  }
+})();
+
+function drawArena(t, cheer) {
   const W = S.W;
-  ctx.fillStyle = '#1a1030'; ctx.fillRect(0, 0, W, GY);
-  // the crowd in the stands
-  ctx.fillStyle = '#251842'; ctx.fillRect(0, 0, W, 64);
-  const cols = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f', '#3fae4a', '#ff8a2a'];
-  for (let r = 0; r < 4; r++) for (let i = 0; i < W; i += 7) {
-    const jump = G && G.net > 0.3 && (i + r) % 3 === 0 ? 2 : (Math.floor(t * 3 + i * 0.3 + r) % 9 === 0 ? 1 : 0);
-    const x = i + (r % 2) * 3, y = 8 + r * 13 - jump;
-    ctx.fillStyle = '#3a2a5c'; ctx.fillRect(x, y, 5, 4);
-    ctx.fillStyle = cols[(i / 7 + r * 2) % cols.length | 0]; ctx.fillRect(x, y + 4, 5, 5);
+  ctx.fillStyle = '#120c22'; ctx.fillRect(0, 0, W, HOR + 1);           // the dark roof
+  for (let i = 0; i < 24; i++) {                                        // lights, far away: they only turn with the camera
+    let rel = i * Math.PI / 12 - cam.yaw; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+    if (Math.abs(rel) > 1.2) continue;
+    const x = Math.round(W / 2 + Math.tan(rel) * F), y = 10 + (i % 2) * 7;
+    ctx.fillStyle = 'rgba(255,240,180,0.15)'; ctx.fillRect(x - 6, y - 3, 14, 8);
+    ctx.fillStyle = '#fff8d0'; ctx.fillRect(x - 3, y, 8, 2);
   }
-  ctx.fillStyle = '#0d0b13'; ctx.fillRect(0, 64, W, 3);
-  // a scoreboard banner wall
-  ctx.fillStyle = '#2b1d4a'; ctx.fillRect(0, 67, W, GY - 67);
-  ctx.fillStyle = '#33235a'; for (let x = 0; x < W; x += 40) ctx.fillRect(x, 67, 20, GY - 67);
-  // the wooden floor
-  ctx.fillStyle = '#c8874a'; ctx.fillRect(0, GY, W, H - GY);
-  ctx.fillStyle = '#b5763c'; for (let y = GY + 5; y < H; y += 6) ctx.fillRect(0, y, W, 1);
-  ctx.fillStyle = '#a86a34'; for (let k = 0; k < 14; k++) ctx.fillRect((k * 53) % W, GY + 1 + (k % 4) * 6, 1, 5);
-  ctx.fillStyle = '#f4ead8'; ctx.fillRect(0, GY, W, 1);
-  ctx.fillStyle = 'rgba(244,234,216,0.7)'; ctx.fillRect(W - 180, GY + 8, 2, H - GY - 8);   // the free-throw line
-}
-function drawHoopBack(h) {
-  ctx.fillStyle = '#4a4a55'; ctx.fillRect(h.bx + 5, h.top + 10, 5, GY - h.top - 10);          // pole
-  ctx.fillStyle = '#2a2a33'; ctx.fillRect(h.bx + 2, GY - 6, 14, 6);
-  ctx.fillStyle = '#111'; ctx.fillRect(h.bx - 1, h.top - 1, 6, h.bot - h.top + 2);              // board
-  ctx.fillStyle = '#f4f4f4'; ctx.fillRect(h.bx, h.top, 4, h.bot - h.top);
-  ctx.fillStyle = '#e01e1e'; ctx.fillRect(h.bx, h.ry - 18, 2, 14);
-  ctx.fillStyle = '#9a9aa4'; ctx.fillRect(h.bx - 3, h.ry - 1, 3, 3);                            // bracket
-}
-function drawHoopFront(h) {
-  // the net (it swishes when you score)
-  const sw = G ? G.net : 0, l = h.front, r = h.back, top = h.ry + 1, len = 16 + sw * 4;
-  ctx.fillStyle = '#f4f4f4';
-  for (let k = 0; k <= 4; k++) {
-    const x0 = l + (r - l) * k / 4, x1 = l + 6 + (r - l - 12) * k / 4 + Math.sin(sw * 12 + k) * sw * 3;
-    for (let s = 0; s < len; s++) { const f = s / len; ctx.fillRect(Math.round(x0 + (x1 - x0) * f), Math.round(top + s), 1, 1); }
+  ctx.fillStyle = '#4a2f1e'; ctx.fillRect(0, HOR, W, H - HOR);           // the floor around the court
+  poly([[-SIDE_X, 0, BASE_Z], [SIDE_X, 0, BASE_Z], [SIDE_X, 0, HALF_Z], [-SIDE_X, 0, HALF_Z]], '#c8874a');
+  for (let x = -SIDE_X; x < SIDE_X; x += 1) poly([[x, 0, BASE_Z], [x + 0.5, 0, BASE_Z], [x + 0.5, 0, HALF_Z], [x, 0, HALF_Z]], '#bd7c42');   // planks
+  poly([[-2.45, 0, BASE_Z], [2.45, 0, BASE_Z], [2.45, 0, KEY_Z], [-2.45, 0, KEY_Z]], '#3d64b8');                                              // the paint
+  for (const l of COURT_LINES) path3(l.pts, '#f4ead8', 1, l.closed);
+  // the stands with the crowd (further side first)
+  const order = TRIBUNES.map(tr => ({ tr, d: view(...tr.c)[2] })).sort((a, b) => b.d - a.d);
+  for (const { tr } of order) {
+    poly(tr.pts, '#251842');
+    for (const f of tr.fans) {
+      const v = view(f.x, f.y, f.z); if (v[2] < 1) continue;
+      const k = F / v[2], sx = W / 2 + v[0] * k; if (sx < -8 || sx > W + 8) continue;
+      const jump = cheer && f.j ? Math.abs(Math.sin(t * 14 + f.x)) * 0.25 * k : (Math.floor(t * 3 + f.x * 2 + f.r) % 9 === 0 ? 0.06 * k : 0);
+      const sy = HOR - v[1] * k - jump, w = Math.max(1, Math.round(0.36 * k)), bh = Math.max(1, Math.round(0.34 * k)), hw = Math.max(1, Math.round(0.2 * k));
+      ctx.fillStyle = f.c; ctx.fillRect(Math.round(sx - w / 2), Math.round(sy - bh), w, bh);
+      ctx.fillStyle = f.s; ctx.fillRect(Math.round(sx - hw / 2), Math.round(sy - bh - hw), hw, hw);
+    }
   }
-  for (let s = 5; s < len; s += 5) { const f = s / len; ctx.fillRect(Math.round(l + 6 * f), Math.round(top + s), Math.round(r - l - 12 * f), 1); }
-  // the rim
-  ctx.fillStyle = '#111'; ctx.fillRect(l - 2, h.ry - 2, r - l + 4, 4);
-  ctx.fillStyle = '#ff6a1a'; ctx.fillRect(l - 1, h.ry - 1, r - l + 2, 2);
+  for (const b of BOARDS) { poly(b.pts, b.c); path3([b.pts[3], b.pts[2]], '#111', 1); }
 }
-function drawBall(x, y, rot, fire) {
-  if (fire) for (let i = 0; i < 4; i++) { ctx.fillStyle = ['#ffd23f', '#ff8a2a', '#e01e1e', '#ff6a1a'][i]; ctx.fillRect(Math.round(x - 3 + Math.random() * 6), Math.round(y - 2 - Math.random() * 10), 3, 3); }
-  ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, y, BR + 1, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#f08a24'; ctx.beginPath(); ctx.arc(x, y, BR, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#ffb35a'; ctx.fillRect(Math.round(x - 3), Math.round(y - 4), 2, 2);
-  ctx.strokeStyle = '#5a2a0a'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x + Math.cos(rot) * BR, y + Math.sin(rot) * BR); ctx.lineTo(x - Math.cos(rot) * BR, y - Math.sin(rot) * BR); ctx.stroke();
-  ctx.beginPath(); ctx.arc(x + Math.cos(rot + Math.PI / 2) * BR * 1.3, y + Math.sin(rot + Math.PI / 2) * BR * 1.3, BR * 0.95, rot + Math.PI * 1.15, rot + Math.PI * 1.85); ctx.stroke();
+function drawShadow(x, y, z, size) {    // a shadow on the floor (smaller and lighter the higher it is)
+  const v = view(x, 0, z); if (v[2] < NEAR) return;
+  const s = scr(v), rx = size * s.k * (1 - Math.min(0.5, y / 8));
+  ctx.globalAlpha = 0.35 * clamp(1 - y / 5, 0.25, 1);
+  ellipse(s.x, s.y, rx, rx * Math.min(1, CAM_Y / v[2]), '#000');
+  ctx.globalAlpha = 1;
 }
-function drawPlayer(sp, t, holding) {
-  const x = sp.x, leg = 0;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x - 8, GY - 1, 18, 2);
-  ctx.fillStyle = '#111'; ctx.fillRect(x - 5, GY - 30, 11, 30);
-  ctx.fillStyle = MY_COLOR; ctx.fillRect(x - 4, GY - 29, 9, 12);                          // jersey
-  ctx.fillStyle = '#fff'; T('' + (profile.name.length % 9 + 1), x - 1, GY - 26, '#fff', 1);
-  ctx.fillStyle = '#efe9ff'; ctx.fillRect(x - 4, GY - 17, 9, 6);                          // shorts
-  ctx.fillStyle = '#f0c090'; ctx.fillRect(x - 3 + leg, GY - 11, 3, 8); ctx.fillRect(x + 1, GY - 11, 3, 8);
-  ctx.fillStyle = '#e01e1e'; ctx.fillRect(x - 4, GY - 3, 4, 3); ctx.fillRect(x + 1, GY - 3, 4, 3);
-  ctx.fillStyle = '#f0c090';                                                               // arms up
-  if (holding) { ctx.fillRect(x - 5, GY - 42, 2, 14); ctx.fillRect(x + 6, GY - 42, 2, 14); }
-  else { ctx.fillRect(x - 7, GY - 28, 2, 10); ctx.fillRect(x + 6, GY - 28, 2, 10); }
-  PX.drawAvatar(ctx, profile.avatar, x - 7, GY - 45, 1, null);                             // your avatar is the head
+function drawBoard(h) {
+  const bz = h.z + BOARD_Z, top = proj(h.x, 3.45, POLE_Z), bot = proj(h.x, 0, POLE_Z);
+  if (top && bot) {                                                                // the pole and the arm
+    const w = Math.max(2, 0.18 * top.k);
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(top.x - w / 2 - 1), Math.round(top.y), Math.round(w + 2), Math.round(bot.y - top.y));
+    ctx.fillStyle = '#4a4a55'; ctx.fillRect(Math.round(top.x - w / 2), Math.round(top.y), Math.round(w), Math.round(bot.y - top.y));
+    const pad = Math.max(2, 0.5 * bot.k), ph = 0.9 * bot.k;
+    ctx.fillStyle = '#2a7fd4'; ctx.fillRect(Math.round(bot.x - pad / 2), Math.round(bot.y - ph), Math.round(pad), Math.round(ph));
+  }
+  const arm = proj(h.x, 3.4, (POLE_Z + bz) / 2);
+  path3([[h.x, 3.4, POLE_Z], [h.x, 3.4, bz - 0.04]], '#111', Math.max(2, 0.16 * (arm ? arm.k : 10)) + 2);
+  path3([[h.x, 3.4, POLE_Z], [h.x, 3.4, bz - 0.04]], '#4a4a55', Math.max(2, 0.16 * (arm ? arm.k : 10)));
+  // the glass board with its red square
+  poly([[h.x - BOARD_HW, BOARD_Y0, bz], [h.x + BOARD_HW, BOARD_Y0, bz], [h.x + BOARD_HW, BOARD_Y1, bz], [h.x - BOARD_HW, BOARD_Y1, bz]], '#111');
+  const e = 0.05;
+  poly([[h.x - BOARD_HW + e, BOARD_Y0 + e, bz], [h.x + BOARD_HW - e, BOARD_Y0 + e, bz], [h.x + BOARD_HW - e, BOARD_Y1 - e, bz], [h.x - BOARD_HW + e, BOARD_Y1 - e, bz]], 'rgba(236,242,252,0.93)');
+  const c = proj(h.x, RIM_Y, bz), lw = Math.max(1, (c ? c.k : 20) * 0.05);
+  path3([[h.x - 0.3, RIM_Y, bz], [h.x + 0.3, RIM_Y, bz], [h.x + 0.3, RIM_Y + 0.45, bz], [h.x - 0.3, RIM_Y + 0.45, bz]], '#e01e1e', lw, true);
+  path3([[h.x, RIM_Y - 0.06, bz], [h.x, RIM_Y - 0.06, h.z - RIM_R]], '#9a9aa4', Math.max(1, lw * 1.5));   // the bracket
 }
-function drawAim(sp) {
-  if (!aim) return;
+function drawRim(h, front) {     // half of the rim and the net: the back half before the ball, the front half after
+  const cd = view(h.x, RIM_Y, h.z)[2], c = proj(h.x, RIM_Y, h.z); if (!c) return;
+  const sw = G ? G.net : 0, N = 24, net = [];
+  for (let i = 0; i < N; i++) {
+    const a = i / N * Math.PI * 2, a2 = a + sw * Math.sin(i) * 0.6;
+    const p = [h.x + Math.cos(a) * RIM_R, RIM_Y, h.z + Math.sin(a) * RIM_R];
+    const isFront = view(...p)[2] < cd;
+    if (isFront !== front) continue;
+    if (i % 2 === 0) net.push([p, [h.x + Math.cos(a2) * 0.2, RIM_Y - 0.22, h.z + Math.sin(a2) * 0.2],
+                               [h.x + Math.cos(a2) * (0.14 + sw * 0.05), RIM_Y - 0.45 - sw * 0.08, h.z + Math.sin(a2) * (0.14 + sw * 0.05)]]);
+  }
+  ctx.globalAlpha = 0.9;
+  for (const s of net) path3(s, '#f4f4f4', 1);
+  for (const lvl of [1, 2]) {                     // the rings of the net
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const a = i / N * Math.PI * 2, rr = lvl === 1 ? 0.2 : 0.14 + sw * 0.05, y = lvl === 1 ? RIM_Y - 0.22 : RIM_Y - 0.45 - sw * 0.08;
+      const p = [h.x + Math.cos(a) * rr, y, h.z + Math.sin(a) * rr];
+      if ((view(...p)[2] < cd) === front) pts.push(p); else if (pts.length) { path3(pts, '#f4f4f4', 1); pts.length = 0; }
+    }
+    if (pts.length) path3(pts, '#f4f4f4', 1);
+  }
+  ctx.globalAlpha = 1;
+  const w = Math.max(1.5, c.k * 0.04);
+  for (const [col, lw] of [['#111', w + 2], ['#ff6a1a', w]]) {
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const a = i / N * Math.PI * 2, p = [h.x + Math.cos(a) * RIM_R, RIM_Y, h.z + Math.sin(a) * RIM_R];
+      const am = (i + 0.5) / N * Math.PI * 2, mid = [h.x + Math.cos(am) * RIM_R, RIM_Y, h.z + Math.sin(am) * RIM_R];
+      if ((view(...mid)[2] < cd) === front) { if (!pts.length) pts.push(p); pts.push([h.x + Math.cos(a + Math.PI * 2 / N) * RIM_R, RIM_Y, h.z + Math.sin(a + Math.PI * 2 / N) * RIM_R]); }
+      else if (pts.length) { path3(pts, col, lw); pts.length = 0; }
+    }
+    if (pts.length) path3(pts, col, lw);
+  }
+}
+function drawBall(x, y, r, rot, fire) {
+  r = Math.max(1, r);
+  if (fire) for (let i = 0; i < 5; i++) {
+    const s = Math.max(2, Math.round(r * 0.45));
+    ctx.fillStyle = ['#ffd23f', '#ff8a2a', '#e01e1e', '#ff6a1a', '#ffd23f'][i];
+    ctx.fillRect(Math.round(x - r * 0.6 + Math.random() * r * 1.2), Math.round(y - r * 0.4 - Math.random() * r * 1.8), s, s);
+  }
+  ellipse(x, y, r + 1, r + 1, '#111');
+  ellipse(x, y, r, r, '#f08a24');
+  const hs = Math.max(1, Math.round(r * 0.35));
+  ctx.fillStyle = '#ffb35a'; ctx.fillRect(Math.round(x - r * 0.5), Math.round(y - r * 0.6), hs, hs);
+  if (r < 3) return;
+  ctx.strokeStyle = '#5a2a0a'; ctx.lineWidth = Math.max(1, r / 7);
+  const c = Math.cos(rot), s = Math.sin(rot);   // seams, spinning backwards
+  ctx.beginPath(); ctx.moveTo(x - r, y + s * r * 0.9); ctx.quadraticCurveTo(x, y + s * r * 1.1, x + r, y + s * r * 0.9); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x, y + r); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - r, y - c * r * 0.5); ctx.quadraticCurveTo(x, y - c * r * 0.8, x + r, y - c * r * 0.5); ctx.stroke();
+}
+function drawBall3(b) { const p = proj(b.x, b.y, b.z); if (p) drawBall(p.x, p.y, BR * p.k, b.rot, b.fire); }
+function drawShooter(me, pose, fire) {   // your player, seen from behind (pose: hold | throw | idle)
+  const fx = -Math.sin(me.a), fz = -Math.cos(me.a), rx = Math.cos(me.a), rz = -Math.sin(me.a);
+  const P = (lat, y, fwd = 0) => proj(me.x + rx * lat + fx * fwd, y, me.z + rz * lat + fz * fwd);
+  const base = P(0, 0); if (!base) return;
+  const k = base.k;
+  drawShadow(me.x, 0, me.z, 0.45);
+  const box = (lat, y0, y1, w, col) => {
+    const a = P(lat, y0), b = P(lat, y1); if (!a || !b) return;
+    const x = Math.round(a.x - w * k / 2), y = Math.round(b.y), ww = Math.max(1, Math.round(w * k)), hh = Math.round(a.y - b.y);
+    ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, ww + 2, hh + 2);
+    ctx.fillStyle = col; ctx.fillRect(x, y, ww, hh);
+  };
+  const limb = (a, b) => {
+    if (!a || !b) return;
+    ctx.lineCap = 'round';
+    for (const [col, w] of [['#111', 0.1 * k + 2], ['#f0c090', 0.1 * k]]) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    ctx.lineCap = 'butt';
+  };
+  const hp = handPos(me), ball = proj(hp.x, hp.y, hp.z);
+  if (pose === 'hold' && ball) drawBall(ball.x, ball.y, BR * ball.k, 0, fire);
+  for (const s of [-1, 1]) { box(s * 0.11, 0, 0.09, 0.14, '#e01e1e'); box(s * 0.11, 0.08, 0.55, 0.11, '#f0c090'); }
+  box(0, 0.5, 0.92, 0.44, '#efe9ff');                                // shorts
+  box(0, 0.9, 1.48, 0.46, MY_COLOR);                                 // jersey, with your number on the back
+  const num = P(0, 1.36); if (num) T('' + (profile.name.length % 9 + 1), num.x, num.y, '#fff', Math.max(1, Math.round(k / 45)), 'center', '#000');
+  box(0, 1.46, 1.56, 0.12, '#f0c090');                               // neck
+  const sh = [P(-0.2, 1.42), P(0.2, 1.42)];
+  if (pose === 'hold') { limb(sh[0], P(0.0, 2.08, 0.15)); limb(sh[1], P(0.24, 2.08, 0.15)); }
+  else if (pose === 'throw') { limb(sh[0], P(-0.12, 1.95, 0.2)); limb(sh[1], P(0.14, 2.42, 0.3)); }
+  else { limb(sh[0], P(-0.28, 0.95, 0.05)); limb(sh[1], P(0.28, 0.95, 0.05)); }
+  const head = P(0, 1.72);
+  if (head) { const s = 0.34 * k; PX.drawAvatar(ctx, profile.avatar, Math.round(head.x - s / 2), Math.round(head.y - s / 2), s / 14, null); }
+}
+// the whole scene, back to front
+function drawScene(t, balls, me, pose, fire) {
+  const h = hoop();
+  drawArena(t, G && G.net > 0.3);
+  for (const b of balls) drawShadow(b.x, b.y, b.z, BR * 1.1);
+  const hd = view(h.x, RIM_Y, h.z)[2], bd = view(h.x, RIM_Y, h.z + BOARD_Z)[2], md = me ? view(me.x, 1, me.z)[2] : -1;
+  const list = balls.map(b => ({ b, d: view(b.x, b.y, b.z)[2] })).sort((a, c) => c.d - a.d);
+  const draw = (hi, lo) => { for (const o of list) if (o.d <= hi && o.d > lo) drawBall3(o.b); };
+  draw(Infinity, bd);
+  drawBoard(h);
+  draw(bd, hd + RIM_R * 0.5);
+  drawRim(h, false);
+  draw(hd + RIM_R * 0.5, hd - RIM_R);
+  drawRim(h, true);
+  draw(hd - RIM_R, md);
+  if (me) drawShooter(me, pose, fire);
+  draw(md, -Infinity);
+}
+function drawAim() {
+  if (!aim || !G.spot) return;
   const v = aimVelocity(); if (!v) return;
-  const len = G.mode === 'free' ? 0.9 : 0.42, h = hoop();
-  for (let k = 1; k < 16; k++) {
-    const t = len * k / 15, x = sp.bx + v.vx * t, y = sp.by + v.vy * t + GRAV * t * t / 2;
-    if (y > GY || x > h.bx) break;
-    ctx.fillStyle = k % 2 ? '#fff' : '#ffd23f'; ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+  const s = handPos(G.me), len = G.mode === 'free' ? 1.3 : 0.5;
+  for (let i = 1; i < 18; i++) {                       // the dots: where the ball starts to go
+    const t = len * i / 17, x = s.x + v.x * t, y = s.y + v.y * t - GRAV * t * t / 2, z = s.z + v.z * t;
+    if (y < 0 || z < BOARD_Z) break;
+    const p = proj(x, y, z); if (!p) continue;
+    const d = Math.max(3, Math.round(p.k * 0.06)), x0 = Math.round(p.x - d / 2), y0 = Math.round(p.y - d / 2);
+    ctx.fillStyle = '#111'; ctx.fillRect(x0 - 1, y0 - 1, d + 2, d + 2);
+    ctx.fillStyle = i % 2 ? '#fff' : '#ffd23f'; ctx.fillRect(x0, y0, d, d);
   }
-  const p = Math.hypot(v.vx, v.vy) / (PULL * MAX_PULL);              // power bar
-  ctx.fillStyle = '#111'; ctx.fillRect(sp.x - 12, GY - 60 - 2, 26, 6);
-  ctx.fillStyle = p > 0.85 ? '#e01e1e' : p > 0.55 ? '#ffd23f' : '#5ad43f'; ctx.fillRect(sp.x - 11, GY - 61, Math.round(24 * p), 4);
+  const hd = proj(G.me.x, 1.6, G.me.z); if (!hd) return;
+  const bx = Math.round(hd.x - 70), by = Math.round(hd.y);        // power bar, left of your player
+  ctx.fillStyle = '#111'; ctx.fillRect(bx, by, 30, 7);
+  ctx.fillStyle = v.p > 0.85 ? '#e01e1e' : v.p > 0.55 ? '#ffd23f' : '#5ad43f'; ctx.fillRect(bx + 1, by + 1, Math.round(28 * v.p), 5);
+  T('POWER', bx + 15, by - 9, '#fff', 1, 'center', '#000');
 }
 function drawGame(t) {
-  const W = S.W, h = hoop();
-  drawCourt(t);
-  drawHoopBack(h);
-  if (G.spot) drawPlayer(G.spot, t, true);
-  for (const b of G.balls) if (b.y >= h.ry || b.x < h.front - 8 || b.x > h.back + 8) drawBall(b.x, b.y, b.rot, b.fire);
-  drawHoopFront(h);
-  for (const b of G.balls) if (!(b.y >= h.ry || b.x < h.front - 8 || b.x > h.back + 8)) drawBall(b.x, b.y, b.rot, b.fire);
-  if (G.spot) { drawBall(G.spot.bx, G.spot.by, 0, G.streak >= 3); if (state === 'play') drawAim(G.spot); }
+  const W = S.W;
+  setCam(G.cam.a, G.cam.d);
+  drawScene(t, G.balls, G.me, G.spot ? 'hold' : G.throwT < 0.45 ? 'throw' : 'idle', G.streak >= 3);
+  if (state === 'play') drawAim();
   for (const p of G.pops) {
-    const k = p.t / 1.1, y = p.y - k * 20;
-    if (k < 0.85 || Math.floor(p.t * 20) % 2) T(p.text, p.x, y, p.color, p.big ? 3 : 2, 'center', '#000');
+    let x = p.x, y0 = p.y;
+    if (p.wx !== undefined) { const q = proj(p.wx, p.wy, p.wz); if (!q) continue; x = q.x; y0 = q.y; }
+    const k = p.t / 1.1, y = y0 - k * 20;
+    if (k < 0.85 || Math.floor(p.t * 20) % 2) T(p.text, x, y, p.color, p.big ? 3 : 2, 'center', '#000');
   }
   // the HUD
   ctx.fillStyle = 'rgba(13,11,19,0.75)'; ctx.fillRect(W / 2 - 74, 4, 148, 34);
@@ -269,9 +463,10 @@ function drawGame(t) {
     T(pct + '%', W / 2 + 70, 14, '#fff', 2, 'right'); T('FREE', W / 2 + 70, 30, '#9a92b8', 1, 'right');
   }
   if (G.streak >= 3) T('ON FIRE x' + G.streak, W / 2, 42, '#ff6a2a', 1, 'center', '#000');
-  if (G.shots === 0 && state === 'play') {
-    T('PULL BACK AND LET GO TO SHOOT', W / 2, 92, '#fff', 1, 'center', '#000');
-    T('(ANYWHERE ON THE SCREEN)', W / 2, 102, '#9a92b8', 1, 'center', '#000');
+  if (G.shots === 0 && state === 'play' && !aim) {
+    ctx.fillStyle = 'rgba(13,11,19,0.75)'; ctx.fillRect(W / 2 - 112, 116, 224, 26);
+    T('PULL DOWN AND LET GO TO SHOOT', W / 2, 120, '#fff', 1, 'center', '#000');
+    T('(ANYWHERE ON THE SCREEN; SIDEWAYS TO AIM)', W / 2, 130, '#9a92b8', 1, 'center', '#000');
   }
   if (state === 'play' && UI.button('pause', 6, 6, 24, 20, 'II', { size: 1 })) setPause(true);
 }
@@ -285,17 +480,16 @@ function panel(w, h, y) {
   ctx.fillStyle = '#ff8a2a'; ctx.fillRect(x, y, w, 2);
   return { x, y };
 }
-let demo = null;             // the title: a ball keeps going in behind the menu
+let demo = null;             // the title: the camera circles the court while your player keeps scoring
 function drawTitle(t) {
-  const W = S.W, h = hoop();
-  drawCourt(t); drawHoopBack(h);
-  if (!demo || demo.age > 2.2) {
-    const x0 = 60, y0 = GY - 50, tt = 1.15, x1 = h.front + RIM_W / 2, y1 = h.ry - 2;
-    demo = { x: x0, y: y0, vx: (x1 - x0) / tt, vy: (y1 - y0 - GRAV * tt * tt / 2) / tt, rot: 0, age: 0, rest: 0, scored: true };
+  const W = S.W, a = Math.sin(t * 0.25) * 0.7, me = shooterAt(a, 4.6);
+  setCam(a, me.d + CAM_BACK);
+  if (!demo || demo.age > 2.4) {
+    const s = handPos(me), tt = 1.1;
+    demo = { x: s.x, y: s.y, z: s.z, vx: -s.x / tt, vy: (RIM_Y + 0.02 - s.y + GRAV * tt * tt / 2) / tt, vz: -s.z / tt, rot: 0, age: 0, rest: 0, scored: true };
   }
-  stepBall(demo, 1 / 60, h);
-  drawBall(demo.x, demo.y, demo.rot, false);
-  drawHoopFront(h);
+  stepBall(demo, 1 / 60, hoop());
+  drawScene(t, [demo], me, demo.age < 0.45 ? 'throw' : demo.age > 1.6 ? 'hold' : 'idle', false);
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
@@ -348,12 +542,15 @@ function sfx(k) {
 
 /* --- 6. INPUT: pull back anywhere, let go to shoot ---------------------------------- */
 let aim = null;
-function aimVelocity() {
-  let dx = aim.x0 - aim.x, dy = aim.y0 - aim.y;
-  const d = Math.hypot(dx, dy);
-  if (d < 8) return null;
-  if (d > MAX_PULL) { dx *= MAX_PULL / d; dy *= MAX_PULL / d; }
-  return { vx: dx * PULL, vy: dy * PULL };
+function aimVelocity() {      // pull down = power, sideways = aim the other way (like a slingshot)
+  const dx = aim.x0 - aim.x, dy = aim.y - aim.y0;
+  if (dy < 8 || !G || !G.me) return null;
+  const p = Math.min(1, dy / MAX_PULL), side = clamp(dx / MAX_PULL, -1, 1) * 0.3;
+  const s = handPos(G.me), D = Math.hypot(s.x, s.z), ux = -s.x / D, uz = -s.z / D;
+  const dirX = ux * Math.cos(side) - uz * Math.sin(side), dirZ = uz * Math.cos(side) + ux * Math.sin(side);
+  const c = Math.cos(ANGLE), L = D + 0.04, need = Math.sqrt(GRAV * L * L / (2 * c * c * (L * Math.tan(ANGLE) - (RIM_Y - REL_Y))));
+  const v = need * (0.85 + 0.3 * p);   // half a pull is about right, from anywhere
+  return { x: dirX * v * c, y: v * Math.sin(ANGLE), z: dirZ * v * c, p };
 }
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
@@ -365,7 +562,7 @@ UI.onUp = e => {
   if (!aim || aim.id !== e.pointerId) return;
   const { x, y } = S.toLogical(e); aim.x = x; aim.y = y;
   const v = aimVelocity();
-  if (v && G && G.spot && state === 'play' && !paused) shoot(v.vx, v.vy);
+  if (v && G && G.spot && state === 'play' && !paused) shoot(v);
   aim = null;
 };
 window.addEventListener('keydown', e => {
@@ -407,7 +604,7 @@ PX.Pad.setup({
       if (!mine) aim = { id: 'pad', x0: S.W / 2, y0: H / 2, x: S.W / 2, y: H / 2 };
       const k = Math.min(1, m) / m; aim.x = aim.x0 - h.ax * k * MAX_PULL; aim.y = aim.y0 - h.ay * k * MAX_PULL;
     }
-    if (edge('A') && mine) { const v = aimVelocity(); if (v && G && G.spot) shoot(v.vx, v.vy); aim = null; }
+    if (edge('A') && mine) { const v = aimVelocity(); if (v && G && G.spot && !paused) shoot(v); aim = null; }
     else if (m <= 0.2 && mine) aim = null;
   },
   help: [['STICK', 'AIM: POINT WHERE TO THROW, FURTHER = HARDER'], ['A', 'THROW'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
