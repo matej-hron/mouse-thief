@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -39,7 +39,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote
+let screen = 'home';                  // home | search | profile | remote | settings
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -315,20 +315,27 @@ function card(g, i, x, y, w, h, t) {
 function drawHome(t) {
   const W = S.W;
   background(t);
-  T('PIXEL ARCADE', W / 2 + 2, 10, '#e01e1e', 4, 'center');
-  T('PIXEL ARCADE', W / 2, 8, '#fff', 4, 'center');
   const stars = '★ ' + PX.Wallet.get();
   T(stars, W - 10, 12, '#ffd23f', 2, 'right', '#000');   // one wallet for all the games
   // next to it: phones as controllers (play on an Xbox, a TV or a computer with your phone)
   const px = W - 10 - PX.textWidth(stars, 2) - 38;
+  // the title, smaller (and moved left) when the buttons on the right need the room
+  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 42;
+  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 42 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
+  T('PIXEL ARCADE', tx + 2, (small ? 12 : 10), '#e01e1e', ts, 'center');
+  T('PIXEL ARCADE', tx, (small ? 10 : 8), '#fff', ts, 'center');
   if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
   padIcon(px + 15 + (UI.mx >= px && UI.mx < px + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
+  // and the settings
+  const gx = px - 36;
+  if (UI.button('settings', gx, 7, 30, 20, '', { size: 1, accent: '#ff8a2a' })) openSettings();
+  gearIcon(gx + 15 + (UI.mx >= gx && UI.mx < gx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46, rx = Math.round(W / 2 - rowW / 2);
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
   T(profile.name, rx + 36, 44, '#fff', 2, 'left', '#000');
-  if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
+  if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) editProfile();
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
   drawGrid(t);
@@ -340,6 +347,45 @@ function padIcon(cx, cy, s = 2) {
     { '#': '#efe9ff', k: '#3a2f5c', y: '#ffd23f', x: '#4aa8ff', g: '#5ad43f', r: '#ff5a5a' }, cx, cy, s);
 }
 function openRemote() { screen = 'remote'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+// --- settings: for all the games ------------------------------------------------------------
+function gearIcon(cx, cy, s = 2) {
+  PX.drawIcon(ctx, ['...#.#...', '.#.###.#.', '..#####..', '.###.###.', '###...###', '.###.###.', '..#####..', '.#.###.#.', '...#.#...'], { '#': '#efe9ff' }, cx, cy, s);
+}
+function openSettings() { screen = 'settings'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+function editProfile() { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
+const canFull = !!(document.documentElement.requestFullscreen);
+function toggleFull() {
+  try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => { /* not allowed */ }); } catch (e) { /* not allowed */ }
+}
+function drawSettings(t) {
+  const W = S.W, set = PX.Settings.load();
+  background(t);
+  if (UI.button('back', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { screen = 'home'; return; }
+  gearIcon(W / 2 - PX.textWidth('SETTINGS', 3) / 2 - 16, 19);
+  T('SETTINGS', W / 2 + 4, 10, '#fff', 3, 'center', '#000');
+  const pw = Math.min(360, W - 24), x = Math.round(W / 2 - pw / 2);
+  panel(x, 40, pw, 166, '#ff8a2a');
+  // the volume of every game
+  T('SOUND (ALL GAMES)', x + 12, 50, '#9a92b8', 1);
+  const n = PX.Settings.VOLUMES.length, bw = Math.floor((pw - 24 - (n - 1) * 6) / n);
+  PX.Settings.VOLUMES.forEach(([name], i) => {
+    const bx = x + 12 + i * (bw + 6);
+    if (UI.button('vol_' + i, bx, 62, bw, 22, name, { size: 1, on: set.volume === i, accent: '#ffd23f' })) {
+      PX.Settings.save({ ...set, volume: i }); PX.Sound.unlock(); PX.Sound.tone([523, 784], 0.15, { vol: 0.12 });
+    }
+    if (set.volume === i) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(bx, 62, bw, 22); T(name, bx + bw / 2, 69, '#111', 1, 'center'); }
+  });
+  // full screen, your name and avatar, phones as controllers
+  const half = Math.floor((pw - 30) / 2);
+  T('SCREEN', x + 12, 96, '#9a92b8', 1);
+  if (canFull && UI.button('full', x + 12, 108, half, 22, document.fullscreenElement ? 'FULL SCREEN: ON' : 'FULL SCREEN: OFF', { size: 1, accent: '#1ec8e0', on: !!document.fullscreenElement })) toggleFull();
+  if (!canFull) T('NO FULL SCREEN HERE', x + 12 + half / 2, 115, '#4a4068', 1, 'center');
+  T('YOU', x + 18 + half, 96, '#9a92b8', 1);
+  if (UI.button('me', x + 18 + half, 108, half, 22, 'NAME AND AVATAR', { size: 1, accent: '#e0a820' })) editProfile();
+  T('PLAY ON A BIG SCREEN', x + 12, 142, '#9a92b8', 1);
+  if (UI.button('phones', x + 12, 154, pw - 24, 22, PX.Remote.active() ? 'PHONE CONTROLLERS: ON (CODE ' + PX.Remote.code + ')' : 'PHONE CONTROLLERS', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
+  T('PIXEL ARCADE ' + VERSION, x + pw - 8, 192, '#4a4068', 1, 'right');
+}
 const qr = { url: null, rows: null, loading: false };
 function qrRows(url) {                            // the QR code for a phone to scan (vendor/qrcode.js, loaded when needed)
   if (qr.url === url && qr.rows) return qr.rows;
@@ -523,7 +569,7 @@ function padPoll(dt) {
   let gps = [];
   try { gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; } catch (e) { gps = []; }
   gps.slice(0, 4).forEach((gp, n) => {
-    const now = {}; for (const i of [0, 1, 2, 4, 5, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const now = {}; for (const i of [0, 1, 2, 3, 4, 5, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
     const prev = pad.prev[n] || {}, edge = i => now[i] && !prev[i];
     let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     if (now[14]) ax = -1; if (now[15]) ax = 1; if (now[12]) ay = -1; if (now[13]) ay = 1;
@@ -543,11 +589,13 @@ function padPoll(dt) {
       if (screen === 'search' && edge(1)) closeSearch();
       else if (screen === 'home' && edge(2)) openSearch();
       else if (screen === 'home' && edge(5)) openRemote();
+      else if (screen === 'home' && edge(3)) openSettings();
       if (screen === 'search') {                  // LB / RB: the previous / next category
         const k = edge(4) ? -1 : edge(5) ? 1 : 0;
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
-    } else if (edge(1)) UI.back = true;
+    } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
+    else if (edge(1)) UI.back = true;
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
   });
@@ -598,7 +646,7 @@ function frame(now) {
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else drawProfile(t);
+  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
@@ -606,10 +654,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-PX.Pad.setup({                                     // the arcade reads the controller itself; this is just the help box
-  title: 'Pixel Arcade: controller', menu: () => false,
-  phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['B', 'BACK']] },
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK'], ['Y', 'IN EVERY GAME\'S MENUS: WHAT THE BUTTONS DO']],
+PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings', ui: UI,
+  phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });
 </script>
 </body>

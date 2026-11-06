@@ -34,7 +34,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -342,7 +342,9 @@ function updateRace(dt) {
   if (R.wrecked) { p.turn = 0; }
   else if (p.spin > 0) { p.spin -= dt; p.turn = Math.floor(p.spin * 14) % 2 ? 1 : -1; p.x += Math.sin(p.spin * 9) * dx * 0.8; p.speed = accelerate(p.speed, DECEL * 1.5, dt); }
   else if (R.over && R.auto) { const target = -seg.curve * 0.08; if (p.x > target + 0.05) p.x -= dx; else if (p.x < target - 0.05) p.x += dx; p.turn = 0; }
-  else if (left) { p.x -= dx; p.turn = -1; } else if (right) { p.x += dx; p.turn = 1; } else p.turn = 0;
+  else if (left) { p.x -= dx; p.turn = -1; } else if (right) { p.x += dx; p.turn = 1; }
+  else if (Ctl.steer) { p.x += dx * Ctl.steer; p.turn = Math.sign(Ctl.steer); }      // dragging a finger: steer as much as you drag
+  else p.turn = 0;
   p.x -= dx * sp * seg.curve * CENTRIFUGAL * (stat('grip') ? stat('grip').k : 1);
   // hold GAS to go faster; let go and the car rolls slower; BRAKE stops it fast
   if (R.wrecked) p.speed = accelerate(p.speed, BRAKE * 0.7, dt);
@@ -705,12 +707,18 @@ function drawHUD(R, W) {
     }
   }
   if (R.countdown > 0) T(Ctl.show ? 'HOLD GAS TO GO!' : 'HOLD ↑ TO GO!   STEER < >   BRAKE ↓', W / 2, 78, '#fff', 2, 'center', '#000');
+  if (R.countdown > 0 && Ctl.show) {
+    const sw = [stat('nitro') && 'UP: NITRO', stat('shield') && 'DOWN: SHIELD'].filter(Boolean).join('  ');
+    T('OR DRAG A FINGER LEFT / RIGHT ANYWHERE TO STEER', W / 2, 98, '#efe9ff', 1, 'center', '#000');
+    if (sw) T('SWIPE ' + sw, W / 2, 110, '#efe9ff', 1, 'center', '#000');
+  }
   else if (!R.over && p.speed < 5 && p.time > 1.5 && Math.floor(performance.now() / 300) % 2) T(Ctl.show ? 'HOLD GAS!' : 'HOLD ↑ FOR GAS!', W / 2, 100, '#5ad43f', 3, 'center', '#000');
   if (R.banner && !R.over) T(R.banner.text, W / 2, 74, R.banner.text === 'GO!' ? '#5ad43f' : R.banner.text.endsWith('!') && p.hurtT > 0 ? '#ff6b6b' : '#ffd23f', R.banner.text === 'GO!' ? 6 : 3, 'center', '#000');
   if (R.over) T(R.wrecked ? 'WRECKED!' : mode === 'mp' ? (R.result && R.result.won ? 'YOU WIN!' : 'FINISHED!') : 'FINISH!', W / 2, 80, R.wrecked ? '#ff6b6b' : '#fff', 4, 'center', '#000');
   if (mode === 'mp' && !Net.live && !R.over) T('YOUR FRIEND LEFT', W / 2, 96, '#ff6b6b', 2, 'center', '#000');
   // touch controls
   Ctl.draw(W);
+  Ctl.drawDrag();
   if (mode !== 'mp') {                               // no pausing a race with a friend
     if (UI.button('pause', W - 28, 6, 22, 20, '')) setPause(true);
     ctx.fillStyle = '#efe9ff'; ctx.fillRect(W - 21, 11, 3, 10); ctx.fillRect(W - 15, 11, 3, 10);
@@ -720,6 +728,17 @@ function drawHUD(R, W) {
 // On-screen buttons: steer with the two arrows, BRAKE and GAS on the right. Several fingers at once are fine.
 const Ctl = {
   left: false, right: false, brake: false, gas: false, ptrs: new Map(), show: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches),
+  // gestures: drag a finger left / right anywhere (not on a button) to steer; a quick swipe up = NITRO, down = SHIELD
+  drag: null, steer: 0,
+  stopDrag() { this.drag = null; this.steer = 0; },
+  drawDrag() {                                         // where you put your finger, and how far you steer
+    const d = this.drag; if (!d) return;
+    const x0 = Math.round(d.x0), y0 = Math.round(d.y0), k = Math.round(this.steer * 34);
+    ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(x0 - 40, y0 - 3, 80, 6);
+    ctx.fillStyle = '#efe9ff'; ctx.fillRect(x0 - 1, y0 - 6, 2, 12);
+    ctx.fillStyle = '#5ad43f'; ctx.fillRect(Math.min(x0, x0 + k), y0 - 2, Math.abs(k), 4);
+    ctx.fillStyle = '#111'; ctx.fillRect(x0 + k - 5, y0 - 7, 10, 14); ctx.fillStyle = '#ffd23f'; ctx.fillRect(x0 + k - 4, y0 - 6, 8, 12);
+  },
   rects(W) { return { left: { x: 8, y: H - 58, w: 54, h: 50 }, right: { x: 68, y: H - 58, w: 54, h: 50 }, brake: { x: W - 136, y: H - 58, w: 58, h: 50 }, gas: { x: W - 72, y: H - 58, w: 64, h: 50 } }; },
   which(x, y) { const r = this.rects(S.W); for (const k in r) { const b = r[k]; if (x >= b.x - 6 && x < b.x + b.w + 6 && y >= b.y - 6 && y < b.y + b.h + 6) return k; } return null; },
   sync() { this.left = this.right = this.brake = this.gas = false; for (const k of this.ptrs.values()) this[k] = true; },
@@ -738,10 +757,30 @@ const Ctl = {
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
   if (e.pointerType === 'touch') Ctl.show = true;
-  if (state === 'race' && !paused) { const k = Ctl.show ? Ctl.which(x, y) : null; if (k) { Ctl.ptrs.set(e.pointerId, k); Ctl.sync(); } }
+  if (state === 'race' && !paused) {
+    const k = Ctl.show ? Ctl.which(x, y) : null;
+    if (k) { Ctl.ptrs.set(e.pointerId, k); Ctl.sync(); }
+    else if (e.pointerType !== 'mouse' && UI.downId === null && !Ctl.drag) Ctl.drag = { id: e.pointerId, x0: x, y0: y, x, y, t0: performance.now() };
+  }
 };
-UI.onMove = (e, x, y) => { if (Ctl.ptrs.has(e.pointerId)) { const k = Ctl.which(x, y); if (k) Ctl.ptrs.set(e.pointerId, k); Ctl.sync(); } };
-UI.onUp = e => { if (Ctl.ptrs.delete(e.pointerId)) Ctl.sync(); };
+UI.onMove = (e, x, y) => {
+  if (Ctl.ptrs.has(e.pointerId)) { const k = Ctl.which(x, y); if (k) Ctl.ptrs.set(e.pointerId, k); Ctl.sync(); }
+  const d = Ctl.drag;
+  if (d && d.id === e.pointerId) {
+    d.x = x; d.y = y;
+    const s = Math.max(-1, Math.min(1, (x - d.x0) / 34));
+    Ctl.steer = Math.abs(s) < 0.12 ? 0 : s;
+  }
+};
+UI.onUp = e => {
+  if (Ctl.ptrs.delete(e.pointerId)) Ctl.sync();
+  const d = Ctl.drag;
+  if (d && d.id === e.pointerId) {
+    const { x, y } = S.toLogical(e), dx = x - d.x0, dy = y - d.y0;
+    if (performance.now() - d.t0 < 400 && Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(dx) * 1.5) useAbility(dy < 0 ? 'nitro' : 'shield');
+    Ctl.stopDrag();
+  }
+};
 const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowDown: 'brake', KeyS: 'brake', Space: 'brake', ArrowUp: 'gas', KeyW: 'gas' };
 const codeInput = document.getElementById('code');
 window.addEventListener('keydown', e => {
@@ -754,7 +793,7 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
-function setPause(v) { if (mode === 'mp' && v) return; paused = v; if (v) { Engine.off(); Music.stop(); } else Music.play('race'); }
+function setPause(v) { if (mode === 'mp' && v) return; paused = v; Ctl.stopDrag(); if (v) { Engine.off(); Music.stop(); } else Music.play('race'); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'race' && mode !== 'mp') setPause(true); });
 
 /* --- 6. ONLINE: race a friend (the same free PeerJS server as Mouse Thief) ---------- */
@@ -987,7 +1026,7 @@ function drawPause() {
 }
 function toTitle() {
   if (mode === 'mp' && Net.live) { Net.screen = 'lobby'; }
-  state = 'title'; paused = false; race = null; attract = null; Engine.off(); Ctl.ptrs.clear(); Ctl.sync(); Music.play('menu');
+  state = 'title'; paused = false; race = null; attract = null; Engine.off(); Ctl.ptrs.clear(); Ctl.sync(); Ctl.stopDrag(); Music.play('menu');
 }
 
 /* --- 8. MAIN LOOP ------------------------------------------------------------- */

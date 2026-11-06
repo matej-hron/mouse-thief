@@ -230,6 +230,16 @@ window.PX = (() => {
     return UI;
   }
 
+  // --- arcade settings (the SETTINGS button in the arcade): shared by all the games ------------
+  const SETTINGS_KEY = 'pixelArcade.settings';
+  const VOLUMES = [['OFF', 0], ['LOW', 0.3], ['MEDIUM', 0.6], ['HIGH', 1]];
+  const Settings = {
+    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3 }; },
+    save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Sound.apply(); },
+    volume() { return VOLUMES[this.load().volume][1]; },
+    VOLUMES,
+  };
+
   // --- tiny sound helpers ----------------------------------------------------------------
   const Sound = {
     ctx: null, out: null,
@@ -238,10 +248,11 @@ window.PX = (() => {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         try { this.ctx = new AC(); } catch (e) { return; }
-        this.out = this.ctx.createGain(); this.out.gain.value = 0.5; this.out.connect(this.ctx.destination);
+        this.out = this.ctx.createGain(); this.out.connect(this.ctx.destination); this.apply();
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
     },
+    apply() { if (this.out) this.out.gain.value = 0.5 * Settings.volume(); },   // the arcade's volume setting
     tone(f, dur, o = {}) {
       const c = this.ctx; if (!c) return;
       const t0 = c.currentTime + (o.delay || 0), osc = c.createOscillator(), g = c.createGain();
@@ -286,7 +297,7 @@ window.PX = (() => {
   //   menuKeys      or, for a game with its own keyboard menus: keys to press in the menus
   //   keys(n)       the keys controller n (0 or 1) presses while playing, e.g. { A: 'Space', left: 'ArrowLeft' }
   //   onPlay(gp, n, dt) extra, game-specific handling while playing (e.g. analog aiming)
-  //   help          [[button, what it does], ...] for the little help box (the VIEW button shows it)
+  //   help          [[button, what it does], ...] for the little help box (only when you press VIEW; it never pops up by itself)
   // (help: several buttons for one thing are written 'B|X'.)
   // Buttons: A B X Y LB RB LT RT VIEW START, up/down/left/right (left stick and d-pad), rup/rdown/rleft/rright (right stick).
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, START: 9 };
@@ -324,8 +335,8 @@ window.PX = (() => {
       pads.forEach((gp, n) => {
         const h = this.state(gp), prev = this.prevBtn[n], edge = k => h[k] && !prev[k];
         const anything = Object.keys(BTN).some(k => h[k]) || Math.hypot(h.ax, h.ay) > 0.5;
-        if (anything && !this.used) { this.used = true; this.focus = null; if (!this.helpShown) { this.helpShown = true; this.showHelp(7); } }
-        if (edge('VIEW') || (edge('Y') && (inMenu || !cfg.keys))) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
+        if (anything && !this.used) { this.used = true; this.focus = null; }
+        if (edge('VIEW')) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
         if (inMenu && cfg.ui) this.menuNav(h, edge, dt);
         else {
           const map = inMenu ? cfg.menuKeys : cfg.keys && cfg.keys(n);
@@ -386,7 +397,7 @@ window.PX = (() => {
       const chip = b => b.split('|').map(p => `<span style="display:inline-block;min-width:1.6em;padding:0 .35em;margin:0 .15em 0 0;text-align:center;border:2px solid ${COL[p] || '#efe9ff'};color:${COL[p] || '#efe9ff'}">${esc(p)}</span>`).join('');
       this.helpEl.innerHTML = `<div style="color:#ffd23f;font-size:18px;margin-bottom:8px">🎮 ${esc(cfg.title || 'Controller')}</div>` +
         cfg.help.map(([b, what]) => `<div>${chip(b)} ${esc(what)}</div>`).join('') +
-        `<div style="color:#9a92b8;margin-top:8px;font-size:12px">Y in the menus: show / hide this help</div>`;
+        `<div style="color:#9a92b8;margin-top:8px;font-size:12px">VIEW: show / hide this help</div>`;
       this.helpEl.style.display = 'block'; this.helpUntil = sec ? performance.now() + sec * 1000 : 0;
     },
     hideHelp() { if (this.helpEl) this.helpEl.style.display = 'none'; this.helpUntil = 0; },
@@ -416,6 +427,10 @@ window.PX = (() => {
   // and the screen tells the phone which buttons the game uses and what they do, so it shows only those.
   // The code is kept in the tab (sessionStorage), so the phones stay connected when you pick a game.
   const REMOTE_KEY = 'pixelArcade.remoteScreen', REMOTE_PREFIX = 'pixel-arcade-pad-', MAX_PHONES = 4;
+  // Each phone has its own id, and the screen remembers (in the tab) which phone is controller 1, 2, ...
+  // After a game change the phones keep their numbers, whichever reconnects first: a phone that isn't
+  // back yet keeps its place (an idle controller) for a few seconds.
+  const ORDER_KEY = 'pixelArcade.remoteOrder', KEEP_SEAT = 10000;
   // standard controller button numbers
   const PADNUM = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, START: 9, up: 12, down: 13, left: 14, right: 15 };
   const MENU_LAYOUT = { stick: 'PICK', dpad: true, buttons: [['A', 'OK'], ['B', 'BACK']] };
@@ -434,6 +449,30 @@ window.PX = (() => {
   const realGetPads = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
   const Remote = {
     code: null, peer: null, phones: [], status: 'off', tries: 0, toastEl: null, timer: 0,
+    order: [], left: {}, seats: {}, born: performance.now(),
+    loadOrder() { try { const o = JSON.parse(sessionStorage.getItem(ORDER_KEY)); this.order = Array.isArray(o) ? o.filter(x => typeof x === 'string').slice(0, 8) : []; } catch (e) { this.order = []; } },
+    saveOrder() { try { sessionStorage.setItem(ORDER_KEY, JSON.stringify(this.order)); } catch (e) { /* private mode */ } },
+    // a phone that is away keeps its seat for a while (just after a game change, or a short drop-out)
+    keepsSeat(id, now) { return now - this.born < KEEP_SEAT || now - (this.left[id] || -1e9) < KEEP_SEAT; },
+    prune() {
+      const now = performance.now(), n = this.order.length;
+      this.order = this.order.filter(id => this.phones.some(ph => ph.id === id) || this.keepsSeat(id, now));
+      if (this.order.length !== n) this.saveOrder();
+    },
+    seat(id) {                                                       // an idle controller, holding a phone's place
+      return this.seats[id] || (this.seats[id] = { id: 'Pixel Arcade phone controller (reconnecting)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+        buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0] });
+    },
+    // the controllers the phones are, in their order
+    pads(now) {
+      const list = [];
+      for (const id of this.order) {
+        const ph = this.phones.find(p => p.id === id && p.pad);
+        if (ph) list.push(ph); else if (this.keepsSeat(id, now)) list.push({ pad: this.seat(id), raw: 0, hold: [] });
+      }
+      for (const ph of this.phones) if (ph.pad && !ph.id) list.push(ph);   // an older pad.html, or not said hello yet
+      return list;
+    },
     active() { return !!this.code; },
     start() {
       if (this.code) return;
@@ -443,12 +482,13 @@ window.PX = (() => {
     },
     resume() {
       let c = null; try { c = sessionStorage.getItem(REMOTE_KEY); } catch (e) { /* private mode */ }
-      if (c && /^[A-Z0-9]{4}$/.test(c)) { this.code = c; this.open(); setTimeout(() => this.toast('📱 PHONE CONTROLLERS: CODE ' + c, 4), 600); }
+      if (c && /^[A-Z0-9]{4}$/.test(c)) { this.code = c; this.loadOrder(); this.open(); setTimeout(() => this.toast('📱 PHONE CONTROLLERS: CODE ' + c, 4), 600); }
     },
     stop() {
       try { sessionStorage.removeItem(REMOTE_KEY); } catch (e) { /* private mode */ }
       for (const ph of this.phones) { try { ph.conn.send({ t: 'bye' }); ph.conn.close(); } catch (e) { /* gone */ } }
-      this.phones = []; this.code = null; this.status = 'off';
+      this.phones = []; this.code = null; this.status = 'off'; this.order = []; this.left = {};
+      try { sessionStorage.removeItem(ORDER_KEY); } catch (e) { /* private mode */ }
       if (this.peer) { try { this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; }
       clearInterval(this.timer); this.timer = 0;
     },
@@ -464,9 +504,9 @@ window.PX = (() => {
           if (this.peer !== peer) return;
           try { peer.destroy(); } catch (e) { /* gone */ }
           this.peer = null; this.status = 'starting';
-          // after a page change the old page may still hold the code for a moment: try again
-          if (++this.tries > 20 && !this.phones.length) { this.tries = 0; this.code = null; this.start(); return; }
-          setTimeout(() => { if (this.code === code && !this.peer) this.open(); }, 1500);
+          // after a page change the old page may still hold the code for a moment: try again soon
+          if (++this.tries > 30 && !this.phones.length) { this.tries = 0; this.code = null; this.start(); return; }
+          setTimeout(() => { if (this.code === code && !this.peer) this.open(); }, this.tries < 6 ? 500 : 1500);
         };
         peer.on('open', () => { this.status = 'ready'; this.tries = 0; });
         peer.on('connection', conn => this.add(conn));
@@ -486,6 +526,15 @@ window.PX = (() => {
         if (!d || typeof d !== 'object') return;
         if (d.t === 'hello') {
           ph.name = cleanName(d.name) || 'PHONE';
+          if (typeof d.id === 'string' && /^[a-z0-9]{4,24}$/.test(d.id)) {
+            ph.id = d.id; delete this.left[d.id];
+            // the same phone connected twice (it re-dialled while the first try was still on its way): keep the new one
+            for (const old of this.phones.filter(o => o !== ph && o.id === d.id)) {
+              old.replaced = true; this.phones.splice(this.phones.indexOf(old), 1);
+              try { old.conn.close(); } catch (e) { /* gone */ }
+            }
+            if (!this.order.includes(d.id)) { this.order.push(d.id); this.saveOrder(); }
+          }
           ph.avatar = d.avatar && AVATARS[d.avatar.shape] ? { shape: d.avatar.shape, color: d.avatar.color | 0 } : null;
           ph.sent = ''; this.sync();
           const n = this.number(ph);
@@ -501,8 +550,9 @@ window.PX = (() => {
         }
       });
       const gone = () => {
-        const i = this.phones.indexOf(ph); if (i < 0) return;
+        const i = this.phones.indexOf(ph); if (i < 0 || ph.replaced) return;
         this.phones.splice(i, 1);
+        if (ph.id) this.left[ph.id] = performance.now();
         this.toast('📱 ' + ph.name + ' LEFT', 2);
       };
       conn.on('close', gone); conn.on('error', gone);
@@ -517,6 +567,7 @@ window.PX = (() => {
                stick: L.stick || null, dpad: !!L.dpad, buttons: L.buttons || [] };
     },
     sync() {                                   // tell each phone what to show, when it changes
+      this.prune();
       if (!this.phones.length) return;
       const L = this.layout();
       for (const ph of this.phones) {
@@ -542,10 +593,10 @@ window.PX = (() => {
     try {
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: () => {
         let real = []; try { real = realGetPads ? [...realGetPads()] : []; } catch (e) { real = []; }
-        if (!Remote.phones.length) return real;
+        if (!Remote.phones.length && !Remote.order.length) return real;
         // phones come first: whoever joins with a phone wants to play with it (an Xbox always has its own controller on)
         const list = [], now = performance.now();
-        for (const ph of Remote.phones) if (ph.pad) {
+        for (const ph of Remote.pads(now)) {
           ph.pad.buttons.forEach((btn, i) => { btn.pressed = btn.touched = !!(ph.raw >> i & 1) || now < ph.hold[i]; btn.value = btn.pressed ? 1 : 0; });
           ph.pad.index = list.length; list.push(ph.pad);
         }
@@ -557,6 +608,6 @@ window.PX = (() => {
   window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
   if (!window.PX_NO_REMOTE) Remote.resume();
 
-  return { Pad, Remote, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

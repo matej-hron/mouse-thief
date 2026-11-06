@@ -8,6 +8,8 @@ PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
 when you add the arcade to an iPhone's home screen after setting your avatar).
 The **controller button** next to the ★ counter turns phones into game controllers for a big screen (see below).
+The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
+MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 
 | Game | |
 |---|---|
@@ -96,12 +98,13 @@ Arcade basketball. It's drawn flat in 2D, but the court, the hoop and the ball a
 player's shoulder at the hoop, with everything drawn in perspective, so it looks 3D (like Pixel GP). **Every basket is +2 points.**
 
 - **Shooting:** put your finger (or the mouse) anywhere, pull down like a slingshot and let go. Pull further for a
-  harder throw (about half way is right, from any spot), and sideways to aim the other way. The dots show where the
-  ball starts to go, the bar next to your player shows the power. You can have a few balls in the air at once.
+  harder throw, and sideways to aim the other way (a small wobble sideways doesn't count). The power bar next to your
+  player has a **green zone** (about half a pull): let go in it and the throw has just the right power, from any spot.
+  The dots show where the ball starts to go. You can have a few balls in the air at once.
 - **The camera:** after every shot you get a new spot somewhere around the hoop, and the camera glides around the
   court to stand behind you again. The crowd jumps when you score.
 - **TIME ATTACK:** 60 seconds, as many baskets as you can. The more you make, the further away you shoot from,
-  and in the last 30 seconds the hoop slides left and right. 10 points = ★1 into the arcade wallet.
+  and in the last 30 seconds the hoop slides slowly left and right (your throw aims where it will be). 10 points = ★1 into the arcade wallet.
 - **FREE SHOOT:** no clock and a longer aiming line, just shoot. Your baskets and shooting % are counted.
 - No rim or backboard touched = **SWISH!** Three in a row and you're **ON FIRE**.
 - P or Escape pauses.
@@ -127,8 +130,8 @@ chasing you. It's drawn flat in 2D, but the camera sits behind you and everythin
 ## Game controllers
 
 Every game works with a game controller (Xbox and others): on an Xbox open the arcade in the Edge browser, or connect a
-controller to a PC or a phone. In the menus the stick or d-pad picks a button, A presses it, B goes back. The first time you
-use a controller a little help box shows what each button does in that game; **Y** in the menus shows it again. On an Xbox the arcade goes full screen at the first click, because Edge only hands the controller to web games in full screen (otherwise the stick moves a mouse pointer).
+controller to a PC or a phone. In the menus the stick or d-pad picks a button, A presses it, B goes back. No help box
+pops up by itself; **VIEW** shows what each button does in that game. On an Xbox the arcade goes full screen at the first click, because Edge only hands the controller to web games in full screen (otherwise the stick moves a mouse pointer).
 `common.js` has the shared layer (`PX.Pad`): it turns the controller into the game's keyboard keys and moves between menu buttons.
 
 ### Your phone as a controller
@@ -144,7 +147,9 @@ Play on an Xbox, a TV or a computer, with phones as the controllers (up to 4):
    JUMP, SLIDE and the abilities...), and in the menus a d-pad with OK / BACK. The ❚❚ button pauses.
 
 The phones stay connected when the big screen changes game (they reconnect by themselves in a second or two), and
-the first phone is controller 1 (a real controller on the Xbox becomes the next one). How it works: the big screen
+the first phone is controller 1 (a real controller on the Xbox becomes the next one). Each phone keeps its number when
+the game changes, whichever phone reconnects first (a phone that isn't back yet keeps its place for 10 seconds), and a
+phone can't end up connected twice. How it works: the big screen
 gets a PeerJS id from the code (`PX.Remote` in `common.js`, kept in the tab's `sessionStorage`), each phone sends
 what's pressed, and the phone appears in `navigator.getGamepads()` like any controller, so every game works with it.
 The screen tells the phone which buttons to show: each game's `PX.Pad.setup({ phone: { stick, dpad, buttons } })`.
@@ -226,6 +231,8 @@ Every heist pays ★ into the shared arcade wallet. The 3D drawing uses [three.j
   First over the line after 3 laps wins.
 - **Hold GAS to drive** (↑ / W, the on-screen GAS, or A / RT on a controller): the car doesn't move until you do, and
   rolls slower when you let go. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
+- **Gestures (phone):** drag a finger left or right anywhere on the screen (not on a button) to steer: the further you
+  drag, the harder you turn. A quick swipe up fires NITRO, a swipe down raises the SHIELD.
   The tight hairpin needs a brake; going off the road or hitting things slows you down.
 - **Damage:** your car has 1 heart (ARMOR in the garage gives 2 or 3). Barrels, crates and cones on the road cost a heart, and so does crashing into
   trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
