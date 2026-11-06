@@ -154,7 +154,8 @@ gets a PeerJS id from the code (`PX.Remote` in `common.js`, kept in the tab's `s
 what's pressed, and the phone appears in `navigator.getGamepads()` like any controller, so every game works with it.
 The screen tells the phone which buttons to show: each game's `PX.Pad.setup({ phone: { stick, dpad, buttons } })`.
 Needs an internet connection on both (the same free PeerJS server as online play). The QR code is made by
-`vendor/qrcode.js` (qrcode-generator, MIT).
+`vendor/qrcode.js` (qrcode-generator, MIT). PeerJS itself is kept in `vendor/peerjs.min.js` (MIT), with two CDNs as backups.
+If the phone can't reach the server or can't link to the screen, it says so (with what to try) and keeps retrying.
 
 ## Pixel Football
 

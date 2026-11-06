@@ -134,7 +134,9 @@ window.PX = (() => {
   const cleanName = v => String(v || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
 
   // --- online play (the same free PeerJS server as Mouse Thief) -------------------------------
-  const PEERJS_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+  // our own copy first (it works offline-cached and can't be blocked by a CDN filter), then two CDNs
+  const PEERJS_URLS = ['vendor/peerjs.min.js',
+                       'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
                        'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'];
   const ICE_SERVERS = [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
@@ -143,15 +145,23 @@ window.PX = (() => {
     { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
   ];
   const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';
+  let peerLoading = null;
   function loadPeer() {
     if (window.Peer) return Promise.resolve();
+    if (peerLoading) return peerLoading;
+    // a download that hangs (a filter or a bad network can just never answer) moves on to the next copy after 8 s
     const tryUrl = i => new Promise((res, rej) => {
       const s = document.createElement('script');
-      s.src = PEERJS_URLS[i]; s.onload = res;
-      s.onerror = () => (i + 1 < PEERJS_URLS.length ? tryUrl(i + 1).then(res, rej) : rej());
+      let done = false;
+      const next = () => { if (done) return; done = true; clearTimeout(t); if (window.Peer) res(); else if (i + 1 < PEERJS_URLS.length) tryUrl(i + 1).then(res, rej); else rej(); };
+      const t = setTimeout(next, 8000);
+      s.src = PEERJS_URLS[i];
+      s.onload = next;   // loaded: done if it made window.Peer, otherwise the next copy
+      s.onerror = next;
       document.head.appendChild(s);
     });
-    return tryUrl(0);
+    peerLoading = tryUrl(0).finally(() => { peerLoading = null; });
+    return peerLoading;
   }
 
   // --- a crisp pixel screen: draw at a low resolution, blow it up to the window ---------------
