@@ -134,7 +134,8 @@ let fromHash = (location.hash || '').replace('#', '').toUpperCase();
 try { codeIn.value = /^[A-Z0-9]{4}$/.test(fromHash) ? fromHash : (localStorage.getItem(LAST_KEY) || ''); } catch (e) { /* private mode */ }
 
 // --- the connection ---------------------------------------------------------------------
-const net = { peer: null, conn: null, dialing: null, code: null, on: false, fails: 0, ever: false, retryT: 0, dialT: 0 };
+const net = { peer: null, conn: null, dialing: null, code: null, on: false, fails: 0, stuck: 0, noServer: 0, ever: false, retryT: 0, dialT: 0, openT: 0 };
+const HELP_NET = 'TURN OFF VPN / PRIVATE RELAY / AD BLOCKER, OR TRY THE SAME WI-FI AS THE BIG SCREEN. STILL TRYING…';
 function start() {
   const c = codeIn.value.toUpperCase();
   if (!/^[A-Z0-9]{4}$/.test(c)) { $('joinMsg').textContent = 'TYPE THE 4 LETTERS FROM THE BIG SCREEN'; return; }
@@ -142,13 +143,13 @@ function start() {
   codeIn.blur();
   // full screen and sideways, where the phone allows it
   try { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* no lock */ } }).catch(() => {}); } catch (e) { /* not allowed */ }
-  net.code = c; net.on = true; net.fails = 0; net.ever = false;
+  net.code = c; net.on = true; net.fails = 0; net.stuck = 0; net.noServer = 0; net.ever = false;
   $('join').classList.add('hidden'); $('pad').classList.remove('hidden');
   wait('CONNECTING TO ' + c + '…', '');
   connect();
 }
 function stopNet() {
-  net.on = false; clearTimeout(net.retryT); clearTimeout(net.dialT);
+  net.on = false; clearTimeout(net.retryT); clearTimeout(net.dialT); clearTimeout(net.openT);
   if (net.conn) { try { net.conn.close(); } catch (e) { /* gone */ } net.conn = null; }
   if (net.dialing) { try { net.dialing.close(); } catch (e) { /* gone */ } net.dialing = null; }
   if (net.peer) { try { net.peer.destroy(); } catch (e) { /* gone */ } net.peer = null; }
@@ -169,22 +170,39 @@ function connect() {
     if (!net.on) return;
     if (net.peer && !net.peer.destroyed && !net.peer.disconnected) { if (net.peer.open) dial(); return; }
     if (net.peer) { try { net.peer.destroy(); } catch (e) { /* gone */ } }
+    if (!net.ever && !net.noServer && !net.stuck) wait('CONNECTING TO ' + net.code + '…', 'REACHING THE SERVER…');
     const peer = new Peer({ debug: 0, config: { iceServers: PX.ICE_SERVERS } });
     net.peer = peer;
-    peer.on('open', () => dial());
+    // the server can just never answer (a filter or a bad network): don't wait forever, start again
+    const noServer = () => {
+      if (net.peer !== peer) return;
+      clearTimeout(net.openT);
+      try { peer.destroy(); } catch (x) { /* gone */ }
+      net.peer = null; net.noServer++;
+      if (!net.ever || net.noServer >= 2) wait("CAN'T REACH THE CONNECTION SERVER", net.noServer >= 2 ? HELP_NET : 'TRYING AGAIN…');
+      retry();
+    };
+    clearTimeout(net.openT); net.openT = setTimeout(noServer, 10000);
+    peer.on('open', () => { clearTimeout(net.openT); net.noServer = 0; dial(); });
     peer.on('error', e => {
       if (net.peer !== peer) return;
       if (e.type === 'peer-unavailable') { net.dialing = null; clearTimeout(net.dialT); failed(); return; }
-      try { peer.destroy(); } catch (x) { /* gone */ }
-      net.peer = null; wait('NO CONNECTION. TRYING AGAIN…', 'IS THIS PHONE ON THE INTERNET?'); retry();
+      noServer();
     });
     peer.on('disconnected', () => { if (net.peer === peer && !net.conn) { net.peer = null; try { peer.destroy(); } catch (x) { /* gone */ } retry(); } });
   }).catch(() => { wait("COULDN'T LOAD THE CONNECTION.", 'IS THIS PHONE ON THE INTERNET? TRYING AGAIN…'); retry(); });
+  if (!window.Peer && !net.ever) wait('CONNECTING TO ' + net.code + '…', 'LOADING…');
 }
 function failed() {                                 // no screen with that code (yet), or it's changing game: try again
   net.fails++;
   if (net.ever) wait('THE SCREEN IS CHANGING GAME…', 'RECONNECTING TO ' + net.code);
   else if (net.fails >= 3) wait('NO SCREEN WITH CODE ' + net.code, 'CHECK THE CODE ON THE BIG SCREEN. STILL TRYING…');
+  retry();
+}
+function stuck() {                                  // the screen is there, but the two can't make a link
+  net.stuck++;
+  if (net.ever) wait('THE SCREEN IS CHANGING GAME…', 'RECONNECTING TO ' + net.code);
+  else if (net.stuck >= 2) wait('FOUND ' + net.code + " BUT CAN'T LINK TO IT", HELP_NET);
   retry();
 }
 function dial() {
@@ -193,12 +211,13 @@ function dial() {
   if (net.dialing) { try { net.dialing.close(); } catch (e) { /* gone */ } }
   const c = net.peer.connect(PREFIX + net.code, { reliable: true, serialization: 'json' });
   net.dialing = c;
+  if (!net.ever && !net.stuck && net.fails < 3) wait('CONNECTING TO ' + net.code + '…', 'CALLING THE SCREEN…');
   clearTimeout(net.dialT);
-  net.dialT = setTimeout(() => { if (net.dialing === c) { net.dialing = null; try { c.close(); } catch (e) { /* gone */ } failed(); } }, 6000);
+  net.dialT = setTimeout(() => { if (net.dialing === c) { net.dialing = null; try { c.close(); } catch (e) { /* gone */ } stuck(); } }, 8000);
   c.on('open', () => {
     if (net.dialing !== c || net.conn) { try { c.close(); } catch (e) { /* gone */ } return; }
     clearTimeout(net.dialT);
-    net.dialing = null; net.conn = c; net.fails = 0; net.ever = true;
+    net.dialing = null; net.conn = c; net.fails = 0; net.stuck = 0; net.ever = true;
     c.send({ t: 'hello', id: padId, name: profile.name, avatar: profile.avatar });
     send(true); wake();
     $('wait').classList.add('hidden');
