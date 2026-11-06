@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
