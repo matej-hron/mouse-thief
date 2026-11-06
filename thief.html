@@ -237,7 +237,7 @@ const Sound = {
       try { this.ctx = new AC(); } catch (e) { return; }
       const c = this.ctx;
       const comp = c.createDynamicsCompressor(); comp.connect(c.destination);
-      this.master = c.createGain(); this.master.gain.value = 0.8; this.master.connect(comp);
+      this.master = c.createGain(); this.master.gain.value = 0.8 * PX.Settings.volume(); this.master.connect(comp);   // the arcade's volume setting
       this.sfxBus = c.createGain(); this.sfxBus.connect(this.master);
       this.musicBus = c.createGain(); this.musicBus.connect(this.master);
       this.noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);

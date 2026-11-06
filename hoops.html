@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const SAVE_KEY = 'pixelHoops.save';
 const save = { best: 0, made: 0, shots: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -61,6 +61,7 @@ const POLE_Z = -1.9;
 const BASE_Z = -1.575, HALF_Z = 12.4, SIDE_X = 7.5, KEY_Z = 4.225;
 const REL_Y = 2.12, ANGLE = 52 * Math.PI / 180;  // the ball leaves your hands this high, at this angle
 const MAX_PULL = 100;                            // longest pull (screen pixels)
+const SWEET_LO = 0.32, SWEET_HI = 0.68;          // pull this much (of the longest pull) and the power is just right
 // the camera: F = focal length in pixels, HOR = the horizon on the screen; it looks over your shoulder (CAM_BACK behind you, CAM_SIDE to your left)
 const F = 340, HOR = 80, CAM_Y = 3.2, CAM_BACK = 3.6, CAM_SIDE = 0.7, NEAR = 0.3;
 const GAME_TIME = 60;
@@ -70,9 +71,9 @@ const POINTS = 2;
 let state = 'title';            // title | play | over
 let paused = false;
 let G = null;
-function hoop() {               // where the hoop is right now (it slides left and right late in TIME ATTACK)
+function hoop(ahead = 0) {      // where the hoop is now, or in a moment (it slides left and right late in TIME ATTACK)
   let x = 0;
-  if (G && G.mode === 'timed' && G.time < 30) x = Math.sin(G.hoopT * 1.3) * 1.2 * Math.min(1, (30 - G.time) / 4);
+  if (G && G.mode === 'timed' && G.time < 30) x = Math.sin((G.hoopT + ahead) * 0.8) * 0.7 * Math.min(1, (30 - G.time) / 4);
   return { x, z: 0 };
 }
 function shooterAt(a, d) { return { a, d, x: Math.sin(a) * d, z: Math.cos(a) * d }; }   // a = angle around the hoop, d = distance
@@ -88,8 +89,8 @@ function newGame(mode) {
   state = 'play'; paused = false; aim = null;
 }
 function newSpot() {            // a new place to shoot from: the camera glides there behind you
-  const far = G.mode === 'timed' ? clamp(0.35 + G.made * 0.03, 0.35, 1) : 1;   // in TIME ATTACK the spots move further away
-  const d = 2.8 + 4.2 * rnd(0.1, 1) * far, a = rnd(-0.85, 0.85);
+  const far = G.mode === 'timed' ? clamp(0.3 + G.made * 0.025, 0.3, 1) : 1;   // in TIME ATTACK the spots move further away
+  const d = 2.6 + 3.4 * rnd(0.1, 1) * far, a = rnd(-0.8, 0.8);
   G.me = shooterAt(a, d); G.spot = G.me;
 }
 function shoot(v) {
@@ -144,7 +145,7 @@ function stepBall(b, dt, h) {
   const bz = h.z + BOARD_Z;
   if (bounceOff(b, clamp(b.x, h.x - BOARD_HW, h.x + BOARD_HW), clamp(b.y, BOARD_Y0, BOARD_Y1), clamp(b.z, bz - 0.04, bz), BR, 0.6)) { b.touched = true; sfx('board'); }
   // went down through the hoop?
-  if (!b.scored && py > RIM_Y && b.y <= RIM_Y && b.vy < 0 && Math.hypot(b.x - h.x, b.z - h.z) < RIM_R) scored(b);
+  if (!b.scored && py > RIM_Y && b.y <= RIM_Y && b.vy < 0 && Math.hypot(b.x - h.x, b.z - h.z) < RIM_R + 0.04) scored(b);
   // the floor, and the boards around the court
   if (b.y < BR) {
     b.y = BR;
@@ -422,7 +423,7 @@ function drawScene(t, balls, me, pose, fire) {
 function drawAim() {
   if (!aim || !G.spot) return;
   const v = aimVelocity(); if (!v) return;
-  const s = handPos(G.me), len = G.mode === 'free' ? 1.3 : 0.5;
+  const s = handPos(G.me), len = G.mode === 'free' ? 1.3 : 0.9;
   for (let i = 1; i < 18; i++) {                       // the dots: where the ball starts to go
     const t = len * i / 17, x = s.x + v.x * t, y = s.y + v.y * t - GRAV * t * t / 2, z = s.z + v.z * t;
     if (y < 0 || z < BOARD_Z) break;
@@ -433,8 +434,11 @@ function drawAim() {
   }
   const hd = proj(G.me.x, 1.6, G.me.z); if (!hd) return;
   const bx = Math.round(hd.x - 70), by = Math.round(hd.y);        // power bar, left of your player
+  const good = v.p >= SWEET_LO && v.p <= SWEET_HI;
   ctx.fillStyle = '#111'; ctx.fillRect(bx, by, 30, 7);
-  ctx.fillStyle = v.p > 0.85 ? '#e01e1e' : v.p > 0.55 ? '#ffd23f' : '#5ad43f'; ctx.fillRect(bx + 1, by + 1, Math.round(28 * v.p), 5);
+  ctx.fillStyle = '#1f5a1a'; ctx.fillRect(bx + 1 + Math.round(28 * SWEET_LO), by + 1, Math.round(28 * (SWEET_HI - SWEET_LO)), 5);   // the green zone
+  ctx.fillStyle = good ? '#5ad43f' : v.p > SWEET_HI ? '#e01e1e' : '#ffd23f'; ctx.fillRect(bx + 1, by + 1, Math.round(28 * v.p), 5);
+  if (good) T('GOOD!', bx + 15, by + 10, '#5ad43f', 1, 'center', '#000');
   T('POWER', bx + 15, by - 9, '#fff', 1, 'center', '#000');
 }
 function drawGame(t) {
@@ -466,7 +470,7 @@ function drawGame(t) {
   if (G.shots === 0 && state === 'play' && !aim) {
     ctx.fillStyle = 'rgba(13,11,19,0.75)'; ctx.fillRect(W / 2 - 112, 116, 224, 26);
     T('PULL DOWN AND LET GO TO SHOOT', W / 2, 120, '#fff', 1, 'center', '#000');
-    T('(ANYWHERE ON THE SCREEN; SIDEWAYS TO AIM)', W / 2, 130, '#9a92b8', 1, 'center', '#000');
+    T('(ANYWHERE. POWER: STOP IN THE GREEN)', W / 2, 130, '#9a92b8', 1, 'center', '#000');
   }
   if (state === 'play' && UI.button('pause', 6, 6, 24, 20, 'II', { size: 1 })) setPause(true);
 }
@@ -545,11 +549,18 @@ let aim = null;
 function aimVelocity() {      // pull down = power, sideways = aim the other way (like a slingshot)
   const dx = aim.x0 - aim.x, dy = aim.y - aim.y0;
   if (dy < 8 || !G || !G.me) return null;
-  const p = Math.min(1, dy / MAX_PULL), side = clamp(dx / MAX_PULL, -1, 1) * 0.3;
-  const s = handPos(G.me), D = Math.hypot(s.x, s.z), ux = -s.x / D, uz = -s.z / D;
+  const p = Math.min(1, dy / MAX_PULL), side = Math.abs(dx) < 20 ? 0 : clamp((dx - Math.sign(dx) * 20) / MAX_PULL, -1, 1) * 0.25;
+  const s = handPos(G.me), c = Math.cos(ANGLE);
+  const speedFor = L => Math.sqrt(GRAV * L * L / (2 * c * c * (L * Math.tan(ANGLE) - (RIM_Y - REL_Y))));
+  // aim where the hoop will be when the ball gets there (it only moves late in TIME ATTACK)
+  let h = hoop(), D = Math.hypot(s.x - h.x, s.z - h.z);
+  h = hoop((D + 0.04) / (speedFor(D + 0.04) * c));
+  const hx = s.x - h.x, hz = s.z - h.z; D = Math.hypot(hx, hz);
+  const ux = -hx / D, uz = -hz / D;
   const dirX = ux * Math.cos(side) - uz * Math.sin(side), dirZ = uz * Math.cos(side) + ux * Math.sin(side);
-  const c = Math.cos(ANGLE), L = D + 0.04, need = Math.sqrt(GRAV * L * L / (2 * c * c * (L * Math.tan(ANGLE) - (RIM_Y - REL_Y))));
-  const v = need * (0.85 + 0.3 * p);   // half a pull is about right, from anywhere
+  const L = D + 0.04, need = speedFor(L);
+  // half a pull is right, from anywhere: anything in the green zone (SWEET_LO..SWEET_HI) is a perfect throw
+  const v = need * (p < SWEET_LO ? 1 - (SWEET_LO - p) * 0.3 : p > SWEET_HI ? 1 + (p - SWEET_HI) * 0.3 : 1);
   return { x: dirX * v * c, y: v * Math.sin(ANGLE), z: dirZ * v * c, p };
 }
 UI.onDown = (e, x, y) => {
