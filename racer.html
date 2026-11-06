@@ -1015,6 +1015,7 @@ buildTrack();
 requestAnimationFrame(frame);
 PX.Pad.setup({
   title: 'Pixel GP: controller', ui: UI, menu: () => state !== 'race' || paused,
+  phone: { stick: 'STEER', buttons: [['A', 'GAS'], ['B', 'BRAKE'], ['X', 'NITRO'], ['Y', 'SHIELD']] },
   keys: () => ({ left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', A: 'ArrowUp', RT: 'ArrowUp', down: 'ArrowDown', B: 'ArrowDown', LT: 'ArrowDown', X: 'Digit1', RB: 'Digit1', Y: 'Digit2', LB: 'Digit2', START: 'KeyP' }),
   help: [['STICK|D-PAD', 'STEER'], ['A|RT', 'GAS (HOLD IT)'], ['B|LT', 'BRAKE'], ['X|RB', 'NITRO'], ['Y|LB', 'SHIELD'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });

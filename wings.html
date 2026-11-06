@@ -2713,6 +2713,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Wings: controller', ui: UI, menu: () => state !== 'play' || paused || leaveAsk,
+  phone: { stick: 'POINT WHERE TO FLY', buttons: [['A', 'FIRE'], ['LB', 'SLOWER'], ['RB', 'FASTER']] },
   keys: () => ({ START: 'KeyP' }),
   onPlay: (h, n, dt) => {                    // left stick: where to fly; A / RT / X: fire; LB / RB or the right stick: speed
     const p = Local.pilots[n]; if (!p) return;

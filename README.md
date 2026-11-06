@@ -5,7 +5,9 @@ Pixel-art games to play alone or with a friend, on a phone or a computer. **Play
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
 **SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
 PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
-**Pixel Arcade**, with a blue cat on black as its icon.
+**Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
+when you add the arcade to an iPhone's home screen after setting your avatar).
+The **controller button** next to the ★ counter turns phones into game controllers for a big screen (see below).
 
 | Game | |
 |---|---|
@@ -128,6 +130,26 @@ Every game works with a game controller (Xbox and others): on an Xbox open the a
 controller to a PC or a phone. In the menus the stick or d-pad picks a button, A presses it, B goes back. The first time you
 use a controller a little help box shows what each button does in that game; **Y** in the menus shows it again. On an Xbox the arcade goes full screen at the first click, because Edge only hands the controller to web games in full screen (otherwise the stick moves a mouse pointer).
 `common.js` has the shared layer (`PX.Pad`): it turns the controller into the game's keyboard keys and moves between menu buttons.
+
+### Your phone as a controller
+
+Play on an Xbox, a TV or a computer, with phones as the controllers (up to 4):
+
+1. On the big screen open the arcade, press the **controller button** next to the ★ (or RB on a controller) and
+   **SHOW CODE**. It shows a 4-letter code and a QR code.
+2. On the phone open the arcade, press the same button and **BE A CONTROLLER** (`pad.html`), and type the code
+   (or just scan the QR code).
+3. Pick a game on the big screen (with the phone). Every game shows **its own buttons** on the phone, with what each
+   one does (Pixel GP: steer, GAS, BRAKE, NITRO, SHIELD; Pixel Wings: stick, FIRE, SLOWER / FASTER; Mouse Thief:
+   JUMP, SLIDE and the abilities...), and in the menus a d-pad with OK / BACK. The ❚❚ button pauses.
+
+The phones stay connected when the big screen changes game (they reconnect by themselves in a second or two), and
+the first phone is controller 1 (a real controller on the Xbox becomes the next one). How it works: the big screen
+gets a PeerJS id from the code (`PX.Remote` in `common.js`, kept in the tab's `sessionStorage`), each phone sends
+what's pressed, and the phone appears in `navigator.getGamepads()` like any controller, so every game works with it.
+The screen tells the phone which buttons to show: each game's `PX.Pad.setup({ phone: { stick, dpad, buttons } })`.
+Needs an internet connection on both (the same free PeerJS server as online play). The QR code is made by
+`vendor/qrcode.js` (qrcode-generator, MIT).
 
 ## Pixel Football
 
