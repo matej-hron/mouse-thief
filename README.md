@@ -11,7 +11,7 @@ The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the sli
 | **Pixel Heist** (`heist.html`) | A low-poly 3D city: rob 5 places, each harder and richer, and escape the police. Rob the bank to win. |
 | **Pixel Pong** (`pong.html`) | Table tennis seen from above, with power-ups: play a bot, a random player, a friend online, or two players on one phone. |
 | **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
-| **Pixel Hoops** (`hoops.html`) | Arcade basketball: pull back and let go to shoot. Every basket is +2 points. |
+| **Pixel Hoops** (`hoops.html`) | Arcade basketball that looks 3D: pull back and let go to shoot. Every basket is +2 points. |
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 
@@ -87,12 +87,16 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
 
 ## Pixel Hoops
 
-Arcade basketball, seen from the side. **Every basket is +2 points.**
+Arcade basketball. It's drawn flat in 2D, but the court, the hoop and the ball are in 3D and the camera looks over your
+player's shoulder at the hoop, with everything drawn in perspective, so it looks 3D (like Pixel GP). **Every basket is +2 points.**
 
-- **Shooting:** put your finger (or the mouse) anywhere, pull back like a slingshot and let go. The dots show where the
-  ball starts to go, the bar over your player shows the power. You can have a few balls in the air at once.
+- **Shooting:** put your finger (or the mouse) anywhere, pull down like a slingshot and let go. Pull further for a
+  harder throw (about half way is right, from any spot), and sideways to aim the other way. The dots show where the
+  ball starts to go, the bar next to your player shows the power. You can have a few balls in the air at once.
+- **The camera:** after every shot you get a new spot somewhere around the hoop, and the camera glides around the
+  court to stand behind you again. The crowd jumps when you score.
 - **TIME ATTACK:** 60 seconds, as many baskets as you can. The more you make, the further away you shoot from,
-  and in the last 30 seconds the hoop moves up and down. 10 points = ★1 into the arcade wallet.
+  and in the last 30 seconds the hoop slides left and right. 10 points = ★1 into the arcade wallet.
 - **FREE SHOOT:** no clock and a longer aiming line, just shoot. Your baskets and shooting % are counted.
 - No rim or backboard touched = **SWISH!** Three in a row and you're **ON FIRE**.
 - P or Escape pauses.
