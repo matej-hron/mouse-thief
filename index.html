@@ -17,19 +17,21 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
-  #name { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+  #name, #search { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+  #search { text-align: left; letter-spacing: 0.1em; padding: 0 0.4em; }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
+<input id="search" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search" enterkeyhint="search" placeholder="TYPE A GAME..." aria-label="Search games">
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.5.0';
+const VERSION = '2.6.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -37,14 +39,18 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | profile
+let screen = 'home';                  // home | search | profile
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
+const searchInput = document.getElementById('search');
+searchInput.addEventListener('input', () => { searchInput.value = searchInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 20); search.q = searchInput.value; scrollTo(0); pad.focus = 0; });
 nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
 window.addEventListener('keydown', e => {
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
+  if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
-  if (screen === 'home') {
+  if (screen === 'home' && e.key === '/') { e.preventDefault(); openSearch(); return; }
+  if (screen === 'home' || screen === 'search') {
     const step = { ArrowDown: 40, ArrowUp: -40, PageDown: 150, PageUp: -150 }[e.key];
     if (step) { e.preventDefault(); scroll.v = 0; scrollTo(scroll.y + step); }
     if (e.key === 'Home') scrollTo(0); else if (e.key === 'End') scrollTo(1e9);
@@ -52,7 +58,7 @@ window.addEventListener('keydown', e => {
 });
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
-  if (screen !== 'home') return;
+  if (screen !== 'home' && screen !== 'search') return;
   const L = layout();
   if (y < L.top) return;
   if (L.max > 0 && x >= S.W - 18) { scroll.bar = true; scroll.v = 0; UI.downId = null; barTo(y); return; }
@@ -60,15 +66,27 @@ UI.onDown = (e, x, y) => {
 };
 const thiefIcon = new Image(); thiefIcon.src = 'icons/icon-192.png';
 const GAMES = [
-  { id: 'thief', name: 'MOUSE THIEF', sub: 'RUN FROM THE CAT!', url: 'thief.html', color: '#e01e1e' },
-  { id: 'racer', name: 'PIXEL GP', sub: 'RACE CARS!', url: 'racer.html', color: '#2a7fd4' },
-  { id: 'heist', name: 'PIXEL HEIST', sub: 'ROB THE BANK!', url: 'heist.html', color: '#ffd23f' },
-  { id: 'pong', name: 'PIXEL PONG', sub: 'TABLE TENNIS!', url: 'pong.html', color: '#1ec8e0' },
-  { id: 'football', name: 'PIXEL FOOTBALL', sub: 'RUN YOUR CLUB!', url: 'football.html', color: '#3fae4a' },
-  { id: 'hoops', name: 'PIXEL HOOPS', sub: 'SHOOT BASKETS!', url: 'hoops.html', color: '#ff8a2a' },
-  { id: 'wings', name: 'PIXEL WINGS', sub: 'AIR BATTLE!', url: 'wings.html', color: '#7ac8ff' },
-  { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0' },
+  { id: 'thief', name: 'MOUSE THIEF', sub: 'RUN FROM THE CAT!', url: 'thief.html', color: '#e01e1e', cats: ['ACTION', 'RUNNING', 'ONLINE'], tags: 'CAT MOUSE CITY ROOFS' },
+  { id: 'racer', name: 'PIXEL GP', sub: 'RACE CARS!', url: 'racer.html', color: '#2a7fd4', cats: ['RACING', 'ONLINE'], tags: 'CAR CARS DRIVE F1 FORMULA GRAND PRIX' },
+  { id: 'heist', name: 'PIXEL HEIST', sub: 'ROB THE BANK!', url: 'heist.html', color: '#ffd23f', cats: ['ACTION', 'RACING'], tags: 'POLICE ROBBER CITY 3D CAR' },
+  { id: 'pong', name: 'PIXEL PONG', sub: 'TABLE TENNIS!', url: 'pong.html', color: '#1ec8e0', cats: ['SPORTS', 'ONLINE', '2 PLAYERS'], tags: 'PING PONG TENNIS BALL' },
+  { id: 'football', name: 'PIXEL FOOTBALL', sub: 'RUN YOUR CLUB!', url: 'football.html', color: '#3fae4a', cats: ['SPORTS', 'ONLINE'], tags: 'SOCCER BALL GOAL LEAGUE CLUB' },
+  { id: 'hoops', name: 'PIXEL HOOPS', sub: 'SHOOT BASKETS!', url: 'hoops.html', color: '#ff8a2a', cats: ['SPORTS'], tags: 'BASKETBALL BALL BASKET' },
+  { id: 'wings', name: 'PIXEL WINGS', sub: 'AIR BATTLE!', url: 'wings.html', color: '#7ac8ff', cats: ['ACTION', 'PLANES', 'ONLINE', '2 PLAYERS'], tags: 'PLANE PLANES FLY WAR BOMBER FIGHTER SHIP' },
+  { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0', cats: ['RUNNING', 'PLANES'], tags: 'PARKOUR JUMP PLANE OFFICER' },
 ];
+// --- search: type a name, or pick a category -----------------------------------------------
+const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
+const search = { q: '', cat: 'ALL' };
+function matches(g) {
+  if (search.cat !== 'ALL' && !g.cats.includes(search.cat)) return false;
+  const words = search.q.trim().split(/\s+/).filter(Boolean), hay = [g.name, g.sub, g.tags, ...g.cats].join(' ');
+  return words.every(w => hay.includes(w));
+}
+function shown() { return screen === 'search' ? GAMES.filter(matches) : GAMES; }
+function openSearch() { screen = 'search'; scroll.y = 0; scroll.v = 0; pad.focus = 0; searchInput.value = search.q; PX.Sound.tone(660, 0.05, { vol: 0.06 }); if (!pad.used) setTimeout(() => searchInput.focus(), 0); }
+function closeSearch() { searchInput.blur(); screen = 'home'; scroll.y = 0; scroll.v = 0; pad.focus = 0; }
+function magnifier(cx, cy, s, color = '#fff') { PX.drawIcon(ctx, ['.###..', '#...#.', '#...#.', '#...#.', '.####.', '....##', '.....#'], { '#': color }, cx, cy, s); }
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -305,12 +323,39 @@ function drawHome(t) {
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
   T(profile.name, rx + 36, 44, '#fff', 2, 'left', '#000');
   if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
+  if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
+  magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
+  drawGrid(t);
+  if (installPrompt && UI.button('install', 8, 8, 72, 16, 'INSTALL', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
+}
+function drawSearch(t) {
+  const W = S.W;
+  background(t);
+  if (UI.button('back', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { closeSearch(); return; }
+  magnifier(68, 19, 2, '#1ec8e0');
+  S.placeInput(searchInput, 80, 8, W - 80 - 8 - (search.q ? 30 : 0), 22);
+  if (search.q && UI.button('clear', W - 34, 8, 26, 22, 'X', { size: 2 })) { search.q = searchInput.value = ''; scrollTo(0); pad.focus = 0; }
+  // the categories, in one row (or two on a narrow screen)
+  let x = 8, y = 36;
+  for (const c of CATEGORIES) {
+    const w = PX.textWidth(c, 1) + 12;
+    if (x + w > W - 8) { x = 8; y += 18; }
+    if (UI.button('cat_' + c, x, y, w, 15, c, { size: 1, on: search.cat === c, accent: '#ffd23f' })) { search.cat = c; scrollTo(0); pad.focus = 0; PX.Sound.tone(700, 0.04, { vol: 0.06 }); }
+    if (search.cat === c) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, w, 15); T(c, x + w / 2, y + 4, '#111', 1, 'center'); }
+    x += w + 4;
+  }
+  drawGrid(t);
+  const n = shown().length, L = layout();
+  if (!n) { T('NO GAMES FOUND', W / 2, L.top + 30, '#fff', 2, 'center', '#000'); T('TRY ANOTHER WORD OR CATEGORY', W / 2, L.top + 52, '#9a92b8', 1, 'center'); }
+}
+function drawGrid(t) {
   // the games: rows of cards in a box you can swipe (or scroll, or drag the slider on the right)
+  const W = S.W, list = shown();
   const L = layout(), { top, bottom } = L;
   ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, bottom - top); ctx.clip();
   const first = UI.list.length;
-  GAMES.forEach((g, i) => {
-    const r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, GAMES.length - r * L.cols);
+  list.forEach((g, i) => {
+    const r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, list.length - r * L.cols);
     const rx0 = Math.round(L.cx - (L.cw * inRow + L.gap * (inRow - 1)) / 2);
     const y = Math.round(top + L.pad + r * (CARD_H + L.gap) - scroll.y);
     if (y > bottom || y + CARD_H < top) return;
@@ -336,16 +381,20 @@ function drawHome(t) {
     ctx.fillStyle = '#3a2f5c'; for (let k = -1; k <= 1; k++) ctx.fillRect(tx + 1, ty + Math.round(th / 2) + k * 3, 4, 1);
     if (scroll.y < 4 && Math.floor(t * 2) % 2) T('↓', tx + 3, bottom - 10, '#ffd23f', 1, 'center');
   }
-  if (installPrompt && UI.button('install', 8, 8, 72, 16, 'INSTALL', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
 }
 // --- swiping through the games -----------------------------------------------------------
 const CARD_H = 140;
 const scroll = { y: 0, v: 0, drag: null, bar: false };
 function layout() {
-  const W = S.W, top = 66, bottom = H, gap = 8, pad = 4, slider = 16;
+  const W = S.W, gap = 8, pad = 4, slider = 16, bottom = H;
   const avail = W - 16 - slider, cols = Math.max(2, Math.floor((avail + gap) / (116 + gap)));
-  const cw = Math.min(150, Math.floor((avail - gap * (cols - 1)) / cols)), rows = Math.ceil(GAMES.length / cols);
-  const view = bottom - top, content = pad * 2 + rows * CARD_H + (rows - 1) * gap;
+  let top = 66;
+  if (screen === 'search') {                       // under the search box and the categories
+    let x = 8, y = 36; for (const c of CATEGORIES) { const w = PX.textWidth(c, 1) + 12; if (x + w > W - 8) { x = 8; y += 18; } x += w + 4; }
+    top = y + 20;
+  }
+  const n = shown().length, cw = Math.min(150, Math.floor((avail - gap * (cols - 1)) / cols)), rows = Math.ceil(n / cols);
+  const view = bottom - top, content = rows ? pad * 2 + rows * CARD_H + (rows - 1) * gap : 0;
   return { top, bottom, gap, pad, cols, cw, cx: 8 + avail / 2, view, max: Math.max(0, content - view) };
 }
 function scrollTo(y) { const m = layout().max; scroll.y = Math.max(0, Math.min(m, y)); }
@@ -358,7 +407,7 @@ function scrollStep(dt) {
   scroll.v *= Math.exp(-4 * dt);
 }
 UI.onMove = (e, x, y) => {
-  if (screen !== 'home') return;
+  if (screen !== 'home' && screen !== 'search') return;
   if (scroll.bar) { barTo(y); return; }
   const d = scroll.drag; if (!d || d.id !== e.pointerId) return;
   const now = performance.now(), dy = y - d.last, dt = Math.max(1, now - d.t) / 1000;
@@ -376,12 +425,12 @@ UI.onUp = e => {
 const pad = { used: false, focus: 0, prev: {}, navT: 0 };
 try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
 function cardBox(i) {
-  const L = layout(), r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, GAMES.length - r * L.cols);
+  const L = layout(), n = shown().length, r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, n - r * L.cols);
   const x = Math.round(L.cx - (L.cw * inRow + L.gap * (inRow - 1)) / 2) + c * (L.cw + L.gap), y = L.pad + r * (CARD_H + L.gap);
   return { x, y, w: L.cw, r, c };
 }
 function padFocus(i) {
-  pad.focus = Math.max(0, Math.min(GAMES.length - 1, i));
+  pad.focus = Math.max(0, Math.min(shown().length - 1, i));
   const L = layout(), b = cardBox(pad.focus);                          // scroll so the whole card shows
   if (b.y - scroll.y < 0) scrollTo(b.y - L.pad); else if (b.y + CARD_H - scroll.y > L.view) scrollTo(b.y + CARD_H + L.pad - L.view);
   scroll.v = 0; PX.Sound.tone(660, 0.05, { vol: 0.06 });
@@ -390,23 +439,29 @@ function padPoll(dt) {
   let gps = [];
   try { gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; } catch (e) { gps = []; }
   for (const gp of gps.slice(0, 2)) {
-    const now = {}; for (const i of [0, 1, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const now = {}; for (const i of [0, 1, 2, 4, 5, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
     const edge = i => now[i] && !pad.prev[i];
     let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     if (now[14]) ax = -1; if (now[15]) ax = 1; if (now[12]) ay = -1; if (now[13]) ay = 1;
     const any = Math.hypot(ax, ay) > 0.5 || Object.values(now).some(Boolean);
     if (any && !pad.used) { pad.used = true; PX.Sound.unlock(); padFocus(pad.focus); }
-    if (screen === 'home') {
-      const cols = layout().cols;
+    if (screen === 'home' || screen === 'search') {
+      const cols = layout().cols, list = shown();
       if (Math.hypot(ax, ay) > 0.6) {
         if ((pad.navT -= dt) <= 0) {
           pad.navT = pad.navT < -1 ? 0.35 : 0.22;
           if (Math.abs(ax) > Math.abs(ay)) padFocus(pad.focus + Math.sign(ax));
-          else { const n = pad.focus + Math.sign(ay) * cols; if (n >= 0 && n < GAMES.length) padFocus(n); else if (ay > 0 && Math.floor(pad.focus / cols) < Math.floor((GAMES.length - 1) / cols)) padFocus(GAMES.length - 1); }
+          else { const n = pad.focus + Math.sign(ay) * cols; if (n >= 0 && n < list.length) padFocus(n); else if (ay > 0 && Math.floor(pad.focus / cols) < Math.floor((list.length - 1) / cols)) padFocus(list.length - 1); }
         }
       } else pad.navT = 0;
       const ry = gp.axes[3] || 0; if (Math.abs(ry) > 0.25) { scroll.v = 0; scrollTo(scroll.y + ry * 300 * dt); }
-      if (edge(0) || edge(9)) play(GAMES[pad.focus]);
+      if ((edge(0) || edge(9)) && list[pad.focus]) play(list[pad.focus]);
+      if (screen === 'search' && edge(1)) closeSearch();
+      else if (screen === 'home' && edge(2)) openSearch();
+      if (screen === 'search') {                  // LB / RB: the previous / next category
+        const k = edge(4) ? -1 : edge(5) ? 1 : 0;
+        if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
+      }
     } else if (edge(1)) UI.back = true;
     pad.prev = now;
   }
@@ -414,7 +469,7 @@ function padPoll(dt) {
 window.addEventListener('pointerdown', () => { pad.used = false; });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  if (screen !== 'home') return;
+  if (screen !== 'home' && screen !== 'search') return;
   const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 200 : 1;
   scroll.v = 0; scrollTo(scroll.y + e.deltaY * k * S.view.dpr / S.view.scale);
 }, { passive: false });
@@ -456,8 +511,9 @@ function frame(now) {
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'home') drawHome(t); else drawProfile(t);
+  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
+  if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);
@@ -465,7 +521,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself; this is just the help box
   title: 'Pixel Arcade: controller', menu: () => false,
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['Y', 'IN EVERY GAME\'S MENUS: WHAT THE BUTTONS DO']],
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['LB|RB', 'SEARCH: CATEGORY'], ['B', 'SEARCH: BACK'], ['Y', 'IN EVERY GAME\'S MENUS: WHAT THE BUTTONS DO']],
 });
 </script>
 </body>

@@ -101,6 +101,17 @@ window.PX = (() => {
     ctx.imageSmoothingEnabled = was;
   }
 
+  // --- little pixel icons (power-ups, abilities) ------------------------------------------
+  // rows: strings, one char per pixel ('.' = empty); pal: char -> color. Drawn centered on
+  // (cx, cy), s screen pixels per icon pixel, with a dark outline so they show on any background.
+  function drawIcon(ctx, rows, pal, cx, cy, s = 2, outline = '#111111') {
+    const w = Math.max(...rows.map(r => r.length)), h = rows.length;
+    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - h * s / 2);
+    const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x0 + x * s, y0 + y * s, s, s); };
+    if (outline) rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) px(x + dx, y + dy, outline); }));
+    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.' && pal[ch]) px(x, y, pal[ch]); }));
+  }
+
   // --- your profile: one name and avatar for all the games ------------------------------
   const PROFILE_KEY = 'pixelArcade.profile';
   const Profile = {
@@ -381,6 +392,6 @@ window.PX = (() => {
     hideHelp() { if (this.helpEl) this.helpEl.style.display = 'none'; this.helpUntil = 0; },
   };
 
-  return { Pad, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, Profile, cleanName,
+  return { Pad, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

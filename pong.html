@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const SAVE_KEY = 'pixelPong.save';
 const save = { wins: 0, played: 0, music: true, sfx: true, best: {} };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -64,6 +64,14 @@ const ABILITIES = [
   { id: 'freeze', name: 'FREEZE', cost: 4, color: '#7af0ff', info: 'THE OTHER BAT FREEZES FOR A MOMENT' },
 ];
 const MAX_ENERGY = 6;
+// a pixel icon for each power-up ('#' = its color)
+const ABIL_ICONS = {
+  smash:  ['...#...', '..##...', '..###.#', '.####.#', '.######', '###y###', '##yyy##', '##yyy##', '.#####.'],      // a fireball
+  curve:  ['.####....', '######...', '##..##...', '##..##...', '##.######', '##..####.', '##...##..', '##.......'],   // a curved arrow
+  big:    ['..###....', '.#####.w.', '#######ww', '#######w.', '#######..', '.#####...', '..###....', '...hh....', '...hh....'], // a bat and a plus
+  freeze: ['....#....', '.#..#..#.', '..#.#.#..', '...###...', '#########', '...###...', '..#.#.#..', '.#..#..#.', '....#....'],  // a snowflake
+};
+function abilIcon(id, cx, cy, s) { const a = ABILITIES.find(q => q.id === id); PX.drawIcon(ctx, ABIL_ICONS[id], { '#': a.color, w: '#ffffff', y: '#ffe23a', h: '#a0662a' }, cx, cy, s); }
 const BOTS = {
   easy:   { name: 'EASY BOT', speed: 120, err: 18, react: 0.35, abil: 0, reward: 3, color: '#3fae4a', av: { shape: 'frog', color: 3 } },
   normal: { name: 'BOT', speed: 175, err: 12, react: 0.2, abil: 0.3, reward: 6, color: '#e0b030', av: { shape: 'robot', color: 6 } },
@@ -278,8 +286,9 @@ function drawEnergy(p, x, y, w, right) {
   ABILITIES.forEach((a, i) => {
     const ok = p.energy >= a.cost && M.phase !== 'over', id = 'ab' + p.side + a.id;
     if (UI.button(id, x + i * (bw + 3), y, bw, 24, '', { disabled: !ok, accent: a.color })) useAbility(p.side, a.id);
-    T(a.name.split(' ')[0], x + i * (bw + 3) + bw / 2, y + 5, ok ? a.color : '#5b5275', 1, 'center', null);
-    T(String(a.cost), x + i * (bw + 3) + bw / 2, y + 14, ok ? '#ffd23f' : '#5b5275', 1, 'center', null);
+    const bx = x + i * (bw + 3);
+    ctx.globalAlpha = ok ? 1 : 0.35; abilIcon(a.id, bx + bw / 2 - 3, y + 12, 2); ctx.globalAlpha = 1;
+    T(String(a.cost), bx + bw - 3, y + 15, ok ? '#ffd23f' : '#5b5275', 1, 'right', '#000');
   });
   const keysTxt = M.mode === 'local' ? (p.side === 0 ? 'KEYS 1 2 3 4' : 'KEYS 7 8 9 0') : 'KEYS 1 2 3 4';
   if (!Ctl.touch && M.mode !== 'local') T(keysTxt, x + w + 6, y + 9, '#0d6a7a', 1, 'left', null);

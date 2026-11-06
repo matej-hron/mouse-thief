@@ -3,6 +3,9 @@
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
+**SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
+PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
+**Pixel Arcade**, with a blue cat on black as its icon.
 
 | Game | |
 |---|---|
@@ -199,7 +202,8 @@ Every heist pays ★ into the shared arcade wallet. The 3D drawing uses [three.j
 - **FREE DRIVE:** no rivals, just drive and chase your best lap.
 - **RACE A FRIEND:** CREATE GAME gives a 4-letter code, your friend joins with it (both phones need the same version).
   First over the line after 3 laps wins.
-- Gas is automatic. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
+- **Hold GAS to drive** (↑ / W, the on-screen GAS, or A / RT on a controller): the car doesn't move until you do, and
+  rolls slower when you let go. Steer with ← / → (or the on-screen < >), brake with ↓ / Space (or BRAKE).
   The tight hairpin needs a brake; going off the road or hitting things slows you down.
 - **Damage:** your car has 1 heart (ARMOR in the garage gives 2 or 3). Barrels, crates and cones on the road cost a heart, and so does crashing into
   trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
