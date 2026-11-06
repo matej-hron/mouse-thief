@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football and Pixel Hoops. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings and Pixel Sky Run. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -67,6 +67,7 @@ const GAMES = [
   { id: 'football', name: 'PIXEL FOOTBALL', sub: 'RUN YOUR CLUB!', url: 'football.html', color: '#3fae4a' },
   { id: 'hoops', name: 'PIXEL HOOPS', sub: 'SHOOT BASKETS!', url: 'hoops.html', color: '#ff8a2a' },
   { id: 'wings', name: 'PIXEL WINGS', sub: 'AIR BATTLE!', url: 'wings.html', color: '#7ac8ff' },
+  { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0' },
 ];
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
@@ -246,12 +247,36 @@ function previewWings(x, y, w, h, t) {
   if (Math.floor(t * 8) % 2) { ctx.fillStyle = '#ffe680'; ctx.fillRect(Math.round(p2x + Math.cos(a2) * 12), Math.round(p2y + Math.sin(a2) * 12), 3, 1); }
   ctx.restore();
 }
+function previewSkyRun(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const hor = y + 22;
+  ctx.fillStyle = '#6fb4f0'; ctx.fillRect(x, y, w, hor - y);                 // the sky
+  ctx.fillStyle = '#dff0ff'; ctx.fillRect(x, hor, w, y + h - hor);           // the clouds below
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 5; i++) { const cx = x + ((i * 29 + t * 6) % (w + 20)) - 10; ctx.fillRect(Math.round(cx), hor - 3 - (i % 2) * 2, 10, 3 + (i % 2) * 2); }
+  const cx = x + w / 2, run = (t * 1.2) % 1;
+  for (let l = -1; l <= 1; l++) {                                          // three plane roofs running to the horizon
+    ctx.fillStyle = '#c3cfdb'; ctx.beginPath(); ctx.moveTo(cx + l * 4 - 2, hor); ctx.lineTo(cx + l * 4 + 2, hor); ctx.lineTo(cx + l * 26 + 11, y + h); ctx.lineTo(cx + l * 26 - 11, y + h); ctx.fill();
+    ctx.fillStyle = '#eef3f8'; ctx.beginPath(); ctx.moveTo(cx + l * 4 - 1, hor); ctx.lineTo(cx + l * 4 + 1, hor); ctx.lineTo(cx + l * 26 + 7, y + h); ctx.lineTo(cx + l * 26 - 7, y + h); ctx.fill();
+    ctx.fillStyle = ['#e01e1e', '#2a7fd4', '#3fae4a'][l + 1];
+    const fz = (run + (l + 1) * 0.33) % 1, fy = hor + fz * fz * (h - 22), fx = cx + l * (4 + 22 * fz * fz);
+    ctx.fillRect(Math.round(fx), Math.round(fy - 2 - fz * 8), 1 + Math.round(fz * 2), 2 + Math.round(fz * 8));
+  }
+  const jump = Math.max(0, Math.sin(t * 4)) * 8, bx = Math.round(cx - 3), by = Math.round(y + h - 26 - jump);   // the boy, in your color
+  ctx.fillStyle = '#5a3418'; ctx.fillRect(bx + 1, by, 5, 4);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(bx, by + 4, 7, 7);
+  ctx.fillStyle = '#2a4f8a'; const leg = Math.floor(t * 10) % 2; ctx.fillRect(bx + 1, by + 11, 2, 5 - leg); ctx.fillRect(bx + 4, by + 11, 2, 4 + leg);
+  ctx.fillStyle = '#1d2c5a'; ctx.fillRect(Math.round(cx - 6 + Math.sin(t * 3) * 2), y + h - 9, 12, 9);   // the officer, close behind
+  ctx.fillStyle = '#14204a'; ctx.fillRect(Math.round(cx - 5 + Math.sin(t * 3) * 2), y + h - 13, 10, 4);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(cx - 1 + Math.sin(t * 3) * 2), y + h - 12, 2, 2);
+  ctx.restore();
+}
 function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');

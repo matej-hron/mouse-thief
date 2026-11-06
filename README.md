@@ -13,6 +13,7 @@ The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the sli
 | **Pixel Football** (`football.html`) | Retro side-on football, six a side. Run your club: a league, a squad, training, a transfer market. Play and trade with friends online. |
 | **Pixel Hoops** (`hoops.html`) | Arcade basketball: pull back and let go to shoot. Every basket is +2 points. |
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
+| **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 
 ## Pixel Wings
 
@@ -94,6 +95,24 @@ Arcade basketball, seen from the side. **Every basket is +2 points.**
   and in the last 30 seconds the hoop moves up and down. 10 points = ★1 into the arcade wallet.
 - **FREE SHOOT:** no clock and a longer aiming line, just shoot. Your baskets and shooting % are counted.
 - No rim or backboard touched = **SWISH!** Three in a row and you're **ON FIRE**.
+- P or Escape pauses.
+
+## Pixel Sky Run
+
+Three lines of planes fly side by side above the clouds. You are a boy doing parkour along their roofs, and an officer is
+chasing you. It's drawn flat in 2D, but the camera sits behind you and everything is drawn in perspective, so it looks 3D.
+
+- **Controls:** swipe LEFT / RIGHT to jump to the next plane over, UP to jump, DOWN to slide (in the air DOWN dives
+  back down). Keyboard: arrows or WASD (Space jumps). A game controller works too.
+- **Planes:** each line of planes has gaps between them: jump them, or you fall (with a parachute). The tail fin at the
+  start of a plane you vault over by yourself. The game gets faster the longer you run.
+- **Obstacles on the roofs:** suitcase crates (jump over them or land on top), red and white bars (slide under them) and
+  big cargo boxes (switch planes, running into one ends the run).
+- **The officer:** hit a crate or a bar, or bump into something from the side, and you stumble: he catches up and stays close
+  for 5 seconds ("CAREFUL!"). Stumble again while he's close and he catches you.
+- **Power-ups on the roofs:** JETPACK (fly high above the planes over a line of coins), MAGNET (pulls coins in), 2X COINS.
+- **Coins and UPGRADES:** coins are saved; spend them in UPGRADES to make each power-up last longer (4 levels).
+  Every 400 m is ★1 into the arcade wallet.
 - P or Escape pauses.
 
 ## Game controllers
@@ -278,4 +297,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html`; online play checks it).
