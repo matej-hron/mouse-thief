@@ -392,6 +392,171 @@ window.PX = (() => {
     hideHelp() { if (this.helpEl) this.helpEl.style.display = 'none'; this.helpUntil = 0; },
   };
 
-  return { Pad, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+
+  // --- your avatar is the page's icon (the browser tab; "add to home screen" on an iPhone) -------------
+  function avatarIconURL(av, size) {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d'), k = Math.max(1, Math.floor(size * (size < 64 ? 1 : 0.8) / 14)), o = Math.floor((size - 14 * k) / 2);
+    g.fillStyle = '#0d0b13'; g.fillRect(0, 0, size, size);
+    g.imageSmoothingEnabled = false; g.drawImage(avatarImage(av), o, o, 14 * k, 14 * k);
+    return c.toDataURL('image/png');
+  }
+  function setIcon(av) {
+    try {
+      av = av || Profile.load().avatar;
+      document.querySelectorAll('link[rel="icon"]').forEach(l => { l.href = avatarIconURL(av, 32); });
+      document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(l => { l.href = avatarIconURL(av, 180); });
+    } catch (e) { /* keep the cat */ }
+  }
+  setIcon();
+
+  // --- phones as controllers --------------------------------------------------------------------
+  // The big screen (an Xbox, a TV, a computer) shows a code; phones open pad.html and type it.
+  // Each phone then is one more game controller: the games read it like any other (navigator.getGamepads),
+  // and the screen tells the phone which buttons the game uses and what they do, so it shows only those.
+  // The code is kept in the tab (sessionStorage), so the phones stay connected when you pick a game.
+  const REMOTE_KEY = 'pixelArcade.remoteScreen', REMOTE_PREFIX = 'pixel-arcade-pad-', MAX_PHONES = 4;
+  // standard controller button numbers
+  const PADNUM = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, START: 9, up: 12, down: 13, left: 14, right: 15 };
+  const MENU_LAYOUT = { stick: 'PICK', dpad: true, buttons: [['A', 'OK'], ['B', 'BACK']] };
+  // a phone layout from the help box, for a game that doesn't give one
+  function layoutFromHelp(help) {
+    const out = { stick: null, buttons: [] }, seen = new Set();
+    for (const [keys, what] of help || []) {
+      if (/^(MENUS|2ND PAD|VAULT)/.test(what) || keys === '2ND PAD' || keys === 'STICK + A') continue;
+      const parts = keys.split('|');
+      if (parts.some(p => /STICK|D-PAD/.test(p)) && !out.stick) out.stick = what;
+      const b = parts.find(p => PADNUM[p] !== undefined && p !== 'START');
+      if (b && !seen.has(b)) { seen.add(b); out.buttons.push([b, what]); }
+    }
+    return out;
+  }
+  const realGetPads = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
+  const Remote = {
+    code: null, peer: null, phones: [], status: 'off', tries: 0, toastEl: null, timer: 0,
+    active() { return !!this.code; },
+    start() {
+      if (this.code) return;
+      let c = ''; for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+      this.code = c; try { sessionStorage.setItem(REMOTE_KEY, c); } catch (e) { /* private mode */ }
+      this.open();
+    },
+    resume() {
+      let c = null; try { c = sessionStorage.getItem(REMOTE_KEY); } catch (e) { /* private mode */ }
+      if (c && /^[A-Z0-9]{4}$/.test(c)) { this.code = c; this.open(); setTimeout(() => this.toast('📱 PHONE CONTROLLERS: CODE ' + c, 4), 600); }
+    },
+    stop() {
+      try { sessionStorage.removeItem(REMOTE_KEY); } catch (e) { /* private mode */ }
+      for (const ph of this.phones) { try { ph.conn.send({ t: 'bye' }); ph.conn.close(); } catch (e) { /* gone */ } }
+      this.phones = []; this.code = null; this.status = 'off';
+      if (this.peer) { try { this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; }
+      clearInterval(this.timer); this.timer = 0;
+    },
+    open() {
+      if (!this.code) return;
+      this.status = 'starting';
+      if (!this.timer) this.timer = setInterval(() => this.sync(), 250);
+      loadPeer().then(() => {
+        if (!this.code) return;
+        const code = this.code, peer = new Peer(REMOTE_PREFIX + code, { debug: 0, config: { iceServers: ICE_SERVERS } });
+        this.peer = peer;
+        const retry = () => {
+          if (this.peer !== peer) return;
+          try { peer.destroy(); } catch (e) { /* gone */ }
+          this.peer = null; this.status = 'starting';
+          // after a page change the old page may still hold the code for a moment: try again
+          if (++this.tries > 20 && !this.phones.length) { this.tries = 0; this.code = null; this.start(); return; }
+          setTimeout(() => { if (this.code === code && !this.peer) this.open(); }, 1500);
+        };
+        peer.on('open', () => { this.status = 'ready'; this.tries = 0; });
+        peer.on('connection', conn => this.add(conn));
+        peer.on('disconnected', () => { if (this.peer === peer) { try { peer.reconnect(); } catch (e) { retry(); } } });
+        peer.on('error', e => { if (e.type !== 'peer-unavailable') retry(); });
+      }).catch(() => { this.status = 'offline'; setTimeout(() => { if (this.code && !this.peer) this.open(); }, 5000); });
+    },
+    add(conn) {
+      const ph = { conn, pad: null, name: 'PHONE', avatar: null, sent: '', raw: 0, hold: new Array(17).fill(0) };
+      conn.on('open', () => {
+        if (this.phones.length >= MAX_PHONES) { try { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 500); } catch (e) { /* gone */ } return; }
+        ph.pad = { id: 'Pixel Arcade phone controller', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(),
+                   buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0] };
+        this.phones.push(ph); ph.sent = ''; this.sync();
+      });
+      conn.on('data', d => {
+        if (!d || typeof d !== 'object') return;
+        if (d.t === 'hello') {
+          ph.name = cleanName(d.name) || 'PHONE';
+          ph.avatar = d.avatar && AVATARS[d.avatar.shape] ? { shape: d.avatar.shape, color: d.avatar.color | 0 } : null;
+          ph.sent = ''; this.sync();
+          const n = this.number(ph);
+          this.toast('📱 ' + ph.name + (n ? ' IS CONTROLLER ' + n : ' JOINED'), 3);
+        } else if (d.t === 's' && ph.pad) {
+          // a quick tap stays pressed for a few frames, so the game always sees it
+          const b = d.b & 0x1ffff, now = performance.now();
+          for (let i = 0; i < 17; i++) if ((b >> i & 1) && !(ph.raw >> i & 1)) ph.hold[i] = now + 80;
+          ph.raw = b;
+          const ax = Number(d.x) || 0, ay = Number(d.y) || 0;
+          ph.pad.axes[0] = Math.max(-1, Math.min(1, ax)); ph.pad.axes[1] = Math.max(-1, Math.min(1, ay));
+          ph.pad.timestamp = performance.now();
+        }
+      });
+      const gone = () => {
+        const i = this.phones.indexOf(ph); if (i < 0) return;
+        this.phones.splice(i, 1);
+        this.toast('📱 ' + ph.name + ' LEFT', 2);
+      };
+      conn.on('close', gone); conn.on('error', gone);
+    },
+    // which controller (1, 2, ...) a phone is in the game
+    number(ph) { const list = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; return list.indexOf(ph.pad) + 1; },
+    layout() {
+      const cfg = Pad.cfg || {};
+      let menu = true; try { menu = cfg.phoneMenu ? !!cfg.phoneMenu() : cfg.menu ? !!cfg.menu() : true; } catch (e) { /* not ready yet */ }
+      const L = menu ? (cfg.phoneMenuLayout || MENU_LAYOUT) : (cfg.phone || layoutFromHelp(cfg.help));
+      return { title: String(cfg.title || document.title || 'Pixel Arcade').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
+               stick: L.stick || null, dpad: !!L.dpad, buttons: L.buttons || [] };
+    },
+    sync() {                                   // tell each phone what to show, when it changes
+      if (!this.phones.length) return;
+      const L = this.layout();
+      for (const ph of this.phones) {
+        const msg = Object.assign({ t: 'layout', player: this.number(ph) }, L), s = JSON.stringify(msg);
+        if (s !== ph.sent) { try { ph.conn.send(msg); ph.sent = s; } catch (e) { /* closing */ } }
+      }
+    },
+    toast(text, sec) {
+      if (!document.body) return;
+      if (!this.toastEl) {
+        const el = document.createElement('div');
+        Object.assign(el.style, { position: 'fixed', left: '50%', bottom: '10px', transform: 'translateX(-50%)', zIndex: 60, display: 'none', pointerEvents: 'none',
+          background: '#1d1830', color: '#ffd23f', border: '2px solid #efe9ff', boxShadow: '4px 4px 0 #000', padding: '6px 12px',
+          font: 'bold 14px/1.4 ui-monospace, Menlo, Consolas, monospace', textTransform: 'uppercase', whiteSpace: 'nowrap' });
+        document.body.appendChild(el); this.toastEl = el;
+      }
+      this.toastEl.textContent = text; this.toastEl.style.display = 'block';
+      clearTimeout(this.toastT); this.toastT = setTimeout(() => { this.toastEl.style.display = 'none'; }, sec * 1000);
+    },
+  };
+  // every phone shows up as one more game controller
+  {
+    try {
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, writable: true, value: () => {
+        let real = []; try { real = realGetPads ? [...realGetPads()] : []; } catch (e) { real = []; }
+        if (!Remote.phones.length) return real;
+        // phones come first: whoever joins with a phone wants to play with it (an Xbox always has its own controller on)
+        const list = [], now = performance.now();
+        for (const ph of Remote.phones) if (ph.pad) {
+          ph.pad.buttons.forEach((btn, i) => { btn.pressed = btn.touched = !!(ph.raw >> i & 1) || now < ph.hold[i]; btn.value = btn.pressed ? 1 : 0; });
+          ph.pad.index = list.length; list.push(ph.pad);
+        }
+        for (const g of real) if (g && g.connected) list.push(g);
+        return list;
+      } });
+    } catch (e) { /* can't add phones in this browser */ }
+  }
+  window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
+  if (!window.PX_NO_REMOTE) Remote.resume();
+
+  return { Pad, Remote, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

@@ -860,6 +860,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Sky Run: controller', ui: UI, menu: () => state !== 'play' || paused || (G && G.end),
+  phone: { stick: 'CHANGE PLANE', dpad: true, buttons: [['A', 'JUMP'], ['B', 'SLIDE']] },
   keys: () => ({ left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', A: 'ArrowUp', down: 'ArrowDown', B: 'ArrowDown', START: 'KeyP' }),
   help: [['STICK|D-PAD', 'LEFT / RIGHT: CHANGE PLANE'], ['A|UP', 'JUMP'], ['B|DOWN', 'SLIDE'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });

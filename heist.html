@@ -1684,6 +1684,7 @@ window.HEIST = { get G() { return G; }, get state() { return state; }, get room(
   keys, save, SPOTS, LEVELS, spawnCop, toTitle, openBrief, setPause, Ctl, cam, goInside, goOutside, goal };
 PX.Pad.setup({
   title: 'Pixel Heist: controller', ui: UI,
+  phone: { stick: 'GO / TURN', buttons: [['A', 'SHOOT'], ['X', 'CAR IN / OUT'], ['Y', 'SHOOT IN THE AIR']] },
   menu: () => state !== 'play' || paused || !G || G.over || !!(G.lock && G.lock.mode === 'code'),   // the vault keypad too
   keys: () => ({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', rleft: 'ArrowLeft', rright: 'ArrowRight', A: 'Space', RT: 'Space', Y: 'KeyR', X: 'KeyE', START: 'KeyP' }),
   help: [['STICK', 'UP / DOWN: GO, LEFT / RIGHT: TURN'], ['R-STICK', 'TURN'], ['A|RT', 'SHOOT (AND PICK A LOCK PIN)'], ['Y', 'SHOOT IN THE AIR'], ['X', 'CAR: GET IN / OUT'], ['START', 'PAUSE'], ['STICK + A', 'VAULT KEYPAD: PICK A DIGIT'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],

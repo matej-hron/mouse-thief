@@ -596,6 +596,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Hoops: controller', ui: UI, menu: () => state !== 'play' || paused,
+  phone: { stick: 'AIM', buttons: [['A', 'THROW']] },
   keys: () => ({ START: 'KeyP' }),
   onPlay: (h, n, dt, edge) => {                    // the stick aims (where to throw, further = harder), A throws
     if (n !== 0) return;

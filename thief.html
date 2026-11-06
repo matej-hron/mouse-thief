@@ -4191,6 +4191,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 window.addEventListener('appinstalled', () => { installPrompt = null; });
 PX.Pad.setup({
   title: 'Mouse Thief: controller', menu: () => !playing(),
+  phone: { stick: null, buttons: [['A', 'JUMP'], ['B', 'SLIDE'], ['X', 'ABILITY 1'], ['Y', 'ABILITY 2'], ['RB', 'ABILITY 3']] },
   menuKeys: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', A: 'Enter', B: 'Escape', START: 'KeyP' },
   keys: () => ({ A: 'Space', up: 'ArrowUp', B: 'ArrowDown', down: 'ArrowDown', X: 'Digit1', Y: 'Digit2', RB: 'Digit3', START: 'KeyP' }),
   help: [['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['B', 'SLIDE (OR STICK DOWN)'], ['X|Y|RB', 'ABILITIES 1, 2, 3'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],

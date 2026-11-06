@@ -1785,6 +1785,8 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({                                     // football reads the controller itself; this is just the help box
   title: 'Pixel Football: controller', menu: () => false,
+  phoneMenu: () => state !== 'play' || paused,
+  phone: { stick: 'RUN', buttons: [['A', 'PASS / TACKLE'], ['B', 'SHOOT (HOLD) / SWITCH']] },
   help: [['STICK|D-PAD', 'RUN'], ['A', 'PASS (WITHOUT THE BALL: SLIDING TACKLE)'], ['B|X', 'SHOOT, HOLD FOR POWER (WITHOUT THE BALL: SWITCH PLAYER)'], ['STICK', 'WHILE SHOOTING: UP / DOWN AIMS'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK'], ['2ND PAD', 'PLAYER 2 IN 2 PLAYERS']],
 });
 </script>

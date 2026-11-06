@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.6.0';
+const VERSION = '2.7.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -39,7 +39,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile
+let screen = 'home';                  // home | search | profile | remote
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -317,7 +317,13 @@ function drawHome(t) {
   background(t);
   T('PIXEL ARCADE', W / 2 + 2, 10, '#e01e1e', 4, 'center');
   T('PIXEL ARCADE', W / 2, 8, '#fff', 4, 'center');
-  T('★ ' + PX.Wallet.get(), W - 10, 12, '#ffd23f', 2, 'right', '#000');   // one wallet for all the games
+  const stars = '★ ' + PX.Wallet.get();
+  T(stars, W - 10, 12, '#ffd23f', 2, 'right', '#000');   // one wallet for all the games
+  // next to it: phones as controllers (play on an Xbox, a TV or a computer with your phone)
+  const px = W - 10 - PX.textWidth(stars, 2) - 38;
+  if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
+  padIcon(px + 15 + (UI.mx >= px && UI.mx < px + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
+  if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46, rx = Math.round(W / 2 - rowW / 2);
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
@@ -327,6 +333,84 @@ function drawHome(t) {
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
   drawGrid(t);
   if (installPrompt && UI.button('install', 8, 8, 72, 16, 'INSTALL', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
+}
+// --- phones as controllers: this screen is the big screen, or this phone is a controller -------------
+function padIcon(cx, cy, s = 2) {
+  PX.drawIcon(ctx, ['..#######..', '.#########.', '##k#####y##', '#kkk###x#g#', '##k#####r##', '###.....###', '##.......##'],
+    { '#': '#efe9ff', k: '#3a2f5c', y: '#ffd23f', x: '#4aa8ff', g: '#5ad43f', r: '#ff5a5a' }, cx, cy, s);
+}
+function openRemote() { screen = 'remote'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+const qr = { url: null, rows: null, loading: false };
+function qrRows(url) {                            // the QR code for a phone to scan (vendor/qrcode.js, loaded when needed)
+  if (qr.url === url && qr.rows) return qr.rows;
+  if (window.qrcode) {
+    try {
+      const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+      const n = q.getModuleCount(); qr.rows = []; for (let r = 0; r < n; r++) { const row = []; for (let c = 0; c < n; c++) row.push(q.isDark(r, c)); qr.rows.push(row); }
+      qr.url = url; return qr.rows;
+    } catch (e) { return null; }
+  }
+  if (!qr.loading) { qr.loading = true; const sc = document.createElement('script'); sc.src = 'vendor/qrcode.js'; document.head.appendChild(sc); }
+  return null;
+}
+function panel(x, y, w, h, color) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h); ctx.fillStyle = color; ctx.fillRect(x, y, w, 2); }
+function drawRemote(t) {
+  const W = S.W, R = PX.Remote;
+  background(t);
+  if (UI.button('back', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { screen = 'home'; return; }
+  padIcon(W / 2 - PX.textWidth('PHONE CONTROLLERS', 2) / 2 - 18, 19);
+  T('PHONE CONTROLLERS', W / 2 + 4, 14, '#fff', 2, 'center', '#000');
+  if (!R.active()) {                              // pick: big screen, or controller
+    const gap = 10, pw = Math.min(190, Math.floor((W - 16 - gap) / 2)), x1 = Math.round(W / 2 - pw - gap / 2), x2 = Math.round(W / 2 + gap / 2), y = 42, h = 186;
+    panel(x1, y, pw, h, '#1ec8e0'); panel(x2, y, pw, h, '#5ad43f');
+    // a TV, and a phone
+    ctx.fillStyle = '#111'; ctx.fillRect(x1 + pw / 2 - 31, y + 12, 62, 40); ctx.fillStyle = '#1ec8e0'; ctx.fillRect(x1 + pw / 2 - 29, y + 14, 58, 36);
+    ctx.fillStyle = '#efe9ff'; ctx.fillRect(x1 + pw / 2 - 4, y + 52, 8, 4); ctx.fillRect(x1 + pw / 2 - 14, y + 56, 28, 2);
+    PX.drawAvatar(ctx, profile.avatar, x1 + pw / 2 - 14, y + 18, 2, null);
+    ctx.fillStyle = '#111'; ctx.fillRect(x2 + pw / 2 - 26, y + 18, 52, 32); ctx.fillStyle = '#5ad43f'; ctx.fillRect(x2 + pw / 2 - 24, y + 20, 48, 28);
+    ctx.fillStyle = '#262036'; ctx.beginPath(); ctx.arc(x2 + pw / 2 - 12, y + 34, 7, 0, 7); ctx.fill();
+    for (const [dx, dy, c] of [[10, 4, '#ffd23f'], [16, 0, '#ff5a5a'], [4, 0, '#4aa8ff'], [10, -4, '#5ad43f']]) { ctx.fillStyle = c; ctx.fillRect(x2 + pw / 2 + dx - 1, y + 34 - dy - 1, 3, 3); }
+    T('THIS IS THE', x1 + pw / 2, y + 68, '#9a92b8', 1, 'center'); T('BIG SCREEN', x1 + pw / 2, y + 78, '#fff', 2, 'center', '#000');
+    T('XBOX, TV OR COMPUTER.', x1 + pw / 2, y + 100, '#efe9ff', 1, 'center');
+    T('IT SHOWS A CODE, AND', x1 + pw / 2, y + 112, '#efe9ff', 1, 'center');
+    T('PHONES BECOME ITS', x1 + pw / 2, y + 122, '#efe9ff', 1, 'center');
+    T('GAME CONTROLLERS.', x1 + pw / 2, y + 132, '#efe9ff', 1, 'center');
+    if (UI.button('host', x1 + 10, y + h - 32, pw - 20, 22, pad.used ? 'A: SHOW CODE' : 'SHOW CODE', { size: 1, accent: '#1ec8e0' })) { R.start(); PX.Sound.tone([523, 784], 0.15, { vol: 0.1 }); }
+    T('THIS PHONE IS A', x2 + pw / 2, y + 68, '#9a92b8', 1, 'center'); T('CONTROLLER', x2 + pw / 2, y + 78, '#fff', 2, 'center', '#000');
+    T('PLAY ON THE BIG SCREEN', x2 + pw / 2, y + 100, '#efe9ff', 1, 'center');
+    T('WITH THIS PHONE: TYPE', x2 + pw / 2, y + 112, '#efe9ff', 1, 'center');
+    T('THE CODE THE SCREEN', x2 + pw / 2, y + 122, '#efe9ff', 1, 'center');
+    T('SHOWS. EVERY GAME HAS', x2 + pw / 2, y + 132, '#efe9ff', 1, 'center');
+    T('ITS OWN BUTTONS.', x2 + pw / 2, y + 142, '#efe9ff', 1, 'center');
+    if (UI.button('beapad', x2 + 10, y + h - 32, pw - 20, 22, 'BE A CONTROLLER', { size: 1, accent: '#5ad43f' })) { PX.Sound.tone([523, 784], 0.15, { vol: 0.1 }); setTimeout(() => { location.href = 'pad.html'; }, 120); }
+    return;
+  }
+  // this is the big screen: the code, a QR code to scan, and the phones that joined
+  const url = new URL('pad.html#' + R.code, location.href).href, rows = qrRows(url);
+  const box = 150, qx = 12, qy = 40;
+  ctx.fillStyle = '#111'; ctx.fillRect(qx - 1, qy - 1, box + 2, box + 2); ctx.fillStyle = '#fff'; ctx.fillRect(qx, qy, box, box);
+  if (rows) {
+    const n = rows.length, k = Math.max(1, Math.floor((box - 8) / n)), o = Math.floor((box - n * k) / 2);
+    ctx.fillStyle = '#000'; rows.forEach((row, r) => row.forEach((on, c) => { if (on) ctx.fillRect(qx + o + c * k, qy + o + r * k, k, k); }));
+  } else T('QR...', qx + box / 2, qy + box / 2 - 3, '#9a92b8', 1, 'center');
+  T('SCAN WITH YOUR PHONE', qx + box / 2, qy + box + 6, '#9a92b8', 1, 'center');
+  const rx = qx + box + 14;
+  T('ON YOUR PHONE: OPEN PIXEL ARCADE,', rx, 42, '#efe9ff', 1);
+  T('PRESS THE CONTROLLER BUTTON (TOP RIGHT),', rx, 52, '#efe9ff', 1);
+  T('BE A CONTROLLER, AND TYPE THE CODE:', rx, 62, '#efe9ff', 1);
+  T(R.code, rx, 76, '#ffd23f', 6, 'left', '#000');
+  const st = R.status === 'ready' ? (R.phones.length ? 'CONNECTED:' : 'WAITING FOR PHONES' + '...'.slice(0, 1 + Math.floor(t * 2) % 3))
+           : R.status === 'offline' ? 'NO INTERNET? TRYING AGAIN...' : 'GETTING READY...';
+  T(st, rx, 118, R.status === 'ready' ? '#5ad43f' : '#ff8a8a', 1);
+  R.phones.forEach((ph, i) => {
+    const y = 130 + i * 18;
+    if (ph.avatar) PX.drawAvatar(ctx, ph.avatar, rx, y, 1); else { ctx.fillStyle = '#3a2f5c'; ctx.fillRect(rx, y, 14, 14); }
+    T(ph.name, rx + 20, y + 4, '#fff', 1);
+    T('CONTROLLER ' + (R.number(ph) || '?'), rx + 20 + PX.textWidth(ph.name, 1) + 8, y + 4, '#9a92b8', 1);
+  });
+  const bw = 96;
+  if (UI.button('pick', rx, H - 30, bw + 20, 22, pad.used ? 'A: PICK A GAME' : 'PICK A GAME', { size: 1, accent: '#5ad43f' })) screen = 'home';
+  if (UI.button('stop', rx + bw + 28, H - 30, 60, 22, 'STOP', { size: 1, accent: '#ff5a5a' })) { R.stop(); PX.Sound.tone(300, 0.1, { vol: 0.08 }); }
 }
 function drawSearch(t) {
   const W = S.W;
@@ -422,7 +506,7 @@ UI.onUp = e => {
 };
 // --- game controllers (an Xbox, or a controller on a PC or phone) ------------------------------
 // The stick or d-pad picks a game (the screen scrolls to it), A plays it, the right stick scrolls.
-const pad = { used: false, focus: 0, prev: {}, navT: 0 };
+const pad = { used: false, focus: 0, prev: [], navT: 0 };
 try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
 function cardBox(i) {
   const L = layout(), n = shown().length, r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, n - r * L.cols);
@@ -438,9 +522,9 @@ function padFocus(i) {
 function padPoll(dt) {
   let gps = [];
   try { gps = navigator.getGamepads ? [...navigator.getGamepads()].filter(g => g && g.connected) : []; } catch (e) { gps = []; }
-  for (const gp of gps.slice(0, 2)) {
+  gps.slice(0, 4).forEach((gp, n) => {
     const now = {}; for (const i of [0, 1, 2, 4, 5, 9, 12, 13, 14, 15]) now[i] = !!(gp.buttons[i] && gp.buttons[i].pressed);
-    const edge = i => now[i] && !pad.prev[i];
+    const prev = pad.prev[n] || {}, edge = i => now[i] && !prev[i];
     let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     if (now[14]) ax = -1; if (now[15]) ax = 1; if (now[12]) ay = -1; if (now[13]) ay = 1;
     const any = Math.hypot(ax, ay) > 0.5 || Object.values(now).some(Boolean);
@@ -458,13 +542,15 @@ function padPoll(dt) {
       if ((edge(0) || edge(9)) && list[pad.focus]) play(list[pad.focus]);
       if (screen === 'search' && edge(1)) closeSearch();
       else if (screen === 'home' && edge(2)) openSearch();
+      else if (screen === 'home' && edge(5)) openRemote();
       if (screen === 'search') {                  // LB / RB: the previous / next category
         const k = edge(4) ? -1 : edge(5) ? 1 : 0;
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
     } else if (edge(1)) UI.back = true;
-    pad.prev = now;
-  }
+    else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
+    pad.prev[n] = now;
+  });
 }
 window.addEventListener('pointerdown', () => { pad.used = false; });
 canvas.addEventListener('wheel', e => {
@@ -480,6 +566,7 @@ function saveProfile() {
   draft.name = name; profile = draft; PX.Profile.save(profile);
   // Mouse Thief keeps its own copy of the name: update it too
   try { const k = 'mouseThief.save.v1', d = JSON.parse(localStorage.getItem(k)); if (d) { d.name = name; localStorage.setItem(k, JSON.stringify(d)); } } catch (e) { /* no save */ }
+  PX.setIcon(profile.avatar);                     // the page's icon is your avatar
   nameInput.blur(); screen = 'home'; PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
 }
 function drawProfile(t) {
@@ -511,7 +598,7 @@ function frame(now) {
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else drawProfile(t);
+  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
@@ -521,7 +608,8 @@ function frame(now) {
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself; this is just the help box
   title: 'Pixel Arcade: controller', menu: () => false,
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['LB|RB', 'SEARCH: CATEGORY'], ['B', 'SEARCH: BACK'], ['Y', 'IN EVERY GAME\'S MENUS: WHAT THE BUTTONS DO']],
+  phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['B', 'BACK']] },
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK'], ['Y', 'IN EVERY GAME\'S MENUS: WHAT THE BUTTONS DO']],
 });
 </script>
 </body>
