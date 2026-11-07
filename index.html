@@ -552,7 +552,7 @@ UI.onUp = e => {
 };
 // --- game controllers (an Xbox, or a controller on a PC or phone) ------------------------------
 // The stick or d-pad picks a game (the screen scrolls to it), A plays it, the right stick scrolls.
-const pad = { used: false, focus: 0, prev: [], navT: 0 };
+const pad = { used: false, focus: 0, prev: [], navT: [] };   // navT: a repeat timer per controller
 try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
 function cardBox(i) {
   const L = layout(), n = shown().length, r = Math.floor(i / L.cols), c = i % L.cols, inRow = Math.min(L.cols, n - r * L.cols);
@@ -578,12 +578,12 @@ function padPoll(dt) {
     if (screen === 'home' || screen === 'search') {
       const cols = layout().cols, list = shown();
       if (Math.hypot(ax, ay) > 0.6) {
-        if ((pad.navT -= dt) <= 0) {
-          pad.navT = pad.navT < -1 ? 0.35 : 0.22;
+        if ((pad.navT[n] = (pad.navT[n] || 0) - dt) <= 0) {
+          pad.navT[n] = pad.navT[n] < -1 ? 0.35 : 0.22;
           if (Math.abs(ax) > Math.abs(ay)) padFocus(pad.focus + Math.sign(ax));
           else { const n = pad.focus + Math.sign(ay) * cols; if (n >= 0 && n < list.length) padFocus(n); else if (ay > 0 && Math.floor(pad.focus / cols) < Math.floor((list.length - 1) / cols)) padFocus(list.length - 1); }
         }
-      } else pad.navT = 0;
+      } else pad.navT[n] = 0;
       const ry = gp.axes[3] || 0; if (Math.abs(ry) > 0.25) { scroll.v = 0; scrollTo(scroll.y + ry * 300 * dt); }
       if ((edge(0) || edge(9)) && list[pad.focus]) play(list[pad.focus]);
       if (screen === 'search' && edge(1)) closeSearch();

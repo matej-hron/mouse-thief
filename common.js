@@ -316,7 +316,7 @@ window.PX = (() => {
   const KEYNAME = { Space: ' ', Enter: 'Enter', Escape: 'Escape', Backspace: 'Backspace', Tab: 'Tab' };
   const keyOf = code => KEYNAME[code] || (code.startsWith('Key') ? code.slice(3).toLowerCase() : code.startsWith('Digit') ? code.slice(5) : code);
   const Pad = {
-    cfg: null, used: false, down: new Map(), prevBtn: [{}, {}], focus: null, navT: 0, last: 0, helpEl: null, helpUntil: 0, helpPinned: false,
+    cfg: null, used: false, down: new Map(), prevBtn: [{}, {}], focus: null, navT: [0, 0], last: 0, helpEl: null, helpUntil: 0, helpPinned: false,
     setup(cfg) {
       this.cfg = cfg;
       try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
@@ -351,7 +351,7 @@ window.PX = (() => {
         const anything = Object.keys(BTN).some(k => h[k]) || Math.hypot(h.ax, h.ay) > 0.5;
         if (anything && !this.used) { this.used = true; this.focus = null; }
         if (edge('VIEW')) { if (this.helpEl && this.helpEl.style.display === 'block') this.hideHelp(); else this.showHelp(0); }
-        if (inMenu && cfg.ui) this.menuNav(h, edge, dt);
+        if (inMenu && cfg.ui) this.menuNav(h, edge, dt, n);
         else {
           const map = inMenu ? cfg.menuKeys : cfg.keys && cfg.keys(n);
           if (map) for (const k in map) if (h[k]) for (const code of [].concat(map[k])) want.set(code, inMenu && ['up', 'down', 'left', 'right'].includes(k));
@@ -368,13 +368,15 @@ window.PX = (() => {
       for (const code of [...this.down.keys()]) if (!want.has(code)) { this.key('keyup', code); this.down.delete(code); }
       if (this.helpUntil && now > this.helpUntil) this.hideHelp();
     },
-    menuNav(h, edge, dt) {                                            // move between the buttons of a PX.makeUI screen
+    menuNav(h, edge, dt, n = 0) {                                            // move between the buttons of a PX.makeUI screen
       const UI = this.cfg.ui, list = (UI.list || []).filter(b => !b.disabled);
       if (!list.some(b => b.id === this.focus)) { this.focus = null; let big = 0; for (const b of list) if (b.w * b.h > big) { big = b.w * b.h; this.focus = b.id; } }
       const m = Math.hypot(h.ax, h.ay);
       if (m > 0.6) {
-        if ((this.navT -= dt) <= 0) {
-          this.navT = this.navT < -1 ? 0.35 : 0.2;
+        // each controller has its own repeat timer: with one timer, an idle second controller reset it
+        // every frame and a held direction (or one tap) jumped through the whole menu
+        if ((this.navT[n] -= dt) <= 0) {
+          this.navT[n] = this.navT[n] < -1 ? 0.35 : 0.2;
           const [dx, dy] = Math.abs(h.ax) > Math.abs(h.ay) ? [Math.sign(h.ax), 0] : [0, Math.sign(h.ay)];
           const cur = list.find(b => b.id === this.focus);
           if (cur) {
@@ -389,7 +391,7 @@ window.PX = (() => {
             if (best) this.focus = best.id;
           }
         }
-      } else this.navT = 0;
+      } else this.navT[n] = 0;
       const f = list.find(b => b.id === this.focus);
       if (f && this.used) { UI.mx = f.x + f.w / 2; UI.my = f.y + f.h / 2; }
       if (edge('A') && f) UI.click = f.id;
@@ -447,6 +449,8 @@ window.PX = (() => {
   const ORDER_KEY = 'pixelArcade.remoteOrder', KEEP_SEAT = 10000;
   // standard controller button numbers
   const PADNUM = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, START: 9, up: 12, down: 13, left: 14, right: 15 };
+  // bump when pad.html learns something new: a phone with an older pad.html reloads itself
+  const PAD_VERSION = 2;
   const MENU_LAYOUT = { stick: 'PICK', dpad: true, buttons: [['A', 'OK'], ['B', 'BACK']] };
   // a phone layout from the help box, for a game that doesn't give one
   function layoutFromHelp(help) {
@@ -580,7 +584,7 @@ window.PX = (() => {
       const cfg = Pad.cfg || {};
       let menu = true; try { menu = cfg.phoneMenu ? !!cfg.phoneMenu() : cfg.menu ? !!cfg.menu() : true; } catch (e) { /* not ready yet */ }
       const L = menu ? (cfg.phoneMenuLayout || MENU_LAYOUT) : (cfg.phone || layoutFromHelp(cfg.help));
-      return { title: String(cfg.title || document.title || 'Pixel Arcade').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
+      return { v: PAD_VERSION, title: String(cfg.title || document.title || 'Pixel Arcade').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
                stick: L.stick || null, dpad: !!L.dpad, touch: L.touch || null, buttons: L.buttons || [] };
     },
     sync() {                                   // tell each phone what to show, when it changes
@@ -625,6 +629,6 @@ window.PX = (() => {
   window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
   if (!window.PX_NO_REMOTE) Remote.resume();
 
-  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  return { Pad, Remote, Settings, PADNUM, PAD_VERSION, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

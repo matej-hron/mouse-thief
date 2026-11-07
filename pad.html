@@ -135,6 +135,7 @@ let padId = '';
 try { padId = localStorage.getItem(ID_KEY) || ''; } catch (e) { /* private mode */ }
 if (!/^[a-z0-9]{4,24}$/.test(padId)) { padId = ''; for (let i = 0; i < 10; i++) padId += 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]; try { localStorage.setItem(ID_KEY, padId); } catch (e) { /* private mode */ } }
 const N = PX.PADNUM;
+const PAD_VERSION = 2;   // the same as PAD_VERSION in common.js: when the big screen's is different, this page is an old copy
 
 // --- the code ---------------------------------------------------------------------------
 const codeIn = $('code');
@@ -237,6 +238,7 @@ function dial() {
   });
   c.on('data', d => {
     if (!d || typeof d !== 'object') return;
+    if (d.t === 'layout' && d.v && d.v !== PAD_VERSION && outdated()) return;
     if (d.t === 'layout') show(d);
     else if (d.t === 'full') backToJoin('THAT SCREEN ALREADY HAS 4 PHONES.');
     else if (d.t === 'bye') backToJoin('THE BIG SCREEN STOPPED THE PHONE CONTROLLERS.');
@@ -248,6 +250,15 @@ function dial() {
     wait('THE SCREEN IS CHANGING GAME…', 'RECONNECTING TO ' + net.code); retry();
   };
   c.on('close', lost); c.on('error', lost);
+}
+// the big screen has a newer arcade than this page: load the new controller page (once a minute at most)
+function outdated() {
+  let t = 0; try { t = +sessionStorage.getItem('pixelArcade.padReload') || 0; } catch (e) { /* private mode */ }
+  if (Date.now() - t < 60000) return false;
+  try { sessionStorage.setItem('pixelArcade.padReload', String(Date.now())); } catch (e) { return false; }
+  stopNet(); wait('UPDATING THE CONTROLLER…', '');
+  location.replace(location.pathname + '?u=' + Date.now() + '#' + net.code);
+  return true;
 }
 function wait(msg, how) { $('waitMsg').textContent = msg; $('waitHow').textContent = how; $('wait').classList.remove('hidden'); }
 $('waitBack').addEventListener('click', () => backToJoin(''));
@@ -268,14 +279,14 @@ function show(d) {
   $('title').innerHTML = '';
   const t = document.createElement('span'); t.textContent = 'CONTROLLER ' + (d.player || '?');
   $('title').append(String(d.title || '') + ' · ', t);
-  const hasStick = !!d.stick, hasTouch = !hasStick && !!d.touch;
+  const hasTouch = !!d.touch, hasStick = !hasTouch && !!d.stick;   // a touch pad wins (the stick is for older controller pages)
   $('pad').classList.toggle('nostick', !hasStick && !hasTouch);
   $('tpad').classList.toggle('hidden', !hasTouch); $('tpad').classList.remove('on', 'used');
   $('tpad').querySelector('span').textContent = hasTouch ? (typeof d.touch === 'string' ? d.touch : d.touch.text || '') : '';
   if (hasTouch) fitPad();
-  $('dpad').classList.toggle('hidden', !(hasStick && d.dpad));
   rest();
   $('stickHint').textContent = hasStick ? (d.dpad ? d.stick : 'STICK: ' + d.stick) : '';
+  $('dpad').classList.toggle('hidden', !(hasStick && d.dpad));
   $('modeHint').textContent = d.mode === 'menu' ? 'MENU' : '';
   // face buttons in the Xbox places, shoulders above them
   const face = $('face'); face.innerHTML = ''; $('shL').innerHTML = ''; $('shR').innerHTML = '';
@@ -320,13 +331,13 @@ document.addEventListener('pointerdown', e => {
   const b = btnAt(e.clientX, e.clientY);
   if (b !== null) { e.preventDefault(); touches.set(e.pointerId, { kind: 'btn', b }); tapped |= 1 << b; buzz(); dirty = true; return; }
   const lr = leftRect();
-  if (!L.stick && L.touch && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'touch')) {
+  if (L.touch && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'touch')) {
     e.preventDefault();                                 // the touch pad: like a tablet, where you touch is where your bat goes
     touches.set(e.pointerId, { kind: 'touch' });
     $('tpad').classList.add('on', 'used'); padAt(e.clientX, e.clientY);
     return;
   }
-  if (L.stick && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'stick')) {
+  if (L.stick && !L.touch && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'stick')) {
     e.preventDefault();
     const t = { kind: 'stick', x0: e.clientX, y0: e.clientY };
     touches.set(e.pointerId, t);
@@ -372,9 +383,9 @@ function fitPad() {
   Object.assign($('ttable').style, { display: T.table ? 'block' : 'none', left: l + '%', top: t + '%', right: rr + '%', bottom: b + '%' });
   $('ttable').classList.toggle('open-r', !!T.table && !flip); $('ttable').classList.toggle('open-l', !!T.table && flip);
 }
-window.addEventListener('resize', () => { if (L.touch && !L.stick) fitPad(); });
+window.addEventListener('resize', () => { if (L.touch) fitPad(); });
 function rest() {                                       // the stick waits in the middle of the left side, dimmed
-  const on = !!(L.stick && !L.dpad);
+  const on = !!(L.stick && !L.dpad && !L.touch);
   for (const id of ['base', 'knob']) { $(id).classList.toggle('hidden', !on); Object.assign($(id).style, { left: '50%', top: '50%', opacity: 0.45 }); }
 }
 function buzz() { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(12); } catch (e) { /* no buzz */ } }

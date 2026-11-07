@@ -1688,7 +1688,7 @@ function keyMove() {
 // A passes (or tackles), B or X shoots, hold for power (or switches player), START pauses.
 // In the menus the stick moves between the buttons, A presses, B goes back.
 // Two controllers in 2 PLAYERS: the first is player 1, the second player 2.
-const Pads = { prev: [{}, {}], active: [false, false], used: false, focus: null, list: [], navT: 0 };
+const Pads = { prev: [{}, {}], active: [false, false], used: false, focus: null, list: [], navT: [0, 0] };
 try { if ('gamepadInputEmulation' in navigator) navigator.gamepadInputEmulation = 'gamepad'; } catch (e) { /* not an Xbox */ }
 function padNav(dx, dy) {
   const list = Pads.list.filter(b => !b.disabled);
@@ -1721,8 +1721,8 @@ function padPoll(dt) {
     if (m > 0.4 || Object.values(now).some(Boolean)) { if (!Pads.used) { Pads.used = true; PX.Sound.unlock(); if (!Music.cur && state !== 'play') Music.play('menu'); } }
     if (inMenu) {
       if (n === 0 || state === 'over') {
-        if (m > 0.6) { if ((Pads.navT -= dt) <= 0) { Pads.navT = Pads.navT < -1 ? 0.35 : 0.2; Math.abs(ax) > Math.abs(ay) ? padNav(Math.sign(ax), 0) : padNav(0, Math.sign(ay)); } }
-        else Pads.navT = 0;
+        if (m > 0.6) { if ((Pads.navT[n] -= dt) <= 0) { Pads.navT[n] = Pads.navT[n] < -1 ? 0.35 : 0.2; Math.abs(ax) > Math.abs(ay) ? padNav(Math.sign(ax), 0) : padNav(0, Math.sign(ay)); } }
+        else Pads.navT[n] = 0;
         if (edge(0) && Pads.focus) UI.click = Pads.focus;
         if (edge(1)) UI.back = true;
         if (edge(9) && paused) setPause(false);
