@@ -30,15 +30,17 @@
    and it bites; reel it up to the boat and it is sold. Jellyfish, sharks, boots,
    sea urchins and mines hurt your line: too many hits and it snaps.
    The rod decides which fish swim around (each rarity's chance, from the rarest
-   down); the money buys better rods, reels and lines.
+   down). Caught fish go into your cooler; sell them at the FISH MARKET, where
+   every fish's price changes every hour (like stocks). The money buys better
+   rods, reels, lines, coolers and deeper worlds.
      1. Setup   2. Fish and gear   3. The sea   4. The game   5. Drawing
      6. Screens   7. Input   8. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'deepCatch.save';
-const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', sfx: true };
+const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', inv: [], cooler: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -78,6 +80,9 @@ const RODS = [
 ];
 const REELS = [{ name: 'BASIC REEL', speed: 90, price: 0 }, { name: 'FAST REEL', speed: 130, price: 1500 }, { name: 'TURBO REEL', speed: 180, price: 12000 }, { name: 'JET REEL', speed: 250, price: 80000 }];
 const LINES = [{ name: 'THIN LINE', hp: 2, price: 0 }, { name: 'STRONG LINE', hp: 3, price: 1200 }, { name: 'STEEL LINE', hp: 4, price: 10000 }, { name: 'TITAN LINE', hp: 6, price: 70000 }];
+const COOLERS = [{ name: 'SMALL COOLER', cap: 15, price: 0 }, { name: 'BIG COOLER', cap: 40, price: 3000 },
+                 { name: 'MEGA COOLER', cap: 100, price: 25000 }, { name: 'FISH TRUCK', cap: 300, price: 150000 }];
+const cooler = () => COOLERS[save.cooler];
 // fish come in random sizes: the bigger, the heavier and the more it sells for (and the harder it pulls)
 const SIZES = [
   { name: 'TINY',   k: 0.5,  w: 15, s: 1 }, { name: 'SMALL', k: 0.75, w: 25, s: 2 }, { name: 'NORMAL', k: 1,   w: 35, s: 2 },
@@ -100,6 +105,8 @@ const WORLDS = [
 if (!Array.isArray(save.worlds) || !save.worlds.includes('bay')) save.worlds = ['bay'].concat(Array.isArray(save.worlds) ? save.worlds : []);
 if (!WORLDS.some(w => w.id === save.world && save.worlds.includes(w.id))) save.world = 'bay';
 if (!save.big || typeof save.big !== 'object') save.big = {};
+save.cooler = clamp(save.cooler | 0, 0, COOLERS.length - 1);
+if (!Array.isArray(save.inv)) save.inv = [];
 const wld = () => WORLDS.find(w => w.id === save.world);
 const wldIndex = () => WORLDS.indexOf(wld());
 if (!RODS.some(r => r.id === save.rod)) save.rod = 'wood';
@@ -108,6 +115,18 @@ save.reel = clamp(save.reel | 0, 0, REELS.length - 1); save.line = clamp(save.li
 if (!save.book || typeof save.book !== 'object') save.book = {};
 const rod = () => RODS.find(r => r.id === save.rod);
 const reel = () => REELS[save.reel], line = () => LINES[save.line];
+// --- the FISH MARKET: every fish's price goes up and down every hour, like a stock ---
+// (worked out from the clock, so it's the same price for everyone and you can look back 24 hours)
+const MARKET_HOUR = 3600 * 1000;
+const hourNow = () => Math.floor(Date.now() / MARKET_HOUR);
+function hash(n) { n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }
+const seedOf = id => [...id].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) | 0, 7);
+function market(spId, h = hourNow()) {          // the price multiplier of this fish in hour h (about x0.3 to x3)
+  const s = seedOf(spId), a = 0.18 + hash(s) * 0.3, b = 0.7 + hash(s + 1) * 0.9, p = hash(s + 2) * 6.28, q = hash(s + 3) * 6.28;
+  const v = 0.6 * Math.sin(h * a + p) + 0.28 * Math.sin(h * b + q) + 0.45 * (hash(s ^ Math.imul(h, 2654435761)) - 0.5);
+  return clamp(Math.round(Math.exp(v) * 100) / 100, 0.3, 3);
+}
+const priceOf = it => Math.max(1, Math.round(it.base * market(it.s)));
 function rollRarity() {
   const ch = rod().ch;
   for (const r of ['legend', 'mythic', 'epic', 'super', 'rare']) if (Math.random() * 100 < ch[r]) return r;
@@ -187,7 +206,7 @@ function newFish(onScreen) {
   return { sp, r, z, sc, dir, x: onScreen ? rnd(20, S.W - 20) : dir > 0 ? -hw - rnd(0, 80) : S.W + hw + rnd(0, 80), y, y0: y,
            hw: Math.max(4, hw - 3), hh: Math.max(3, c.height * sc / 2 - 2), speed: rnd(R.speed[0], R.speed[1]) / Math.sqrt(z.k), ph: rnd(0, 6),
            kg: Math.round(R.kg * z.k * z.k * rnd(0.85, 1.15) * 10) / 10,
-           value: Math.max(1, Math.round(rnd(R.price[0], R.price[1]) * z.k * wld().money)) };
+           base: Math.max(1, Math.round(rnd(R.price[0], R.price[1]) * z.k * wld().money)) };   // x the market price when you sell it
 }
 function fillSea() { world.fish = []; for (let i = 0; i < 16; i++) world.fish.push(newFish(true)); }
 function makeObstacles() {
@@ -228,9 +247,13 @@ function updateSea(dt, t) {
     const m = o.type === 'shark' ? 70 : 20;
     if (o.x < -m) o.x = W + m; else if (o.x > W + m) o.x = -m;
   }
+  for (const p of splashes) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; p.life -= dt; }
+  for (let i = splashes.length - 1; i >= 0; i--) if (splashes[i].life <= 0 || splashes[i].y > 2) splashes.splice(i, 1);
   for (const b of world.bubbles) { b.y -= b.v * dt; b.x += Math.sin(t * 4 + b.ph) * 6 * dt; b.life -= dt; }
   world.bubbles = world.bubbles.filter(b => b.life > 0 && b.y > -4);
 }
+const splashes = [];
+function splash(x, n) { for (let i = 0; i < n; i++) splashes.push({ x: x + rnd(-4, 4), y: 0, vx: rnd(-40, 40), vy: rnd(-90, -40), life: rnd(0.4, 0.8) }); }
 function bubble(x, y, n = 1) { for (let i = 0; i < n; i++) world.bubbles.push({ x: x + rnd(-3, 3), y: y + rnd(-3, 3), v: rnd(20, 40), ph: rnd(0, 6), life: rnd(1, 3), s: Math.random() < 0.3 ? 2 : 1 }); }
 function obsHit(o, x, y, extra) {            // does the hook (at x, y) touch it?
   if (o.type === 'shark') return Math.abs(x - o.x) < 20 + extra && Math.abs(y - o.y) < 7 + extra;
@@ -238,10 +261,10 @@ function obsHit(o, x, y, extra) {            // does the hook (at x, y) touch it
 }
 
 /* --- 4. THE GAME ---------------------------------------------------------------- */
-let state = 'title';          // title | fish | shop | book | worlds
+let state = 'title';          // title | fish | shop | book | worlds | market
 let paused = false, shopBack = 'title';
 let camY = 0;
-const G = { phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
+const G = { bang: 0, phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
 const boatX = () => Math.round(S.W * 0.42) - 26;   // the boat's left end
 const tipX = () => boatX() + 66;                    // the rod tip, where the line hangs from
 function startFishing() { state = 'fish'; paused = false; G.phase = 'ready'; G.hooked = null; G.hook.x = tipX(); G.hook.y = -8; camY = 0; }
@@ -249,7 +272,7 @@ function cast() {
   if (G.phase !== 'ready') return;
   G.phase = 'down'; G.hp = line().hp; G.inv = 0; G.hooked = null;
   G.hook.x = tipX(); G.hook.y = 0; G.msg = null;
-  bubble(G.hook.x, 4, 6); sfx('cast');
+  bubble(G.hook.x, 4, 6); splash(G.hook.x, 10); sfx('cast');
 }
 function reelUp() { if (G.phase === 'down') { G.phase = 'up'; sfx('reel'); } }
 function say(text, color = '#fff', dur = 1.4) { G.msg = { text, color, t: dur }; }
@@ -259,7 +282,7 @@ function hookFish(f) {
   const R = RAR[f.r];
   const big = f.z.k >= 1.5 ? f.z.name + ' ' : '';
   say(f.r === 'bad' ? (big ? big + 'BAD FISH...' : 'A BITE... MEH') : big + R.name + '!', R.color);
-  sfx('bite'); bubble(G.hook.x, G.hook.y, 5);
+  sfx('bite'); bubble(G.hook.x, G.hook.y, 5); G.bang = 0.8;
 }
 function hit(o) {
   G.hp--; G.inv = 1.2; G.shake = 0.3;
@@ -281,12 +304,14 @@ function land() {                                   // the hook is back at the b
   save.book[f.sp.id] = (save.book[f.sp.id] | 0) + 1;
   const record = f.kg > (save.big[f.sp.id] || 0) && !isNew;
   save.big[f.sp.id] = Math.max(save.big[f.sp.id] || 0, f.kg);
-  save.coins += f.value; save.caught = (save.caught | 0) + 1; save.best = Math.max(save.best | 0, f.value);
+  save.caught = (save.caught | 0) + 1;
+  const item = { s: f.sp.id, z: SIZES.indexOf(f.z), kg: f.kg, base: f.base }, full = save.inv.length >= cooler().cap;
+  if (!full) save.inv.push(item);
   store();
   if (R.stars) PX.Wallet.add(R.stars);
-  G.card = { f, isNew, record, stars: R.stars, t: 0 };
+  G.card = { f, item, full, isNew, record, stars: R.stars, t0: performance.now() };
   G.phase = 'catch'; G.hook.y = -8;
-  bubble(G.hook.x, 2, 8);
+  bubble(G.hook.x, 2, 8); splash(G.hook.x, 14);
   sfx(R.i >= 4 ? 'fanfare' : R.i >= 2 ? 'great' : f.r === 'bad' ? 'meh' : 'coin');
 }
 const hookDrop = f => Math.round(f.hh * 0.7) + 2;   // a hooked fish hangs this far under the hook
@@ -295,6 +320,7 @@ function step(dt, t) {
   updateSea(dt, t);
   if (G.msg && (G.msg.t -= dt) <= 0) G.msg = null;
   if (G.shake > 0) G.shake -= dt;
+  if (G.bang > 0) G.bang -= dt;
   const h = G.hook, W = S.W;
   if (G.phase === 'ready' || G.phase === 'catch') { h.x += (tipX() - h.x) * Math.min(1, dt * 6); h.y = -8; }
   if (G.phase === 'snap' && (G.snapT -= dt) <= 0) { G.phase = 'ready'; h.x = tipX(); h.y = -8; }
@@ -368,6 +394,8 @@ function drawSea(t, withBoat) {
   ctx.fillStyle = '#c8f4ff';
   for (const b of world.bubbles) { const y = sy(b.y); if (y > surf) ctx.fillRect(Math.round(b.x), Math.round(y), b.s, b.s); }
   if (withBoat) drawBoat(t);
+  ctx.fillStyle = '#e8fcff';
+  for (const p of splashes) ctx.fillRect(Math.round(p.x), Math.round(sy(p.y)), 2, 2);
 }
 function drawFish(f, t) {
   const y = sy(f.y);
@@ -439,6 +467,7 @@ function drawLineAndHook(t) {
     ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 6, 3, 8); ctx.fillRect(x - 5, y + 1, 7, 3); ctx.fillRect(x - 6, y - 3, 3, 6);
     ctx.fillStyle = '#c8d0d8'; ctx.fillRect(x, y - 5, 1, 7); ctx.fillRect(x - 4, y + 2, 5, 1); ctx.fillRect(x - 5, y - 2, 1, 4);
     if (!G.hooked && G.phase !== 'ready' && G.phase !== 'catch') { ctx.fillStyle = '#e04a7a'; ctx.fillRect(x - 3, y - 1, 3, 2); }   // the worm
+    if (G.bang > 0) T('!', x + 6, y - 18 - Math.round((0.8 - G.bang) * 10), '#ffd23f', 3, 'left', '#000');
   }
 }
 
@@ -472,15 +501,33 @@ function drawTitle(t) {
   T('CATCH', W / 2, 60, '#ffd23f', 6, 'center', '#a05a1a');
   const gold = SPECIES.find(s => s.id === 'gold');
   drawSprite(fishSprite(gold, false), W / 2 + 150 + Math.sin(t) * 4, 70 + Math.sin(t * 2) * 3, 2);
-  const bw = 180, bx = Math.round(W / 2 - bw / 2);
+  const bw = 244, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('play', bx, 104, bw, 26, 'GO FISHING', { accent: '#ffd23f' })) { sfx('click'); startFishing(); }
-  if (UI.button('shop', bx, 136, 56, 22, 'SHOP', { accent: '#5ad43f', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'shop'; }
-  if (UI.button('book', bx + 62, 136, 56, 22, 'FISH BOOK', { accent: '#4aa8ff', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'book'; }
-  if (UI.button('worlds', bx + 124, 136, 56, 22, 'WORLDS', { accent: '#ff8a2a', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'worlds'; }
+  menuRow(bx, 136, 'title');
   T(wld().name + '   ' + rod().name + '   ' + save.caught + ' FISH CAUGHT', W / 2, 166, '#fff', 1, 'center', '#000');
-  T('EPIC ★1   MYTHIC ★2   LEGENDARY ★5', W / 2, 178, '#ffd23f', 1, 'center', '#000');
-  if (UI.button('games', bx, 196, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  const tip = marketTip();
+  if (tip) T('MARKET TIP: ' + tip, W / 2, 178, '#9be36b', 1, 'center', '#000');
+  else T('EPIC ★1   MYTHIC ★2   LEGENDARY ★5', W / 2, 178, '#ffd23f', 1, 'center', '#000');
+  if (UI.button('games', Math.round(W / 2 - 90), 196, 180, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
   T('V' + VERSION, W - 4, H - 9, '#9a92b8', 1, 'right');
+}
+function menuRow(x, y, back) {                     // SHOP  FISH BOOK  WORLDS  MARKET
+  const items = [['shop', 'SHOP', '#5ad43f'], ['book', 'FISH BOOK', '#4aa8ff'], ['worlds', 'WORLDS', '#ff8a2a'], ['market', 'MARKET', '#9be36b']];
+  items.forEach(([id, label, c], i) => {
+    if (UI.button(id, x + i * 62, y, 58, 22, label, { accent: c, size: 1 })) { sfx('click'); shopBack = back; state = id; mk.sel = null; }
+  });
+  if (save.inv.length) {                            // how many fish wait in the cooler
+    const n = String(save.inv.length), bx = x + 3 * 62 + 52 - PX.textWidth(n, 1);
+    ctx.fillStyle = save.inv.length >= cooler().cap ? '#ff4a5a' : '#9be36b'; ctx.fillRect(bx - 2, y - 5, PX.textWidth(n, 1) + 5, 9);
+    T(n, bx, y - 3, '#111', 1, 'left');
+  }
+}
+function marketTip() {                              // the fish in your cooler that sells best right now
+  let best = null;
+  for (const id of new Set(save.inv.map(it => it.s))) { const m = market(id); if (!best || m > best.m) best = { id, m }; }
+  if (!best) return '';
+  const sp = SPECIES.find(s => s.id === best.id), up = best.m >= market(best.id, hourNow() - 1);
+  return sp.name + ' SELLS AT X' + best.m.toFixed(2) + (up ? ' ↑' : ' ↓');
 }
 function drawGame(t) {
   const W = S.W;
@@ -492,12 +539,19 @@ function drawGame(t) {
   // the top bar
   coinsText(6, 6);
   T(rod().name + '   ' + wld().name, 6, 22, rod().color, 1, 'left', '#000');
+  const full = save.inv.length >= cooler().cap;
+  T('COOLER ' + save.inv.length + '/' + cooler().cap + (full ? ' FULL!' : ''), 6, 31, full ? '#ff6a6a' : '#c8f4ff', 1, 'left', '#000');
   const casting = G.phase === 'down' || G.phase === 'up';
   if (casting || G.phase === 'snap') {
     T(Math.max(0, Math.round(G.hook.y / 10)) + ' M', W - 6, 6, '#fff', 2, 'right', '#000');
     let hearts = ''; for (let i = 0; i < line().hp; i++) hearts += '♥';
     const full = '♥'.repeat(Math.max(0, G.hp)), x0 = W - 6 - PX.textWidth(hearts, 1);
     T(hearts, x0, 22, '#4a2030', 1, 'left'); T(full, x0, 22, '#ff4a6a', 1, 'left');
+    // the depth gauge on the right: how far down the hook is
+    const gx = W - 8, gy0 = 36, gh = H - 80, k = clamp(G.hook.y / MAX_DEPTH, 0, 1);
+    ctx.fillStyle = '#111'; ctx.fillRect(gx - 1, gy0 - 1, 5, gh + 2);
+    ctx.fillStyle = 'rgba(200,240,255,0.25)'; ctx.fillRect(gx, gy0, 3, gh);
+    ctx.fillStyle = G.hooked ? RAR[G.hooked.r].color : '#c8f4ff'; ctx.fillRect(gx - 2, Math.round(gy0 + k * gh) - 1, 7, 3);
     if (G.phase === 'down' && !G.hooked && UI.button('reel', W - 74, H - 28, 68, 22, 'REEL UP', { size: 1, accent: '#7af0ff' })) reelUp();
     if (UI.button('pause', W - 74 - 30, H - 28, 26, 22, 'II', { size: 1 })) setPause(true);
   }
@@ -505,18 +559,20 @@ function drawGame(t) {
     if (UI.button('menu', W - 50, 6, 44, 18, 'MENU', { size: 1 }) || UI.back) { state = 'title'; return; }
     const bw = 140, bx = Math.round(W / 2 - bw / 2);
     if (UI.button('cast', bx, H - 64, bw, 26, 'CAST', { accent: '#ffd23f' })) cast();
-    if (UI.button('shop', bx - 20, H - 32, 56, 22, 'SHOP', { size: 1, accent: '#5ad43f' })) { shopBack = 'fish'; state = 'shop'; }
-    if (UI.button('book', bx + 42, H - 32, 56, 22, 'FISH BOOK', { size: 1, accent: '#4aa8ff' })) { shopBack = 'fish'; state = 'book'; }
-    if (UI.button('worlds', bx + 104, H - 32, 56, 22, 'WORLDS', { size: 1, accent: '#ff8a2a' })) { shopBack = 'fish'; state = 'worlds'; }
-    T('DRAG LEFT / RIGHT TO STEER THE HOOK', W / 2, H - 92, '#fff', 1, 'center', '#000');
-    T('AVOID JELLYFISH, SHARKS, BOOTS, URCHINS AND MINES', W / 2, H - 82, '#ffc8ee', 1, 'center', '#000');
+    menuRow(Math.round(W / 2 - 122), H - 32, 'fish');
+    if (full) T('YOUR COOLER IS FULL: SELL FISH AT THE MARKET', W / 2, H - 82, '#ff8a8a', 1, 'center', '#000');
+    else if (save.caught < 3) {
+      T('DRAG LEFT / RIGHT TO STEER THE HOOK', W / 2, H - 92, '#fff', 1, 'center', '#000');
+      T('AVOID JELLYFISH, SHARKS, BOOTS, URCHINS AND MINES', W / 2, H - 82, '#ffc8ee', 1, 'center', '#000');
+    } else { const tip = marketTip(); if (tip) T('MARKET TIP: ' + tip, W / 2, H - 82, '#9be36b', 1, 'center', '#000'); }
   }
   if (G.msg) T(G.msg.text, W / 2, 46, G.msg.color, 2, 'center', '#000');
   if (G.phase === 'catch') drawCatch(t);
 }
 function drawCatch(t) {
-  const W = S.W, c = G.card, f = c.f, R = RAR[f.r], { y } = panel(250, 168, 30);
-  c.t += 1 / 60;
+  const W = S.W, c = G.card, f = c.f, R = RAR[f.r], age = (performance.now() - c.t0) / 1000;
+  const slide = Math.round(Math.pow(Math.max(0, 1 - age * 4), 2) * -60);   // the card drops in
+  const { y } = panel(256, 176, 26 + slide);
   if (R.i >= 3) for (let i = 0; i < 26; i++) { const k = t + i; ctx.fillStyle = [R.color, '#ffffff', '#7af0ff', '#ffd23f'][i % 4]; ctx.fillRect(Math.round((i * 47 + k * 30) % W), Math.round((k * (40 + i * 3)) % H), 3, 3); }
   T('YOU CAUGHT', W / 2, y + 8, '#9ac8e0', 1, 'center');
   T(R.name, W / 2, y + 20, R.color, 2, 'center', '#000');
@@ -524,14 +580,19 @@ function drawCatch(t) {
   drawSprite(spr, W / 2, y + 60 + Math.sin(t * 3) * 2, big);
   T(f.sp.name, W / 2, y + 88, '#fff', 2, 'center', '#000');
   T(f.z.name + '   ' + f.kg + ' KG', W / 2, y + 104, f.z.k >= 1.5 ? '#ff8a2a' : '#9ac8e0', 1, 'center', '#000');
-  T('SOLD FOR ' + f.value + ' COINS', W / 2, y + 116, '#ffd23f', 2, 'center', '#000');
+  const m = market(f.sp.id), now = priceOf(c.item), up = m >= market(f.sp.id, hourNow() - 1);
+  T('WORTH ' + now + ' COINS NOW', W / 2, y + 116, '#ffd23f', 2, 'center', '#000');
+  T('MARKET X' + m.toFixed(2) + (up ? ' ↑' : ' ↓') + (c.full ? '   YOUR COOLER IS FULL!' : '   IN YOUR COOLER ' + save.inv.length + '/' + cooler().cap), W / 2, y + 133, up ? '#9be36b' : '#ff8a8a', 1, 'center');
   let extra = [];
   if (c.isNew) extra.push('NEW IN YOUR FISH BOOK!');
   if (c.record) extra.push('BIGGEST ONE YET!');
   if (c.stars) extra.push('★ +' + c.stars);
   if (f.r === 'bad') extra.push('IT SMELLS...');
-  T(extra.join('   '), W / 2, y + 132, '#9be36b', 1, 'center');
-  if (UI.button('ok', Math.round(W / 2 - 70), y + 142, 140, 20, 'KEEP FISHING', { size: 1, accent: '#5ad43f' }) || UI.back) { G.phase = 'ready'; G.card = null; }
+  if (extra.length) T(extra.join('   '), W / 2, y - 12, '#9be36b', 1, 'center', '#000');
+  if (c.full) {                                       // no room: sell it right away, or let it go
+    if (UI.button('sellnow', Math.round(W / 2 - 112), y + 148, 108, 20, 'SELL: ' + now, { size: 1, accent: '#ffd23f' })) { sell([c.item], W / 2, y + 140); G.phase = 'ready'; G.card = null; }
+    if (UI.button('release', Math.round(W / 2 + 4), y + 148, 108, 20, 'THROW BACK', { size: 1, accent: '#7af0ff' }) || UI.back) { sfx('splash'); G.phase = 'ready'; G.card = null; }
+  } else if (UI.button('ok', Math.round(W / 2 - 70), y + 148, 140, 20, 'KEEP FISHING', { size: 1, accent: '#5ad43f' }) || UI.back) { G.phase = 'ready'; G.card = null; }
 }
 function drawPause() {
   const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
@@ -545,7 +606,7 @@ function drawShop(t) {
   ctx.fillStyle = '#0c2c48'; for (let y = 0; y < H; y += 8) ctx.fillRect(0, y, W, 1);
   T('SHOP', 8, 6, '#fff', 2, 'left', '#000');
   coinsText(W - 8, 6, 'right');
-  const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 24, ch = 126;
+  const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 22, ch = 116;
   RODS.forEach((r, i) => {
     const x = 8 + i * (cw + gap), owned = save.rods.includes(r.id), on = save.rod === r.id;
     ctx.fillStyle = on ? r.color : '#111'; ctx.fillRect(x - 1, top - 1, cw + 2, ch + 2);
@@ -555,11 +616,11 @@ function drawShop(t) {
     ctx.strokeStyle = 'rgba(240,250,255,0.6)'; ctx.beginPath(); ctx.moveTo(x + cw - 14, top + 16); ctx.lineTo(x + cw - 14, top + 32); ctx.stroke();
     const rows = [['legend', 'LEGENDARY'], ['mythic', 'MYTHIC'], ['epic', 'EPIC'], ['super', 'SUPER RARE'], ['rare', 'RARE']];
     rows.forEach(([id, label], k) => {
-      const yy = top + 42 + k * 11, v = r.ch[id];
+      const yy = top + 40 + k * 10, v = r.ch[id];
       T(label, x + 4, yy, v ? RAR[id].color : '#4a5a6a', 1, 'left');
       T(v + '%', x + cw - 4, yy, v ? '#fff' : '#4a5a6a', 1, 'right');
     });
-    const by = top + ch - 22, can = save.coins >= r.price;
+    const by = top + ch - 21, can = save.coins >= r.price;
     if (on) T('EQUIPPED', x + cw / 2, by + 7, r.color, 1, 'center');
     else if (owned) { if (UI.button('rod_' + r.id, x + 4, by, cw - 8, 18, 'EQUIP', { size: 1, accent: r.color })) { save.rod = r.id; store(); fillSea(); sfx('click'); } }
     else if (UI.button('rod_' + r.id, x + 4, by, cw - 8, 18, r.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: !can })) {
@@ -568,15 +629,16 @@ function drawShop(t) {
   });
   const gearRow = (y, label, list, key, what) => {
     const lv = save[key], cur = list[lv], next = list[lv + 1];
-    ctx.fillStyle = '#14324e'; ctx.fillRect(8, y, W - 16, 24);
-    T(label + ': ' + cur.name, 14, y + 4, '#fff', 1, 'left');
-    T(what(cur) + (next ? '   NEXT: ' + next.name + ', ' + what(next) : '   (THE BEST)'), 14, y + 14, '#9ac8e0', 1, 'left');
-    if (next) { if (UI.button('up_' + key, W - 92, y + 3, 80, 18, next.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: save.coins < next.price })) { save.coins -= next.price; save[key]++; store(); sfx('buy'); } }
+    ctx.fillStyle = '#14324e'; ctx.fillRect(8, y, W - 16, 22);
+    T(label + ': ' + cur.name, 14, y + 3, '#fff', 1, 'left');
+    T(what(cur) + (next ? '   NEXT: ' + next.name + ', ' + what(next) : '   (THE BEST)'), 14, y + 13, '#9ac8e0', 1, 'left');
+    if (next) { if (UI.button('up_' + key, W - 92, y + 2, 80, 18, next.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: save.coins < next.price })) { save.coins -= next.price; save[key]++; store(); sfx('buy'); } }
     else T('MAX', W - 52, y + 9, '#ffd23f', 1, 'center');
   };
-  gearRow(top + ch + 6, 'REEL', REELS, 'reel', g => 'REELS IN ' + g.speed);
-  gearRow(top + ch + 34, 'LINE', LINES, 'line', g => g.hp + ' HITS');
-  if (UI.button('back', Math.round(W / 2 - 60), H - 24, 120, 20, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  gearRow(top + ch + 4, 'REEL', REELS, 'reel', g => 'REELS IN ' + g.speed);
+  gearRow(top + ch + 28, 'LINE', LINES, 'line', g => g.hp + ' HITS');
+  gearRow(top + ch + 52, 'COOLER', COOLERS, 'cooler', g => 'HOLDS ' + g.cap + ' FISH');
+  if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
 }
 function drawBook(t) {
   const W = S.W;
@@ -604,6 +666,105 @@ function drawBook(t) {
   }
 }
 let bookPage = 0;
+
+/* --- the FISH MARKET: your cooler, and every fish's price like a stock chart --- */
+const mk = { sel: null, page: 0 };
+const floats = [];                                   // little "+123" texts that float up
+function sell(items, x, y) {
+  if (!items.length) return;
+  let total = 0;
+  for (const it of items) {
+    const v = priceOf(it); total += v; save.best = Math.max(save.best | 0, v);
+    const i = save.inv.indexOf(it); if (i >= 0) save.inv.splice(i, 1);
+  }
+  save.coins += total; store();
+  floats.push({ text: '+' + total, x, y, t: 1.2 });
+  sfx(total >= 500 ? 'fanfare' : 'cash');
+}
+function sparkline(id, x, y, w, h, hours) {          // the last `hours` hours of a fish's price
+  const h0 = hourNow(), vals = [];
+  for (let i = hours - 1; i >= 0; i--) vals.push(market(id, h0 - i));
+  let lo = Math.min(1, ...vals), hi = Math.max(1, ...vals);
+  if (hi - lo < 0.2) { hi += 0.1; lo -= 0.1; }
+  const X = i => x + i * (w - 1) / (hours - 1), Y = v => y + h - 1 - (v - lo) / (hi - lo) * (h - 1);
+  const up = vals[hours - 1] >= vals[hours - 2], col = up ? '#5ad43f' : '#ff4a5a';
+  return { vals, lo, hi, X, Y, up, col };
+}
+function drawChart(id, x, y, w, h, t) {
+  const c = sparkline(id, x + 22, y + 4, w - 26, h - 16, 24);
+  ctx.fillStyle = '#0a1e30'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#16364f';
+  for (let k = 0; k < 4; k++) ctx.fillRect(x + 22, Math.round(y + 4 + k * (h - 16) / 3), w - 26, 1);
+  ctx.fillStyle = '#4a6a80'; for (let xx = x + 22; xx < x + w - 4; xx += 4) ctx.fillRect(xx, Math.round(c.Y(1)), 2, 1);   // x1 = the normal price
+  T('X' + c.hi.toFixed(1), x + 2, y + 2, '#6a8aa0', 1, 'left');
+  T('X' + c.lo.toFixed(1), x + 2, y + h - 18, '#6a8aa0', 1, 'left');
+  T('24 HOURS AGO', x + 22, y + h - 8, '#6a8aa0', 1, 'left');
+  T('NOW', x + w - 4, y + h - 8, '#6a8aa0', 1, 'right');
+  // the area under the line, then the line
+  ctx.globalAlpha = 0.18; ctx.fillStyle = c.col;
+  ctx.beginPath(); ctx.moveTo(c.X(0), y + h - 12); c.vals.forEach((v, i) => ctx.lineTo(c.X(i), c.Y(v))); ctx.lineTo(c.X(23), y + h - 12); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = c.col; ctx.lineWidth = 1.5; ctx.beginPath(); c.vals.forEach((v, i) => i ? ctx.lineTo(c.X(i), c.Y(v)) : ctx.moveTo(c.X(i), c.Y(v))); ctx.stroke(); ctx.lineWidth = 1;
+  if (Math.sin(t * 6) > -0.3) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(c.X(23)) - 2, Math.round(c.Y(c.vals[23])) - 2, 4, 4); }
+  return c;
+}
+function drawMarket(t) {
+  const W = S.W;
+  ctx.fillStyle = '#071a2c'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b2438'; for (let y = 0; y < H; y += 8) ctx.fillRect(0, y, W, 1);
+  T('FISH MARKET', 8, 6, '#fff', 2, 'left', '#000');
+  coinsText(W - 8, 6, 'right');
+  const left = MARKET_HOUR - (Date.now() % MARKET_HOUR), mm = Math.floor(left / 60000), ss = Math.floor(left / 1000) % 60;
+  T('COOLER ' + save.inv.length + '/' + cooler().cap, 8, 24, save.inv.length >= cooler().cap ? '#ff6a6a' : '#c8f4ff', 1, 'left');
+  T('NEW PRICES IN ' + mm + ':' + String(ss).padStart(2, '0'), W - 8, 24, '#ffd23f', 1, 'right');
+  // your fish, one row per kind, the most valuable first
+  const groups = {};
+  for (const it of save.inv) (groups[it.s] = groups[it.s] || []).push(it);
+  const ids = Object.keys(groups).sort((a, b) => groups[b].reduce((n, it) => n + priceOf(it), 0) - groups[a].reduce((n, it) => n + priceOf(it), 0));
+  if (!ids.length) {
+    T('YOUR COOLER IS EMPTY', W / 2, 90, '#fff', 2, 'center', '#000');
+    T('GO FISHING! CAUGHT FISH WAIT IN YOUR COOLER', W / 2, 112, '#9ac8e0', 1, 'center');
+    T('UNTIL YOU SELL THEM HERE. PRICES CHANGE EVERY HOUR:', W / 2, 122, '#9ac8e0', 1, 'center');
+    T('SELL WHEN THE PRICE IS HIGH!', W / 2, 132, '#9be36b', 1, 'center');
+  } else {
+    if (!mk.sel || !groups[mk.sel]) mk.sel = ids[0];
+    const LW = Math.min(196, Math.floor(W * 0.44)), rows = 7, rh = 22, top = 36, pages = Math.ceil(ids.length / rows);
+    mk.page = clamp(mk.page, 0, pages - 1);
+    ids.slice(mk.page * rows, mk.page * rows + rows).forEach((id, i) => {
+      const sp = SPECIES.find(s => s.id === id), y = top + i * rh, list = groups[id], m = market(id), up = m >= market(id, hourNow() - 1), on = mk.sel === id;
+      if (UI.button('row_' + id, 8, y, LW, rh - 2, '', { accent: '#2a5a7a', on })) { mk.sel = id; sfx('click'); }
+      ctx.fillStyle = RAR[sp.r].color; ctx.fillRect(9, y + 1, 2, rh - 4);
+      const c = fishSprite(sp, false); drawSprite(c, 26, y + rh / 2 - 1, c.width > 16 ? 1 : 1);
+      T(sp.name.length > 13 ? sp.name.slice(0, 12) + '.' : sp.name, 44, y + 3, '#fff', 1, 'left');
+      T('X' + list.length, 44, y + 11, '#9ac8e0', 1, 'left');
+      const sl = sparkline(id, 72, y + 11, 30, 6, 12);   // a tiny 12-hour chart
+      ctx.strokeStyle = sl.col; ctx.beginPath(); sl.vals.forEach((v, k) => k ? ctx.lineTo(sl.X(k), sl.Y(v)) : ctx.moveTo(sl.X(k), sl.Y(v))); ctx.stroke();
+      T('X' + m.toFixed(2) + (up ? '↑' : '↓'), 8 + LW - 4, y + 7, up ? '#5ad43f' : '#ff4a5a', 1, 'right');
+    });
+    if (pages > 1) {
+      const py = top + rows * rh;
+      if (UI.button('mprev', 8, py, 30, 14, '<', { size: 1, disabled: mk.page === 0 })) mk.page--;
+      T((mk.page + 1) + '/' + pages, 8 + LW / 2, py + 4, '#9ac8e0', 1, 'center');
+      if (UI.button('mnext', 8 + LW - 30, py, 30, 14, '>', { size: 1, disabled: mk.page === pages - 1 })) mk.page++;
+    }
+    // the fish you picked: its price chart, and the sell buttons
+    const id = mk.sel, sp = SPECIES.find(s => s.id === id), R = RAR[sp.r], list = groups[id].slice().sort((a, b) => priceOf(b) - priceOf(a));
+    const x = 8 + LW + 8, w = W - x - 8, m = market(id), prev = market(id, hourNow() - 1), ch = Math.round((m / prev - 1) * 100);
+    T(sp.name, x, top, '#fff', 1, 'left'); T(R.name, x + w, top, R.color, 1, 'right');
+    T('PRICE NOW X' + m.toFixed(2), x, top + 10, '#fff', 1, 'left');
+    T((ch >= 0 ? '↑ +' : '↓ ') + ch + '% THIS HOUR', x + w, top + 10, ch >= 0 ? '#5ad43f' : '#ff4a5a', 1, 'right');
+    drawChart(id, x, top + 21, w, 82, t);
+    const total = list.reduce((n, it) => n + priceOf(it), 0), best = list[0];
+    T('YOU HAVE ' + list.length + '   BEST: ' + SIZES[best.z].name + ' ' + best.kg + ' KG', x, top + 108, '#9ac8e0', 1, 'left');
+    T('ALL WORTH ' + total + ' COINS NOW', x, top + 118, '#ffd23f', 1, 'left');
+    const bw = Math.floor((w - 4) / 2), by = top + 130;
+    if (UI.button('sell1', x, by, bw, 22, 'SELL 1: ' + priceOf(best), { size: 1, accent: '#ffd23f' })) sell([best], x + bw / 2, by);
+    if (UI.button('sellall', x + bw + 4, by, bw, 22, 'SELL ALL: ' + total, { size: 1, accent: '#ffd23f' })) sell(list, x + bw * 1.5, by);
+  }
+  const everything = save.inv.reduce((n, it) => n + priceOf(it), 0);
+  if (UI.button('back', 8, H - 24, 100, 20, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  if (save.inv.length && UI.button('sellev', W - 168, H - 24, 160, 20, 'SELL EVERYTHING: ' + everything, { size: 1, accent: '#ff8a2a' })) sell(save.inv.slice(), W - 88, H - 30);
+}
 function drawWorlds(t) {
   const W = S.W;
   ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
@@ -660,6 +821,8 @@ function sfx(k) {
   else if (k === 'coin') { s.tone(988, 0.08, { vol: 0.1 }); s.tone(1319, 0.15, { vol: 0.1, delay: 0.08 }); }
   else if (k === 'great') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.12, { vol: 0.1, delay: i * 0.08 }));
   else if (k === 'fanfare') [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => s.tone(f, 0.16, { vol: 0.11, delay: i * 0.1 }));
+  else if (k === 'cash') { s.tone(1319, 0.06, { vol: 0.1 }); s.tone(1760, 0.06, { vol: 0.1, delay: 0.06 }); s.tone(2093, 0.14, { vol: 0.1, delay: 0.12 }); }
+  else if (k === 'splash') s.noise(0.3, { freq: 1500, vol: 0.12 });
   else if (k === 'buy') { s.tone([660, 1320], 0.2, { vol: 0.1 }); s.tone(1760, 0.15, { vol: 0.08, delay: 0.15 }); }
 }
 
@@ -694,7 +857,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) setPa
 /* --- 8. MAIN LOOP ----------------------------------------------------------------- */
 setWorld(save.world);
 G.hook.x = tipX();
-let last = performance.now();
+let last = performance.now(), lastState = state, fade = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
   UI.begin();
@@ -702,11 +865,16 @@ function frame(now) {
   else if (state === 'shop') drawShop(t);
   else if (state === 'book') drawBook(t);
   else if (state === 'worlds') drawWorlds(t);
+  else if (state === 'market') drawMarket(t);
   else {
     if (!paused) step(dt, t);
     drawGame(t);
     if (paused) drawPause();
   }
+  for (const f of floats) { f.t -= dt; T(f.text, f.x, Math.round(f.y - (1.2 - f.t) * 30), '#ffd23f', 2, 'center', '#000'); }
+  for (let i = floats.length - 1; i >= 0; i--) if (floats[i].t <= 0) floats.splice(i, 1);
+  if (state !== lastState) { lastState = state; fade = 1; floats.length = 0; }        // a quick fade between screens
+  if (fade > 0) { ctx.fillStyle = 'rgba(4,14,28,' + (fade * 0.8).toFixed(2) + ')'; ctx.fillRect(0, 0, S.W, H); fade -= dt * 6; }
   UI.end();
   S.blit('#062038');
   requestAnimationFrame(frame);
