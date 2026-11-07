@@ -36,9 +36,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.2.0';
 const SAVE_KEY = 'deepCatch.save';
-const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, caught: 0, best: 0, sfx: true };
+const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -53,32 +53,55 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 const SURF = 70;            // the sea's surface on the screen when the camera is at the top
-const MAX_DEPTH = 900;      // the deepest the hook goes (10 px = 1 m)
-const BED = MAX_DEPTH + 18; // the sea bed
-const SINK = 85;            // how fast the hook sinks (px/s)
+let MAX_DEPTH = 900;        // the deepest the hook goes in this world (10 px = 1 m)
+let BED = MAX_DEPTH + 18;   // the sea bed
 const STEER = 150;          // how fast you move the hook sideways
 const SCALE = 2;            // fish sprites: screen pixels per sprite pixel
 
 /* --- 2. FISH AND GEAR --------------------------------------------------------- */
 const RARITIES = [
-  { id: 'bad',    name: 'BAD FISH',   color: '#a89a80', price: [1, 5],      speed: [12, 20], depth: [20, 420],  pull: 0,  stars: 0 },
-  { id: 'rare',   name: 'RARE',       color: '#4aa8ff', price: [12, 20],    speed: [18, 28], depth: [60, 580],  pull: 10, stars: 0 },
-  { id: 'super',  name: 'SUPER RARE', color: '#5ad43f', price: [35, 55],    speed: [24, 36], depth: [160, 720], pull: 16, stars: 0 },
-  { id: 'epic',   name: 'EPIC',       color: '#c070ff', price: [90, 140],   speed: [30, 44], depth: [260, 820], pull: 24, stars: 1 },
-  { id: 'mythic', name: 'MYTHIC',     color: '#ff4a5a', price: [260, 360],  speed: [38, 54], depth: [400, 880], pull: 32, stars: 2 },
-  { id: 'legend', name: 'LEGENDARY',  color: '#ffd23f', price: [900, 1300], speed: [46, 64], depth: [540, 890], pull: 42, stars: 5 },
+  { id: 'bad',    name: 'BAD FISH',   color: '#a89a80', price: [1, 3],     kg: 0.3, speed: [12, 20], depth: [0.02, 0.47], pull: 0,  stars: 0 },
+  { id: 'rare',   name: 'RARE',       color: '#4aa8ff', price: [5, 9],     kg: 1.2, speed: [18, 28], depth: [0.07, 0.64], pull: 10, stars: 0 },
+  { id: 'super',  name: 'SUPER RARE', color: '#5ad43f', price: [15, 24],   kg: 3,   speed: [24, 36], depth: [0.18, 0.80], pull: 16, stars: 0 },
+  { id: 'epic',   name: 'EPIC',       color: '#c070ff', price: [45, 70],   kg: 8,   speed: [30, 44], depth: [0.29, 0.91], pull: 24, stars: 1 },
+  { id: 'mythic', name: 'MYTHIC',     color: '#ff4a5a', price: [130, 190], kg: 20,  speed: [38, 54], depth: [0.44, 0.98], pull: 32, stars: 2 },
+  { id: 'legend', name: 'LEGENDARY',  color: '#ffd23f', price: [500, 750], kg: 60,  speed: [46, 64], depth: [0.60, 0.99], pull: 42, stars: 5 },
 ];
 const RAR = {}; RARITIES.forEach((r, i) => { r.i = i; RAR[r.id] = r; });
 
 // the chance of each rarity, checked from the rarest down (no luck at all: a bad fish)
 const RODS = [
   { id: 'wood',  name: 'WOODEN ROD',    price: 0,     color: '#a0662a', tip: '#e0b070', ch: { legend: 0,  mythic: 5,  epic: 10, super: 40, rare: 70 } },
-  { id: 'steel', name: 'STEEL ROD',     price: 800,   color: '#9fb4c8', tip: '#eef4fa', ch: { legend: 8,  mythic: 15, epic: 25, super: 30, rare: 40 } },
-  { id: 'iron',  name: 'IRON ROD',      price: 4000,  color: '#6a6a78', tip: '#b0b0c0', ch: { legend: 15, mythic: 25, epic: 30, super: 20, rare: 30 } },
-  { id: 'lrod',  name: 'LEGENDARY ROD', price: 15000, color: '#ffd23f', tip: '#fff4b0', ch: { legend: 30, mythic: 35, epic: 40, super: 50, rare: 60 } },
+  { id: 'steel', name: 'STEEL ROD',     price: 6000,   color: '#9fb4c8', tip: '#eef4fa', ch: { legend: 8,  mythic: 15, epic: 25, super: 30, rare: 40 } },
+  { id: 'iron',  name: 'IRON ROD',      price: 50000, color: '#6a6a78', tip: '#b0b0c0', ch: { legend: 15, mythic: 25, epic: 30, super: 20, rare: 30 } },
+  { id: 'lrod',  name: 'LEGENDARY ROD', price: 250000, color: '#ffd23f', tip: '#fff4b0', ch: { legend: 30, mythic: 35, epic: 40, super: 50, rare: 60 } },
 ];
-const REELS = [{ name: 'BASIC REEL', speed: 90, price: 0 }, { name: 'FAST REEL', speed: 135, price: 300 }, { name: 'TURBO REEL', speed: 190, price: 1500 }];
-const LINES = [{ name: 'THIN LINE', hp: 2, price: 0 }, { name: 'STRONG LINE', hp: 3, price: 250 }, { name: 'STEEL LINE', hp: 4, price: 1200 }];
+const REELS = [{ name: 'BASIC REEL', speed: 90, price: 0 }, { name: 'FAST REEL', speed: 130, price: 1500 }, { name: 'TURBO REEL', speed: 180, price: 12000 }, { name: 'JET REEL', speed: 250, price: 80000 }];
+const LINES = [{ name: 'THIN LINE', hp: 2, price: 0 }, { name: 'STRONG LINE', hp: 3, price: 1200 }, { name: 'STEEL LINE', hp: 4, price: 10000 }, { name: 'TITAN LINE', hp: 6, price: 70000 }];
+// fish come in random sizes: the bigger, the heavier and the more it sells for (and the harder it pulls)
+const SIZES = [
+  { name: 'TINY',   k: 0.5,  w: 15, s: 1 }, { name: 'SMALL', k: 0.75, w: 25, s: 2 }, { name: 'NORMAL', k: 1,   w: 35, s: 2 },
+  { name: 'BIG',    k: 1.5,  w: 15, s: 3 }, { name: 'HUGE',  k: 2.2,  w: 8,  s: 3 }, { name: 'GIANT',  k: 3.5, w: 2,  s: 4 },
+];
+function rollSize() { let n = Math.random() * 100; for (const z of SIZES) if ((n -= z.w) < 0) return z; return SIZES[2]; }
+// the worlds: deeper seas, more danger, more money (unlocked with coins)
+const WORLDS = [
+  { id: 'bay',   name: 'SUNNY BAY',    depth: 900,  money: 1,  price: 0,      sink: 85,  reelK: 1,   obsK: 1,   shark: 1,
+    water: [[42, 212, 208], [20, 110, 160], [4, 18, 42]], sky: '#8adcff', haze: '#b8ecff', sun: '#fff3a0', sand: '#b8945a', sandTop: '#d0ac70' },
+  { id: 'reef',  name: 'CORAL REEF',   depth: 1500, money: 2,  price: 5000,   sink: 110, reelK: 1.3, obsK: 1.15, shark: 1.15,
+    water: [[60, 220, 180], [20, 130, 140], [6, 30, 40]], sky: '#9ae8ff', haze: '#d0f8ff', sun: '#ffe080', sand: '#e0a0a0', sandTop: '#f4c0b8' },
+  { id: 'ice',   name: 'FROZEN SEA',   depth: 2200, money: 4,  price: 30000,  sink: 135, reelK: 1.6, obsK: 1.3, shark: 1.3,
+    water: [[170, 220, 240], [50, 100, 160], [6, 14, 40]], sky: '#c8d8e8', haze: '#eef4fa', sun: '#ffffff', sand: '#c8d0dc', sandTop: '#eef4fa' },
+  { id: 'lava',  name: 'VOLCANO DEEP', depth: 3000, money: 7,  price: 150000, sink: 160, reelK: 1.9, obsK: 1.45, shark: 1.45,
+    water: [[60, 150, 150], [70, 40, 50], [40, 6, 6]], sky: '#e08a5a', haze: '#ffb080', sun: '#ff5a2a', sand: '#2a1a1a', sandTop: '#ff6a2a' },
+  { id: 'abyss', name: 'THE ABYSS',    depth: 4000, money: 12, price: 600000, sink: 190, reelK: 2.2, obsK: 1.6, shark: 1.6,
+    water: [[30, 60, 120], [12, 16, 50], [0, 0, 6]], sky: '#1a1a3a', haze: '#2a2a5a', sun: '#e8e8ff', sand: '#2a1a3a', sandTop: '#5a3a7a' },
+];
+if (!Array.isArray(save.worlds) || !save.worlds.includes('bay')) save.worlds = ['bay'].concat(Array.isArray(save.worlds) ? save.worlds : []);
+if (!WORLDS.some(w => w.id === save.world && save.worlds.includes(w.id))) save.world = 'bay';
+if (!save.big || typeof save.big !== 'object') save.big = {};
+const wld = () => WORLDS.find(w => w.id === save.world);
+const wldIndex = () => WORLDS.indexOf(wld());
 if (!RODS.some(r => r.id === save.rod)) save.rod = 'wood';
 if (!Array.isArray(save.rods) || !save.rods.includes('wood')) save.rods = ['wood'].concat(Array.isArray(save.rods) ? save.rods : []);
 save.reel = clamp(save.reel | 0, 0, REELS.length - 1); save.line = clamp(save.line | 0, 0, LINES.length - 1);
@@ -98,6 +121,7 @@ const SHAPES = {
   long: ['....ddddddd.......', '.dbbbsbbbbbsbbbd.f', 'bebbbbbbbbbbbbbbff', '.lllllllllllllld.f', '.....dd..dd.......'],
   round: ['...d.d.d...', '..dbbbbbd..', '.dbbsbbbbdf', 'debbbbbsbbff', 'bbbbbbbbbbf', 'dllllllbbdff', '.dllllllbd.', '..dlllld...', '...d.d.d...'],
   sword: ['.......ddd.......', '.....dbbbbbd...ff', 'llllbebbbsbbbbbff', '.....lllllllbbd.ff', '........d........'],
+  tall: ['....dd....', '...dbbd...', '..dbbsbd.f', '.dbbbbbbff', 'debbsbbbff', '.bllllbbff', '..dlllbd.f', '...dlld...', '....dd....'],
   big: ['.......dddd.........', '.....ddbbbbbd.......', '...dbbbbsbbbbbd...ff', '..dbbbbbbbbsbbbd.fff', '.dbebbsbbbbbbbbbdfff',
         'dbbbbbbbbbbbbbbbbff.', '.bllllllllllbbbbdfff', '..dlllllllllbbbd.fff', '...ddd..dd..ddd...ff'],
 };
@@ -105,21 +129,33 @@ const SPECIES = [
   { id: 'carp',    name: 'MUD CARP',       r: 'bad',    shape: 'small', pal: { b: '#7a6a4a', d: '#5a4a30', l: '#a89a78', f: '#6a5a3a' } },
   { id: 'sardine', name: 'SAD SARDINE',    r: 'bad',    shape: 'small', pal: { b: '#8a9098', d: '#5a6068', l: '#c0c4c8', f: '#70767e' } },
   { id: 'goby',    name: 'BONY GOBY',      r: 'bad',    shape: 'small', pal: { b: '#6a7a5a', d: '#4a5a3a', l: '#9aa088', f: '#5a6a4a' } },
+  { id: 'loach',   name: 'SLIMY LOACH',    r: 'bad',    shape: 'small', pal: { b: '#5a5a3a', d: '#3a3a20', l: '#8a8a60', f: '#4a4a2a' } },
+  { id: 'guppy',   name: 'WONKY GUPPY',    r: 'bad',    shape: 'small', pal: { b: '#9a7a8a', d: '#6a4a5a', l: '#c8b0b8', f: '#b07a9a' } },
   { id: 'perch',   name: 'BLUE PERCH',     r: 'rare',   shape: 'std',   pal: { b: '#3a7ad4', d: '#1f4a8a', l: '#a8d0ff', f: '#2a5aa0', s: '#2a5aa0' } },
   { id: 'trout',   name: 'SILVER TROUT',   r: 'rare',   shape: 'std',   pal: { b: '#b8c4d0', d: '#6a7a8a', l: '#eef4fa', f: '#8a9aaa', s: '#ff8ab0' } },
   { id: 'bass',    name: 'STRIPED BASS',   r: 'rare',   shape: 'std',   pal: { b: '#7a9a6a', d: '#3a4a2a', l: '#d8e0c0', f: '#5a7a4a', s: '#2a3a1a' } },
+  { id: 'mullet',  name: 'RED MULLET',     r: 'rare',   shape: 'std',   pal: { b: '#e05a5a', d: '#a02a3a', l: '#ffd0c0', f: '#ffb040', s: '#ffd040' } },
+  { id: 'clown',   name: 'CLOWNFISH',      r: 'rare',   shape: 'std',   pal: { b: '#ff8a1a', d: '#111111', l: '#ffffff', f: '#ff8a1a', s: '#ffffff' } },
   { id: 'pike',    name: 'GREEN PIKE',     r: 'super',  shape: 'long',  pal: { b: '#4aa04a', d: '#2a6a2a', l: '#c8e8a0', f: '#3a803a', s: '#e0f080' } },
   { id: 'snapper', name: 'CORAL SNAPPER',  r: 'super',  shape: 'std',   pal: { b: '#ff6a4a', d: '#b03a2a', l: '#ffd0b0', f: '#e04a3a', s: '#ffe060' } },
   { id: 'puffer',  name: 'SPIKY PUFFER',   r: 'super',  shape: 'round', pal: { b: '#e0d040', d: '#8a7a1a', l: '#fff4c0', f: '#b0a030', s: '#6a5a10' } },
+  { id: 'tang',    name: 'BLUE TANG',      r: 'super',  shape: 'tall',  pal: { b: '#2a6aff', d: '#0a1a5a', l: '#6aa0ff', f: '#ffd23f', s: '#0a1a5a' } },
+  { id: 'catfish', name: 'MOSSY CATFISH',  r: 'super',  shape: 'long',  pal: { b: '#6a7a3a', d: '#3a4a1a', l: '#b0b880', f: '#4a5a2a', s: '#9ab04a' } },
   { id: 'tetra',   name: 'NEON TETRA KING', r: 'epic',  shape: 'std',   pal: { b: '#2ad4ff', d: '#ff3ab0', l: '#c8f8ff', f: '#ff3ab0', s: '#ffffff' } },
   { id: 'sword',   name: 'VIOLET SWORDFISH', r: 'epic', shape: 'sword', pal: { b: '#8a5ad4', d: '#4a2a8a', l: '#e0c8ff', f: '#6a3ab0', s: '#c0a0ff' } },
   { id: 'angler',  name: 'GLOW ANGLER',    r: 'epic',   shape: 'round', pal: { b: '#5a3a8a', d: '#2a1a4a', l: '#9a7ac8', f: '#3a2a6a', s: '#a0ff60' } },
+  { id: 'zap',     name: 'ELECTRIC EEL',   r: 'epic',   shape: 'long',  pal: { b: '#2a3a8a', d: '#101a4a', l: '#ffe040', f: '#ffe040', s: '#7af0ff' } },
+  { id: 'lion',    name: 'ZEBRA LIONFISH', r: 'epic',   shape: 'tall',  pal: { b: '#f4e8d8', d: '#b02a1a', l: '#ffffff', f: '#e04a2a', s: '#b02a1a' } },
   { id: 'eel',     name: 'LAVA EEL',       r: 'mythic', shape: 'long',  pal: { b: '#e03a1a', d: '#6a1a0a', l: '#ffb040', f: '#ff6a1a', s: '#ffe040' } },
   { id: 'koi',     name: 'CRIMSON KOI',    r: 'mythic', shape: 'std',   pal: { b: '#f4f0e8', d: '#c01a2a', l: '#ffffff', f: '#e04050', s: '#d01a2a' } },
   { id: 'ghost',   name: 'GHOST FISH',     r: 'mythic', shape: 'sword', pal: { b: '#c8e8f0', d: '#80a8c0', l: '#ffffff', f: '#a0d0e0', s: '#ff4a8a' } },
+  { id: 'icepike', name: 'ICE PIKE',       r: 'mythic', shape: 'long',  pal: { b: '#a8f0ff', d: '#4aa0d0', l: '#ffffff', f: '#7ad0f0', s: '#ffffff' } },
+  { id: 'marlin',  name: 'SHADOW MARLIN',  r: 'mythic', shape: 'sword', pal: { b: '#2a2a3a', d: '#0a0a14', l: '#5a5a7a', f: '#ff2a4a', s: '#ff2a4a' } },
   { id: 'gold',    name: 'GOLDEN KOI',     r: 'legend', shape: 'big',   pal: { b: '#e0a020', d: '#a05a1a', l: '#d8e0a0', f: '#c86a2a', s: '#ffe060' } },
   { id: 'dragon',  name: 'SUN DRAGONFISH', r: 'legend', shape: 'long',  pal: { b: '#ffd23f', d: '#ff7a1a', l: '#fff8c0', f: '#ff4a1a', s: '#ffffff' } },
   { id: 'abyss',   name: 'ABYSS KING',     r: 'legend', shape: 'big',   pal: { b: '#2a2a4a', d: '#0a0a1a', l: '#4a4a7a', f: '#ffd23f', s: '#ffd23f' } },
+  { id: 'rainbow', name: 'RAINBOW KOI',    r: 'legend', shape: 'big',   pal: { b: '#ff5ac8', d: '#5a3aff', l: '#7af0ff', f: '#5ad43f', s: '#ffd23f' } },
+  { id: 'crystal', name: 'CRYSTAL ANGEL',  r: 'legend', shape: 'tall',  pal: { b: '#c8f8ff', d: '#4ad4ff', l: '#ffffff', f: '#ff9af0', s: '#ffffff' } },
 ];
 
 // sprites are drawn once into little canvases (with a dark outline), flipped ones too
@@ -146,24 +182,37 @@ const BOOT = ['.ddd....', '.bbb....', '.bbb....', '.bbbbbb.', 'llllllll'];
 const world = { fish: [], obs: [], weed: [], rocks: [], bubbles: [] };
 function newFish(onScreen) {
   const r = rollRarity(), R = RAR[r], list = SPECIES.filter(s => s.r === r), sp = pick(list);
-  const dir = Math.random() < 0.5 ? -1 : 1, c = fishSprite(sp, false), hw = c.width * SCALE / 2;
-  const y = rnd(R.depth[0], R.depth[1]);
-  return { sp, r, dir, x: onScreen ? rnd(20, S.W - 20) : dir > 0 ? -hw - rnd(0, 80) : S.W + hw + rnd(0, 80), y, y0: y,
-           hw: hw - 3, hh: c.height * SCALE / 2 - 2, speed: rnd(R.speed[0], R.speed[1]), ph: rnd(0, 6),
-           value: Math.round(rnd(R.price[0], R.price[1])) };
+  const z = rollSize(), sc = z.s, dir = Math.random() < 0.5 ? -1 : 1, c = fishSprite(sp, false), hw = c.width * sc / 2;
+  const y = rnd(R.depth[0], R.depth[1]) * MAX_DEPTH;
+  return { sp, r, z, sc, dir, x: onScreen ? rnd(20, S.W - 20) : dir > 0 ? -hw - rnd(0, 80) : S.W + hw + rnd(0, 80), y, y0: y,
+           hw: Math.max(4, hw - 3), hh: Math.max(3, c.height * sc / 2 - 2), speed: rnd(R.speed[0], R.speed[1]) / Math.sqrt(z.k), ph: rnd(0, 6),
+           kg: Math.round(R.kg * z.k * z.k * rnd(0.85, 1.15) * 10) / 10,
+           value: Math.max(1, Math.round(rnd(R.price[0], R.price[1]) * z.k * wld().money)) };
 }
 function fillSea() { world.fish = []; for (let i = 0; i < 16; i++) world.fish.push(newFish(true)); }
 function makeObstacles() {
   world.obs = [];
-  const N = 18;
+  const w = wld(), N = Math.round(MAX_DEPTH / 50 * w.obsK);    // deeper worlds: more things in the way, and sharks higher up
   for (let i = 0; i < N; i++) {
-    const y = 100 + (i + Math.random() * 0.8) * (MAX_DEPTH - 120) / N;
-    const type = y < 260 ? pick(['jelly', 'jelly', 'boot']) : y < 520 ? pick(['jelly', 'urchin', 'boot', 'shark']) : pick(['mine', 'urchin', 'shark', 'jelly']);
-    const speed = type === 'shark' ? rnd(55, 80) : type === 'boot' ? rnd(6, 14) : type === 'jelly' ? rnd(4, 10) : 0;
+    const y = 100 + (i + Math.random() * 0.8) * (MAX_DEPTH - 120) / N, k = y / MAX_DEPTH + wldIndex() * 0.08;
+    const type = k < 0.29 ? pick(['jelly', 'jelly', 'boot']) : k < 0.58 ? pick(['jelly', 'urchin', 'boot', 'shark']) : pick(['mine', 'urchin', 'shark', 'jelly']);
+    const speed = type === 'shark' ? rnd(55, 80) * w.shark : type === 'boot' ? rnd(6, 14) : type === 'jelly' ? rnd(4, 10) : 0;
     world.obs.push({ type, x: rnd(30, S.W - 30), y, y0: y, ph: rnd(0, 6), dir: Math.random() < 0.5 ? -1 : 1, speed });
   }
   world.weed = []; for (let i = 0; i < 14; i++) world.weed.push({ x: rnd(0, 600), h: rnd(10, 30), ph: rnd(0, 6), c: pick(['#2a8a4a', '#3aa05a', '#1f6a3a']) });
   world.rocks = []; for (let i = 0; i < 9; i++) world.rocks.push({ x: rnd(0, 600), w: rnd(14, 34), h: rnd(6, 14), c: pick(['#4a4a5a', '#5a5a6a', '#3a3a4a']) });
+}
+function setWorld(id) {
+  save.world = id; store();
+  const w = wld();
+  MAX_DEPTH = w.depth; BED = MAX_DEPTH + 18;
+  WATER.length = 0;
+  const [a, m, b] = w.water;
+  for (let i = 0; i < 48; i++) {
+    const k = i / 47, c = k < 0.35 ? a.map((v, j) => v + (m[j] - v) * k / 0.35) : m.map((v, j) => v + (b[j] - v) * (k - 0.35) / 0.65);
+    WATER.push('rgb(' + c.map(Math.round).join(',') + ')');
+  }
+  makeObstacles(); fillSea();
 }
 function updateSea(dt, t) {
   const W = S.W;
@@ -189,7 +238,7 @@ function obsHit(o, x, y, extra) {            // does the hook (at x, y) touch it
 }
 
 /* --- 4. THE GAME ---------------------------------------------------------------- */
-let state = 'title';          // title | fish | shop | book
+let state = 'title';          // title | fish | shop | book | worlds
 let paused = false, shopBack = 'title';
 let camY = 0;
 const G = { phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
@@ -208,7 +257,8 @@ function hookFish(f) {
   world.fish.splice(world.fish.indexOf(f), 1); world.fish.push(newFish(false));
   G.hooked = f; G.phase = 'up';
   const R = RAR[f.r];
-  say(f.r === 'bad' ? 'A BITE... MEH' : R.name + '!', R.color);
+  const big = f.z.k >= 1.5 ? f.z.name + ' ' : '';
+  say(f.r === 'bad' ? (big ? big + 'BAD FISH...' : 'A BITE... MEH') : big + R.name + '!', R.color);
   sfx('bite'); bubble(G.hook.x, G.hook.y, 5);
 }
 function hit(o) {
@@ -229,14 +279,17 @@ function land() {                                   // the hook is back at the b
   if (!f) { G.phase = 'ready'; G.hook.y = -8; return; }
   const R = RAR[f.r], isNew = !save.book[f.sp.id];
   save.book[f.sp.id] = (save.book[f.sp.id] | 0) + 1;
+  const record = f.kg > (save.big[f.sp.id] || 0) && !isNew;
+  save.big[f.sp.id] = Math.max(save.big[f.sp.id] || 0, f.kg);
   save.coins += f.value; save.caught = (save.caught | 0) + 1; save.best = Math.max(save.best | 0, f.value);
   store();
   if (R.stars) PX.Wallet.add(R.stars);
-  G.card = { f, isNew, stars: R.stars, t: 0 };
+  G.card = { f, isNew, record, stars: R.stars, t: 0 };
   G.phase = 'catch'; G.hook.y = -8;
   bubble(G.hook.x, 2, 8);
   sfx(R.i >= 4 ? 'fanfare' : R.i >= 2 ? 'great' : f.r === 'bad' ? 'meh' : 'coin');
 }
+const hookDrop = f => Math.round(f.hh * 0.7) + 2;   // a hooked fish hangs this far under the hook
 function step(dt, t) {
   G.t += dt;
   updateSea(dt, t);
@@ -248,15 +301,15 @@ function step(dt, t) {
   if (G.phase === 'down' || G.phase === 'up') {
     let vx = ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * STEER;
     if (steer) vx = clamp((steer.x - h.x) * 8, -STEER, STEER);
-    if (G.hooked) { const p = RAR[G.hooked.r].pull; vx += Math.sin(G.t * 2.7 + G.hooked.ph) * p * 1.6 + Math.sin(G.t * 7.3 + G.hooked.ph) * p * 0.5; }
+    if (G.hooked) { const p = RAR[G.hooked.r].pull * Math.sqrt(G.hooked.z.k); vx += Math.sin(G.t * 2.7 + G.hooked.ph) * p * 1.6 + Math.sin(G.t * 7.3 + G.hooked.ph) * p * 0.5; }
     h.x = clamp(h.x + vx * dt, 8, W - 8);
-    if (G.phase === 'down') { h.y += SINK * dt; if (h.y >= MAX_DEPTH) { h.y = MAX_DEPTH; G.phase = 'up'; } }
-    else { h.y -= reel().speed * dt; if (h.y <= 0) { h.y = 0; land(); return; } }
-    if (G.hooked) { G.hooked.x = h.x; G.hooked.y = h.y + 8; }
+    if (G.phase === 'down') { h.y += wld().sink * dt; if (h.y >= MAX_DEPTH) { h.y = MAX_DEPTH; G.phase = 'up'; } }
+    else { h.y -= reel().speed * wld().reelK * dt; if (h.y <= 0) { h.y = 0; land(); return; } }
+    if (G.hooked) { G.hooked.x = h.x; G.hooked.y = h.y + hookDrop(G.hooked); }
     if (Math.random() < dt * 6) bubble(h.x, h.y);
     if (G.inv > 0) G.inv -= dt;
     if (!G.hooked) for (const f of world.fish) if (Math.abs(f.x - h.x) < f.hw && Math.abs(f.y - h.y) < f.hh) { hookFish(f); break; }
-    if (G.inv <= 0) for (const o of world.obs) if (obsHit(o, h.x, h.y + (G.hooked ? 8 : 0), G.hooked ? 6 : 2)) { hit(o); break; }
+    if (G.inv <= 0) for (const o of world.obs) if (obsHit(o, h.x, h.y + (G.hooked ? hookDrop(G.hooked) : 0), G.hooked ? 2 + G.hooked.hh * 0.7 : 2)) { hit(o); break; }
   }
   // the camera follows the hook down
   const want = clamp((G.phase === 'down' || G.phase === 'up' ? h.y : 0) - 50, 0, BED + SURF + 24 - H);
@@ -264,22 +317,16 @@ function step(dt, t) {
 }
 
 /* --- 5. DRAWING ----------------------------------------------------------------- */
-const WATER = [];
-(() => {
-  const a = [42, 212, 208], b = [4, 18, 42], m = [20, 110, 160];
-  for (let i = 0; i < 48; i++) {
-    const k = i / 47, c = k < 0.35 ? a.map((v, j) => v + (m[j] - v) * k / 0.35) : m.map((v, j) => v + (b[j] - v) * (k - 0.35) / 0.65);
-    WATER.push('rgb(' + c.map(Math.round).join(',') + ')');
-  }
-})();
+const WATER = [];   // the water's colors from the surface down (set by setWorld)
 const sy = d => SURF + d - camY;                   // depth -> screen y
 function drawSea(t, withBoat) {
   const W = S.W, surf = sy(0);
   // the sky
   if (surf > 0) {
-    ctx.fillStyle = '#8adcff'; ctx.fillRect(0, 0, W, surf);
-    ctx.fillStyle = '#b8ecff'; ctx.fillRect(0, surf - 18, W, 18);
-    ctx.fillStyle = '#fff3a0'; ctx.fillRect(W - 60, surf - 58, 16, 16); ctx.fillRect(W - 62, surf - 56, 20, 12);
+    const w = wld();
+    ctx.fillStyle = w.sky; ctx.fillRect(0, 0, W, surf);
+    ctx.fillStyle = w.haze; ctx.fillRect(0, surf - 18, W, 18);
+    ctx.fillStyle = w.sun; ctx.fillRect(W - 60, surf - 58, 16, 16); ctx.fillRect(W - 62, surf - 56, 20, 12);
     ctx.fillStyle = '#ffffff';
     for (let i = 0; i < 4; i++) { const cx = ((i * 140 + t * 6) % (W + 60)) - 30, cy = surf - 50 + (i % 2) * 14; ctx.fillRect(Math.round(cx), Math.round(cy), 24, 4); ctx.fillRect(Math.round(cx + 5), Math.round(cy - 3), 12, 3); }
   }
@@ -309,8 +356,8 @@ function drawSea(t, withBoat) {
       const x = w.x % (W + 20) - 10;
       for (let k = 0; k < w.h; k += 2) { ctx.fillStyle = w.c; ctx.fillRect(Math.round(x + Math.sin(t * 1.5 + w.ph + k * 0.15) * k * 0.15), Math.round(bed - k), 2, 2); }
     }
-    ctx.fillStyle = '#b8945a'; ctx.fillRect(0, Math.round(bed), W, H - bed);
-    ctx.fillStyle = '#d0ac70'; ctx.fillRect(0, Math.round(bed), W, 2);
+    ctx.fillStyle = wld().sand; ctx.fillRect(0, Math.round(bed), W, H - bed);
+    ctx.fillStyle = wld().sandTop; ctx.fillRect(0, Math.round(bed), W, 2);
     for (const r of world.rocks) { ctx.fillStyle = r.c; const x = r.x % (W + 20) - 10; ctx.fillRect(Math.round(x), Math.round(bed - r.h + 2), Math.round(r.w), Math.round(r.h)); }
   }
   // things to stay away from
@@ -325,7 +372,7 @@ function drawSea(t, withBoat) {
 function drawFish(f, t) {
   const y = sy(f.y);
   if (y < -30 || y > H + 30) return;
-  drawSprite(fishSprite(f.sp, f.dir > 0), f.x, y);
+  drawSprite(fishSprite(f.sp, f.dir > 0), f.x, y, f.sc);
   const R = RAR[f.r];
   if (R.i >= 3) {                                 // epic and rarer fish sparkle
     ctx.fillStyle = R.color;
@@ -386,7 +433,7 @@ function drawLineAndHook(t) {
   if (G.phase !== 'snap') {
     ctx.strokeStyle = 'rgba(240,250,255,0.8)'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(h.x, hy); ctx.stroke();
   }
-  if (G.hooked) drawSprite(fishSprite(G.hooked.sp, Math.sin(G.t * 9) > 0), h.x, hy + 8);
+  if (G.hooked) drawSprite(fishSprite(G.hooked.sp, Math.sin(G.t * 9) > 0), h.x, hy + hookDrop(G.hooked), G.hooked.sc);
   if (G.phase !== 'snap' && !(G.inv > 0 && Math.floor(G.inv * 12) % 2)) {   // the hook (blinks after a hit)
     const x = Math.round(h.x), y = Math.round(hy);
     ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 6, 3, 8); ctx.fillRect(x - 5, y + 1, 7, 3); ctx.fillRect(x - 6, y - 3, 3, 6);
@@ -427,9 +474,10 @@ function drawTitle(t) {
   drawSprite(fishSprite(gold, false), W / 2 + 150 + Math.sin(t) * 4, 70 + Math.sin(t * 2) * 3, 2);
   const bw = 180, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('play', bx, 104, bw, 26, 'GO FISHING', { accent: '#ffd23f' })) { sfx('click'); startFishing(); }
-  if (UI.button('shop', bx, 136, 88, 22, 'SHOP', { accent: '#5ad43f', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'shop'; }
-  if (UI.button('book', bx + 92, 136, 88, 22, 'FISH BOOK', { accent: '#4aa8ff', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'book'; }
-  T(rod().name + '   ' + save.caught + ' FISH CAUGHT', W / 2, 166, '#fff', 1, 'center', '#000');
+  if (UI.button('shop', bx, 136, 56, 22, 'SHOP', { accent: '#5ad43f', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'shop'; }
+  if (UI.button('book', bx + 62, 136, 56, 22, 'FISH BOOK', { accent: '#4aa8ff', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'book'; }
+  if (UI.button('worlds', bx + 124, 136, 56, 22, 'WORLDS', { accent: '#ff8a2a', size: 1 })) { sfx('click'); shopBack = 'title'; state = 'worlds'; }
+  T(wld().name + '   ' + rod().name + '   ' + save.caught + ' FISH CAUGHT', W / 2, 166, '#fff', 1, 'center', '#000');
   T('EPIC ★1   MYTHIC ★2   LEGENDARY ★5', W / 2, 178, '#ffd23f', 1, 'center', '#000');
   if (UI.button('games', bx, 196, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
   T('V' + VERSION, W - 4, H - 9, '#9a92b8', 1, 'right');
@@ -443,7 +491,7 @@ function drawGame(t) {
   ctx.restore();
   // the top bar
   coinsText(6, 6);
-  T(rod().name, 6, 22, rod().color, 1, 'left', '#000');
+  T(rod().name + '   ' + wld().name, 6, 22, rod().color, 1, 'left', '#000');
   const casting = G.phase === 'down' || G.phase === 'up';
   if (casting || G.phase === 'snap') {
     T(Math.max(0, Math.round(G.hook.y / 10)) + ' M', W - 6, 6, '#fff', 2, 'right', '#000');
@@ -457,8 +505,9 @@ function drawGame(t) {
     if (UI.button('menu', W - 50, 6, 44, 18, 'MENU', { size: 1 }) || UI.back) { state = 'title'; return; }
     const bw = 140, bx = Math.round(W / 2 - bw / 2);
     if (UI.button('cast', bx, H - 64, bw, 26, 'CAST', { accent: '#ffd23f' })) cast();
-    if (UI.button('shop', bx, H - 32, 68, 22, 'SHOP', { size: 1, accent: '#5ad43f' })) { shopBack = 'fish'; state = 'shop'; }
-    if (UI.button('book', bx + 72, H - 32, 68, 22, 'FISH BOOK', { size: 1, accent: '#4aa8ff' })) { shopBack = 'fish'; state = 'book'; }
+    if (UI.button('shop', bx - 20, H - 32, 56, 22, 'SHOP', { size: 1, accent: '#5ad43f' })) { shopBack = 'fish'; state = 'shop'; }
+    if (UI.button('book', bx + 42, H - 32, 56, 22, 'FISH BOOK', { size: 1, accent: '#4aa8ff' })) { shopBack = 'fish'; state = 'book'; }
+    if (UI.button('worlds', bx + 104, H - 32, 56, 22, 'WORLDS', { size: 1, accent: '#ff8a2a' })) { shopBack = 'fish'; state = 'worlds'; }
     T('DRAG LEFT / RIGHT TO STEER THE HOOK', W / 2, H - 92, '#fff', 1, 'center', '#000');
     T('AVOID JELLYFISH, SHARKS, BOOTS, URCHINS AND MINES', W / 2, H - 82, '#ffc8ee', 1, 'center', '#000');
   }
@@ -471,11 +520,14 @@ function drawCatch(t) {
   if (R.i >= 3) for (let i = 0; i < 26; i++) { const k = t + i; ctx.fillStyle = [R.color, '#ffffff', '#7af0ff', '#ffd23f'][i % 4]; ctx.fillRect(Math.round((i * 47 + k * 30) % W), Math.round((k * (40 + i * 3)) % H), 3, 3); }
   T('YOU CAUGHT', W / 2, y + 8, '#9ac8e0', 1, 'center');
   T(R.name, W / 2, y + 20, R.color, 2, 'center', '#000');
-  drawSprite(fishSprite(f.sp, false), W / 2, y + 62 + Math.sin(t * 3) * 2, f.sp.shape === 'big' || f.sp.shape === 'long' ? 3 : 4);
-  T(f.sp.name, W / 2, y + 96, '#fff', 2, 'center', '#000');
-  T('SOLD FOR ' + f.value + ' COINS', W / 2, y + 114, '#ffd23f', 2, 'center', '#000');
+  const spr = fishSprite(f.sp, false), big = Math.max(1, Math.min(f.sc + 1, Math.floor(150 / spr.width), Math.floor(48 / spr.height)));
+  drawSprite(spr, W / 2, y + 60 + Math.sin(t * 3) * 2, big);
+  T(f.sp.name, W / 2, y + 88, '#fff', 2, 'center', '#000');
+  T(f.z.name + '   ' + f.kg + ' KG', W / 2, y + 104, f.z.k >= 1.5 ? '#ff8a2a' : '#9ac8e0', 1, 'center', '#000');
+  T('SOLD FOR ' + f.value + ' COINS', W / 2, y + 116, '#ffd23f', 2, 'center', '#000');
   let extra = [];
   if (c.isNew) extra.push('NEW IN YOUR FISH BOOK!');
+  if (c.record) extra.push('BIGGEST ONE YET!');
   if (c.stars) extra.push('★ +' + c.stars);
   if (f.r === 'bad') extra.push('IT SMELLS...');
   T(extra.join('   '), W / 2, y + 132, '#9be36b', 1, 'center');
@@ -532,17 +584,65 @@ function drawBook(t) {
   T('FISH BOOK', 8, 6, '#fff', 2, 'left', '#000');
   const found = SPECIES.filter(s => save.book[s.id]).length;
   T(found + ' / ' + SPECIES.length + ' FOUND   BEST SALE ' + (save.best | 0) + ' COINS', W - 8, 9, '#9ac8e0', 1, 'right');
-  const cw = Math.floor((W - 16) / 3), rh = 31, top = 24;
-  SPECIES.forEach((sp, i) => {
+  const cw = Math.floor((W - 16) / 3), rh = 31, top = 24, PER = 18, pages = Math.ceil(SPECIES.length / PER);
+  bookPage = clamp(bookPage, 0, pages - 1);
+  SPECIES.slice(bookPage * PER, bookPage * PER + PER).forEach((sp, i) => {
     const col = i % 3, row = Math.floor(i / 3), x = 8 + col * cw, y = top + row * rh, n = save.book[sp.id] | 0, R = RAR[sp.r];
     ctx.fillStyle = row % 2 ? '#10283c' : '#14324e'; ctx.fillRect(x + 1, y, cw - 2, rh - 2);
     ctx.fillStyle = R.color; ctx.fillRect(x + 1, y, 2, rh - 2);
     const c = fishSprite(sp, false, !n), s = c.width > 18 ? 1 : 2;
     drawSprite(c, x + 26, y + rh / 2 - 1, s);
-    T(n ? sp.name : '???', x + 50, y + 6, n ? '#fff' : '#5a6a7a', 1, 'left');
-    T(R.name + (n ? '   X' + n : ''), x + 50, y + 16, R.color, 1, 'left');
+    T(n ? sp.name : '???', x + 50, y + 3, n ? '#fff' : '#5a6a7a', 1, 'left');
+    T(R.name + (n ? '  X' + n : ''), x + 50, y + 12, R.color, 1, 'left');
+    if (n && save.big[sp.id]) T('BIGGEST ' + save.big[sp.id] + ' KG', x + 50, y + 21, '#9ac8e0', 1, 'left');
   });
   if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  if (pages > 1) {
+    if (UI.button('prev', Math.round(W / 2 - 112), H - 22, 46, 18, '<', { size: 1, disabled: bookPage === 0 })) bookPage--;
+    if (UI.button('next', Math.round(W / 2 + 66), H - 22, 46, 18, '>', { size: 1, disabled: bookPage === pages - 1 })) bookPage++;
+    T('PAGE ' + (bookPage + 1) + '/' + pages, W - 8, H - 16, '#9ac8e0', 1, 'right');
+  }
+}
+let bookPage = 0;
+function drawWorlds(t) {
+  const W = S.W;
+  ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
+  T('WORLDS', 8, 6, '#fff', 2, 'left', '#000');
+  coinsText(W - 8, 6, 'right');
+  T('DEEPER SEAS: BIGGER MONEY, BUT MORE DANGER', W / 2, 24, '#9ac8e0', 1, 'center');
+  const gap = 4, n = WORLDS.length, cw = Math.floor((W - 16 - gap * (n - 1)) / n), top = 36, ch = 168;
+  WORLDS.forEach((w, i) => {
+    const x = 8 + i * (cw + gap), owned = save.worlds.includes(w.id), on = save.world === w.id;
+    ctx.fillStyle = on ? '#ffd23f' : '#111'; ctx.fillRect(x - 1, top - 1, cw + 2, ch + 2);
+    ctx.fillStyle = '#14324e'; ctx.fillRect(x, top, cw, ch);
+    // a little picture of its sea: sky, water getting darker, sea bed
+    const px = x + 4, pw = cw - 8, py = top + 18, ph = 70;
+    ctx.fillStyle = w.sky; ctx.fillRect(px, py, pw, 10);
+    for (let k = 0; k < 15; k++) {
+      const m = k / 14, [a, mm, b] = w.water, c = m < 0.35 ? a.map((v, j) => v + (mm[j] - v) * m / 0.35) : mm.map((v, j) => v + (b[j] - v) * (m - 0.35) / 0.65);
+      ctx.fillStyle = 'rgb(' + c.map(Math.round).join(',') + ')'; ctx.fillRect(px, py + 10 + k * 4, pw, 4);
+    }
+    ctx.fillStyle = w.sand; ctx.fillRect(px, py + ph - 4, pw, 4); ctx.fillStyle = w.sandTop; ctx.fillRect(px, py + ph - 4, pw, 1);
+    ctx.fillStyle = '#ffd23f'; const fx = px + pw / 2 + Math.sin(t + i) * (pw / 2 - 8);
+    ctx.fillRect(Math.round(fx) - 3, py + 40 + i * 4, 6, 3); ctx.fillRect(Math.round(fx) + 3, py + 39 + i * 4, 2, 5);
+    if (!owned) { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(px, py, pw, ph); }
+    const words = w.name.split(' ');
+    T(words[0], x + cw / 2, top + 4, owned ? '#fff' : '#9ac8e0', 1, 'center');
+    if (words[1]) T(words[1], x + cw / 2, top + 11, owned ? '#fff' : '#9ac8e0', 1, 'center');
+    T(Math.round(w.depth / 10) + ' M DEEP', x + cw / 2, top + 94, '#fff', 1, 'center');
+    T('MONEY X' + w.money, x + cw / 2, top + 106, '#ffd23f', 1, 'center');
+    T(i === 0 ? 'EASY' : ['', 'MORE DANGER', 'LOTS OF DANGER', 'VERY DANGEROUS', 'DEADLY'][i], x + cw / 2, top + 118, ['#5ad43f', '#e0d040', '#ff8a2a', '#ff4a5a', '#c070ff'][i], 1, 'center');
+    const by = top + ch - 24;
+    if (on) T('FISHING HERE', x + cw / 2, by + 7, '#ffd23f', 1, 'center');
+    else if (owned) { if (UI.button('w_' + w.id, x + 3, by, cw - 6, 20, 'GO', { size: 1, accent: '#5ad43f' })) { setWorld(w.id); sfx('click'); } }
+    else {
+      T(w.price + ' COINS', x + cw / 2, by - 12, save.coins >= w.price ? '#ffd23f' : '#6a7a8a', 1, 'center');
+      if (UI.button('w_' + w.id, x + 3, by, cw - 6, 20, 'UNLOCK', { size: 1, accent: '#ffd23f', disabled: save.coins < w.price })) {
+        save.coins -= w.price; save.worlds.push(w.id); setWorld(w.id); sfx('buy');
+      }
+    }
+  });
+  if (UI.button('back', Math.round(W / 2 - 60), H - 24, 120, 20, '< BACK', { size: 1 }) || UI.back) { state = shopBack; if (state === 'fish') startFishing(); }
 }
 function setPause(v) { if (state !== 'fish' || (G.phase !== 'down' && G.phase !== 'up')) { paused = false; return; } paused = v; steer = null; }
 
@@ -592,7 +692,7 @@ window.addEventListener('blur', () => { keys.left = keys.right = false; setPause
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
 
 /* --- 8. MAIN LOOP ----------------------------------------------------------------- */
-makeObstacles(); fillSea();
+setWorld(save.world);
 G.hook.x = tipX();
 let last = performance.now();
 function frame(now) {
@@ -601,6 +701,7 @@ function frame(now) {
   if (state === 'title') drawTitle(t);
   else if (state === 'shop') drawShop(t);
   else if (state === 'book') drawBook(t);
+  else if (state === 'worlds') drawWorlds(t);
   else {
     if (!paused) step(dt, t);
     drawGame(t);
