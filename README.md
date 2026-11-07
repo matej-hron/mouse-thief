@@ -50,6 +50,14 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   reserve airstrip at the far end of the island, away from the targets; every new plane is protected, with a blinking
   ring, while it takes off and for 3 s after) (attack bombers have 2
   spare planes per human bomber pilot, then you fly a fighter).
+- **REAR GUNNER** (new, a test; solo air raid only): pick REAR GUNNER in the battle setup. A bot flies your bomber
+  (at the back of the raid, which starts closer to the island); you sit in the turret behind the wings and look back
+  over the twin tail, in 3D (`gunner.js`, three.js, drawn at the same pixel size as the game). Fighters dive in from
+  above or climb at you from below: red brackets mark the ones you can see, arrows at the edge the ones you can't, and
+  a green diamond shows where to aim so your bullets meet the closest one (the sight turns green: FIRE!). The twin guns
+  overheat: fire short bursts or they jam for 2 s. If your bomber goes down you move to another bomber of the raid.
+  Aim: mouse (click to lock it, Esc pauses), arrows / WASD + Space, drag on a phone + FIRE, or a controller's stick + A.
+  For this, every plane also has a height: bombers cruise lower than fighters, and the top-down game is unchanged.
 - **Controls:** keys: arrows or WASD to steer, up / down = faster / slower, Space to fire (or drop bombs / torpedoes), P pauses.
   Phone: drag anywhere to point where to fly; hold + / − (above the FIRE button) for speed.
   Every battle starts with a short reminder of the controls for your device.
