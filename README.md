@@ -135,10 +135,16 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
 - **Fishing:** CAST, and the hook sinks to the bottom of the sea. Steer it left and right: drag your finger (the hook
   follows it), arrows / A D, or the stick. Touch a fish and it bites, and the hook reels up to the boat (REEL UP, Space
   or A brings an empty hook back early). A fish on the hook fights and pulls it sideways; the rarer and bigger the fish,
-  the harder. Back at the boat the fish is sold.
+  the harder. Back at the boat the fish goes into your cooler.
 - **Obstacles:** jellyfish, old boots, sea urchins, sharks and sea mines (deeper down: more sharks and mines). Each hit
   hurts your line (the hearts); with none left the line snaps and the fish gets away. A big fish on the hook is easier to bump.
-- **Rarity:** BAD FISH (sells for 1-3 coins), RARE, SUPER RARE, EPIC, MYTHIC and LEGENDARY (500-750 coins).
+- **Your cooler and the FISH MARKET:** caught fish aren't sold right away: they go into your **cooler** (15 fish; bigger
+  coolers in the shop hold 40, 100 or 300). Sell them at the **MARKET**, where every kind of fish has a price that
+  changes **every hour**, like a stock: x0.3 on a bad hour, up to x3 on a great one. Each fish has a chart of its last
+  24 hours, the price now and how much it went up or down this hour, and a countdown to the next prices. SELL 1 sells
+  your best one of that kind, SELL ALL all of them, SELL EVERYTHING the whole cooler. The prices come from the clock,
+  so they're the same on every device. Cooler full? The catch screen lets you sell that fish right away or throw it back.
+- **Rarity:** BAD FISH (worth 1-3 coins), RARE, SUPER RARE, EPIC, MYTHIC and LEGENDARY (500-750 coins), before the market price.
   Rarer fish swim deeper and faster, and they sparkle. Epic ★1, mythic ★2, legendary ★5 into the arcade wallet.
 - **Sizes:** every fish has a random size: TINY (x0.5 money), SMALL (x0.75), NORMAL, BIG (x1.5), HUGE (x2.2) or GIANT
   (x3.5, rare). Bigger fish look bigger, weigh more (shown in kg), sell for more and pull harder.
@@ -163,8 +169,8 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   | Iron | 50000 | 15% | 25% | 30% | 20% | 30% |
   | Legendary | 250000 | 30% | 35% | 40% | 50% | 60% |
 
-- **Shop:** buy and equip rods, faster **reels** (1500 / 12000 / 80000) and stronger **lines**: 3, 4 or 6 hits
-  (1200 / 10000 / 70000).
+- **Shop:** buy and equip rods, faster **reels** (1500 / 12000 / 80000), stronger **lines**: 3, 4 or 6 hits
+  (1200 / 10000 / 70000) and bigger **coolers**: 40, 100 or 300 fish (3000 / 25000 / 150000).
 - **Fish book:** all 30 fish (5 of each rarity, on 2 pages), how many of each you caught and the biggest one.
 - P or Escape pauses. Coins, gear, worlds and the fish book are saved on the device.
 
