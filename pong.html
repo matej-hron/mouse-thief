@@ -706,25 +706,27 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Pong: controller', ui: UI, menu: () => state !== 'play' || paused,
-  phone: { touch: 'DRAG HERE TO MOVE YOUR BAT', buttons: [['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE']] },
+  // the phone's touch pad is a map of where your bat can go (movePaddle: x from -26 to 0.4 L, y from -12 to WD + 12)
+  phone: { touch: { text: 'TOUCH WHERE YOUR BAT SHOULD GO', aspect: (L * 0.4 + 26) / (WD + 24), flip2: true,
+                    table: [26 / (L * 0.4 + 26) * 100, 12 / (WD + 24) * 100, 0, 12 / (WD + 24) * 100] }, buttons: [['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE']] },
   // the power-ups are keys; the stick moves the bat smoothly: the further you push, the faster it goes.
-  // A phone is a touch pad instead: the bat follows your finger, like dragging on a tablet.
+  // A phone is a touch pad instead: like a tablet, where you touch is where your bat goes.
   // 2 players on one screen: the second controller is player 2
   keys: n => n === 1 ? (M && M.mode === 'local' ? { A: 'Digit7', B: 'Digit8', X: 'Digit9', Y: 'Digit0', START: 'KeyP' } : null)
                      : { A: 'Digit1', B: 'Digit2', X: 'Digit3', Y: 'Digit4', START: 'KeyP' },
   onPlay: (h, n, dt) => {
     if (!M || (n === 1 && M.mode !== 'local')) return;
     const p = M.p[M.mode === 'local' ? n : M.me], m = Math.hypot(h.ax, h.ay);
-    if (h.tdx || h.tdy) {                     // a slide across the whole touch pad = about 1.3 tables
-      const k = 440;
-      p.tx = clamp(p.tx + h.tdx * k * (M.mirror ? -1 : 1), -40, L + 40); p.ty = clamp(p.ty + h.tdy * k, -20, WD + 20);
+    if (h.touch) {                            // the pad is your bat's area as you see it on the screen
+      const w = L * 0.4 + 26, sx = p.side === 1 && !M.mirror ? L * 0.6 + h.touch.x * w : -26 + h.touch.x * w;
+      p.tx = M.mirror ? L - sx : sx; p.ty = -12 + h.touch.y * (WD + 24);
       return;
     }
     if (m < 0.15) return;
     const k = Math.pow(Math.min(1, (m - 0.15) / 0.8), 1.4) * 340 * Math.max(dt, 1 / 60) / m;   // up to 340 units a second
     p.tx = p.x + h.ax * k * (M.mirror ? -1 : 1); p.ty = p.y + h.ay * k;
   },
-  help: [['STICK|D-PAD', 'MOVE YOUR BAT (PUSH FURTHER = FASTER; A PHONE: DRAG ON ITS TOUCH PAD)'], ['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK'], ['2ND PAD', 'PLAYER 2 IN 2 PLAYERS (THE RIGHT BAT)']],
+  help: [['STICK|D-PAD', 'MOVE YOUR BAT (PUSH FURTHER = FASTER; A PHONE: TOUCH WHERE IT SHOULD GO)'], ['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK'], ['2ND PAD', 'PLAYER 2 IN 2 PLAYERS (THE RIGHT BAT)']],
 });
 </script>
 </body>

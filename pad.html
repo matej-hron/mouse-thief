@@ -51,14 +51,17 @@
   #dpad div { position: absolute; width: 60px; height: 60px; background: var(--panel); border: 3px solid var(--line); box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 22px; }
   #dpad div.on { background: var(--gold); color: #111; }
   #dpad .u { left: 60px; top: 0; } #dpad .d { left: 60px; top: 120px; } #dpad .l { left: 0; top: 60px; } #dpad .r { left: 120px; top: 60px; } #dpad .c { left: 60px; top: 60px; border: none; background: #3a2f5c; }
-  /* a touch pad, like dragging on a tablet: the game follows your finger */
-  #tpad { position: absolute; inset: 10px 10px 30px 10px; border: 4px solid #3a2f5c; border-radius: 18px; background: #16122a;
-          background-image: linear-gradient(#221c3d 2px, transparent 2px), linear-gradient(90deg, #221c3d 2px, transparent 2px); background-size: 28px 28px;
-          box-sizing: border-box; pointer-events: none; display: flex; align-items: center; justify-content: center; }
-  #tpad span { color: var(--dim); font-size: 13px; text-align: center; padding: 0 12px; }
-  #tpad.on { border-color: var(--line); } #tpad.on span { visibility: hidden; }
-  #tdot { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: var(--line); border: 4px solid #111; box-sizing: border-box; opacity: 0.85; display: none; }
-  #tpad.on #tdot { display: block; }
+  /* a touch pad, like playing on a tablet: where you touch is where your bat goes (a little map of its area) */
+  #tpad { position: absolute; left: 50%; top: calc(50% - 10px); transform: translate(-50%, -50%); border: 4px solid #3a2f5c; border-radius: 10px;
+          background: #16122a; box-sizing: border-box; pointer-events: none; overflow: hidden; }
+  #tpad.on { border-color: var(--line); }
+  #ttable { position: absolute; background: #3ec84a; border: 3px solid #fff; box-sizing: border-box; opacity: 0.55; }
+  #ttable::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px solid #fff; }
+  #ttable.open-r { border-right: 3px dashed #fff; } #ttable.open-l { border-left: 3px dashed #fff; }
+  #tpad span { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); color: #fff; font-size: 13px; text-align: center; padding: 0 10px; text-shadow: 2px 2px 0 #000; }
+  #tpad.used span { display: none; }
+  #tdot { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: var(--line); border: 4px solid #111; box-sizing: border-box; opacity: 0.35; display: none; }
+  #tpad.used #tdot { display: block; } #tpad.on #tdot { opacity: 0.9; }
   #shoulders { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; justify-content: space-between; gap: 8px; }
   #shoulders .grp { display: flex; gap: 6px; }
   .sh { min-width: 64px; padding: 6px 10px; background: var(--panel); border: 3px solid var(--line); text-align: center; font-size: 13px; }
@@ -105,7 +108,7 @@
   <div id="left">
     <div id="base" class="hidden"></div><div id="knob" class="hidden"></div>
     <div id="dpad" class="hidden"><div class="u">▲</div><div class="l">◀</div><div class="c"></div><div class="r">▶</div><div class="d">▼</div></div>
-    <div id="tpad" class="hidden"><div id="tdot"></div><span></span></div>
+    <div id="tpad" class="hidden"><div id="ttable"></div><div id="tdot"></div><span></span></div>
     <div id="stickHint"></div>
   </div>
   <div id="right">
@@ -267,8 +270,9 @@ function show(d) {
   $('title').append(String(d.title || '') + ' · ', t);
   const hasStick = !!d.stick, hasTouch = !hasStick && !!d.touch;
   $('pad').classList.toggle('nostick', !hasStick && !hasTouch);
-  $('tpad').classList.toggle('hidden', !hasTouch); $('tpad').classList.remove('on');
-  $('tpad').querySelector('span').textContent = hasTouch ? d.touch : '';
+  $('tpad').classList.toggle('hidden', !hasTouch); $('tpad').classList.remove('on', 'used');
+  $('tpad').querySelector('span').textContent = hasTouch ? (typeof d.touch === 'string' ? d.touch : d.touch.text || '') : '';
+  if (hasTouch) fitPad();
   $('dpad').classList.toggle('hidden', !(hasStick && d.dpad));
   rest();
   $('stickHint').textContent = hasStick ? (d.dpad ? d.stick : 'STICK: ' + d.stick) : '';
@@ -291,7 +295,7 @@ function show(d) {
 
 // --- touch: the stick on the left, buttons on the right (fingers can slide between buttons) -------
 const touches = new Map();          // pointerId -> { kind: 'stick' | 'touch' | 'btn', b, x0, y0 }
-const st = { x: 0, y: 0, dirs: 0, tx: 0, ty: 0 };   // tx, ty: how far the finger slid on the touch pad since the last send
+const st = { x: 0, y: 0, dirs: 0, p: null };   // p: [x, y] where the finger is on the touch pad (0..1), null when not touching
 let dirty = false, tapped = 0;      // tapped: pressed since the last send (a quick tap is still sent)
 const R = 60;
 function leftRect() { return $('left').getBoundingClientRect(); }
@@ -317,9 +321,9 @@ document.addEventListener('pointerdown', e => {
   if (b !== null) { e.preventDefault(); touches.set(e.pointerId, { kind: 'btn', b }); tapped |= 1 << b; buzz(); dirty = true; return; }
   const lr = leftRect();
   if (!L.stick && L.touch && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'touch')) {
-    e.preventDefault();                                 // the touch pad: only how far the finger slides counts, like on a tablet
-    touches.set(e.pointerId, { kind: 'touch', x: e.clientX, y: e.clientY });
-    $('tpad').classList.add('on'); padDot(e.clientX, e.clientY);
+    e.preventDefault();                                 // the touch pad: like a tablet, where you touch is where your bat goes
+    touches.set(e.pointerId, { kind: 'touch' });
+    $('tpad').classList.add('on', 'used'); padAt(e.clientX, e.clientY);
     return;
   }
   if (L.stick && e.clientX >= lr.left && e.clientX < lr.right && e.clientY >= lr.top && e.clientY < lr.bottom && ![...touches.values()].some(t => t.kind === 'stick')) {
@@ -336,24 +340,39 @@ document.addEventListener('pointermove', e => {
   const t = touches.get(e.pointerId); if (!t) return;
   e.preventDefault();
   if (t.kind === 'stick') stickMove(t, e.clientX, e.clientY);
-  else if (t.kind === 'touch') {
-    // in widths of the touch pad (both ways, so a slide up is as far as the same slide sideways)
-    const w = Math.max(120, $('tpad').getBoundingClientRect().width);
-    st.tx += (e.clientX - t.x) / w; st.ty += (e.clientY - t.y) / w; t.x = e.clientX; t.y = e.clientY;
-    padDot(e.clientX, e.clientY); dirty = true;
-  } else { const b = btnAt(e.clientX, e.clientY); if (b !== null && b !== t.b) { t.b = b; tapped |= 1 << b; buzz(); dirty = true; } }
+  else if (t.kind === 'touch') padAt(e.clientX, e.clientY);
+  else { const b = btnAt(e.clientX, e.clientY); if (b !== null && b !== t.b) { t.b = b; tapped |= 1 << b; buzz(); dirty = true; } }
 }, { passive: false });
 const up = e => {
   const t = touches.get(e.pointerId); if (!t) return;
   touches.delete(e.pointerId);
   if (t.kind === 'stick') { st.x = st.y = 0; st.dirs = 0; rest(); }
-  if (t.kind === 'touch') $('tpad').classList.remove('on');
+  if (t.kind === 'touch') { st.p = null; $('tpad').classList.remove('on'); }   // the dot stays: that's where your bat is
   dirty = true;
 };
 document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
 document.addEventListener('contextmenu', e => e.preventDefault());
-function release() { touches.clear(); st.x = st.y = 0; st.dirs = 0; st.tx = st.ty = 0; $('tpad').classList.remove('on'); rest(); dirty = true; }
-function padDot(x, y) { const r = $('tpad').getBoundingClientRect(); Object.assign($('tdot').style, { left: (x - r.left) + 'px', top: (y - r.top) + 'px' }); }
+function release() { touches.clear(); st.x = st.y = 0; st.dirs = 0; st.p = null; $('tpad').classList.remove('on'); rest(); dirty = true; }
+// a finger on the touch pad (a touch just outside it counts as its edge)
+function padAt(x, y) {
+  const r = $('tpad').getBoundingClientRect(), c = v => Math.max(0, Math.min(1, v));
+  const fx = c((x - r.left) / r.width), fy = c((y - r.top) / r.height);
+  st.p = [Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000];
+  Object.assign($('tdot').style, { left: (fx * 100) + '%', top: (fy * 100) + '%' });
+  dirty = true;
+}
+// the touch pad has the shape of the bat's area, as big as fits; the table is drawn in it
+// (L.touch: { text, aspect: width / height, table: [left, top, right, bottom] edges in % of the pad, flip2: controller 2 plays on the other side })
+function fitPad() {
+  const T = typeof L.touch === 'object' && L.touch ? L.touch : {}, a = T.aspect || 1, lr = leftRect();
+  const w = Math.max(80, Math.min(lr.width - 20, (lr.height - 40) * a)), h = w / a;
+  Object.assign($('tpad').style, { width: w + 'px', height: h + 'px' });
+  let [l, t, rr, b] = T.table || [0, 0, 0, 0];
+  const flip = T.flip2 && L.player === 2; if (flip) [l, rr] = [rr, l];
+  Object.assign($('ttable').style, { display: T.table ? 'block' : 'none', left: l + '%', top: t + '%', right: rr + '%', bottom: b + '%' });
+  $('ttable').classList.toggle('open-r', !!T.table && !flip); $('ttable').classList.toggle('open-l', !!T.table && flip);
+}
+window.addEventListener('resize', () => { if (L.touch && !L.stick) fitPad(); });
 function rest() {                                       // the stick waits in the middle of the left side, dimmed
   const on = !!(L.stick && !L.dpad);
   for (const id of ['base', 'knob']) { $(id).classList.toggle('hidden', !on); Object.assign($(id).style, { left: '50%', top: '50%', opacity: 0.45 }); }
@@ -362,15 +381,14 @@ function buzz() { try { if (navigator.vibrate && (!navigator.userActivation || n
 function bits() { let b = st.dirs | tapped; for (const t of touches.values()) if (t.kind === 'btn') b |= 1 << t.b; return b; }
 let lastSent = '', lastT = 0;
 function send(force) {
-  const b = bits(), msg = { t: 's', b, x: Math.round(st.x * 100) / 100, y: Math.round(st.y * 100) / 100 }, s = b + ',' + msg.x + ',' + msg.y;
-  const slid = !!(st.tx || st.ty);
-  if (slid) { msg.tx = Math.round(st.tx * 10000) / 10000; msg.ty = Math.round(st.ty * 10000) / 10000; }
+  const b = bits(), msg = { t: 's', b, x: Math.round(st.x * 100) / 100, y: Math.round(st.y * 100) / 100 }, s = b + ',' + msg.x + ',' + msg.y + ',' + st.p;
+  if (st.p) msg.p = st.p;
   // light up what's pressed
   document.querySelectorAll('[data-b]').forEach(el => el.classList.toggle('on', !!(b >> +el.dataset.b & 1)));
   document.querySelectorAll('#dpad div').forEach(el => { const k = { u: 'up', d: 'down', l: 'left', r: 'right' }[el.className.replace(' on', '')]; if (k) el.classList.toggle('on', !!(b >> N[k] & 1)); });
   if (!net.conn || !net.conn.open) return;
   const now = performance.now();
-  if (force || slid || s !== lastSent || now - lastT > 1000) { try { net.conn.send(msg); lastSent = s; lastT = now; tapped = 0; st.tx = st.ty = 0; } catch (e) { /* closing */ } }
+  if (force || s !== lastSent || now - lastT > 1000) { try { net.conn.send(msg); lastSent = s; lastT = now; tapped = 0; } catch (e) { /* closing */ } }
 }
 (function loop() { send(dirty); dirty = false; requestAnimationFrame(loop); })();
 
