@@ -74,6 +74,7 @@ const GAMES = [
   { id: 'hoops', name: 'PIXEL HOOPS', sub: 'SHOOT BASKETS!', url: 'hoops.html', color: '#ff8a2a', cats: ['SPORTS'], tags: 'BASKETBALL BALL BASKET' },
   { id: 'wings', name: 'PIXEL WINGS', sub: 'AIR BATTLE!', url: 'wings.html', color: '#7ac8ff', cats: ['ACTION', 'PLANES', 'ONLINE', '2 PLAYERS'], tags: 'PLANE PLANES FLY WAR BOMBER FIGHTER SHIP' },
   { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0', cats: ['RUNNING', 'PLANES'], tags: 'PARKOUR JUMP PLANE OFFICER' },
+  { id: 'fish', name: 'DEEP CATCH', sub: 'CATCH LEGENDARY FISH!', url: 'fish.html', color: '#2ad4d0', cats: ['SPORTS'], tags: 'FISH FISHING ROD SEA OCEAN BOAT LEGENDARY' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -297,12 +298,31 @@ function previewSkyRun(x, y, w, h, t) {
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(cx - 1 + Math.sin(t * 3) * 2), y + h - 12, 2, 2);
   ctx.restore();
 }
+function previewFish(x, y, w, h, t) {             // a golden fish swims past the hook
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  for (let k = 0; k < h; k += 4) { const m = k / h; ctx.fillStyle = `rgb(${Math.round(42 - 30 * m)},${Math.round(212 - 110 * m)},${Math.round(208 - 60 * m)})`; ctx.fillRect(x, y + k, w, 4); }
+  ctx.fillStyle = '#9af4ff';
+  for (let i = 0; i < 8; i++) { const by = y + h - ((t * 14 + i * 23) % h); ctx.fillRect(Math.round(x + 8 + (i * 31) % (w - 16) + Math.sin(t * 3 + i) * 2), Math.round(by), i % 3 ? 1 : 2, i % 3 ? 1 : 2); }
+  const hx = Math.round(x + 22 + Math.sin(t * 0.8) * 4), hy = y + 34;
+  ctx.fillStyle = '#d8d8d8'; ctx.fillRect(hx, y, 1, hy - y);
+  ctx.fillStyle = '#3a3a44'; ctx.fillRect(hx, hy, 1, 8); ctx.fillRect(hx - 5, hy + 8, 6, 1); ctx.fillRect(hx - 5, hy + 5, 1, 3);
+  const fx = Math.round(x + w / 2 + 6 + Math.sin(t * 0.9) * 14), fy = Math.round(y + 30 + Math.sin(t * 1.7) * 2);
+  ctx.fillStyle = '#111'; ctx.fillRect(fx - 13, fy - 6, 24, 13); ctx.fillRect(fx + 10, fy - 6, 7, 13);
+  ctx.fillStyle = '#e0a020'; ctx.fillRect(fx - 12, fy - 5, 22, 11);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(fx - 8, fy - 4, 12, 3);
+  ctx.fillStyle = '#d8e0a0'; ctx.fillRect(fx - 10, fy + 2, 15, 3);
+  ctx.fillStyle = '#c86a2a'; ctx.fillRect(fx + 11, fy - 5, 5, 4); ctx.fillRect(fx + 11, fy + 2, 5, 4); ctx.fillRect(fx + 11, fy - 1, 3, 3);
+  ctx.fillStyle = '#a05a1a'; ctx.fillRect(fx - 4, fy - 7, 8, 2);
+  ctx.fillStyle = '#111'; ctx.fillRect(fx - 10, fy - 2, 2, 2);
+  if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
+  ctx.restore();
+}
 function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');

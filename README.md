@@ -21,6 +21,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hoops** (`hoops.html`) | Arcade basketball that looks 3D: pull back and let go to shoot. Every basket is +2 points. |
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
+| **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
 
 ## Pixel Wings
 
@@ -126,6 +127,32 @@ player's shoulder at the hoop, with everything drawn in perspective, so it looks
 - **FREE SHOOT:** no clock and a longer aiming line, just shoot. Your baskets and shooting % are counted.
 - No rim or backboard touched = **SWISH!** Three in a row and you're **ON FIRE**.
 - P or Escape pauses.
+
+## Deep Catch
+
+A fishing game seen from the side: you sit in your boat, the hook sinks into the deep sea.
+
+- **Fishing:** CAST, and the hook sinks (down to 90 m). Steer it left and right: drag your finger (the hook follows it),
+  arrows / A D, or the stick. Touch a fish and it bites, and the hook reels up to the boat (REEL UP, Space or A brings
+  an empty hook back early). A fish on the hook fights and pulls it sideways; the rarer the fish, the harder.
+  Back at the boat the fish is sold.
+- **Obstacles:** jellyfish, old boots, sea urchins, sharks and sea mines (deeper down: more sharks and mines). Each hit
+  hurts your line (the hearts); with none left the line snaps and the fish gets away.
+- **Rarity:** BAD FISH (sells for 1-5 coins), RARE, SUPER RARE, EPIC, MYTHIC and LEGENDARY (about 1000 coins).
+  Rarer fish swim deeper and faster, and they sparkle. Epic ★1, mythic ★2, legendary ★5 into the arcade wallet.
+- **Rods:** the rod decides which fish swim around you. Each rarity's chance is tried from the rarest down, and
+  if none comes up it's a bad fish:
+
+  | Rod | Price | Legendary | Mythic | Epic | Super rare | Rare |
+  |---|---|---|---|---|---|---|
+  | Wooden | (you start with it) | 0% | 5% | 10% | 40% | 70% |
+  | Steel | 800 | 8% | 15% | 25% | 30% | 40% |
+  | Iron | 4000 | 15% | 25% | 30% | 20% | 30% |
+  | Legendary | 15000 | 30% | 35% | 40% | 50% | 60% |
+
+- **Shop:** buy and equip rods, a faster **reel** (reels the hook up faster) and a stronger **line** (2, 3 or 4 hits).
+- **Fish book:** all 18 fish (3 of each rarity) and how many of each you caught.
+- P or Escape pauses. Coins, gear and the fish book are saved on the device.
 
 ## Pixel Sky Run
 
@@ -356,4 +383,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html`; online play checks it).
