@@ -38,9 +38,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const SAVE_KEY = 'deepCatch.save';
-const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, inv: [], cooler: 0, sfx: true };
+const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, shiny: {}, inv: [], cooler: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -91,6 +91,18 @@ const SIZES = [
   { name: 'BIG',    k: 1.5,  w: 15, s: 3 }, { name: 'HUGE',  k: 2.2,  w: 8,  s: 3 }, { name: 'GIANT',  k: 3.5, w: 2,  s: 4 },
   { name: 'MASSIVE', k: 1, w: 0, s: 6 },              // only the massive orca and whale
 ];
+// rare colour variants: worth a lot more (the shiny gold one most of all)
+const VARIANTS = [
+  { id: 'gold',   name: 'SHINY GOLD', chance: 1.5, k: 6, color: '#ffd23f',
+    pal: { b: '#ffd23f', d: '#c08a10', l: '#fff4b0', f: '#ffb020', s: '#ffffff', w: '#fff4b0' } },
+  { id: 'shadow', name: 'SHADOW',     chance: 3,   k: 3, color: '#a080ff',
+    pal: { b: '#2a2a3a', d: '#101018', l: '#4a4a6a', f: '#1a1a2a', s: '#6a4aff', e: '#ff2a2a', w: '#4a4a6a' } },
+  { id: 'albino', name: 'ALBINO',     chance: 5,   k: 2, color: '#ffc8d8',
+    pal: { b: '#f4f0f0', d: '#d0c8c8', l: '#ffffff', f: '#ffc0c8', s: '#ffd0d8', e: '#ff3a5a', w: '#ffffff' } },
+];
+const VAR = {}; VARIANTS.forEach(v => { VAR[v.id] = v; });
+function rollVariant() { let n = Math.random() * 100; for (const v of VARIANTS) if ((n -= v.chance) < 0) return v.id; return ''; }
+const fullName = (sp, v) => (v ? VAR[v].name + ' ' : '') + sp.name;
 function rollSize() { let n = Math.random() * 100; for (const z of SIZES) if ((n -= z.w) < 0) return z; return SIZES[2]; }
 // the worlds: deeper seas, more danger, more money (unlocked with coins)
 const WORLDS = [
@@ -116,6 +128,7 @@ if (!RODS.some(r => r.id === save.rod)) save.rod = 'wood';
 if (!Array.isArray(save.rods) || !save.rods.includes('wood')) save.rods = ['wood'].concat(Array.isArray(save.rods) ? save.rods : []);
 save.reel = clamp(save.reel | 0, 0, REELS.length - 1); save.line = clamp(save.line | 0, 0, LINES.length - 1);
 if (!save.book || typeof save.book !== 'object') save.book = {};
+if (!save.shiny || typeof save.shiny !== 'object') save.shiny = {};
 const rod = () => RODS.find(r => r.id === save.rod);
 const reel = () => REELS[save.reel], line = () => LINES[save.line];
 // --- the FISH MARKET: every fish's price goes up and down every 10 minutes, like a stock ---
@@ -204,7 +217,7 @@ function makeSprite(key, rows, pal, flip, silhouette) {
   rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') put(x, y, silhouette ? '#2a2440' : P[ch]); }));
   return (spriteCache[ck] = c);
 }
-const fishSprite = (sp, flip, sil) => makeSprite(sp.id, SHAPES[sp.shape], sp.pal, flip, sil);
+const fishSprite = (sp, flip, sil, v) => makeSprite(sp.id + (v || ''), SHAPES[sp.shape], v ? Object.assign({}, sp.pal, VAR[v].pal) : sp.pal, flip, sil);
 function drawSprite(c, cx, cy, s = SCALE) { ctx.drawImage(c, Math.round(cx - c.width * s / 2), Math.round(cy - c.height * s / 2), c.width * s, c.height * s); }
 const SHARK = ['...........d........', '..........dd........', '...dddddddbbddd...dd', '.dbbbbbbbbbbbbbbddbd',
                'debbbbbbbbbbbbbbbbbd', 'wwllllllllllbbbbbd.d', '..lllllldd..ddd...dd'];
@@ -215,11 +228,11 @@ const world = { fish: [], obs: [], weed: [], rocks: [], bubbles: [] };
 function newFish(onScreen) {
   const r = rollRarity(), R = RAR[r], list = SPECIES.filter(s => s.r === r), sp = pick(list);
   const z = rollSize(), sc = z.s, dir = Math.random() < 0.5 ? -1 : 1, c = fishSprite(sp, false), hw = c.width * sc / 2;
-  const y = rnd(R.depth[0], R.depth[1]) * MAX_DEPTH;
-  return { sp, r, z, sc, dir, x: onScreen ? rnd(20, S.W - 20) : dir > 0 ? -hw - rnd(0, 80) : S.W + hw + rnd(0, 80), y, y0: y,
+  const y = rnd(R.depth[0], R.depth[1]) * MAX_DEPTH, v = rollVariant();
+  return { sp, r, z, sc, dir, v, x: onScreen ? rnd(20, S.W - 20) : dir > 0 ? -hw - rnd(0, 80) : S.W + hw + rnd(0, 80), y, y0: y,
            hw: Math.max(4, hw - 3), hh: Math.max(3, c.height * sc / 2 - 2), speed: rnd(R.speed[0], R.speed[1]) / Math.sqrt(z.k), ph: rnd(0, 6),
            kg: Math.round(R.kg * z.k * z.k * rnd(0.85, 1.15) * 10) / 10,
-           base: Math.max(1, Math.round(rnd(R.price[0], R.price[1]) * z.k * wld().money)) };   // x the market price when you sell it
+           base: Math.max(1, Math.round(rnd(R.price[0], R.price[1]) * z.k * wld().money * (v ? VAR[v].k : 1))) };   // x the market price when you sell it
 }
 function fillSea() { world.fish = []; for (let i = 0; i < 16; i++) world.fish.push(newFish(true)); }
 function makeObstacles() {
@@ -246,21 +259,23 @@ function setWorld(id) {
   }
   makeObstacles(); fillSea();
 }
-// --- THE MASSIVE ONE: in every 10-minute turn of the clock, one massive orca or whale swims by
+// --- THE MASSIVE ONE: in every 20-minute turn of the clock, one massive orca or whale swims by
 // for a while (the same moment for everyone). Catch it once per turn: it's worth a fortune.
 const BOSS_LIFE = 150;                               // seconds it stays around
+const BOSS_EVERY = 20 * 60 * 1000;                   // one massive one in every 20 minutes
+const bossSlot = () => Math.floor(Date.now() / BOSS_EVERY);
 function bossInfo() {
-  const h = hourNow(), len = MARKET_HOUR / 1000, t = (Date.now() % MARKET_HOUR) / 1000;
+  const h = bossSlot(), len = BOSS_EVERY / 1000, t = (Date.now() % BOSS_EVERY) / 1000;
   const off = 15 + hash(Math.imul(h, 7) + 3) * (len - BOSS_LIFE - 30);
   return { h, off, active: t >= off && t < off + BOSS_LIFE && save.bossDone !== h, left: off + BOSS_LIFE - t, wait: t < off ? off - t : len - t + 15,
            id: hash(Math.imul(h, 13) + 5) < 0.5 ? 'orca' : 'whale' };
 }
 function newBoss(id) {
   const sp = SPECIES.find(s => s.id === id), R = RAR.massive, z = SIZES[SIZES.length - 1], c = fishSprite(sp, false), sc = z.s;
-  const dir = Math.random() < 0.5 ? -1 : 1, hw = c.width * sc / 2, y = rnd(R.depth[0], R.depth[1]) * MAX_DEPTH;
-  return { sp, r: 'massive', z, sc, dir, boss: true, x: dir > 0 ? -hw : S.W + hw, y, y0: y, hw: hw - 6, hh: c.height * sc / 2 - 4,
+  const dir = Math.random() < 0.5 ? -1 : 1, hw = c.width * sc / 2, y = rnd(R.depth[0], R.depth[1]) * MAX_DEPTH, v = rollVariant();
+  return { sp, r: 'massive', z, sc, dir, v, boss: true, x: dir > 0 ? -hw : S.W + hw, y, y0: y, hw: hw - 6, hh: c.height * sc / 2 - 4,
            speed: rnd(R.speed[0], R.speed[1]), ph: rnd(0, 6), kg: Math.round(rnd(3000, 9000) * (id === 'whale' ? 4 : 1)),
-           base: Math.round(rnd(R.price[0], R.price[1]) * wld().money) };
+           base: Math.round(rnd(R.price[0], R.price[1]) * wld().money * (v ? VAR[v].k : 1)) };
 }
 function updateBoss() {
   const b = bossInfo(), here = world.fish.find(f => f.boss) || (G.hooked && G.hooked.boss);
@@ -302,7 +317,7 @@ function obsHit(o, x, y, extra) {            // does the hook (at x, y) touch it
 }
 
 /* --- 4. THE GAME ---------------------------------------------------------------- */
-let state = 'title';          // title | fish | shop | book | worlds | market
+let state = 'title';          // title | fish | shop | book | worlds | market | exchange
 let paused = false, shopBack = 'title';
 let camY = 0;
 const G = { bang: 0, phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
@@ -322,7 +337,8 @@ function hookFish(f) {
   G.hooked = f; G.phase = 'up';
   const R = RAR[f.r];
   const big = f.z.k >= 1.5 ? f.z.name + ' ' : '';
-  if (f.boss) { say('YOU HOOKED THE ' + f.sp.name + '! HOLD ON!', R.color, 2.5); sfx('bite'); sfx('boss'); bubble(G.hook.x, G.hook.y, 12); G.bang = 1.2; G.shake = 0.5; return; }
+  if (f.v) { const V = VAR[f.v]; if (!f.boss) { say(V.name + ' ' + (big ? big : '') + R.name + '!', V.color, 2); sfx('bite'); sfx('great'); bubble(G.hook.x, G.hook.y, 8); G.bang = 1; return; } }
+  if (f.boss) { say('YOU HOOKED THE ' + fullName(f.sp, f.v) + '! HOLD ON!', R.color, 2.5); sfx('bite'); sfx('boss'); bubble(G.hook.x, G.hook.y, 12); G.bang = 1.2; G.shake = 0.5; return; }
   say(f.r === 'bad' ? (big ? big + 'BAD FISH...' : 'A BITE... MEH') : big + R.name + '!', R.color);
   sfx('bite'); bubble(G.hook.x, G.hook.y, 5); G.bang = 0.8;
 }
@@ -343,12 +359,13 @@ function land() {                                   // the hook is back at the b
   const f = G.hooked; G.hooked = null;
   if (!f) { G.phase = 'ready'; G.hook.y = -8; return; }
   const R = RAR[f.r], isNew = !save.book[f.sp.id];
-  if (f.boss) save.bossDone = hourNow();             // one massive catch per 10 minutes
+  if (f.boss) save.bossDone = bossSlot();            // one massive catch per 20 minutes
   save.book[f.sp.id] = (save.book[f.sp.id] | 0) + 1;
   const record = f.kg > (save.big[f.sp.id] || 0) && !isNew;
   save.big[f.sp.id] = Math.max(save.big[f.sp.id] || 0, f.kg);
   save.caught = (save.caught | 0) + 1;
-  const item = { s: f.sp.id, z: SIZES.indexOf(f.z), kg: f.kg, base: f.base }, full = save.inv.length >= cooler().cap;
+  if (f.v) save.shiny[f.sp.id + ':' + f.v] = 1;
+  const item = { s: f.sp.id, z: SIZES.indexOf(f.z), kg: f.kg, base: f.base, v: f.v || '' }, full = save.inv.length >= cooler().cap;
   if (!full) save.inv.push(item);
   store();
   if (R.stars) PX.Wallet.add(R.stars);
@@ -443,8 +460,12 @@ function drawSea(t, withBoat) {
 function drawFish(f, t) {
   const y = sy(f.y);
   if (y < -30 || y > H + 30) return;
-  drawSprite(fishSprite(f.sp, f.dir > 0), f.x, y, f.sc);
+  drawSprite(fishSprite(f.sp, f.dir > 0, false, f.v), f.x, y, f.sc);
   const R = RAR[f.r];
+  if (f.v === 'gold') {                            // shiny gold glints all over
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 4; i++) if (Math.sin(t * 7 + i * 1.7 + f.ph) > 0.5) ctx.fillRect(Math.round(f.x + Math.sin(i * 2.3 + f.ph) * f.hw * 0.8), Math.round(y + Math.cos(i * 1.9 + f.ph) * f.hh * 0.7), 2, 2);
+  }
   if (R.i >= 3) {                                 // epic and rarer fish sparkle
     ctx.fillStyle = R.color;
     for (let i = 0; i < R.i - 1; i++) {
@@ -504,7 +525,7 @@ function drawLineAndHook(t) {
   if (G.phase !== 'snap') {
     ctx.strokeStyle = 'rgba(240,250,255,0.8)'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(h.x, hy); ctx.stroke();
   }
-  if (G.hooked) drawSprite(fishSprite(G.hooked.sp, Math.sin(G.t * 9) > 0), h.x, hy + hookDrop(G.hooked), G.hooked.sc);
+  if (G.hooked) drawSprite(fishSprite(G.hooked.sp, Math.sin(G.t * 9) > 0, false, G.hooked.v), h.x, hy + hookDrop(G.hooked), G.hooked.sc);
   if (G.phase !== 'snap' && !(G.inv > 0 && Math.floor(G.inv * 12) % 2)) {   // the hook (blinks after a hit)
     const x = Math.round(h.x), y = Math.round(hy);
     ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 6, 3, 8); ctx.fillRect(x - 5, y + 1, 7, 3); ctx.fillRect(x - 6, y - 3, 3, 6);
@@ -539,6 +560,7 @@ function drawTitle(t) {
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 10, '#fff', 2, 'left', '#000');
   coinsText(40, 24, 'left', 1);
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
+  if (UI.button('exchange', W - 92, 30, 86, 16, '★ EXCHANGE', { size: 1, accent: '#ffd23f' })) { sfx('click'); shopBack = 'title'; state = 'exchange'; }
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
   T('DEEP', W / 2, 36, '#7af0ff', 4, 'center', '#000');
   T('CATCH', W / 2, 60, '#ffd23f', 6, 'center', '#a05a1a');
@@ -621,7 +643,7 @@ function drawGame(t) {
       T('AVOID JELLYFISH, SHARKS, BOOTS, URCHINS AND MINES', W / 2, H - 82, '#ffc8ee', 1, 'center', '#000');
     } else { const tip = marketTip(); if (tip) T('MARKET TIP: ' + tip, W / 2, H - 82, '#9be36b', 1, 'center', '#000'); }
   }
-  bossBanner(W / 2, G.msg ? 64 : 46, t);
+  bossBanner(W / 2, G.phase === 'ready' ? 8 : G.msg ? 64 : 46, t);   // before a cast: at the top, clear of the boat
   if (G.msg) T(G.msg.text, W / 2, 46, G.msg.color, 2, 'center', '#000');
   if (G.phase === 'catch') drawCatch(t);
 }
@@ -632,14 +654,16 @@ function drawCatch(t) {
   if (R.i >= 3) for (let i = 0; i < 26; i++) { const k = t + i; ctx.fillStyle = [R.color, '#ffffff', '#7af0ff', '#ffd23f'][i % 4]; ctx.fillRect(Math.round((i * 47 + k * 30) % W), Math.round((k * (40 + i * 3)) % H), 3, 3); }
   T('YOU CAUGHT', W / 2, y + 8, '#9ac8e0', 1, 'center');
   T(R.name, W / 2, y + 20, R.color, 2, 'center', '#000');
-  const spr = fishSprite(f.sp, false), big = Math.max(1, Math.min(f.sc + 1, Math.floor(150 / spr.width), Math.floor(48 / spr.height)));
+  const spr = fishSprite(f.sp, false, false, f.v), big = Math.max(1, Math.min(f.sc + 1, Math.floor(150 / spr.width), Math.floor(48 / spr.height)));
   drawSprite(spr, W / 2, y + 60 + Math.sin(t * 3) * 2, big);
-  T(f.sp.name, W / 2, y + 88, '#fff', 2, 'center', '#000');
+  const nm = fullName(f.sp, f.v);
+  T(nm, W / 2, y + 88, f.v ? VAR[f.v].color : '#fff', PX.textWidth(nm, 2) > 240 ? 1 : 2, 'center', '#000');
   T(f.z.name + '   ' + f.kg + ' KG', W / 2, y + 104, f.z.k >= 1.5 ? '#ff8a2a' : '#9ac8e0', 1, 'center', '#000');
   const m = market(f.sp.id), now = priceOf(c.item), up = m >= market(f.sp.id, hourNow() - 1);
   T('WORTH ' + now + ' COINS NOW', W / 2, y + 116, '#ffd23f', 2, 'center', '#000');
   T('MARKET X' + m.toFixed(2) + (up ? ' ↑' : ' ↓') + (c.full ? '   YOUR COOLER IS FULL!' : '   IN YOUR COOLER ' + save.inv.length + '/' + cooler().cap), W / 2, y + 133, up ? '#9be36b' : '#ff8a8a', 1, 'center');
   let extra = [];
+  if (f.v) extra.push(VAR[f.v].name + '! WORTH X' + VAR[f.v].k);
   if (c.isNew) extra.push('NEW IN YOUR FISH BOOK!');
   if (c.record) extra.push('BIGGEST ONE YET!');
   if (c.stars) extra.push('★ +' + c.stars);
@@ -713,6 +737,7 @@ function drawBook(t) {
     T(n ? sp.name : '???', x + 50, y + 3, n ? '#fff' : '#5a6a7a', 1, 'left');
     T(R.name + (n ? '  X' + n : ''), x + 50, y + 12, R.color, 1, 'left');
     if (n && save.big[sp.id]) T('BIGGEST ' + save.big[sp.id] + ' KG', x + 50, y + 21, '#9ac8e0', 1, 'left');
+    VARIANTS.forEach((v, k) => { if (save.shiny[sp.id + ':' + v.id]) { ctx.fillStyle = '#111'; ctx.fillRect(x + cw - 10 - k * 7, y + 3, 6, 6); ctx.fillStyle = v.color; ctx.fillRect(x + cw - 9 - k * 7, y + 4, 4, 4); } });
   });
   if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
   if (pages > 1) {
@@ -792,7 +817,7 @@ function drawMarket(t) {
       ctx.fillStyle = RAR[sp.r].color; ctx.fillRect(9, y + 1, 2, rh - 4);
       const c = fishSprite(sp, false); drawSprite(c, 26, y + rh / 2 - 1, c.width > 16 ? 1 : 1);
       T(sp.name.length > 13 ? sp.name.slice(0, 12) + '.' : sp.name, 44, y + 3, '#fff', 1, 'left');
-      T('X' + list.length, 44, y + 11, '#9ac8e0', 1, 'left');
+      T('X' + list.length, 44, y + 11, list.some(it => it.v === 'gold') ? '#ffd23f' : '#9ac8e0', 1, 'left');
       const sl = sparkline(id, 72, y + 11, 30, 6, 12);   // a tiny chart of the last 2 hours
       ctx.strokeStyle = sl.col; ctx.beginPath(); sl.vals.forEach((v, k) => k ? ctx.lineTo(sl.X(k), sl.Y(v)) : ctx.moveTo(sl.X(k), sl.Y(v))); ctx.stroke();
       T('X' + m.toFixed(2) + (up ? '↑' : '↓'), 8 + LW - 4, y + 7, up ? '#5ad43f' : '#ff4a5a', 1, 'right');
@@ -811,7 +836,7 @@ function drawMarket(t) {
     T((ch >= 0 ? '↑ +' : '↓ ') + ch + '% SINCE LAST', x + w, top + 10, ch >= 0 ? '#5ad43f' : '#ff4a5a', 1, 'right');
     drawChart(id, x, top + 21, w, 82, t);
     const total = list.reduce((n, it) => n + priceOf(it), 0), best = list[0];
-    T('YOU HAVE ' + list.length + '   BEST: ' + SIZES[best.z].name + ' ' + best.kg + ' KG', x, top + 108, '#9ac8e0', 1, 'left');
+    T('YOU HAVE ' + list.length + '   BEST: ' + (best.v ? VAR[best.v].name + ' ' : '') + SIZES[best.z].name + ' ' + best.kg + ' KG', x, top + 108, best.v ? VAR[best.v].color : '#9ac8e0', 1, 'left');
     T('ALL WORTH ' + total + ' COINS NOW', x, top + 118, '#ffd23f', 1, 'left');
     const bw = Math.floor((w - 4) / 2), by = top + 130;
     if (UI.button('sell1', x, by, bw, 22, 'SELL 1: ' + priceOf(best), { size: 1, accent: '#ffd23f' })) sell([best], x + bw / 2, by);
@@ -819,6 +844,7 @@ function drawMarket(t) {
   }
   const everything = save.inv.reduce((n, it) => n + priceOf(it), 0);
   if (UI.button('back', 8, H - 24, 100, 20, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  if (UI.button('exchange', 114, H - 24, Math.max(60, W - 168 - 122), 20, '★ EXCHANGE', { size: 1, accent: '#ffd23f' })) { exBack = shopBack; shopBack = 'market'; state = 'exchange'; }
   if (save.inv.length && UI.button('sellev', W - 168, H - 24, 160, 20, 'SELL EVERYTHING: ' + everything, { size: 1, accent: '#ff8a2a' })) sell(save.inv.slice(), W - 88, H - 30);
 }
 function drawWorlds(t) {
@@ -860,6 +886,41 @@ function drawWorlds(t) {
     }
   });
   if (UI.button('back', Math.round(W / 2 - 60), H - 24, 120, 20, '< BACK', { size: 1 }) || UI.back) { state = shopBack; if (state === 'fish') startFishing(); }
+}
+/* --- the STAR EXCHANGE: arcade stars (★, shared with all the games) <-> coins --- */
+const STAR_TO_COINS = 50, COINS_PER_STAR = 250;     // buying stars costs more than you get for selling them
+let exBack = 'title';
+function drawExchange(t) {
+  const W = S.W, stars = PX.Wallet.get();
+  ctx.fillStyle = '#071a2c'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b2438'; for (let y = 0; y < H; y += 8) ctx.fillRect(0, y, W, 1);
+  T('STAR EXCHANGE', 8, 6, '#fff', 2, 'left', '#000');
+  coinsText(W - 8, 6, 'right');
+  T('★ ' + stars, W - 8, 22, '#ffd23f', 2, 'right', '#000');
+  T('★ STARS COME FROM ALL THE PIXEL ARCADE GAMES', W / 2, 42, '#9ac8e0', 1, 'center');
+  const pw = Math.floor((W - 24) / 2), py = 56, ph = 140;
+  const side = (x, title, rate, rows) => {
+    ctx.fillStyle = '#111'; ctx.fillRect(x - 1, py - 1, pw + 2, ph + 2);
+    ctx.fillStyle = '#14324e'; ctx.fillRect(x, py, pw, ph);
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, py, pw, 2);
+    T(title, x + pw / 2, py + 8, '#fff', 2, 'center', '#000');
+    T(rate, x + pw / 2, py + 26, '#ffd23f', 1, 'center');
+    rows.forEach(([id, label, ok, act], k) => { if (UI.button(id, x + 10, py + 42 + k * 30, pw - 20, 24, label, { size: 1, accent: '#ffd23f', disabled: !ok })) act(); });
+  };
+  const toCoins = n => { if (n > 0 && PX.Wallet.spend(n)) { save.coins += n * STAR_TO_COINS; store(); floats.push({ text: '+' + n * STAR_TO_COINS, x: 8 + pw / 2, y: py + 30, t: 1.2 }); sfx('cash'); } };
+  const toStars = n => { if (n > 0 && save.coins >= n * COINS_PER_STAR) { save.coins -= n * COINS_PER_STAR; store(); PX.Wallet.add(n); floats.push({ text: '★+' + n, x: 16 + pw * 1.5, y: py + 30, t: 1.2 }); sfx('buy'); } };
+  side(8, 'STARS > COINS', '★1 = ' + STAR_TO_COINS + ' COINS', [
+    ['s1', '★1 > ' + STAR_TO_COINS + ' COINS', stars >= 1, () => toCoins(1)],
+    ['s10', '★10 > ' + 10 * STAR_TO_COINS + ' COINS', stars >= 10, () => toCoins(10)],
+    ['sall', 'ALL ★' + stars + ' > ' + stars * STAR_TO_COINS + ' COINS', stars >= 1, () => toCoins(stars)],
+  ]);
+  const can = Math.floor(save.coins / COINS_PER_STAR);
+  side(16 + pw, 'COINS > STARS', COINS_PER_STAR + ' COINS = ★1', [
+    ['c1', COINS_PER_STAR + ' COINS > ★1', can >= 1, () => toStars(1)],
+    ['c10', 10 * COINS_PER_STAR + ' COINS > ★10', can >= 10, () => toStars(10)],
+    ['call', 'MAX: ' + can * COINS_PER_STAR + ' COINS > ★' + can, can >= 1, () => toStars(can)],
+  ]);
+  if (UI.button('back', Math.round(W / 2 - 60), H - 24, 120, 20, '< BACK', { size: 1 }) || UI.back) { state = shopBack; if (state === 'market') shopBack = exBack; }
 }
 function setPause(v) { if (state !== 'fish' || (G.phase !== 'down' && G.phase !== 'up')) { paused = false; return; } paused = v; steer = null; }
 
@@ -923,6 +984,7 @@ function frame(now) {
   else if (state === 'book') drawBook(t);
   else if (state === 'worlds') drawWorlds(t);
   else if (state === 'market') drawMarket(t);
+  else if (state === 'exchange') drawExchange(t);
   else {
     if (!paused) step(dt, t);
     drawGame(t);
