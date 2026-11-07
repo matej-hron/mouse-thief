@@ -165,7 +165,7 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
 
 - **Shop:** buy and equip rods, faster **reels** (1500 / 12000 / 80000) and stronger **lines**: 3, 4 or 6 hits
   (1200 / 10000 / 70000).
-- **Fish book:** all 18 fish (3 of each rarity), how many of each you caught and the biggest one.
+- **Fish book:** all 30 fish (5 of each rarity, on 2 pages), how many of each you caught and the biggest one.
 - P or Escape pauses. Coins, gear, worlds and the fish book are saved on the device.
 
 ## Pixel Sky Run

@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const SAVE_KEY = 'deepCatch.save';
 const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -121,6 +121,7 @@ const SHAPES = {
   long: ['....ddddddd.......', '.dbbbsbbbbbsbbbd.f', 'bebbbbbbbbbbbbbbff', '.lllllllllllllld.f', '.....dd..dd.......'],
   round: ['...d.d.d...', '..dbbbbbd..', '.dbbsbbbbdf', 'debbbbbsbbff', 'bbbbbbbbbbf', 'dllllllbbdff', '.dllllllbd.', '..dlllld...', '...d.d.d...'],
   sword: ['.......ddd.......', '.....dbbbbbd...ff', 'llllbebbbsbbbbbff', '.....lllllllbbd.ff', '........d........'],
+  tall: ['....dd....', '...dbbd...', '..dbbsbd.f', '.dbbbbbbff', 'debbsbbbff', '.bllllbbff', '..dlllbd.f', '...dlld...', '....dd....'],
   big: ['.......dddd.........', '.....ddbbbbbd.......', '...dbbbbsbbbbbd...ff', '..dbbbbbbbbsbbbd.fff', '.dbebbsbbbbbbbbbdfff',
         'dbbbbbbbbbbbbbbbbff.', '.bllllllllllbbbbdfff', '..dlllllllllbbbd.fff', '...ddd..dd..ddd...ff'],
 };
@@ -128,21 +129,33 @@ const SPECIES = [
   { id: 'carp',    name: 'MUD CARP',       r: 'bad',    shape: 'small', pal: { b: '#7a6a4a', d: '#5a4a30', l: '#a89a78', f: '#6a5a3a' } },
   { id: 'sardine', name: 'SAD SARDINE',    r: 'bad',    shape: 'small', pal: { b: '#8a9098', d: '#5a6068', l: '#c0c4c8', f: '#70767e' } },
   { id: 'goby',    name: 'BONY GOBY',      r: 'bad',    shape: 'small', pal: { b: '#6a7a5a', d: '#4a5a3a', l: '#9aa088', f: '#5a6a4a' } },
+  { id: 'loach',   name: 'SLIMY LOACH',    r: 'bad',    shape: 'small', pal: { b: '#5a5a3a', d: '#3a3a20', l: '#8a8a60', f: '#4a4a2a' } },
+  { id: 'guppy',   name: 'WONKY GUPPY',    r: 'bad',    shape: 'small', pal: { b: '#9a7a8a', d: '#6a4a5a', l: '#c8b0b8', f: '#b07a9a' } },
   { id: 'perch',   name: 'BLUE PERCH',     r: 'rare',   shape: 'std',   pal: { b: '#3a7ad4', d: '#1f4a8a', l: '#a8d0ff', f: '#2a5aa0', s: '#2a5aa0' } },
   { id: 'trout',   name: 'SILVER TROUT',   r: 'rare',   shape: 'std',   pal: { b: '#b8c4d0', d: '#6a7a8a', l: '#eef4fa', f: '#8a9aaa', s: '#ff8ab0' } },
   { id: 'bass',    name: 'STRIPED BASS',   r: 'rare',   shape: 'std',   pal: { b: '#7a9a6a', d: '#3a4a2a', l: '#d8e0c0', f: '#5a7a4a', s: '#2a3a1a' } },
+  { id: 'mullet',  name: 'RED MULLET',     r: 'rare',   shape: 'std',   pal: { b: '#e05a5a', d: '#a02a3a', l: '#ffd0c0', f: '#ffb040', s: '#ffd040' } },
+  { id: 'clown',   name: 'CLOWNFISH',      r: 'rare',   shape: 'std',   pal: { b: '#ff8a1a', d: '#111111', l: '#ffffff', f: '#ff8a1a', s: '#ffffff' } },
   { id: 'pike',    name: 'GREEN PIKE',     r: 'super',  shape: 'long',  pal: { b: '#4aa04a', d: '#2a6a2a', l: '#c8e8a0', f: '#3a803a', s: '#e0f080' } },
   { id: 'snapper', name: 'CORAL SNAPPER',  r: 'super',  shape: 'std',   pal: { b: '#ff6a4a', d: '#b03a2a', l: '#ffd0b0', f: '#e04a3a', s: '#ffe060' } },
   { id: 'puffer',  name: 'SPIKY PUFFER',   r: 'super',  shape: 'round', pal: { b: '#e0d040', d: '#8a7a1a', l: '#fff4c0', f: '#b0a030', s: '#6a5a10' } },
+  { id: 'tang',    name: 'BLUE TANG',      r: 'super',  shape: 'tall',  pal: { b: '#2a6aff', d: '#0a1a5a', l: '#6aa0ff', f: '#ffd23f', s: '#0a1a5a' } },
+  { id: 'catfish', name: 'MOSSY CATFISH',  r: 'super',  shape: 'long',  pal: { b: '#6a7a3a', d: '#3a4a1a', l: '#b0b880', f: '#4a5a2a', s: '#9ab04a' } },
   { id: 'tetra',   name: 'NEON TETRA KING', r: 'epic',  shape: 'std',   pal: { b: '#2ad4ff', d: '#ff3ab0', l: '#c8f8ff', f: '#ff3ab0', s: '#ffffff' } },
   { id: 'sword',   name: 'VIOLET SWORDFISH', r: 'epic', shape: 'sword', pal: { b: '#8a5ad4', d: '#4a2a8a', l: '#e0c8ff', f: '#6a3ab0', s: '#c0a0ff' } },
   { id: 'angler',  name: 'GLOW ANGLER',    r: 'epic',   shape: 'round', pal: { b: '#5a3a8a', d: '#2a1a4a', l: '#9a7ac8', f: '#3a2a6a', s: '#a0ff60' } },
+  { id: 'zap',     name: 'ELECTRIC EEL',   r: 'epic',   shape: 'long',  pal: { b: '#2a3a8a', d: '#101a4a', l: '#ffe040', f: '#ffe040', s: '#7af0ff' } },
+  { id: 'lion',    name: 'ZEBRA LIONFISH', r: 'epic',   shape: 'tall',  pal: { b: '#f4e8d8', d: '#b02a1a', l: '#ffffff', f: '#e04a2a', s: '#b02a1a' } },
   { id: 'eel',     name: 'LAVA EEL',       r: 'mythic', shape: 'long',  pal: { b: '#e03a1a', d: '#6a1a0a', l: '#ffb040', f: '#ff6a1a', s: '#ffe040' } },
   { id: 'koi',     name: 'CRIMSON KOI',    r: 'mythic', shape: 'std',   pal: { b: '#f4f0e8', d: '#c01a2a', l: '#ffffff', f: '#e04050', s: '#d01a2a' } },
   { id: 'ghost',   name: 'GHOST FISH',     r: 'mythic', shape: 'sword', pal: { b: '#c8e8f0', d: '#80a8c0', l: '#ffffff', f: '#a0d0e0', s: '#ff4a8a' } },
+  { id: 'icepike', name: 'ICE PIKE',       r: 'mythic', shape: 'long',  pal: { b: '#a8f0ff', d: '#4aa0d0', l: '#ffffff', f: '#7ad0f0', s: '#ffffff' } },
+  { id: 'marlin',  name: 'SHADOW MARLIN',  r: 'mythic', shape: 'sword', pal: { b: '#2a2a3a', d: '#0a0a14', l: '#5a5a7a', f: '#ff2a4a', s: '#ff2a4a' } },
   { id: 'gold',    name: 'GOLDEN KOI',     r: 'legend', shape: 'big',   pal: { b: '#e0a020', d: '#a05a1a', l: '#d8e0a0', f: '#c86a2a', s: '#ffe060' } },
   { id: 'dragon',  name: 'SUN DRAGONFISH', r: 'legend', shape: 'long',  pal: { b: '#ffd23f', d: '#ff7a1a', l: '#fff8c0', f: '#ff4a1a', s: '#ffffff' } },
   { id: 'abyss',   name: 'ABYSS KING',     r: 'legend', shape: 'big',   pal: { b: '#2a2a4a', d: '#0a0a1a', l: '#4a4a7a', f: '#ffd23f', s: '#ffd23f' } },
+  { id: 'rainbow', name: 'RAINBOW KOI',    r: 'legend', shape: 'big',   pal: { b: '#ff5ac8', d: '#5a3aff', l: '#7af0ff', f: '#5ad43f', s: '#ffd23f' } },
+  { id: 'crystal', name: 'CRYSTAL ANGEL',  r: 'legend', shape: 'tall',  pal: { b: '#c8f8ff', d: '#4ad4ff', l: '#ffffff', f: '#ff9af0', s: '#ffffff' } },
 ];
 
 // sprites are drawn once into little canvases (with a dark outline), flipped ones too
@@ -571,8 +584,9 @@ function drawBook(t) {
   T('FISH BOOK', 8, 6, '#fff', 2, 'left', '#000');
   const found = SPECIES.filter(s => save.book[s.id]).length;
   T(found + ' / ' + SPECIES.length + ' FOUND   BEST SALE ' + (save.best | 0) + ' COINS', W - 8, 9, '#9ac8e0', 1, 'right');
-  const cw = Math.floor((W - 16) / 3), rh = 31, top = 24;
-  SPECIES.forEach((sp, i) => {
+  const cw = Math.floor((W - 16) / 3), rh = 31, top = 24, PER = 18, pages = Math.ceil(SPECIES.length / PER);
+  bookPage = clamp(bookPage, 0, pages - 1);
+  SPECIES.slice(bookPage * PER, bookPage * PER + PER).forEach((sp, i) => {
     const col = i % 3, row = Math.floor(i / 3), x = 8 + col * cw, y = top + row * rh, n = save.book[sp.id] | 0, R = RAR[sp.r];
     ctx.fillStyle = row % 2 ? '#10283c' : '#14324e'; ctx.fillRect(x + 1, y, cw - 2, rh - 2);
     ctx.fillStyle = R.color; ctx.fillRect(x + 1, y, 2, rh - 2);
@@ -583,7 +597,13 @@ function drawBook(t) {
     if (n && save.big[sp.id]) T('BIGGEST ' + save.big[sp.id] + ' KG', x + 50, y + 21, '#9ac8e0', 1, 'left');
   });
   if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  if (pages > 1) {
+    if (UI.button('prev', Math.round(W / 2 - 112), H - 22, 46, 18, '<', { size: 1, disabled: bookPage === 0 })) bookPage--;
+    if (UI.button('next', Math.round(W / 2 + 66), H - 22, 46, 18, '>', { size: 1, disabled: bookPage === pages - 1 })) bookPage++;
+    T('PAGE ' + (bookPage + 1) + '/' + pages, W - 8, H - 16, '#9ac8e0', 1, 'right');
+  }
 }
+let bookPage = 0;
 function drawWorlds(t) {
   const W = S.W;
   ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
