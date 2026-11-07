@@ -152,7 +152,8 @@ the game changes, whichever phone reconnects first (a phone that isn't back yet 
 phone can't end up connected twice. How it works: the big screen
 gets a PeerJS id from the code (`PX.Remote` in `common.js`, kept in the tab's `sessionStorage`), each phone sends
 what's pressed, and the phone appears in `navigator.getGamepads()` like any controller, so every game works with it.
-The screen tells the phone which buttons to show: each game's `PX.Pad.setup({ phone: { stick, dpad, buttons } })`.
+The screen tells the phone which buttons to show: each game's `PX.Pad.setup({ phone: { stick, dpad, touch, buttons } })`
+(`touch`: a touch pad instead of the stick; the game reads how far the finger slid as `tdx` / `tdy` in `onPlay`).
 Needs an internet connection on both (the same free PeerJS server as online play). The QR code is made by
 `vendor/qrcode.js` (qrcode-generator, MIT). PeerJS itself is kept in `vendor/peerjs.min.js` (MIT), with two CDNs as backups.
 If the phone can't reach the server or can't link to the screen, it says so (with what to try) and keeps retrying.
@@ -192,7 +193,9 @@ Table tennis seen from above. Get the ball past the other bat to score; **first 
 
 - **Play a bot** (easy, normal or the mega bot), a **random player** online, a **friend online** (one makes a game and gets a
   4-letter code, the other joins with it), or **2 players on this phone** (each drags on their own half).
-- Move your bat by dragging anywhere (keyboard: WASD or arrows; two players: WASD and arrows). Where the ball hits the bat
+- Move your bat by dragging anywhere (keyboard: WASD or arrows; two players: WASD and arrows). With a phone as the
+  controller for a big screen, the phone's left side is a **touch pad**: drag on it and the bat follows your finger,
+  just like playing on a tablet (the power-ups are the buttons on the right). Where the ball hits the bat
   aims it, and moving into the ball hits harder. The ball gets faster with every hit.
 - **Power-ups**: every hit fills the yellow bar. SMASH (2): your next hit is super fast. CURVE (2): your next hit curves.
   BIG BAT (3): a bigger bat for 7 seconds. FREEZE (4): the other bat freezes for a moment. Keys 1 2 3 4 (player 2: 7 8 9 0).
