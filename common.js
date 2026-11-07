@@ -307,6 +307,8 @@ window.PX = (() => {
   //   menuKeys      or, for a game with its own keyboard menus: keys to press in the menus
   //   keys(n)       the keys controller n (0 or 1) presses while playing, e.g. { A: 'Space', left: 'ArrowLeft' }
   //   onPlay(gp, n, dt) extra, game-specific handling while playing (e.g. analog aiming)
+  //                 (a phone with a touch pad: h.touch is { x, y } from 0 to 1, where the finger is on the pad,
+  //                  or null when it isn't touching; like a tablet, where you touch is where it goes)
   //   help          [[button, what it does], ...] for the little help box (only when you press VIEW; it never pops up by itself)
   // (help: several buttons for one thing are written 'B|X'.)
   // Buttons: A B X Y LB RB LT RT VIEW START, up/down/left/right (left stick and d-pad), rup/rdown/rleft/rright (right stick).
@@ -335,6 +337,8 @@ window.PX = (() => {
       h.up = b(12) || ay < -0.5; h.down = b(13) || ay > 0.5; h.left = b(14) || ax < -0.5; h.right = b(15) || ax > 0.5;
       h.rup = ry < -0.5; h.rdown = ry > 0.5; h.rleft = rx < -0.5; h.rright = rx > 0.5;
       h.ax = b(14) ? -1 : b(15) ? 1 : ax; h.ay = b(12) ? -1 : b(13) ? 1 : ay; h.rx = rx; h.ry = ry;
+      // a phone's touch pad: where the finger is on it (0..1), null when it isn't touching
+      const tp = gp.touchpad; h.touch = tp && tp.on ? { x: tp.x, y: tp.y } : null;
       return h;
     },
     key(type, code) { try { window.dispatchEvent(new KeyboardEvent(type, { code, key: keyOf(code), bubbles: true, cancelable: true })); } catch (e) { /* old browser */ } },
@@ -529,7 +533,7 @@ window.PX = (() => {
       conn.on('open', () => {
         if (this.phones.length >= MAX_PHONES) { try { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 500); } catch (e) { /* gone */ } return; }
         ph.pad = { id: 'Pixel Arcade phone controller', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(),
-                   buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0] };
+                   buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0], touchpad: { on: false, x: 0, y: 0 } };
         this.phones.push(ph); ph.sent = ''; this.sync();
       });
       conn.on('data', d => {
@@ -556,6 +560,9 @@ window.PX = (() => {
           ph.raw = b;
           const ax = Number(d.x) || 0, ay = Number(d.y) || 0;
           ph.pad.axes[0] = Math.max(-1, Math.min(1, ax)); ph.pad.axes[1] = Math.max(-1, Math.min(1, ay));
+          // the touch pad: where the finger is (0..1), or not touching
+          const tp = ph.pad.touchpad, c = v => Math.max(0, Math.min(1, Number(v) || 0));
+          if (Array.isArray(d.p)) { tp.on = true; tp.x = c(d.p[0]); tp.y = c(d.p[1]); } else tp.on = false;
           ph.pad.timestamp = performance.now();
         }
       });
@@ -574,7 +581,7 @@ window.PX = (() => {
       let menu = true; try { menu = cfg.phoneMenu ? !!cfg.phoneMenu() : cfg.menu ? !!cfg.menu() : true; } catch (e) { /* not ready yet */ }
       const L = menu ? (cfg.phoneMenuLayout || MENU_LAYOUT) : (cfg.phone || layoutFromHelp(cfg.help));
       return { title: String(cfg.title || document.title || 'Pixel Arcade').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
-               stick: L.stick || null, dpad: !!L.dpad, buttons: L.buttons || [] };
+               stick: L.stick || null, dpad: !!L.dpad, touch: L.touch || null, buttons: L.buttons || [] };
     },
     sync() {                                   // tell each phone what to show, when it changes
       this.prune();
