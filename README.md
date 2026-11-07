@@ -140,8 +140,8 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   hurts your line (the hearts); with none left the line snaps and the fish gets away. A big fish on the hook is easier to bump.
 - **Your cooler and the FISH MARKET:** caught fish aren't sold right away: they go into your **cooler** (15 fish; bigger
   coolers in the shop hold 40, 100 or 300). Sell them at the **MARKET**, where every kind of fish has a price that
-  changes **every hour**, like a stock: x0.3 on a bad hour, up to x3 on a great one. Each fish has a chart of its last
-  24 hours, the price now and how much it went up or down this hour, and a countdown to the next prices. SELL 1 sells
+  changes **every 10 minutes**, like a stock: x0.3 at a bad time, up to x3 at a great one. Each fish has a chart of its
+  last 4 hours, the price now and how much it went up or down since the last change, and a countdown to the next prices. SELL 1 sells
   your best one of that kind, SELL ALL all of them, SELL EVERYTHING the whole cooler. The prices come from the clock,
   so they're the same on every device. Cooler full? The catch screen lets you sell that fish right away or throw it back.
 - **Rarity:** BAD FISH (worth 1-3 coins), RARE, SUPER RARE, EPIC, MYTHIC and LEGENDARY (500-750 coins), before the market price.

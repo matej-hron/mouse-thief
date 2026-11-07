@@ -31,14 +31,14 @@
    sea urchins and mines hurt your line: too many hits and it snaps.
    The rod decides which fish swim around (each rarity's chance, from the rarest
    down). Caught fish go into your cooler; sell them at the FISH MARKET, where
-   every fish's price changes every hour (like stocks). The money buys better
+   every fish's price changes every 10 minutes (like stocks). The money buys better
    rods, reels, lines, coolers and deeper worlds.
      1. Setup   2. Fish and gear   3. The sea   4. The game   5. Drawing
      6. Screens   7. Input   8. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const SAVE_KEY = 'deepCatch.save';
 const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', inv: [], cooler: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -115,9 +115,10 @@ save.reel = clamp(save.reel | 0, 0, REELS.length - 1); save.line = clamp(save.li
 if (!save.book || typeof save.book !== 'object') save.book = {};
 const rod = () => RODS.find(r => r.id === save.rod);
 const reel = () => REELS[save.reel], line = () => LINES[save.line];
-// --- the FISH MARKET: every fish's price goes up and down every hour, like a stock ---
-// (worked out from the clock, so it's the same price for everyone and you can look back 24 hours)
-const MARKET_HOUR = 3600 * 1000;
+// --- the FISH MARKET: every fish's price goes up and down every 10 minutes, like a stock ---
+// (worked out from the clock, so it's the same price for everyone and you can look back 4 hours)
+// A "market hour" below means one of these 10-minute turns.
+const MARKET_HOUR = 10 * 60 * 1000;
 const hourNow = () => Math.floor(Date.now() / MARKET_HOUR);
 function hash(n) { n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }
 const seedOf = id => [...id].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) | 0, 7);
@@ -698,7 +699,7 @@ function drawChart(id, x, y, w, h, t) {
   ctx.fillStyle = '#4a6a80'; for (let xx = x + 22; xx < x + w - 4; xx += 4) ctx.fillRect(xx, Math.round(c.Y(1)), 2, 1);   // x1 = the normal price
   T('X' + c.hi.toFixed(1), x + 2, y + 2, '#6a8aa0', 1, 'left');
   T('X' + c.lo.toFixed(1), x + 2, y + h - 18, '#6a8aa0', 1, 'left');
-  T('24 HOURS AGO', x + 22, y + h - 8, '#6a8aa0', 1, 'left');
+  T('4 HOURS AGO', x + 22, y + h - 8, '#6a8aa0', 1, 'left');
   T('NOW', x + w - 4, y + h - 8, '#6a8aa0', 1, 'right');
   // the area under the line, then the line
   ctx.globalAlpha = 0.18; ctx.fillStyle = c.col;
@@ -724,7 +725,7 @@ function drawMarket(t) {
   if (!ids.length) {
     T('YOUR COOLER IS EMPTY', W / 2, 90, '#fff', 2, 'center', '#000');
     T('GO FISHING! CAUGHT FISH WAIT IN YOUR COOLER', W / 2, 112, '#9ac8e0', 1, 'center');
-    T('UNTIL YOU SELL THEM HERE. PRICES CHANGE EVERY HOUR:', W / 2, 122, '#9ac8e0', 1, 'center');
+    T('UNTIL YOU SELL THEM HERE. PRICES CHANGE EVERY 10 MINUTES:', W / 2, 122, '#9ac8e0', 1, 'center');
     T('SELL WHEN THE PRICE IS HIGH!', W / 2, 132, '#9be36b', 1, 'center');
   } else {
     if (!mk.sel || !groups[mk.sel]) mk.sel = ids[0];
@@ -737,7 +738,7 @@ function drawMarket(t) {
       const c = fishSprite(sp, false); drawSprite(c, 26, y + rh / 2 - 1, c.width > 16 ? 1 : 1);
       T(sp.name.length > 13 ? sp.name.slice(0, 12) + '.' : sp.name, 44, y + 3, '#fff', 1, 'left');
       T('X' + list.length, 44, y + 11, '#9ac8e0', 1, 'left');
-      const sl = sparkline(id, 72, y + 11, 30, 6, 12);   // a tiny 12-hour chart
+      const sl = sparkline(id, 72, y + 11, 30, 6, 12);   // a tiny chart of the last 2 hours
       ctx.strokeStyle = sl.col; ctx.beginPath(); sl.vals.forEach((v, k) => k ? ctx.lineTo(sl.X(k), sl.Y(v)) : ctx.moveTo(sl.X(k), sl.Y(v))); ctx.stroke();
       T('X' + m.toFixed(2) + (up ? '↑' : '↓'), 8 + LW - 4, y + 7, up ? '#5ad43f' : '#ff4a5a', 1, 'right');
     });
@@ -752,7 +753,7 @@ function drawMarket(t) {
     const x = 8 + LW + 8, w = W - x - 8, m = market(id), prev = market(id, hourNow() - 1), ch = Math.round((m / prev - 1) * 100);
     T(sp.name, x, top, '#fff', 1, 'left'); T(R.name, x + w, top, R.color, 1, 'right');
     T('PRICE NOW X' + m.toFixed(2), x, top + 10, '#fff', 1, 'left');
-    T((ch >= 0 ? '↑ +' : '↓ ') + ch + '% THIS HOUR', x + w, top + 10, ch >= 0 ? '#5ad43f' : '#ff4a5a', 1, 'right');
+    T((ch >= 0 ? '↑ +' : '↓ ') + ch + '% SINCE LAST', x + w, top + 10, ch >= 0 ? '#5ad43f' : '#ff4a5a', 1, 'right');
     drawChart(id, x, top + 21, w, 82, t);
     const total = list.reduce((n, it) => n + priceOf(it), 0), best = list[0];
     T('YOU HAVE ' + list.length + '   BEST: ' + SIZES[best.z].name + ' ' + best.kg + ' KG', x, top + 108, '#9ac8e0', 1, 'left');
