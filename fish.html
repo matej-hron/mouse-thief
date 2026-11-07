@@ -38,9 +38,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const SAVE_KEY = 'deepCatch.save';
-const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, shiny: {}, inv: [], cooler: 0, sfx: true };
+const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, shiny: {}, inv: [], cooler: 0, hooks: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -85,6 +85,10 @@ const LINES = [{ name: 'THIN LINE', hp: 2, price: 0 }, { name: 'STRONG LINE', hp
 const COOLERS = [{ name: 'SMALL COOLER', cap: 15, price: 0 }, { name: 'BIG COOLER', cap: 40, price: 3000 },
                  { name: 'MEGA COOLER', cap: 100, price: 25000 }, { name: 'FISH TRUCK', cap: 300, price: 150000 }];
 const cooler = () => COOLERS[save.cooler];
+// more hooks on the line: catch several fish in one cast (it reels up once they're all taken)
+const HOOKS = [{ name: 'SINGLE HOOK', n: 1, price: 0 }, { name: 'DOUBLE HOOK', n: 2, price: 8000 },
+               { name: 'TRIPLE HOOK', n: 3, price: 40000 }, { name: 'MEGA RIG', n: 5, price: 200000 }];
+const hooks = () => HOOKS[save.hooks].n;
 // fish come in random sizes: the bigger, the heavier and the more it sells for (and the harder it pulls)
 const SIZES = [
   { name: 'TINY',   k: 0.5,  w: 15, s: 1 }, { name: 'SMALL', k: 0.75, w: 25, s: 2 }, { name: 'NORMAL', k: 1,   w: 35, s: 2 },
@@ -121,6 +125,7 @@ if (!Array.isArray(save.worlds) || !save.worlds.includes('bay')) save.worlds = [
 if (!WORLDS.some(w => w.id === save.world && save.worlds.includes(w.id))) save.world = 'bay';
 if (!save.big || typeof save.big !== 'object') save.big = {};
 save.cooler = clamp(save.cooler | 0, 0, COOLERS.length - 1);
+save.hooks = clamp(save.hooks | 0, 0, HOOKS.length - 1);
 if (!Array.isArray(save.inv)) save.inv = [];
 const wld = () => WORLDS.find(w => w.id === save.world);
 const wldIndex = () => WORLDS.indexOf(wld());
@@ -320,13 +325,14 @@ function obsHit(o, x, y, extra) {            // does the hook (at x, y) touch it
 let state = 'title';          // title | fish | shop | book | worlds | market | exchange
 let paused = false, shopBack = 'title';
 let camY = 0;
-const G = { bang: 0, phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
+const G = { bang: 0, phase: 'ready', hook: { x: 0, y: -8 }, hooked: null, extra: [], cards: [], hp: 2, inv: 0, shake: 0, msg: null, card: null, snapT: 0, t: 0 };
 const boatX = () => Math.round(S.W * 0.42) - 26;   // the boat's left end
 const tipX = () => boatX() + 66;                    // the rod tip, where the line hangs from
-function startFishing() { state = 'fish'; paused = false; G.phase = 'ready'; G.hooked = null; G.hook.x = tipX(); G.hook.y = -8; camY = 0; }
+const onLine = () => (G.hooked ? 1 : 0) + G.extra.length;   // fish on the line right now
+function startFishing() { state = 'fish'; paused = false; G.phase = 'ready'; G.hooked = null; G.extra = []; G.hook.x = tipX(); G.hook.y = -8; camY = 0; }
 function cast() {
   if (G.phase !== 'ready') return;
-  G.phase = 'down'; G.hp = line().hp; G.inv = 0; G.hooked = null;
+  G.phase = 'down'; G.hp = line().hp; G.inv = 0; G.hooked = null; G.extra = [];
   G.hook.x = tipX(); G.hook.y = 0; G.msg = null;
   bubble(G.hook.x, 4, 6); splash(G.hook.x, 10); sfx('cast');
 }
@@ -334,12 +340,16 @@ function reelUp() { if (G.phase === 'down') { G.phase = 'up'; sfx('reel'); } }
 function say(text, color = '#fff', dur = 1.4) { G.msg = { text, color, t: dur }; }
 function hookFish(f) {
   world.fish.splice(world.fish.indexOf(f), 1); world.fish.push(newFish(false));
-  G.hooked = f; G.phase = 'up';
+  if (!G.hooked) G.hooked = f;                      // the first fish leads (a massive one always leads)
+  else if (f.boss) { G.extra.unshift(G.hooked); G.hooked = f; }
+  else G.extra.push(f);
+  if (f.boss || onLine() >= hooks()) G.phase = 'up'; // every hook taken (or a massive one): reel up
   const R = RAR[f.r];
   const big = f.z.k >= 1.5 ? f.z.name + ' ' : '';
   if (f.v) { const V = VAR[f.v]; if (!f.boss) { say(V.name + ' ' + (big ? big : '') + R.name + '!', V.color, 2); sfx('bite'); sfx('great'); bubble(G.hook.x, G.hook.y, 8); G.bang = 1; return; } }
   if (f.boss) { say('YOU HOOKED THE ' + fullName(f.sp, f.v) + '! HOLD ON!', R.color, 2.5); sfx('bite'); sfx('boss'); bubble(G.hook.x, G.hook.y, 12); G.bang = 1.2; G.shake = 0.5; return; }
-  say(f.r === 'bad' ? (big ? big + 'BAD FISH...' : 'A BITE... MEH') : big + R.name + '!', R.color);
+  const more = hooks() > 1 ? ' (' + onLine() + '/' + hooks() + ')' : '';
+  say((f.r === 'bad' ? (big ? big + 'BAD FISH...' : 'A BITE... MEH') : big + R.name + '!') + more, R.color);
   sfx('bite'); bubble(G.hook.x, G.hook.y, 5); G.bang = 0.8;
 }
 function hit(o) {
@@ -349,15 +359,27 @@ function hit(o) {
   say(o.type === 'shark' ? 'SHARK! LINE HURT' : o.type === 'jelly' ? 'JELLYFISH! LINE HURT' : o.type === 'mine' ? 'BOOM! LINE HURT' : 'OUCH! LINE HURT', '#ff6a6a');
 }
 function snap(o) {
-  if (G.hooked) {                                   // the fish gets away
-    const f = G.hooked; f.x = G.hook.x; f.y0 = G.hook.y; f.speed *= 2.5; world.fish.push(f); G.hooked = null;
+  for (const f of [G.hooked, ...G.extra]) if (f) {  // the fish get away
+    f.x = G.hook.x; f.y0 = G.hook.y; f.speed *= 2.5; world.fish.push(f);
   }
+  G.hooked = null; G.extra = [];
   G.phase = 'snap'; G.snapT = 1.8; sfx('snap');
   say(o && o.type === 'shark' ? 'THE SHARK BIT THROUGH YOUR LINE!' : 'YOUR LINE SNAPPED!', '#ff4a4a', 1.8);
 }
-function land() {                                   // the hook is back at the boat
-  const f = G.hooked; G.hooked = null;
-  if (!f) { G.phase = 'ready'; G.hook.y = -8; return; }
+function land() {                                   // the hook is back at the boat: every fish on it gets a card
+  const all = [G.hooked, ...G.extra].filter(Boolean); G.hooked = null; G.extra = [];
+  if (!all.length) { G.phase = 'ready'; G.hook.y = -8; return; }
+  G.cards = all.map(landOne); G.card = G.cards.shift(); G.card.t0 = performance.now();
+  G.phase = 'catch'; G.hook.y = -8;
+  bubble(G.hook.x, 2, 8); splash(G.hook.x, 14);
+  const top = Math.max(...all.map(f => RAR[f.r].i)), bad = all.every(f => f.r === 'bad');
+  sfx(top >= 4 ? 'fanfare' : top >= 2 ? 'great' : bad ? 'meh' : 'coin');
+}
+function nextCard() {                               // show the next fish of this cast, or go back to fishing
+  if (G.cards.length) { G.card = G.cards.shift(); G.card.t0 = performance.now(); sfx('click'); }
+  else { G.phase = 'ready'; G.card = null; }
+}
+function landOne(f, i, all) {
   const R = RAR[f.r], isNew = !save.book[f.sp.id];
   if (f.boss) save.bossDone = bossSlot();            // one massive catch per 20 minutes
   save.book[f.sp.id] = (save.book[f.sp.id] | 0) + 1;
@@ -369,12 +391,13 @@ function land() {                                   // the hook is back at the b
   if (!full) save.inv.push(item);
   store();
   if (R.stars) PX.Wallet.add(R.stars);
-  G.card = { f, item, full, isNew, record, stars: R.stars, t0: performance.now() };
-  G.phase = 'catch'; G.hook.y = -8;
-  bubble(G.hook.x, 2, 8); splash(G.hook.x, 14);
-  sfx(R.i >= 4 ? 'fanfare' : R.i >= 2 ? 'great' : f.r === 'bad' ? 'meh' : 'coin');
+  return { f, item, full, isNew, record, stars: R.stars, n: i + 1, of: all.length, t0: 0 };
 }
 const hookDrop = f => Math.round(f.hh * 0.7) + 2;   // a hooked fish hangs this far under the hook
+function extraAt(i) {                               // where the 2nd, 3rd... fish hang: left and right, a bit lower each time
+  const side = i % 2 ? -1 : 1, row = Math.floor(i / 2) + 1;
+  return { x: side * (10 + row * 8), y: (G.hooked ? hookDrop(G.hooked) : 8) + row * 9 };
+}
 function step(dt, t) {
   G.t += dt;
   updateSea(dt, t);
@@ -387,15 +410,16 @@ function step(dt, t) {
   if (G.phase === 'down' || G.phase === 'up') {
     let vx = ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * STEER;
     if (steer) vx = clamp((steer.x - h.x) * 8, -STEER, STEER);
-    if (G.hooked) { const p = RAR[G.hooked.r].pull * Math.sqrt(G.hooked.z.k); vx += Math.sin(G.t * 2.7 + G.hooked.ph) * p * 1.6 + Math.sin(G.t * 7.3 + G.hooked.ph) * p * 0.5; }
+    if (G.hooked) { const p = RAR[G.hooked.r].pull * Math.sqrt(G.hooked.z.k) + G.extra.reduce((n, f) => n + RAR[f.r].pull * 0.3, 0); vx += Math.sin(G.t * 2.7 + G.hooked.ph) * p * 1.6 + Math.sin(G.t * 7.3 + G.hooked.ph) * p * 0.5; }
     h.x = clamp(h.x + vx * dt, 8, W - 8);
     if (G.phase === 'down') { h.y += wld().sink * dt; if (h.y >= MAX_DEPTH) { h.y = MAX_DEPTH; G.phase = 'up'; } }
     else { h.y -= reel().speed * wld().reelK * (G.hooked && G.hooked.boss ? 0.55 : 1) * dt; if (h.y <= 0) { h.y = 0; land(); return; } }
     if (G.hooked) { G.hooked.x = h.x; G.hooked.y = h.y + hookDrop(G.hooked); }
+    G.extra.forEach((f, i) => { const o = extraAt(i); f.x = h.x + o.x; f.y = h.y + o.y; });
     if (Math.random() < dt * 6) bubble(h.x, h.y);
     if (G.inv > 0) G.inv -= dt;
-    if (!G.hooked) for (const f of world.fish) if (Math.abs(f.x - h.x) < f.hw && Math.abs(f.y - h.y) < f.hh) { hookFish(f); break; }
-    if (G.inv <= 0) for (const o of world.obs) if (obsHit(o, h.x, h.y + (G.hooked ? hookDrop(G.hooked) : 0), G.hooked ? 2 + G.hooked.hh * (G.hooked.boss ? 0.35 : 0.7) : 2)) { hit(o); break; }
+    if (onLine() < hooks() && !(G.hooked && G.hooked.boss)) for (const f of world.fish) if (Math.abs(f.x - h.x) < f.hw && Math.abs(f.y - h.y) < f.hh) { hookFish(f); break; }
+    if (G.inv <= 0) for (const o of world.obs) if (obsHit(o, h.x, h.y + (G.hooked ? hookDrop(G.hooked) : 0), G.hooked ? 2 + G.hooked.hh * (G.hooked.boss ? 0.35 : 0.7) + G.extra.length * 3 : 2)) { hit(o); break; }
   }
   // the camera follows the hook down
   const want = clamp((G.phase === 'down' || G.phase === 'up' ? h.y : 0) - 50, 0, BED + SURF + 24 - H);
@@ -525,12 +549,17 @@ function drawLineAndHook(t) {
   if (G.phase !== 'snap') {
     ctx.strokeStyle = 'rgba(240,250,255,0.8)'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(h.x, hy); ctx.stroke();
   }
+  G.extra.forEach((f, i) => {                       // the other hooks, on short lines
+    const o = extraAt(i);
+    ctx.strokeStyle = 'rgba(240,250,255,0.6)'; ctx.beginPath(); ctx.moveTo(h.x, hy); ctx.lineTo(h.x + o.x, hy + o.y - 4); ctx.stroke();
+    drawSprite(fishSprite(f.sp, Math.sin(G.t * 9 + i) > 0, false, f.v), h.x + o.x, hy + o.y, f.sc);
+  });
   if (G.hooked) drawSprite(fishSprite(G.hooked.sp, Math.sin(G.t * 9) > 0, false, G.hooked.v), h.x, hy + hookDrop(G.hooked), G.hooked.sc);
   if (G.phase !== 'snap' && !(G.inv > 0 && Math.floor(G.inv * 12) % 2)) {   // the hook (blinks after a hit)
     const x = Math.round(h.x), y = Math.round(hy);
     ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 6, 3, 8); ctx.fillRect(x - 5, y + 1, 7, 3); ctx.fillRect(x - 6, y - 3, 3, 6);
     ctx.fillStyle = '#c8d0d8'; ctx.fillRect(x, y - 5, 1, 7); ctx.fillRect(x - 4, y + 2, 5, 1); ctx.fillRect(x - 5, y - 2, 1, 4);
-    if (!G.hooked && G.phase !== 'ready' && G.phase !== 'catch') { ctx.fillStyle = '#e04a7a'; ctx.fillRect(x - 3, y - 1, 3, 2); }   // the worm
+    if (onLine() < hooks() && G.phase !== 'ready' && G.phase !== 'catch') { ctx.fillStyle = '#e04a7a'; ctx.fillRect(x - 3, y - 1, 3, 2); }   // the worm
     if (G.bang > 0) T('!', x + 6, y - 18 - Math.round((0.8 - G.bang) * 10), '#ffd23f', 3, 'left', '#000');
   }
 }
@@ -629,7 +658,8 @@ function drawGame(t) {
     const bf = world.fish.find(f => f.boss);       // where the massive one swims
     if (bf && Math.sin(t * 8) > 0) { ctx.fillStyle = RAR.massive.color; ctx.fillRect(gx - 3, Math.round(gy0 + clamp(bf.y / MAX_DEPTH, 0, 1) * gh) - 2, 9, 5); }
     ctx.fillStyle = G.hooked ? RAR[G.hooked.r].color : '#c8f4ff'; ctx.fillRect(gx - 2, Math.round(gy0 + k * gh) - 1, 7, 3);
-    if (G.phase === 'down' && !G.hooked && UI.button('reel', W - 74, H - 28, 68, 22, 'REEL UP', { size: 1, accent: '#7af0ff' })) reelUp();
+    if (hooks() > 1) T('HOOKS ' + onLine() + '/' + hooks(), W - 14, 31, onLine() ? '#9be36b' : '#c8f4ff', 1, 'right', '#000');
+    if (G.phase === 'down' && UI.button('reel', W - 74, H - 28, 68, 22, 'REEL UP', { size: 1, accent: '#7af0ff' })) reelUp();
     if (UI.button('pause', W - 74 - 30, H - 28, 26, 22, 'II', { size: 1 })) setPause(true);
   }
   if (G.phase === 'ready') {
@@ -652,7 +682,7 @@ function drawCatch(t) {
   const slide = Math.round(Math.pow(Math.max(0, 1 - age * 4), 2) * -60);   // the card drops in
   const { y } = panel(256, 176, 26 + slide);
   if (R.i >= 3) for (let i = 0; i < 26; i++) { const k = t + i; ctx.fillStyle = [R.color, '#ffffff', '#7af0ff', '#ffd23f'][i % 4]; ctx.fillRect(Math.round((i * 47 + k * 30) % W), Math.round((k * (40 + i * 3)) % H), 3, 3); }
-  T('YOU CAUGHT', W / 2, y + 8, '#9ac8e0', 1, 'center');
+  T('YOU CAUGHT' + (c.of > 1 ? '   (' + c.n + ' OF ' + c.of + ')' : ''), W / 2, y + 8, '#9ac8e0', 1, 'center');
   T(R.name, W / 2, y + 20, R.color, 2, 'center', '#000');
   const spr = fishSprite(f.sp, false, false, f.v), big = Math.max(1, Math.min(f.sc + 1, Math.floor(150 / spr.width), Math.floor(48 / spr.height)));
   drawSprite(spr, W / 2, y + 60 + Math.sin(t * 3) * 2, big);
@@ -670,15 +700,15 @@ function drawCatch(t) {
   if (f.r === 'bad') extra.push('IT SMELLS...');
   if (extra.length) T(extra.join('   '), W / 2, y - 12, '#9be36b', 1, 'center', '#000');
   if (c.full) {                                       // no room: sell it right away, or let it go
-    if (UI.button('sellnow', Math.round(W / 2 - 112), y + 148, 108, 20, 'SELL: ' + now, { size: 1, accent: '#ffd23f' })) { sell([c.item], W / 2, y + 140); G.phase = 'ready'; G.card = null; }
-    if (UI.button('release', Math.round(W / 2 + 4), y + 148, 108, 20, 'THROW BACK', { size: 1, accent: '#7af0ff' }) || UI.back) { sfx('splash'); G.phase = 'ready'; G.card = null; }
-  } else if (UI.button('ok', Math.round(W / 2 - 70), y + 148, 140, 20, 'KEEP FISHING', { size: 1, accent: '#5ad43f' }) || UI.back) { G.phase = 'ready'; G.card = null; }
+    if (UI.button('sellnow', Math.round(W / 2 - 112), y + 148, 108, 20, 'SELL: ' + now, { size: 1, accent: '#ffd23f' })) { sell([c.item], W / 2, y + 140); nextCard(); }
+    if (UI.button('release', Math.round(W / 2 + 4), y + 148, 108, 20, 'THROW BACK', { size: 1, accent: '#7af0ff' }) || UI.back) { sfx('splash'); nextCard(); }
+  } else if (UI.button('ok', Math.round(W / 2 - 70), y + 148, 140, 20, G.cards.length ? 'NEXT FISH >' : 'KEEP FISHING', { size: 1, accent: '#5ad43f' }) || UI.back) nextCard();
 }
 function drawPause() {
   const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
-  if (UI.button('quit', bx, y + 70, bw, 22, 'GIVE UP THIS CAST')) { paused = false; G.hooked = null; G.phase = 'ready'; G.hook.y = -8; }
+  if (UI.button('quit', bx, y + 70, bw, 22, 'GIVE UP THIS CAST')) { paused = false; G.hooked = null; G.extra = []; G.phase = 'ready'; G.hook.y = -8; }
 }
 function drawShop(t) {
   const W = S.W;
@@ -686,7 +716,7 @@ function drawShop(t) {
   ctx.fillStyle = '#0c2c48'; for (let y = 0; y < H; y += 8) ctx.fillRect(0, y, W, 1);
   T('SHOP', 8, 6, '#fff', 2, 'left', '#000');
   coinsText(W - 8, 6, 'right');
-  const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 22, ch = 116;
+  const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 20, ch = 104;
   RODS.forEach((r, i) => {
     const x = 8 + i * (cw + gap), owned = save.rods.includes(r.id), on = save.rod === r.id;
     ctx.fillStyle = on ? r.color : '#111'; ctx.fillRect(x - 1, top - 1, cw + 2, ch + 2);
@@ -696,11 +726,11 @@ function drawShop(t) {
     ctx.strokeStyle = 'rgba(240,250,255,0.6)'; ctx.beginPath(); ctx.moveTo(x + cw - 14, top + 16); ctx.lineTo(x + cw - 14, top + 32); ctx.stroke();
     const rows = [['legend', 'LEGENDARY'], ['mythic', 'MYTHIC'], ['epic', 'EPIC'], ['super', 'SUPER RARE'], ['rare', 'RARE']];
     rows.forEach(([id, label], k) => {
-      const yy = top + 40 + k * 10, v = r.ch[id];
+      const yy = top + 38 + k * 9, v = r.ch[id];
       T(label, x + 4, yy, v ? RAR[id].color : '#4a5a6a', 1, 'left');
       T(v + '%', x + cw - 4, yy, v ? '#fff' : '#4a5a6a', 1, 'right');
     });
-    const by = top + ch - 21, can = save.coins >= r.price;
+    const by = top + ch - 20, can = save.coins >= r.price;
     if (on) T('EQUIPPED', x + cw / 2, by + 7, r.color, 1, 'center');
     else if (owned) { if (UI.button('rod_' + r.id, x + 4, by, cw - 8, 18, 'EQUIP', { size: 1, accent: r.color })) { save.rod = r.id; store(); fillSea(); sfx('click'); } }
     else if (UI.button('rod_' + r.id, x + 4, by, cw - 8, 18, r.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: !can })) {
@@ -709,15 +739,16 @@ function drawShop(t) {
   });
   const gearRow = (y, label, list, key, what) => {
     const lv = save[key], cur = list[lv], next = list[lv + 1];
-    ctx.fillStyle = '#14324e'; ctx.fillRect(8, y, W - 16, 22);
-    T(label + ': ' + cur.name, 14, y + 3, '#fff', 1, 'left');
-    T(what(cur) + (next ? '   NEXT: ' + next.name + ', ' + what(next) : '   (THE BEST)'), 14, y + 13, '#9ac8e0', 1, 'left');
-    if (next) { if (UI.button('up_' + key, W - 92, y + 2, 80, 18, next.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: save.coins < next.price })) { save.coins -= next.price; save[key]++; store(); sfx('buy'); } }
-    else T('MAX', W - 52, y + 9, '#ffd23f', 1, 'center');
+    ctx.fillStyle = '#14324e'; ctx.fillRect(8, y, W - 16, 20);
+    T(label + ': ' + cur.name, 14, y + 2, '#fff', 1, 'left');
+    T(what(cur) + (next ? '   NEXT: ' + next.name + ', ' + what(next) : '   (THE BEST)'), 14, y + 11, '#9ac8e0', 1, 'left');
+    if (next) { if (UI.button('up_' + key, W - 92, y + 1, 80, 18, next.price + ' COINS', { size: 1, accent: '#ffd23f', disabled: save.coins < next.price })) { save.coins -= next.price; save[key]++; store(); sfx('buy'); } }
+    else T('MAX', W - 52, y + 8, '#ffd23f', 1, 'center');
   };
   gearRow(top + ch + 4, 'REEL', REELS, 'reel', g => 'REELS IN ' + g.speed);
-  gearRow(top + ch + 28, 'LINE', LINES, 'line', g => g.hp + ' HITS');
-  gearRow(top + ch + 52, 'COOLER', COOLERS, 'cooler', g => 'HOLDS ' + g.cap + ' FISH');
+  gearRow(top + ch + 26, 'LINE', LINES, 'line', g => g.hp + ' HITS');
+  gearRow(top + ch + 48, 'COOLER', COOLERS, 'cooler', g => 'HOLDS ' + g.cap + ' FISH');
+  gearRow(top + ch + 70, 'HOOKS', HOOKS, 'hooks', g => g.n + ' FISH PER CAST');
   if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
 }
 function drawBook(t) {

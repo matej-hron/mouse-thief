@@ -181,6 +181,10 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   coins, ★1 = 50 coins, or buy stars with coins, 250 coins = ★1.
 - **Shop:** buy and equip rods, faster **reels** (1500 / 12000 / 80000), stronger **lines**: 3, 4 or 6 hits
   (1200 / 10000 / 70000) and bigger **coolers**: 40, 100 or 300 fish (3000 / 25000 / 150000).
+  **Hooks** catch several fish in one cast: DOUBLE HOOK (2 fish, 8000), TRIPLE HOOK (3, 40000), MEGA RIG (5, 200000).
+  With more hooks the line keeps going after a bite and only reels up by itself once every hook has a fish (REEL UP
+  brings it back sooner; a massive one takes the whole line). Each fish gets its own catch card. More fish on the line
+  pull harder and are easier to bump into things.
 - **Fish book:** all 32 fish (5 of each rarity plus the massive orca and whale, on 2 pages), how many of each you caught and the biggest one.
 - P or Escape pauses. Coins, gear, worlds and the fish book are saved on the device.
 
