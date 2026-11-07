@@ -146,6 +146,11 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   so they're the same on every device. Cooler full? The catch screen lets you sell that fish right away or throw it back.
 - **Rarity:** BAD FISH (worth 1-3 coins), RARE, SUPER RARE, EPIC, MYTHIC and LEGENDARY (500-750 coins), before the market price.
   Rarer fish swim deeper and faster, and they sparkle. Epic ★1, mythic ★2, legendary ★5 into the arcade wallet.
+- **THE MASSIVE ONE:** once in every 10 minutes (the same moment for everyone, from the clock) an absolutely massive
+  **ORCA** or **WHALE** swims through the sea for 2½ minutes, in whatever world you're in. It's worth 1500-2500 coins
+  (times the world's money, and it never sells below x0.8 at the market) and ★10. It's huge, easy to hook and very hard to land:
+  it pulls hard, reels in slowly and is big enough to bump into things. A banner says where it is and how long it stays,
+  the depth gauge blinks where it swims, and the title and fishing screens count down to the next one. One per 10 minutes.
 - **Sizes:** every fish has a random size: TINY (x0.5 money), SMALL (x0.75), NORMAL, BIG (x1.5), HUGE (x2.2) or GIANT
   (x3.5, rare). Bigger fish look bigger, weigh more (shown in kg), sell for more and pull harder.
 - **Worlds:** unlock deeper seas with coins. Deeper = more money for every fish, but more obstacles and faster sharks.
@@ -171,7 +176,7 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
 
 - **Shop:** buy and equip rods, faster **reels** (1500 / 12000 / 80000), stronger **lines**: 3, 4 or 6 hits
   (1200 / 10000 / 70000) and bigger **coolers**: 40, 100 or 300 fish (3000 / 25000 / 150000).
-- **Fish book:** all 30 fish (5 of each rarity, on 2 pages), how many of each you caught and the biggest one.
+- **Fish book:** all 32 fish (5 of each rarity plus the massive orca and whale, on 2 pages), how many of each you caught and the biggest one.
 - P or Escape pauses. Coins, gear, worlds and the fish book are saved on the device.
 
 ## Pixel Sky Run
