@@ -2802,7 +2802,7 @@ function drawGunner(V, t, dt) {
     ctx.fillStyle = col; ctx.fillRect(cx, cy, 1, 1);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.fillRect(cx + dx * 22 + (dx ? 0 : 0), cy + dy * 22, dx ? 5 * dx : 1, dy ? 5 * dy : 1);
     ctx.globalAlpha = 1;
-    if (onTarget) T('FIRE!', cx, cy + 26, '#5ad43f', 1, 'center', '#000');
+    if (onTarget) T('FIRE!', cx, cy + 24, '#5ad43f', 1, 'center', '#000');
     // the guns' heat, bottom middle
     const bw = 90, bx = cx - bw / 2, by = H - 16;
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(bx - 26, by - 3, bw + 30, 11);
@@ -2824,8 +2824,9 @@ function drawGunner(V, t, dt) {
     else if (!mouseLocked()) hint = ['CLICK TO AIM WITH THE MOUSE', 'OR: ARROWS = AIM, SPACE = FIRE'];
     else if (sinceStart < 9000) hint = ['MOUSE = AIM   CLICK = FIRE', 'ESC = PAUSE'];
     if (hint && (sinceStart > 9000 || Math.floor(sinceStart / 400) % 6)) {
-      ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 80, 40, 160, 26);
-      T(hint[0], cx, 44, '#fff', 1, 'center'); T(hint[1], cx, 55, '#7ac8ff', 1, 'center');
+      const hy = cy + 34;                                              // under the sight (the big news sits above it)
+      ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 80, hy - 4, 160, 26);
+      T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
     }
   }
   if (Ctl.touch) {                                                     // the FIRE button
