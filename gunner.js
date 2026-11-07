@@ -1,7 +1,8 @@
 /* ==========================================================================
-   PIXEL WINGS: the REAR GUNNER's view (a test mode).
-   You sit in the gun turret on top of a bomber, behind the wings, and look back
-   over the twin tail. A bot flies the plane; you shoot at the fighters that
+   PIXEL WINGS: the GUNNERS' view.
+   You man one of a bomber's two turrets: the REAR GUN on top, behind the wings,
+   looking back over the twin tail, or the NOSE GUN in the glass nose, looking
+   ahead. A friend or a bot flies the plane; you shoot at the fighters that
    attack it. The battle is the same one the top-down game runs (wings.html):
    this file only draws it in 3D, from the turret, at the arcade's pixel size.
    The map's x and y are three.js x and z; height is y. One unit = one map pixel.
@@ -11,7 +12,7 @@ import * as THREE from './vendor/three.module.min.js';
 
 const SKY_TOP = new THREE.Color('#3d86d8'), SKY_HORIZON = new THREE.Color('#cfe6ff'), HAZE = '#b8d8f4';
 const TEAM = [['#e0402a', '#8a2014'], ['#2a7fd4', '#164a80']];
-const TURRET = new THREE.Vector3(-1.5, 3.6, 0);          // where my eyes are on my bomber (forward is +x)
+const SEATS = [new THREE.Vector3(-1.5, 3.6, 0), new THREE.Vector3(12.1, 0.3, 0)];   // my eyes on my bomber (forward is +x): rear turret, glass nose
 
 export function createGunnerView(W) {
   const canvas = document.createElement('canvas');
@@ -201,7 +202,7 @@ export function createGunnerView(W) {
   // the twin guns in front of my eyes (they turn with the view)
   const guns = new THREE.Group();
   for (const s of [-1, 1]) { const b = box(0.05, 0.05, 1.6, '#1c1c22', s * 0.34, -0.5, -2.1); guns.add(b); }
-  guns.add(box(0.8, 0.12, 0.3, '#2a2a30', 0, -0.6, -1.4));
+  guns.add(box(0.45, 0.1, 0.25, '#2a2a30', 0, -0.62, -1.8));
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot, color: '#ffd060', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false }));
   flash.position.set(0, -0.5, -3); flash.scale.setScalar(0.5); flash.visible = false; guns.add(flash);
   camera.add(guns);
@@ -261,11 +262,11 @@ export function createGunnerView(W) {
     if (me && me.state !== 'dead') {
       const s = planes.get(me.id);
       s.g.updateMatrixWorld(true);
-      camPose.pos.copy(TURRET).applyMatrix4(s.g.matrixWorld);
+      camPose.pos.copy(SEATS[aim.seat || 0]).applyMatrix4(s.g.matrixWorld);
       up.set(0, 1, 0).applyQuaternion(s.g.quaternion);
       if (lastMe && lastMe.id === me.id && me.hp < lastMe.hp) shake = Math.min(1.2, shake + 0.5);
       lastMe = { id: me.id, hp: me.hp };
-      const yw = me.a + Math.PI + aim.gy;
+      const yw = me.a + (aim.seat ? 0 : Math.PI) + aim.gy;
       camPose.dir.set(Math.cos(yw) * Math.cos(aim.gp), Math.sin(aim.gp), Math.sin(yw) * Math.cos(aim.gp));
     } else up.set(0, 1, 0);
     shake = Math.max(0, shake - dt * 2.5);

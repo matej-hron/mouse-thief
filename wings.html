@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -74,10 +74,13 @@ const BULLET_V = 260, BULLET_LIFE = 0.8, GUN_RATE = 0.16, GUN_DMG = 2;
 const AMMO_MAX = 40, AMMO_BACK = 3, GUN_RELOAD = 3;      // rounds; rounds back per second when not firing; seconds to reload an empty gun
 const BOMB_FALL = 1.0, BOMB_R = 18, BOMB_DMG = 2, BOMB_MAX = 4, BOMB_RELOAD = 8, BOMB_RATE = 0.28, BOMB_DRIFT = 0.7;
 const GUNNER_RANGE = 135, GUNNER_RATE = 0.7;
-// REAR GUNNER (a test mode): a bot flies your bomber, you man the turret behind the wings (drawn in 3D by gunner.js).
+// GUNNERS: a bomber has two turrets, the REAR GUN (behind the wings, looking back) and the NOSE GUN (in the glass
+// nose, looking ahead). Players man them (drawn in 3D by gunner.js) while a friend or a bot flies the bomber.
 // The battle stays flat, but planes also get a height (z) so fighters dive in from above or come up from below.
-const CREW_RATE = 0.08, CREW_DMG = 1, HEAT_SHOT = 0.03, HEAT_COOL = 0.35, JAM_T = 2;  // the turret's twin guns overheat
-const GUN_YAW = 1.95, GUN_PITCH = [-0.55, 0.95];   // how far the turret turns from straight back, and down / up
+const CREW_RATE = 0.08, CREW_DMG = 1, HEAT_SHOT = 0.03, HEAT_COOL = 0.35, JAM_T = 2;  // the turrets' twin guns overheat
+const REAR = 0, NOSE = 1, SEAT_NAME = ['REAR GUN', 'NOSE GUN'];
+const SEAT_YAW = [1.95, 1.45], SEAT_PITCH = [[-0.55, 0.95], [-0.75, 0.6]];   // how far each turret turns, and tilts down / up
+const GUN_YAW = SEAT_YAW[REAR], GUN_PITCH = [-0.75, 0.95];                   // (the widest of the two)
 const Z_BOMBER = 60, Z_FIGHTER = 72;               // how high the bombers and the fighters cruise
 const TAKEOFF_V = 44, GROUND_ACC = 19;
 const TIMES = { raid: 240, dog: 180, carrier: 240, school: 999 }, DOG_KILLS = [10, 15, 25];
@@ -351,7 +354,7 @@ function newBattle(cfg, players) {
     const L = LEVELS[cfg.level] || LEVELS[1];
     for (const pl of players.filter(p => p.crew)) {
       let ride = seatGunner(pl);
-      if (!ride) { const last = slots.filter(q => q.type === BOMBER).pop(); ride = spawnPlane(BOMBER, ATT, last.x - 34, last.y + 30, 0, null); ride.gunner = players.indexOf(pl); pl.planeId = ride.id; }
+      if (!ride) { const last = slots.filter(q => q.type === BOMBER).pop(); ride = spawnPlane(BOMBER, ATT, last.x - 34, last.y + 30, 0, null); sit(ride, REAR, players.indexOf(pl)); pl.planeId = ride.id; }
       if (ride.pilot < 0) ride.hp = ride.max = Math.round(TYPES[BOMBER].hp * L.armor);   // a bomber with a player aboard is tougher on easier levels
     }
     // the defense: humans first on the runway, bots wait in a line on the apron
@@ -497,7 +500,7 @@ function spawnPlane(type, side, x, y, a, pl) {
   const ty = TYPES[type];
   const p = { id: nextId++, type, side, x, y, a, v: ty.vmin + (ty.vmax - ty.vmin) * 0.6, thr: 0.6, hp: ty.hp, max: ty.hp, state: 'air', alt: 1,
               pilot: pl ? G.players.indexOf(pl) : -1, gunT: 0, gunSide: 1, bombs: type === BOMBER ? BOMB_MAX : type === TORPEDO ? TORP_MAX : 0, bombT: 0, reloadT: BOMB_RELOAD,
-              ammo: AMMO_MAX, gunReload: 0, shield: 0, gunnerT: rnd(0, 0.4), fallT: 0, spin: 0, z: 0, vz: 0, zo: 0, heat: 0, jam: 0, crewT: 0, gunner: -1, bot: { t: 0, tg: null, err: 0, tgT: -1, wob: rnd(0, 6) }, lastHit: -1, chkT: rnd(0, 0.5) };
+              ammo: AMMO_MAX, gunReload: 0, shield: 0, gunnerT: rnd(0, 0.4), fallT: 0, spin: 0, z: 0, vz: 0, zo: 0, tur: [newTurret(), newTurret()], bot: { t: 0, tg: null, err: 0, tgT: -1, wob: rnd(0, 6) }, lastHit: -1, chkT: rnd(0, 0.5) };
   // a callsign and a voice for the radio
   if (pl) { p.call = pl.name; p.voice = [...pl.name].reduce((h, c) => h + c.charCodeAt(0), 0) % 3; }
   else { const n = ++G.callN[side * 3 + type]; p.call = CALLS[side][type] + ' ' + ((n - 1) % 9 + 1); p.voice = (n + type) % 3; }
@@ -508,19 +511,25 @@ function spawnPlane(type, side, x, y, a, pl) {
 }
 const planeById = id => G.planes.find(p => p.id === id);
 const cruiseZ = p => (p.type === FIGHTER ? Z_FIGHTER : Z_BOMBER) + ((p.id * 37) % 11 - 5);   // each plane a little higher or lower
-// a bomber can carry a player in its rear turret (p.gunner), whether a player or a bot flies it
-const crewOf = p => (p.gunner >= 0 && G.players[p.gunner] && !G.players[p.gunner].gone ? G.players[p.gunner] : null);
-const creditOf = p => (!p ? -1 : p.pilot >= 0 ? p.pilot : p.gunner >= 0 ? p.gunner : -1);   // who gets the credit for what a plane does
-// put a rear gunner in a bomber: a friend's bomber that has no gunner yet first, then a bot's (the last of the V)
+// a bomber's two turrets (p.tur[REAR], p.tur[NOSE]): who mans each, its heat, its aim, whether a player or a bot flies the bomber
+function newTurret() { return { pl: -1, heat: 0, jam: 0, t: 0, shots: 0, side: 1, gy: 0, gp: 0, inp: null }; }
+const turPl = t => (t.pl >= 0 && G.players[t.pl] && !G.players[t.pl].gone ? G.players[t.pl] : null);
+const crewOf = p => (p.tur ? turPl(p.tur[REAR]) || turPl(p.tur[NOSE]) : null);
+const crewIdx = p => (p ? [p.pilot, p.tur[REAR].pl, p.tur[NOSE].pl].filter(i => i >= 0 && G.players[i]) : []);   // everyone aboard
+const creditOf = p => (crewIdx(p)[0] === undefined ? -1 : crewIdx(p)[0]);   // who gets the credit for what a plane does
+// put a gunner in a bomber: a friend's bomber first (its rear gun, then its nose gun), then a bot's (the last of the V)
 function seatGunner(pl, onlyPartner) {
-  const pi = G.players.indexOf(pl), free = q => q.side === ATT && q.type === BOMBER && flying(q) && !crewOf(q);
-  let ride = G.planes.find(q => free(q) && q.pilot >= 0 && !G.players[q.pilot].crew && !G.players[q.pilot].gone);
+  const pi = G.players.indexOf(pl), ok = q => q.side === ATT && q.type === BOMBER && flying(q);
+  const freeSeat = q => (turPl(q.tur[REAR]) ? (turPl(q.tur[NOSE]) ? -1 : NOSE) : REAR);
+  const friend = q => q.pilot >= 0 && !G.players[q.pilot].crew && !G.players[q.pilot].gone;
+  let ride = G.planes.find(q => ok(q) && friend(q) && freeSeat(q) === REAR) || G.planes.find(q => ok(q) && friend(q) && freeSeat(q) === NOSE);
   if (!ride && onlyPartner) return null;
-  if (!ride) ride = G.planes.filter(q => free(q) && q.pilot < 0).sort((a, b) => a.x - b.x)[0];
+  if (!ride) ride = G.planes.filter(q => ok(q) && q.pilot < 0 && freeSeat(q) === REAR).sort((a, b) => a.x - b.x)[0];
   if (!ride) return null;
-  ride.gunner = pi; pl.planeId = ride.id;
+  sit(ride, freeSeat(ride), pi); pl.planeId = ride.id;
   return ride;
 }
+function sit(p, seat, pi) { Object.assign(p.tur[seat], { pl: pi, gy: 0, gp: seat === NOSE ? 0 : 0.12, jam: 0, heat: 0 }); }
 const flying = p => p.state === 'air';
 const alive = p => p.state === 'air' || p.state === 'ground' || p.state === 'parked';
 function fx(e) { G.fx.push(e); }
@@ -604,7 +613,13 @@ function stepBattle(dt, inputs) {
     }
   }
   for (const p of G.planes) {
-    if (crewOf(p)) p.gunInp = inputs[p.gunner] || NO_INPUT;         // a rear gunner aims the turret
+    if (p.tur && crewOf(p)) {                                        // the gunners aim the turrets, and can swap to a free one
+      for (const t of p.tur) t.inp = turPl(t) ? inputs[t.pl] || NO_INPUT : null;
+      for (const s of [REAR, NOSE]) {
+        const t = p.tur[s], o = p.tur[1 - s];
+        if (t.inp && t.inp.seat === 1 - s && !turPl(o)) { sit(p, 1 - s, t.pl); o.inp = t.inp; t.pl = -1; t.inp = null; break; }
+      }
+    }
     const inp = p.pilot >= 0 && !G.players[p.pilot].gone ? inputs[p.pilot] || NO_INPUT : botThink(p, dt);
     stepPlane(p, dt, inp);
   }
@@ -656,7 +671,7 @@ function respawnPlayer(pl) {
     if (!ride) {
       if (G.reserve <= 0) return;
       G.reserve--;
-      ride = spawnPlane(BOMBER, ATT, IX - 1400, clamp(IY + rnd(-200, 200), 200, WH - 200), 0, null); ride.shield = 3; ride.gunner = G.players.indexOf(pl); pl.planeId = ride.id;
+      ride = spawnPlane(BOMBER, ATT, IX - 1400, clamp(IY + rnd(-200, 200), 200, WH - 200), 0, null); ride.shield = 3; sit(ride, REAR, G.players.indexOf(pl)); pl.planeId = ride.id;
     }
     feed(pl.name + ' MANS THE GUN OF ' + pilotName(ride), '#ffd23f');
     return;
@@ -751,8 +766,8 @@ function stepPlane(p, dt, inp) {
       }
     }
     // the rear gunner (bombers only) shoots by himself at enemy fighters close by, unless a player mans the turret
-    if (!torp && crewOf(p)) crewGun(p, dt, p.gunInp || NO_INPUT);
-    else if (!torp && p.gunnerT <= 0) {
+    if (!torp) for (const s of [REAR, NOSE]) if (turPl(p.tur[s])) crewGun(p, s, dt);
+    if (!torp && !turPl(p.tur[REAR]) && p.gunnerT <= 0) {
       p.gunnerT = GUNNER_RATE;
       let best = null, bd = GUNNER_RANGE;
       for (const q of G.planes) if (q.side !== p.side && flying(q) && q.type === FIGHTER && !(q.shield > 0)) { const d = dist(p, q); if (d < bd) { bd = d; best = q; } }
@@ -789,23 +804,26 @@ function stepHeight(p, dt) {
   const z = Math.max(14, (cruiseZ(p) + p.zo) * p.alt);
   p.vz = (z - p.z) / dt; p.z = z;
 }
-// the turret: twin guns that turn and tilt; fire short bursts or they overheat and jam
-function crewGun(p, dt, g) {
-  p.crewT -= dt;
-  if (p.jam > 0) { if ((p.jam -= dt) <= 0) { p.jam = 0; p.heat = 0.4; } return; }
-  p.heat = Math.max(0, p.heat - HEAT_COOL * dt);
-  p.gy = clamp(g.gy || 0, -GUN_YAW, GUN_YAW); p.gp = clamp(g.gp || 0, GUN_PITCH[0], GUN_PITCH[1]);
-  if (!g.fire || p.crewT > 0 || p.alt < 0.5) return;
-  p.crewT = CREW_RATE; p.gunSide = -p.gunSide;
-  if ((p.heat += HEAT_SHOT) >= 1) { p.heat = 1; p.jam = JAM_T; }
-  const remote = !!G.players[p.gunner].conn;                       // an online gunner's phone decides its own hits (what he sees)
-  p.crewShots = Math.min(40, (p.crewShots || 0) + 1);
-  const yw = p.a + Math.PI + p.gy + rnd(-0.012, 0.012), pt = p.gp + rnd(-0.012, 0.012), cp = Math.cos(pt);
-  const ox = -Math.sin(yw) * 0.5 * p.gunSide, oy = Math.cos(yw) * 0.5 * p.gunSide;   // the two barrels side by side
-  G.bullets.push({ x: p.x - Math.cos(p.a) * 2.5 + ox, y: p.y - Math.sin(p.a) * 2.5 + oy, z: p.z + 3,
+// where a turret's guns are on the bomber: [forward, up], and which way is straight ahead for it
+const SEAT_POS = [[-2.5, 3], [12, 0.3]], seatBase = (p, s) => p.a + (s === REAR ? Math.PI : 0);
+// a turret: twin guns that turn and tilt; fire short bursts or they overheat and jam
+function crewGun(p, s, dt) {
+  const t = p.tur[s], g = t.inp || NO_INPUT;
+  t.t -= dt;
+  if (t.jam > 0) { if ((t.jam -= dt) <= 0) { t.jam = 0; t.heat = 0.4; } return; }
+  t.heat = Math.max(0, t.heat - HEAT_COOL * dt);
+  t.gy = clamp(g.gy || 0, -SEAT_YAW[s], SEAT_YAW[s]); t.gp = clamp(g.gp || 0, SEAT_PITCH[s][0], SEAT_PITCH[s][1]);
+  if (!g.fire || t.t > 0 || p.alt < 0.5 || (g.seat !== undefined && g.seat !== s)) return;   // (not while moving to the other gun)
+  t.t = CREW_RATE; t.side = -t.side;
+  if ((t.heat += HEAT_SHOT) >= 1) { t.heat = 1; t.jam = JAM_T; }
+  const remote = !!G.players[t.pl].conn;                           // an online gunner's phone decides its own hits (what he sees)
+  t.shots = Math.min(40, t.shots + 1);
+  const yw = seatBase(p, s) + t.gy + rnd(-0.012, 0.012), pt = t.gp + rnd(-0.012, 0.012), cp = Math.cos(pt), [fw, up] = SEAT_POS[s];
+  const ox = -Math.sin(yw) * 0.5 * t.side, oy = Math.cos(yw) * 0.5 * t.side;   // the two barrels side by side
+  G.bullets.push({ x: p.x + Math.cos(p.a) * fw + ox, y: p.y + Math.sin(p.a) * fw + oy, z: p.z + up,
                    vx: Math.cos(yw) * cp * BULLET_V + Math.cos(p.a) * p.v, vy: Math.sin(yw) * cp * BULLET_V + Math.sin(p.a) * p.v, vz: Math.sin(pt) * BULLET_V + p.vz,
-                   life: BULLET_LIFE, side: p.side, owner: p.id, dmg: CREW_DMG, g3: true, pl: p.gunner, ghost: remote });
-  if (p.gunSide > 0) fx({ k: 'gun', x: p.x, y: p.y, q: 1 });
+                   life: BULLET_LIFE, side: p.side, owner: p.id, dmg: CREW_DMG, g3: true, pl: t.pl, ghost: remote });
+  if (t.side > 0) fx({ k: 'gun', x: p.x, y: p.y, q: 1 });
 }
 function stepBullets(dt) {
   for (const b of G.bullets) {
@@ -833,13 +851,13 @@ function damage(q, dmg, by, byPl = -1) {             // byPl: the player who fir
   const killer = planeById(by), kpl = byPl >= 0 ? byPl : killer && killer.pilot >= 0 ? killer.pilot : -1;
   if (kpl >= 0) G.players[kpl].kills++;
   if (q.pilot >= 0) G.players[q.pilot].deaths++;
-  if (q.gunner >= 0 && G.players[q.gunner]) G.players[q.gunner].deaths++;
+  if (q.tur) for (const t of q.tur) if (t.pl >= 0 && G.players[t.pl]) G.players[t.pl].deaths++;
   if (killer && G.cfg.mode === 'dog') G.score[killer.side]++;
   if (q.state === 'air') radio(q.side, 'down', q, q.pilot >= 0 ? 0 : 7);
   if (killer && killer.type === FIGHTER) radio(killer.side, 'splash', killer, 5);
   if (q.state === 'air') { q.state = 'fall'; q.fallT = 1.3; q.zf = q.z; q.spin = rnd(2, 4) * (Math.random() < 0.5 ? -1 : 1); fx({ k: 'boom', x: q.x, y: q.y, z: q.z, s: 1 }); }
   else { q.state = 'dead'; q.fallT = -1; fx({ k: 'boom', x: q.x, y: q.y, s: 2 }); }
-  if (kpl >= 0 || q.pilot >= 0 || q.gunner >= 0) feed((kpl >= 0 ? G.players[kpl].name : killer ? pilotName(killer) : 'FLAK') + ' > ' + pilotName(q), killer ? TEAM_COL[killer.side] : '#ffd23f');
+  if (kpl >= 0 || crewIdx(q).length) feed((kpl >= 0 ? G.players[kpl].name : killer ? pilotName(killer) : 'FLAK') + ' > ' + pilotName(q), killer ? TEAM_COL[killer.side] : '#ffd23f');
   else if (q.type === BOMBER && G.cfg.mode === 'raid') feed('A BOMBER IS DOWN!', TEAM_COL[DEF]);
 }
 function stepBombs(dt) {
@@ -872,8 +890,7 @@ function groundBlast(x, y, r, dmg, side, owner) {   // a bomb lands: hurts the e
         if (creditOf(o) >= 0) feed(G.players[creditOf(o)].name + ' DESTROYED THE ' + t.name, TEAM_COL[ATT]);
         if (o && alive(o)) radio(ATT, 'target', o, 3);
         radio(DEF, t.k === 'radar' ? 'radar_down' : 'base_hit', null, t.k === 'radar' ? 0 : 8);
-        if (creditOf(o) >= 0) G.players[creditOf(o)].hits++;
-        if (o && o.pilot >= 0 && o.gunner >= 0 && G.players[o.gunner]) G.players[o.gunner].hits++;   // the whole crew
+        for (const i of crewIdx(o)) G.players[i].hits++;                // the whole crew
       }
     }
     for (const a of G.aa) if (a.hp > 0 && Math.hypot(a.x - x, a.y - y) < r + 4) { a.hp -= dmg; if (a.hp <= 0) { a.hp = 0; fx({ k: 'boom', x: a.x, y: a.y, s: 2 }); } }
@@ -960,6 +977,8 @@ function botThink(p, dt) {
       const L2 = b.escort.lead, ex = L2.x + Math.cos(L2.a + b.escort.side * 1.9) * 70, ey = L2.y + Math.sin(L2.a + b.escort.side * 1.9) * 70;
       aim = Math.atan2(ey - p.y, ex - p.x);
       thr = Math.hypot(ex - p.x, ey - p.y) > 60 ? 0.9 : 0.35;
+    } else if (tg && headOn(p, tg, dt)) {                            // first get out in front of a bomber, then attack it nose to nose
+      aim = b.headA; thr = 1;
     } else if (tg) {
       const d = dist(p, tg), t = d / (BULLET_V + p.v);
       const ax = tg.x + Math.cos(tg.a) * tg.v * t, ay = tg.y + Math.sin(tg.a) * tg.v * t;
@@ -983,6 +1002,20 @@ function botThink(p, dt) {
     if (aim === null || Math.abs(angDiff(aim, home)) > 1.4) aim = home;
   }
   return { turn: 0, aim: aim === null ? null : p.a + angDiff(aim, p.a) * L.turn, thr, fire };
+}
+// a head-on pass: some fighters swing out ahead of a bomber and come at it from the front (more often when a
+// player mans its nose gun), so the nose gunner has work too. True while still getting there.
+function headOn(p, tg, dt) {
+  const b = p.bot;
+  if (tg.type !== BOMBER || G.cfg.mode !== 'raid') return false;
+  if (b.headFor !== tg.id) { b.headFor = tg.id; b.headT = 9; b.head = Math.random() < (tg.tur && turPl(tg.tur[NOSE]) ? 0.6 : 0.3); }
+  if (!b.head) return false;
+  const hx = tg.x + Math.cos(tg.a) * 260, hy = tg.y + Math.sin(tg.a) * 260;
+  const ahead = Math.cos(tg.a) * (p.x - tg.x) + Math.sin(tg.a) * (p.y - tg.y) > 170;   // far enough in front of it
+  if ((b.headT -= dt) <= 0 || ahead || Math.hypot(hx - p.x, hy - p.y) < 70) { b.head = false; return false; }
+  b.headA = Math.atan2(hy - p.y, hx - p.x);
+  if (dist(p, tg) < 90) b.headA += 0.6;                            // (go round it, not through it)
+  return true;
 }
 // torpedo planes and bombers in a carrier battle: attack the enemy ships
 function strikeThink(p, dt) {
@@ -1901,13 +1934,16 @@ function drawHUD(V, pi, vx, vw, view, time) {
     T(txt, x0, y, on ? '#fff' : '#cfc8e8', 1);
     ctx.globalAlpha = 1;
   });
-  // my crew: the friend in my bomber's turret, or (for a gunner) who flies the bomber
-  const mate = !live ? null : view.gunner ? (me.pilot >= 0 ? V.players[me.pilot] : null) : me.gunner >= 0 ? V.players[me.gunner] : null;
-  if (live && (mate || view.gunner)) {
-    const txt = (view.gunner ? 'PILOT: ' : 'GUNNER: ') + (mate ? mate.name : 'A BOT');
-    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, 45, PX.textWidth(txt, 1) + 4, 9);
-    T(txt, vx + 4, 47, mate ? mate.color : '#9a92b8', 1);
-    feedY = Math.max(feedY, 58);
+  // my crew: who flies my bomber (for a gunner), and the friends at its guns
+  if (live && me.tur && (view.gunner || me.tur.some(u => u.pl >= 0))) {
+    const rows = [];
+    if (view.gunner) { const pp = me.pilot >= 0 ? V.players[me.pilot] : null; rows.push(['PILOT: ' + (pp ? pp.name : 'A BOT'), pp ? pp.color : '#9a92b8']); }
+    me.tur.forEach((u, s) => { const g = u.pl >= 0 ? V.players[u.pl] : null; if (g && u.pl !== pi) rows.push([SEAT_NAME[s] + ': ' + g.name, g.color]); });
+    rows.forEach(([txt, col], i) => {
+      ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(vx + 2, 45 + i * 10, PX.textWidth(txt, 1) + 4, 9);
+      T(txt, vx + 4, 47 + i * 10, col, 1);
+    });
+    feedY = Math.max(feedY, 48 + rows.length * 10);
   }
   // messages
   feedList.forEach((f, i) => { if (f.t < 5.5 || Math.floor(f.t * 6) % 2) T(f.text.slice(0, Math.floor(vw / 4)), vx + 4, feedY + i * 9, f.col, 1, 'left', '#000'); });
@@ -1920,10 +1956,10 @@ function drawHUD(V, pi, vx, vw, view, time) {
 const Local = {
   pilots: [],
   gunner: false,                   // the player on this device mans a bomber's rear turret (solo only)
-  reset(n) { this.pilots = []; for (let i = 0; i < n; i++) this.pilots.push({ thr: 0.6, aim: null, turn: 0, fire: false, padAim: null, padFire: false, padThr: 0, stick: null, fireId: null, spdId: null, spdDir: 0, gy: 0, gp: 0.12, mouseFire: false }); },
+  reset(n) { this.pilots = []; for (let i = 0; i < n; i++) this.pilots.push({ thr: 0.6, aim: null, turn: 0, fire: false, padAim: null, padFire: false, padThr: 0, stick: null, fireId: null, spdId: null, spdDir: 0, gy: 0, gp: 0.12, mouseFire: false, seat: REAR, seatT: 0, padY: false }); },
   input(i) {
     const p = this.pilots[i]; if (!p) return NO_INPUT;
-    if (this.gunner) return { turn: 0, aim: null, thr: 0.6, fire: p.fire || p.padFire || p.fireId !== null || p.mouseFire, gy: p.gy, gp: p.gp };
+    if (this.gunner) return { turn: 0, aim: null, thr: 0.6, fire: p.fire || p.padFire || p.fireId !== null || p.mouseFire, gy: p.gy, gp: p.gp, seat: p.seat };
     let aim = p.stick && p.stick.aim !== null ? p.stick.aim : p.padAim;
     if (aim !== null && cams[i]) aim -= cams[i].rot;               // plane up: "up on the screen" is where my plane points
     return { turn: p.turn, aim, thr: p.thr, fire: p.fire || p.padFire || p.fireId !== null };
@@ -1931,7 +1967,12 @@ const Local = {
 };
 const keys = new Set();
 const Ctl = { touch: false };
-function aimGun(p, dy, dp) { p.gy = clamp(p.gy + dy, -GUN_YAW, GUN_YAW); p.gp = clamp(p.gp + dp, GUN_PITCH[0], GUN_PITCH[1]); }
+function aimGun(p, dy, dp) { const s = p.seat; p.gy = clamp(p.gy + dy, -SEAT_YAW[s], SEAT_YAW[s]); p.gp = clamp(p.gp + dp, SEAT_PITCH[s][0], SEAT_PITCH[s][1]); }
+// move to the bomber's other gun (if nobody mans it): C, right click, the SWITCH button, or Y on a controller
+function switchSeat(p) {
+  if (!p || !gunnerPlay()) return;
+  p.seat = 1 - p.seat; p.gy = 0; p.gp = p.seat === NOSE ? 0 : 0.12; p.seatT = performance.now(); sfx('click');
+}
 // the mouse aims the turret once the pointer is locked to the game (click to lock; Esc lets it go and pauses)
 const gunnerPlay = () => state === 'play' && Local.gunner && !paused && !leaveAsk;
 const mouseLocked = () => document.pointerLockElement === canvas;
@@ -1939,7 +1980,9 @@ canvas.addEventListener('mousedown', e => {
   if (!gunnerPlay() || Ctl.touch) return;
   if (!mouseLocked()) { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* no pointer lock */ } return; }
   if (e.button === 0 && Local.pilots[0]) Local.pilots[0].mouseFire = true;
+  if (e.button === 2) switchSeat(Local.pilots[0]);
 });
+canvas.addEventListener('contextmenu', e => { if (state === 'play' && Local.gunner) e.preventDefault(); });
 window.addEventListener('mouseup', e => { if (e.button === 0 && Local.pilots[0]) Local.pilots[0].mouseFire = false; });
 document.addEventListener('mousemove', e => { if (mouseLocked() && gunnerPlay() && Local.pilots[0]) aimGun(Local.pilots[0], e.movementX * 0.0032, -e.movementY * 0.0032); });
 document.addEventListener('pointerlockchange', () => { if (!mouseLocked()) { if (Local.pilots[0]) Local.pilots[0].mouseFire = false; if (state === 'play' && Local.gunner && !paused) setPause(true); } });
@@ -1974,7 +2017,7 @@ window.addEventListener('keydown', e => {
   if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); return; }
   keys.add(e.code);
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'KeyC' && state === 'play' && !e.repeat) toggleCam();
+  if ((e.code === 'KeyC' || e.code === 'KeyE') && state === 'play' && !e.repeat) { if (Local.gunner) switchSeat(Local.pilots[0]); else if (e.code === 'KeyC') toggleCam(); }
   if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play') { if (Net.mode === 'off') setPause(!paused); else { leaveAsk = !leaveAsk; if (leaveAsk) unlockMouse(); } }
   else if (e.code === 'Escape') UI.back = true;
 });
@@ -1988,6 +2031,7 @@ function regions() {
   return n > 1 ? [{ x: 0, w: S.W / 2 }, { x: S.W / 2, w: S.W / 2 }] : [{ x: 0, w: S.W }];
 }
 function fireBtn(r) { return { x: r.x + r.w - 38, y: H - 40, r: 25 }; }
+function switchBtn(r) { const f = fireBtn(r); return { x: f.x, y: f.y - 48, r: 16 }; }
 function speedBtns(r) { const f = fireBtn(r); return [{ x: f.x - 19, y: f.y - 46, r: 14, dir: -1, label: '-' }, { x: f.x + 19, y: f.y - 46, r: 14, dir: 1, label: '+' }]; }
 UI.onDown = (e, x, y) => {
   PX.Sound.unlock();
@@ -2002,7 +2046,10 @@ UI.onDown = (e, x, y) => {
     const p = Local.pilots[i]; if (!p) return;
     const fb = fireBtn(r);
     if (Math.hypot(x - fb.x, y - fb.y) < fb.r + 8) { p.fireId = e.pointerId; return; }
-    if (Local.gunner) { if (!p.stick) p.stick = { id: e.pointerId, x0: x, y0: y, x, y, aim: null, gun: true }; return; }   // the turret: drag to turn the guns
+    if (Local.gunner) {                                             // the turret: drag to turn the guns; SWITCH moves to the other gun
+      const sb = switchBtn(r); if (Math.hypot(x - sb.x, y - sb.y) < sb.r + 6) { switchSeat(p); return; }
+      if (!p.stick) p.stick = { id: e.pointerId, x0: x, y0: y, x, y, aim: null, gun: true }; return;
+    }
     for (const b of speedBtns(r)) if (Math.hypot(x - b.x, y - b.y) < b.r + 5) { p.spdId = e.pointerId; p.spdDir = b.dir; return; }
     if (!p.stick) p.stick = { id: e.pointerId, x0: x, y0: y, x, y, aim: null };
   });
@@ -2080,7 +2127,7 @@ const Net = {
     const gp = G ? G.players.find(p => p.conn === c) : null;
     if (gp && !gp.gone && (state === 'play' || state === 'over')) {
       gp.gone = true; const p = planeById(gp.planeId), gi = G.players.indexOf(gp);
-      if (p) { if (p.gunner === gi) p.gunner = -1; else if (p.pilot === gi) p.pilot = -1; }     // a bot takes over (the plane or the turret)
+      if (p) { const t = p.tur.find(u => u.pl === gi); if (t) t.pl = -1; else if (p.pilot === gi) p.pilot = -1; }   // a bot takes over (the plane or the rear gun)
       feed(gp.name + ' LEFT', '#9a92b8');
     }
     const i = lobby.players.findIndex(p => p.conn === c); if (i < 0) return;
@@ -2097,12 +2144,12 @@ const Net = {
         this.lobbySync(); sfx('click');
         break;
       case 'pick': if (pi >= 0 && state !== 'play') { const p = lobby.players[pi]; p.side = m.side === DEF ? DEF : ATT; p.plane = [FIGHTER, BOMBER, TORPEDO].includes(m.plane) ? m.plane : FIGHTER; p.crew = m.crew === 'gun' ? 'gun' : null; this.lobbySync(); } break;
-      case 'in': { const gi = G && state === 'play' ? G.players.findIndex(p => p.conn === c) : -1; if (gi >= 0) this.inputs[gi] = { turn: clamp(+m.tu || 0, -1, 1), aim: typeof m.ai === 'number' ? m.ai : null, thr: clamp(+m.th || 0, 0, 1), fire: !!m.f, gy: clamp(+m.gy || 0, -GUN_YAW, GUN_YAW), gp: clamp(+m.gp || 0, GUN_PITCH[0], GUN_PITCH[1]) }; break; }
+      case 'in': { const gi = G && state === 'play' ? G.players.findIndex(p => p.conn === c) : -1; if (gi >= 0) this.inputs[gi] = { turn: clamp(+m.tu || 0, -1, 1), aim: typeof m.ai === 'number' ? m.ai : null, thr: clamp(+m.th || 0, 0, 1), fire: !!m.f, gy: clamp(+m.gy || 0, -GUN_YAW, GUN_YAW), gp: clamp(+m.gp || 0, GUN_PITCH[0], GUN_PITCH[1]), seat: m.se === NOSE ? NOSE : REAR }; break; }
       case 'hit': {                                                   // an online rear gunner hit something (on his screen)
         const gi = G && state === 'play' ? G.players.findIndex(p => p.conn === c) : -1, pl = G && G.players[gi];
-        const p = pl && pl.crew ? planeById(pl.planeId) : null, q = planeById(m.id);
-        if (!p || p.gunner !== gi || !flying(p) || !q || q.side === p.side || !flying(q) || dist(p, q) > 320 || !(p.crewShots >= 1)) break;
-        p.crewShots--;
+        const p = pl && pl.crew ? planeById(pl.planeId) : null, q = planeById(m.id), t = p ? p.tur.find(u => u.pl === gi) : null;
+        if (!t || !flying(p) || !q || q.side === p.side || !flying(q) || dist(p, q) > 320 || !(t.shots >= 1)) break;
+        t.shots--;
         fx({ k: 'hit', x: q.x, y: q.y, z: q.z });
         damage(q, CREW_DMG, p.id, gi);
         break;
@@ -2152,7 +2199,7 @@ const Net = {
     const s = {
       t: 's', tm: r2(G.time), sc: G.score, rs: G.reserve, ov: G.over ? 1 : 0, w: G.winner,
       ps: G.planes.map(p => [p.id, p.type, p.side, r(p.x), r(p.y), r2(p.a), p.hp, p.max, ST.indexOf(p.state), r2(p.alt), p.pilot, r(p.v), p.bombs, r2(p.thr), Math.floor(p.ammo), p.gunReload > 0 ? 1 : 0, p.shield > 0 ? 1 : 0,
-                                 r(p.z), r(p.vz), r2(p.heat), p.jam > 0 ? 1 : 0, p.gunner]),       // height, and the turret (for a rear gunner)
+                                 r(p.z), r(p.vz), ...p.tur.flatMap(t => [t.pl, r2(t.heat), t.jam > 0 ? 1 : 0])]),   // height, and the two turrets
       bu: G.bullets.map(b => [r(b.x), r(b.y), r(b.vx), r(b.vy), r(b.z || 0), r(b.vz || 0), b.owner]),
       bo: G.bombs.map(b => [r(b.x), r(b.y), r(b.vx), r(b.vy), r2(b.t), r(b.z0 || 0)]),
       tg: G.targets.map(t => t.hp), aa: G.aa.map(a => [a.hp, r2(a.a)]),
@@ -2169,7 +2216,7 @@ const Net = {
     this.sendT = now;
     const i = Local.input(0);
     const m = { t: 'in', tu: i.turn, ai: i.aim === null ? null : Math.round(i.aim * 100) / 100, th: Math.round(i.thr * 100) / 100, f: i.fire ? 1 : 0 };
-    if (Local.gunner) { m.gy = Math.round(i.gy * 1000) / 1000; m.gp = Math.round(i.gp * 1000) / 1000; }
+    if (Local.gunner) { m.gy = Math.round(i.gy * 1000) / 1000; m.gp = Math.round(i.gp * 1000) / 1000; m.se = i.seat; }
     this.send(m);
   },
   // build what to draw from two snapshots, ~0.1 s in the past, so it moves smoothly
@@ -2185,7 +2232,7 @@ const Net = {
       const p = A.get(q[0]) || q;
       const lerp = i => p[i] + (q[i] - p[i]) * k;
       return { id: q[0], type: q[1], side: q[2], x: lerp(3), y: lerp(4), a: p[5] + angDiff(q[5], p[5]) * k, hp: q[6], max: q[7], state: ST[q[8]], alt: lerp(9), pilot: q[10], v: q[11], bombs: q[12], thr: q[13], ammo: q[14], gunReload: q[15], shield: q[16],
-               z: lerp(17), vz: q[18], heat: q[19], jam: q[20], gunner: q[21] };
+               z: lerp(17), vz: q[18], tur: [{ pl: q[19], heat: q[20], jam: q[21] }, { pl: q[22], heat: q[23], jam: q[24] }] };
     });
     const dtb = (rt - b.at) / 1000;
     const bullets = b.s.bu.map(u => ({ x: u[0] + u[2] * dtb, y: u[1] + u[3] * dtb, vx: u[2], vy: u[3], z: u[4] + u[5] * dtb, vz: u[5], owner: u[6] }));
@@ -2667,11 +2714,11 @@ function drawSetup(t, dt) {
       });
       return;
     }
-    // REAR GUNNER: you shoot from a bomber's turret in 3D (a friend's bomber, or a bot's)
+    // GUNNER: you shoot from a bomber's turret in 3D (a friend's bomber, or a bot's), rear or nose
     const gunnerOk = raid && kind !== 'local', crewOn = gunnerOk && !!p.crew;
     const roles = raid ? [[ATT, BOMBER, 'ATTACK BOMBER'], [ATT, FIGHTER, 'ATTACK FIGHTER'], [DEF, FIGHTER, 'DEFENSE FIGHTER']]
                        : [[ATT, FIGHTER, 'RED TEAM'], [DEF, FIGHTER, 'BLUE TEAM']];
-    if (gunnerOk) roles.push([ATT, BOMBER, 'REAR GUNNER', 'gun']);
+    if (gunnerOk) roles.push([ATT, BOMBER, 'GUNNER', 'gun']);
     const bwid = Math.min(100, Math.floor((pw - 152) / roles.length) - 2);
     roles.forEach(([sd, pt, label, crew], j) => {
       const on = crew ? crewOn : !crewOn && p.side === sd && (raid ? (p.plane === TORPEDO ? BOMBER : p.plane) === pt || (sd === DEF) : true);
@@ -2689,11 +2736,11 @@ function drawSetup(t, dt) {
   // with rear gunners: who rides with whom (gunners go with the friends flying bombers, in order, then with bots)
   const gunnerDesc = cfg.mode === 'raid' && kind !== 'local' && lobby.players.some(p => p.crew);
   if (gunnerDesc) {
-    const pilots = lobby.players.filter(p => !p.crew && p.side === ATT && p.plane !== FIGHTER);
-    const rides = lobby.players.filter(p => p.crew).map((g, k) => g.name + (pilots[k] ? ' IN ' + pilots[k].name + "'S BOMBER" : ' IN A BOT BOMBER'));
-    desc[0] = 'REAR GUNNER (NEW): ' + rides.join(', ').slice(0, Math.floor((pw - 16) / 4) - 19) + '.';
-    desc[1] = 'GUNNERS SHOOT THE FIGHTERS FROM THE TURRET IN 3D. A FRIEND FLIES THE BOMBER.';
-    if (!pilots.length) desc[1] = 'A BOT FLIES THE BOMBER. PICK ATTACK BOMBER ON ANOTHER PHONE TO FLY IT TOGETHER.';
+    // (the same order as the battle: the rear guns of the friends' bombers, then their nose guns, then bots' bombers)
+    const pilots = lobby.players.filter(p => !p.crew && p.side === ATT && p.plane !== FIGHTER), n = pilots.length;
+    const rides = lobby.players.filter(p => p.crew).map((g, k) => g.name + (k < 2 * n ? (k < n ? ' REAR' : ' NOSE') + ' OF ' + pilots[k % n].name : ' IN A BOT BOMBER'));
+    desc[0] = 'GUNNERS: ' + rides.join(', ').slice(0, Math.floor((pw - 16) / 4) - 11) + '.';
+    desc[1] = n ? 'GUNNERS SHOOT FROM THE REAR OR NOSE GUN IN 3D, AND CAN SWITCH.' : 'A BOT FLIES THE BOMBER. A FRIEND CAN FLY IT: ATTACK BOMBER.';
   }
   T(desc[0], x + 8, y + 190, gunnerDesc ? '#ffd23f' : '#efe9ff', 1); T(desc[1], x + 8, y + 200, '#efe9ff', 1);
   if (UI.button('back', x + 8, y + 210, 90, 16, 'BACK', { size: 1 }) || UI.back) { sfx('click'); toTitle(); return; }
@@ -2793,11 +2840,12 @@ function stepClientGun(dt) {
   const V = Net.view, lp = Local.pilots[0];
   if (!V || !lp || state !== 'play') { Gun.shots = []; return; }
   const pl = V.players[Net.myPid], me = pl ? V.planes.find(p => p.id === pl.planeId) : null;
+  const seat = me ? mySeat(me, Net.myPid) : -1, tu = seat >= 0 ? me.tur[seat] : null;
   Gun.fireT -= dt;
-  if (me && me.state === 'air' && !me.jam && Local.input(0).fire && Gun.fireT <= 0 && !paused) {
+  if (tu && me.state === 'air' && !tu.jam && seat === lp.seat && Local.input(0).fire && Gun.fireT <= 0 && !paused) {
     Gun.fireT = CREW_RATE; Gun.side = -Gun.side;
-    const yw = me.a + Math.PI + lp.gy + rnd(-0.012, 0.012), pt = lp.gp + rnd(-0.012, 0.012), cp = Math.cos(pt);
-    Gun.shots.push({ x: me.x - Math.cos(me.a) * 2.5 - Math.sin(yw) * 0.5 * Gun.side, y: me.y - Math.sin(me.a) * 2.5 + Math.cos(yw) * 0.5 * Gun.side, z: me.z + 3,
+    const yw = seatBase(me, seat) + lp.gy + rnd(-0.012, 0.012), pt = lp.gp + rnd(-0.012, 0.012), cp = Math.cos(pt), [fw, up] = SEAT_POS[seat];
+    Gun.shots.push({ x: me.x + Math.cos(me.a) * fw - Math.sin(yw) * 0.5 * Gun.side, y: me.y + Math.sin(me.a) * fw + Math.cos(yw) * 0.5 * Gun.side, z: me.z + up,
                      vx: Math.cos(yw) * cp * BULLET_V + Math.cos(me.a) * me.v, vy: Math.sin(yw) * cp * BULLET_V + Math.sin(me.a) * me.v, vz: Math.sin(pt) * BULLET_V + (me.vz || 0),
                      life: BULLET_LIFE, owner: me.id });
     if (performance.now() - gunSndT > 70) { gunSndT = performance.now(); sfx('gunner'); }
@@ -2823,19 +2871,25 @@ function loadGunner() {
   import('./gunner.js').then(m => { Gun.view = m.createGunnerView({ WW, WH, IX, IY, RUNWAY, STRIP, BOMB_FALL, landDepth, isLand }); })
     .catch(err => { console.warn('gunner view', err); Gun.failed = true; }).finally(() => { Gun.loading = false; });
 }
+const mySeat = (p, pi) => (p && p.tur ? p.tur.findIndex(t => t.pl === pi) : -1);
 function drawGunner(V, t, dt) {
   const myPi = Net.isClient() ? Net.myPid : Math.max(0, V.players.findIndex(p => p.local === 0));
   const pl = V.players[myPi], lp = Local.pilots[0];
   let me = pl ? V.planes.find(p => p.id === pl.planeId) : null;
   if (me && me.state === 'dead') me = null;
+  // which gun I man (the battle decides); after I asked to move, wait a moment for it, else it was taken
+  const seat = Math.max(0, mySeat(me, myPi)), tu = me ? me.tur[seat] : null;
+  if (lp && me && seat !== lp.seat) {
+    if (performance.now() - lp.seatT > 700) { if (lp.seatT) Gun.note = { text: 'THE ' + SEAT_NAME[lp.seat] + ' IS TAKEN', t: performance.now() }; lp.seat = seat; lp.seatT = 0; lp.gy = 0; lp.gp = seat === NOSE ? 0 : 0.12; }
+  }
   if (!Gun.view || !lp) {
     ctx.fillStyle = '#1b4f8a'; ctx.fillRect(0, 0, S.W, H);
     T(Gun.failed ? 'NO 3D ON THIS DEVICE, SORRY!' : 'CLIMBING INTO THE TURRET...', S.W / 2, H / 2, '#fff', 2, 'center');
     return;
   }
-  const inp = Local.input(0), firing = !!(me && inp.fire && !me.jam && me.state === 'air');
+  const inp = Local.input(0), firing = !!(me && tu && inp.fire && !tu.jam && me.state === 'air' && seat === lp.seat);
   const RV = Net.isClient() && me ? Object.assign({}, V, { bullets: V.bullets.filter(b => b.owner !== me.id).concat(Gun.shots) }) : V;
-  ctx.drawImage(Gun.view.render(RV, me, { gy: lp.gy, gp: lp.gp, firing }, paused ? 0 : dt, t, S.W, H), 0, 0);
+  ctx.drawImage(Gun.view.render(RV, me, { gy: lp.gy, gp: lp.gp, firing, seat: lp.seat }, paused ? 0 : dt, t, S.W, H), 0, 0);
   cams[0] = { x: me ? me.x : cams[0] ? cams[0].x : IX, y: me ? me.y : cams[0] ? cams[0].y : IY, plane: me, ang: me ? me.a : 0, rot: 0 };
   const cx = Math.round(S.W / 2), cy = Math.round(H / 2), live = me && me.state === 'air';
   // the enemy fighters: brackets on the ones I can see, arrows at the edge to the others
@@ -2867,12 +2921,13 @@ function drawGunner(V, t, dt) {
     // (online, my phone judges my hits on what I see, so the lead is right as it is)
     const lag = 0;
     const ux = Math.cos(lead.a) * lead.v - Math.cos(me.a) * me.v, uy = Math.sin(lead.a) * lead.v - Math.sin(me.a) * me.v, uz = (lead.vz || 0) - (me.vz || 0);
-    const gz = me.z + 3, rx = lead.x - me.x + ux * lag, ry = lead.y - me.y + uy * lag, rz = (lead.z || 0) - gz + uz * lag;
+    const [fw, up] = SEAT_POS[seat], mx = me.x + Math.cos(me.a) * fw, my = me.y + Math.sin(me.a) * fw;   // from my guns
+    const gz = me.z + up, rx = lead.x - mx + ux * lag, ry = lead.y - my + uy * lag, rz = (lead.z || 0) - gz + uz * lag;
     const a = ux * ux + uy * uy + uz * uz - BULLET_V * BULLET_V, b = 2 * (rx * ux + ry * uy + rz * uz), c = rx * rx + ry * ry + rz * rz, disc = b * b - 4 * a * c;
     if (a < 0 && disc >= 0) {
       const tt = (-b - Math.sqrt(disc)) / (2 * a);
       if (tt > 0 && tt < BULLET_LIFE) {
-        const P = Gun.view.project(me.x + rx + ux * tt, me.y + ry + uy * tt, gz + rz + uz * tt, S.W, H);
+        const P = Gun.view.project(mx + rx + ux * tt, my + ry + uy * tt, gz + rz + uz * tt, S.W, H);
         if (!P.behind) {
           onTarget = Math.hypot(P.x - cx, P.y - cy) < 7;
           ctx.strokeStyle = '#5ad43f'; ctx.lineWidth = 1; ctx.beginPath();
@@ -2883,7 +2938,7 @@ function drawGunner(V, t, dt) {
   }
   // the ring sight
   if (live) {
-    const col = me.jam ? '#ff4040' : onTarget ? '#5ad43f' : '#ffd23f';
+    const col = tu.jam ? '#ff4040' : onTarget ? '#5ad43f' : '#ffd23f';
     ctx.strokeStyle = col; ctx.globalAlpha = 0.85; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(cx + 0.5, cy + 0.5, 20, 0, TAU); ctx.stroke();
     ctx.beginPath(); ctx.arc(cx + 0.5, cy + 0.5, 7, 0, TAU); ctx.stroke();
@@ -2894,26 +2949,27 @@ function drawGunner(V, t, dt) {
     // the guns' heat, bottom middle
     const bw = 90, bx = cx - bw / 2, by = H - 16;
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(bx - 26, by - 3, bw + 30, 11);
-    T('GUNS', bx - 23, by, '#9a92b8', 1);
+    T(seat === NOSE ? 'NOSE' : 'REAR', bx - 23, by, '#9a92b8', 1);
     ctx.fillStyle = '#111'; ctx.fillRect(bx, by, bw, 5);
-    const hk = me.jam ? 1 : me.heat || 0;
-    ctx.fillStyle = me.jam ? (Math.floor(t * 6) % 2 ? '#ff4040' : '#8a2014') : hk > 0.7 ? '#ff6a20' : '#ffd23f';
+    const hk = tu.jam ? 1 : tu.heat || 0;
+    ctx.fillStyle = tu.jam ? (Math.floor(t * 6) % 2 ? '#ff4040' : '#8a2014') : hk > 0.7 ? '#ff6a20' : '#ffd23f';
     ctx.fillRect(bx + 1, by + 1, Math.round((bw - 2) * hk), 3);
-    if (me.jam) T('JAMMED! WAIT...', cx, cy - 36, '#ff4040', 1, 'center', '#000');
+    if (tu.jam) T('JAMMED! WAIT...', cx, cy - 36, '#ff4040', 1, 'center', '#000');
     else if (hk > 0.75) T('TOO HOT! SHORT BURSTS!', cx, cy - 36, '#ff8a2a', 1, 'center', '#000');
   }
-  drawHUD(V, myPi, 0, S.W, { gunner: true, local: 0, cam: cams[0] }, t);
+  drawHUD(V, myPi, 0, S.W, { gunner: true, seat, local: 0, cam: cams[0] }, t);
+  if (Gun.note && performance.now() - Gun.note.t < 2000) T(Gun.note.text, cx, cy - 46, '#ff8a2a', 1, 'center', '#000');
   // how to aim on this device
   const sinceStart = performance.now() - hintT;
   if (live && !paused) {
     let hint = null;
-    if (Ctl.touch) hint = sinceStart < 9000 ? ['DRAG ANYWHERE TO TURN THE GUNS', 'HOLD FIRE TO SHOOT'] : null;
-    else if (PX.Pad.used) hint = sinceStart < 9000 ? ['STICK = AIM THE GUNS', 'A = FIRE'] : null;
-    else if (!mouseLocked()) hint = ['CLICK TO AIM WITH THE MOUSE', 'OR: ARROWS = AIM, SPACE = FIRE'];
-    else if (sinceStart < 9000) hint = ['MOUSE = AIM   CLICK = FIRE', 'ESC = PAUSE'];
+    if (Ctl.touch) hint = sinceStart < 9000 ? ['DRAG ANYWHERE TO TURN THE GUNS', 'HOLD FIRE TO SHOOT, SWITCH = OTHER GUN'] : null;
+    else if (PX.Pad.used) hint = sinceStart < 9000 ? ['STICK = AIM THE GUNS   A = FIRE', 'Y = SWITCH TO THE OTHER GUN'] : null;
+    else if (!mouseLocked()) hint = ['CLICK TO AIM WITH THE MOUSE', 'OR: ARROWS = AIM, SPACE = FIRE, C = OTHER GUN'];
+    else if (sinceStart < 9000) hint = ['MOUSE = AIM   CLICK = FIRE', 'RIGHT CLICK OR C = OTHER GUN'];
     if (hint && (sinceStart > 9000 || Math.floor(sinceStart / 400) % 6)) {
-      const hy = cy + 34;                                              // under the sight (the big news sits above it)
-      ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(cx - 80, hy - 4, 160, 26);
+      const hy = cy + 34, hw = Math.max(PX.textWidth(hint[0], 1), PX.textWidth(hint[1], 1)) + 16;   // under the sight (the big news sits above it)
+      ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(Math.round(cx - hw / 2), hy - 4, hw, 26);
       T(hint[0], cx, hy, '#fff', 1, 'center'); T(hint[1], cx, hy + 11, '#7ac8ff', 1, 'center');
     }
   }
@@ -2922,6 +2978,9 @@ function drawGunner(V, t, dt) {
     ctx.fillStyle = on ? 'rgba(255,90,60,0.7)' : 'rgba(13,11,19,0.45)'; ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, TAU); ctx.fill();
     ctx.strokeStyle = '#efe9ff'; ctx.lineWidth = 2; ctx.stroke();
     T('FIRE', fb.x, fb.y - 3, '#fff', 1, 'center');
+    const sb = switchBtn({ x: 0, w: S.W });
+    ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.beginPath(); ctx.arc(sb.x, sb.y, sb.r, 0, TAU); ctx.fill(); ctx.stroke();
+    T(lp.seat === NOSE ? 'REAR' : 'NOSE', sb.x, sb.y - 3, '#ffd23f', 1, 'center');
   }
 }
 // the battle screen: one view, or two side by side
@@ -3035,6 +3094,8 @@ PX.Pad.setup({
       const dz = v => (Math.abs(v) < 0.15 ? 0 : v);
       aimGun(p, dz(h.ax) * Math.abs(dz(h.ax)) * 2 * dt, -dz(h.ay) * Math.abs(dz(h.ay)) * 1.5 * dt);
       p.padFire = h.A || h.RT || h.X;
+      if (h.Y && !p.padY) switchSeat(p);
+      p.padY = !!h.Y;
       return;
     }
     const m = Math.hypot(h.ax, h.ay);
