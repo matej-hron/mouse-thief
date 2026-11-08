@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -105,10 +105,10 @@ const ABIL = [
   { id: 'speed', name: 'FAST WHEELS', desc: 'HIGHER TOP SPEED', max: 5, cost: [150, 300, 500, 800, 1200], color: '#7af0ff' },
   { id: 'ollie', name: 'SUPER JUMP', desc: 'JUMP HIGHER, MORE AIR FOR TRICKS', max: 3, cost: [200, 450, 900], color: '#9be36b' },
   { id: 'nitro', name: 'NITRO', desc: 'STRONGER, LONGER BOOST', max: 3, cost: [250, 550, 1000], color: '#ff8a2a' },
-  { id: 'magnet', name: 'COIN MAGNET', desc: 'PULLS COINS TO YOU', max: 3, cost: [150, 350, 700], color: '#e01e1e' },
+  { id: 'magnet', name: 'COIN MAGNET', desc: 'TAP MAGNET: ALL COINS FLY TO YOU FOR 8 S (1/2/3 A RACE)', max: 3, cost: [150, 350, 700], color: '#e01e1e' },
   { id: 'dbl', name: 'DOUBLE JUMP', desc: 'JUMP AGAIN IN THE AIR', max: 1, cost: [600], color: '#ffd23f' },
-  { id: 'shield', name: 'NO-BAIL SHIELD', desc: 'SAVES YOU FROM A CRASH (EVERY RACE)', max: 2, cost: [500, 1200], color: '#4aa8ff' },
-  { id: 'warp', name: 'TIME WARP', desc: 'SLOWS YOUR RIVALS FOR 4 S (EVERY RACE)', max: 2, cost: [800, 1600], color: '#b07aff' },
+  { id: 'shield', name: 'NO-BAIL SHIELD', desc: 'TAP SHIELD: NO BAILS FOR 6 S (1/2 A RACE)', max: 2, cost: [500, 1200], color: '#4aa8ff' },
+  { id: 'warp', name: 'TIME WARP', desc: 'TAP WARP: SLOWS YOUR RIVALS FOR 4 S (1/2 A RACE)', max: 2, cost: [800, 1600], color: '#b07aff' },
 ];
 
 // --- tracks and rivals -------------------------------------------------------------------
@@ -234,7 +234,7 @@ function newGame(mode, track, demo, mp) {
     dbl: lvl('dbl') > 0, nitro: lvl('nitro'), me: true });
   if (demo) { me.ai = newAI(1); me.ai.trick = 0.6; me.ai.risky = 0; me.top = TOP0 * 0.85; me.dbl = true; me.color = '#ffffff'; me.speed = 200; }
   G = { mode, track, demo, me, rivals: [], all: [me], t: 0, count: demo || mode === 'free' ? 0 : 3.2, order: [], earned: 0, trickCoins: 0, pickCoins: 0, bestCombo: 0, landed: 0,
-        pops: [], parts: [], shake: 0, flash: 0, warpT: 0, shield: lvl('shield'), warps: lvl('warp'), done: false, endT: 0, help: 0, cleanT: 0, results: null };
+        pops: [], parts: [], shake: 0, flash: 0, warpT: 0, shield: lvl('shield'), shieldT: 0, mags: lvl('magnet'), magT: 0, warps: lvl('warp'), done: false, endT: 0, help: 0, cleanT: 0, results: null };
   if (mp) {                                            // racing a friend online: no computer rivals
     const f = Net.friend || {};
     G.mp = true; G.warps = 0;
@@ -315,7 +315,7 @@ function bail(s) {
   if (G) puff(s.x, s.y, 10, '#c8c0d0', 70);
 }
 function crash(s) {
-  if (isMe(s) && G.shield > 0) { G.shield--; s.trick = null; pop('SHIELD SAVED YOU!', '#4aa8ff', true); sfx('shield'); s.speed *= 0.85; return; }
+  if (isMe(s) && G.shieldT > 0) { s.trick = null; pop('SHIELD!', '#4aa8ff', true); sfx('shield'); s.vy = Math.max(s.vy, 0); return; }
   bail(s);
 }
 function land(s) {
@@ -328,6 +328,14 @@ function useBoost(s) {
   if (s.meter < 33 || s.boostT > 0 || s.bail > 0) return;
   s.meter -= 33; s.boostT = 1.2 + 0.35 * s.nitro;
   if (isMe(s)) sfx('boost');
+}
+function useShield() {
+  if (!G || G.shield <= 0 || G.shieldT > 0) return;
+  G.shield--; G.shieldT = 6; sfx('shield'); pop('SHIELD ON!', '#4aa8ff', true);
+}
+function useMagnet() {
+  if (!G || G.mags <= 0 || G.magT > 0) return;
+  G.mags--; G.magT = 8; sfx('magnet'); pop('MAGNET!', '#ff4a4a', true);
 }
 function useWarp() {
   if (!G || G.warps <= 0 || G.warpT > 0) return;
@@ -434,6 +442,8 @@ function playerControl(P, dt) {
     else if (a === 'flip' || a === 'grab' || a === 'spin') startTrick(P, TRICK[save.eq[a]]);
     else if (a === 'boost') useBoost(P);
     else if (a === 'warp') useWarp();
+    else if (a === 'shield') useShield();
+    else if (a === 'magnet') useMagnet();
   }
   inp.q.length = 0;
   if (P.jumpBuf > 0) { P.jumpBuf -= dt; if (ollie(P)) P.jumpBuf = 0; }
@@ -464,13 +474,14 @@ function step(dt) {
   }
   if (G.mp) Net.sendPos(P);
   // coins (the magnet pulls them in)
-  const mag = G.demo ? 0 : lvl('magnet'), reach = 14 + mag * 30, cx = P.x, cy = P.y + 16;
+  if (G.shieldT > 0) G.shieldT -= dt; if (G.magT > 0) G.magT -= dt;
+  const reach = G.magT > 0 ? 240 : 14, mag = G.magT > 0, cx = P.x, cy = P.y + 16;
   for (const c of W.coins) {
     if (c.got) continue;
     const dx = cx - c.x, dy = cy - c.y;
     if (Math.abs(dx) > reach + 40) continue;
     const dist = Math.hypot(dx, dy);
-    if (mag && dist < reach && dist > 4) { c.x += dx / dist * 420 * dt; c.y += dy / dist * 420 * dt; }
+    if (mag && dist < reach && dist > 4) { const v = Math.max(420, P.speed + 200) * dt; c.x += dx / dist * v; c.y += dy / dist * v; }
     if (Math.abs(cx - c.x) < 12 && Math.abs(cy - c.y) < 20) { c.got = true; earn(2, 'coin'); if (!G.demo) sfx('coin'); puff(c.x, c.y, 3, '#ffd23f', 30); }
   }
   // falling cones, sparks and dust
@@ -851,6 +862,11 @@ function drawWorld(t) {
   drawCoins(t);
   for (const s of order) if (s.d < 10) drawSkater(s, t);
   for (const p of G.parts) { ctx.fillStyle = p.color; ctx.fillRect(Math.round(p.x - cam.x), Math.round(GS + cam.y - 8 - p.y), p.s, p.s); }
+  if (!G.demo && (G.shieldT > 0 || G.magT > 0)) {        // your shield bubble, your magnet
+    const P = G.me, x = Math.round(P.x - cam.x), y = Math.round(scrY(P.y, P.d)) - 20;
+    if (G.shieldT > 0 && (G.shieldT > 1.5 || Math.floor(t * 10) % 2)) { ctx.strokeStyle = 'rgba(74,168,255,0.85)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = 'rgba(74,168,255,0.15)'; ctx.fill(); }
+    if (G.magT > 0 && (G.magT > 1.5 || Math.floor(t * 10) % 2)) icon('magnet', x, y - 32, '#ff4a4a', 1);
+  }
   // names over the rivals
   if (G.mode === 'race' && state === 'play') for (const s of G.friend ? [G.friend] : G.rivals) {
     const x = Math.round(s.x - cam.x); if (x < 0 || x > S.W) continue;
@@ -892,7 +908,7 @@ const ICONS = {
   front: ['...aaa..', '..a...a.', '.a..h..a', '.a..c..a', '.a.c.aaa', '..a...a.', '...aa...'],
   wheel: ['..yyy..', '.yyyyy.', 'yyywyyy', 'yywwwyy', 'yyywyyy', '.yyyyy.', '..yyy..'],
   dbl: ['..a..a..', '.aaaaaa.', 'aaaaaaaa', '..a..a..', '..a..a..', '..a..a..'],
-  magnet: ['rr...rr', 'rr...rr', 'rr...rr', 'rr...rr', 'rrr.rrr', '.rrrrr.', '..rrr..'],
+  magnet: ['ww...ww', 'aa...aa', 'aa...aa', 'aa...aa', 'aaa.aaa', '.aaaaa.', '..aaa..'],
   shield: ['aaaaaaa', 'aawwwaa', 'aawaaaa', 'aaawaaa', '.aaawa.', '..aaa..', '...a...'],
 };
 const TRICK_ICON = { kickflip: 'flip', heelflip: 'flip', shove: 'shove', treflip: 'dflip', dflip: 'dflip', laser: 'dflip',
@@ -909,7 +925,12 @@ function touchButtons() {
     { id: 'boost', x: 84, y, w: 54, h, label: 'BOOST', col: '#ff8a2a', ic: 'boost', key: 'E' },
     { id: 'ollie', x: Wd - 78, y, w: 70, h, label: 'JUMP', col: '#ffd23f', ic: 'jump', key: 'SPACE' },
   ];
-  if (G.warps > 0 || G.warpT > 0) L.push({ id: 'warp', x: 144, y, w: 36, h, label: 'WARP', col: '#b07aff', ic: 'warp', key: 'Q' });
+  // the abilities you bought, top right under the coins: tap them in the race (the number is how many are left)
+  let ay = 30;
+  for (const [id, label, col, key, n, on] of [['shield', 'SHIELD', '#4aa8ff', 'R', G.shield, G.shieldT], ['magnet', 'MAGNET', '#ff4a4a', 'F', G.mags, G.magT], ['warp', 'WARP', '#b07aff', 'Q', G.warps, G.warpT]]) {
+    if (!lvl(id === 'magnet' ? 'magnet' : id) || (id === 'warp' && G.mp)) continue;
+    L.push({ id, x: Wd - 48, y: ay, w: 44, h: 30, label, col, ic: id, key, n, on: on > 0, small: true }); ay += 34;
+  }
   KINDS.slice().reverse().forEach(([k, label, col], i) => L.push({ id: k, x: Wd - 78 - 46 * (i + 1), y, w: 42, h, label, col, ic: TRICK_ICON[save.eq[k]], key: { flip: 'J', grab: 'K', spin: 'L' }[k] }));
   return L;
 }
@@ -932,9 +953,15 @@ function hud(t) {
   T('BOOST', 10, 29, P.boostT > 0 ? '#ffd23f' : '#ff8a2a', 1);
   for (let k = 0; k < 3; k++) { const f = clamp((P.meter - k * 33.4) / 33.3, 0, 1); ctx.fillStyle = '#111'; ctx.fillRect(34 + k * 21, 29, 19, 6); ctx.fillStyle = f >= 1 ? '#ff8a2a' : '#7a4a2a'; ctx.fillRect(35 + k * 21, 30, Math.round(17 * f), 4); }
   T(Math.round(P.speed * 0.13) + ' KM/H', 10, 40, '#9a92b8', 1);
-  let ix = 96;
-  for (let k = 0; k < G.shield; k++) { ix -= 8; ctx.fillStyle = '#4aa8ff'; ctx.fillRect(ix, 40, 6, 4); ctx.fillRect(ix + 1, 44, 4, 1); ctx.fillRect(ix + 2, 45, 2, 1); }
-  for (let k = 0; k < G.warps; k++) { ix -= 8; ctx.fillStyle = '#b07aff'; ctx.fillRect(ix, 40, 6, 1); ctx.fillRect(ix + 1, 41, 4, 2); ctx.fillRect(ix + 2, 43, 2, 1); ctx.fillRect(ix + 1, 44, 4, 1); ctx.fillRect(ix, 45, 6, 1); }
+  // the abilities that always work: little icons (with their level) under the box
+  let ix = 10;
+  for (const a of ABIL) {
+    if (!['speed', 'ollie', 'dbl', 'nitro'].includes(a.id) || !lvl(a.id)) continue;
+    ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(ix - 6, 52, 22, 14);
+    icon(ABIL_ICON[a.id], ix + 1, 59, a.color, 1);
+    if (a.max > 1) T('' + lvl(a.id), ix + 14, 56, '#ffffff', 1, 'right');
+    ix += 24;
+  }
   // the race: everybody on a line to the finish
   if (G.mode === 'race') {
     const bx = Math.round(Wd / 2 - 90), bw = 180;
@@ -976,6 +1003,14 @@ function hud(t) {
       ctx.fillStyle = down ? b.col : 'rgba(13,11,19,0.55)'; ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.fillStyle = b.col; ctx.fillRect(b.x, b.y, b.w, 1); ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1); ctx.fillRect(b.x, b.y, 1, b.h); ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
       if (b.id === 'boost') { ctx.fillStyle = 'rgba(255,138,42,0.35)'; ctx.fillRect(b.x + 1, b.y + b.h - 1 - Math.round((b.h - 2) * P.meter / 100), b.w - 2, Math.round((b.h - 2) * P.meter / 100)); }
+      if (b.small) {                              // an ability: its icon, how many are left, glowing while it works
+        const none = b.n <= 0 && !b.on;
+        if (b.on && Math.floor(t * 6) % 2) { ctx.fillStyle = b.col; ctx.fillRect(b.x, b.y, b.w, b.h); }
+        icon(b.ic, b.x + b.w / 2, b.y + 11, none ? '#5b5275' : down || (b.on && Math.floor(t * 6) % 2) ? '#ffffff' : b.col);
+        T(touchUI ? b.label : b.key + ' ' + b.label.slice(0, 4), b.x + b.w / 2, b.y + b.h - 8, none ? '#5b5275' : down ? '#111' : b.col, 1, 'center');
+        T('' + b.n, b.x + b.w - 3, b.y + 2, none ? '#5b5275' : '#ffffff', 1, 'right');
+        continue;
+      }
       icon(b.ic, b.x + b.w / 2, b.y + 15, down ? '#ffffff' : b.col);
       T(touchUI ? b.label : b.key + ' ' + b.label, b.x + b.w / 2, b.y + b.h - 10, down ? '#111' : b.col, 1, 'center');
     }
@@ -1263,6 +1298,7 @@ function sfx(k) {
   else if (k === 'crash') { s.noise(0.35, { freq: 300, vol: 0.3 }); s.tone([300, 90], 0.3, { vol: 0.07, type: 'sawtooth' }); }
   else if (k === 'boost') { s.tone([200, 700], 0.4, { vol: 0.06, type: 'sawtooth' }); s.noise(0.4, { freq: 2000, vol: 0.05, filter: 'bandpass' }); }
   else if (k === 'warp') s.tone([800, 200, 600], 0.6, { vol: 0.08, type: 'sine' });
+  else if (k === 'magnet') s.tone([300, 600, 300, 900], 0.5, { vol: 0.07, type: 'triangle' });
   else if (k === 'shield') s.tone([1200, 600], 0.3, { vol: 0.08, type: 'triangle' });
   else if (k === 'beep') s.tone(440, 0.15, { vol: 0.1 });
   else if (k === 'go') s.tone(880, 0.4, { vol: 0.12 });
@@ -1285,7 +1321,7 @@ UI.onDown = (e, x, y) => {
 };
 UI.onUp = e => { const id = held.get(e.pointerId); if (id === undefined) return; held.delete(e.pointerId); if (id === 'push') inp.touchPush = Math.max(0, inp.touchPush - 1); };
 const KEYS = { Space: 'ollie', ArrowUp: 'ollie', KeyW: 'ollie', KeyJ: 'flip', KeyZ: 'flip', KeyK: 'grab', KeyX: 'grab', KeyL: 'spin', KeyC: 'spin',
-               KeyE: 'boost', ShiftLeft: 'boost', ShiftRight: 'boost', KeyQ: 'warp' };
+               KeyE: 'boost', ShiftLeft: 'boost', ShiftRight: 'boost', KeyQ: 'warp', KeyR: 'shield', KeyF: 'magnet' };
 window.addEventListener('keydown', e => {
   PX.Sound.unlock();
   if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); return; }
@@ -1339,9 +1375,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Skate: controller', ui: UI, menu: () => !playing(),
-  phone: { stick: 'PUSH / BRAKE', dpad: true, buttons: [['A', 'JUMP'], ['X', 'FLIP'], ['Y', 'GRAB'], ['B', 'SPIN'], ['RB', 'BOOST'], ['LB', 'WARP']] },
-  keys: () => ({ A: 'Space', up: 'Space', X: 'KeyJ', Y: 'KeyK', B: 'KeyL', right: 'ArrowRight', RT: 'ArrowRight', left: 'ArrowLeft', LT: 'ArrowLeft', RB: 'KeyE', LB: 'KeyQ', START: 'KeyP' }),
-  help: [['RT|RIGHT', 'PUSH'], ['LT|LEFT', 'BRAKE'], ['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+  phone: { stick: 'PUSH / BRAKE', dpad: true, buttons: [['A', 'JUMP'], ['X', 'FLIP'], ['Y', 'GRAB'], ['B', 'SPIN'], ['RB', 'BOOST'], ['LB', 'WARP'], ['LT', 'MAGNET'], ['down', 'SHIELD']] },
+  keys: () => ({ A: 'Space', up: 'Space', X: 'KeyJ', Y: 'KeyK', B: 'KeyL', right: 'ArrowRight', RT: 'ArrowRight', left: 'ArrowLeft', LT: 'KeyF', down: 'KeyR', RB: 'KeyE', LB: 'KeyQ', START: 'KeyP' }),
+  help: [['RT|RIGHT', 'PUSH'], ['LEFT', 'BRAKE'], ['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['LT', 'MAGNET'], ['DOWN', 'SHIELD'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 </script>
 </body>
