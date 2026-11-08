@@ -205,7 +205,10 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
   **grind** (land on them from above), green boost pads and coins (2 each).
 - **SKATE SHOP:** buy tricks with coins, 6 of each kind, and pick the one each button does. Better tricks score more but
   take longer, so they need bigger air. **Abilities:** FAST WHEELS (top speed), SUPER JUMP, NITRO (stronger boost),
-  COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD (saves you from a crash, every race), TIME WARP (slows your rivals for 4 s, every race).
+  COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD, TIME WARP. **SHIELD** (no bails for 6 s), **MAGNET** (all coins fly to you
+  for 8 s) and **WARP** (your rivals slow down for 4 s) are buttons with icons at the top right of the race, used 1-3 times
+  a race by level (keys R, F, Q; controller DOWN, LT, LB). The abilities that always work (fast wheels, super jump,
+  double jump, nitro) show as little icons under your place.
 - **Tracks:** CITY STREETS (1200 m, easy), SUNSET PARK (1600 m) and NEON NIGHT (2000 m, hard). Finish in the top 3 to
   unlock the next one. Prize for the place (more on harder tracks); ★3 for a win, ★2 for 2nd, ★1 for 3rd.
 - **RACE A FRIEND:** online. CREATE GAME gives a 4-letter code, your friend joins with it (both need the same version).
@@ -213,9 +216,6 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
   wins (win: 120 coins and ★3, lose: 40 coins and ★1). The host can start a REMATCH or pick ANOTHER TRACK.
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
-- **3D VIEW:** the street is drawn with perspective: buildings, ramps, benches and rails are real boxes (you see their
-  tops and sides as you skate past) and skaters further back look smaller. The 3D / 2D button on the title screen
-  switches back to the flat look.
 - Coins, tricks, abilities and best places are saved on your phone.
 
 ## Pixel Sky Run
