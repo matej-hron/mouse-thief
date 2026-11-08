@@ -203,7 +203,7 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
   and you **bail**: you fall and lose speed.
 - **The street:** cones and benches to ollie over, kickers (ramps that launch you), funboxes, rails and benches to
   **grind** (land on them from above), green boost pads and coins (2 each).
-- **SKATE SHOP:** buy tricks with coins, 6 of each kind, and pick the one each button does. Better tricks score more but
+- **SKATE SHOP:** buy tricks with coins, 10 of each kind (two pages: PAGE 2 has TRIPLE FLIP, ROCKET AIR, CORK 720, the 1440 SPIN and more), and pick the one each button does. Better tricks score more but
   take longer, so they need bigger air. **Abilities:** FAST WHEELS (top speed), SUPER JUMP, NITRO (stronger boost),
   COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD, TIME WARP. **SHIELD** (no bails for 6 s), **MAGNET** (all coins fly to you
   for 8 s) and **WARP** (your rivals slow down for 4 s) are buttons with icons at the top right of the race, used 1-3 times
