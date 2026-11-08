@@ -156,19 +156,21 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   the variants you've caught with little coloured squares.
 - **Sizes:** every fish has a random size: TINY (x0.5 money), SMALL (x0.75), NORMAL, BIG (x1.5), HUGE (x2.2) or GIANT
   (x3.5, rare). Bigger fish look bigger, weigh more (shown in kg), sell for more and pull harder.
-- **Worlds:** unlock deeper seas with coins. Deeper = more money for every fish, but more obstacles and faster sharks.
+- **Worlds:** unlock deeper seas with coins. Deeper = more money for every fish and more **luck**, but more obstacles and
+  faster sharks. Luck multiplies every rarity chance of your rod and the chance of the rare colours (a 0% stays 0%,
+  and nothing goes over 95%); the shop shows your rod's chances in the world you're in.
   The hook sinks and reels faster in deeper worlds.
 
-  | World | Depth | Money | Unlock |
-  |---|---|---|---|
-  | Sunny Bay | 90 m | x1 | (start) |
-  | Coral Reef | 150 m | x2 | 5000 |
-  | Frozen Sea | 220 m | x4 | 30000 |
-  | Volcano Deep | 300 m | x7 | 150000 |
-  | The Abyss | 400 m | x12 | 600000 |
+  | World | Depth | Money | Luck | Unlock |
+  |---|---|---|---|---|
+  | Sunny Bay | 90 m | x1 | x0.75 | (start) |
+  | Coral Reef | 150 m | x2 | x1 | 5000 |
+  | Frozen Sea | 220 m | x4 | x1.25 | 30000 |
+  | Volcano Deep | 300 m | x7 | x1.5 | 150000 |
+  | The Abyss | 400 m | x12 | x1.8 | 600000 |
 
 - **Rods:** the rod decides which fish swim around you. Each rarity's chance is tried from the rarest down, and
-  if none comes up it's a bad fish:
+  if none comes up it's a bad fish (these are the chances at luck x1; the world's luck changes them):
 
   | Rod | Price | Legendary | Mythic | Epic | Super rare | Rare |
   |---|---|---|---|---|---|---|

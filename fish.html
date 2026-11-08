@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const SAVE_KEY = 'deepCatch.save';
 const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, shiny: {}, inv: [], cooler: 0, hooks: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -105,20 +105,20 @@ const VARIANTS = [
     pal: { b: '#f4f0f0', d: '#d0c8c8', l: '#ffffff', f: '#ffc0c8', s: '#ffd0d8', e: '#ff3a5a', w: '#ffffff' } },
 ];
 const VAR = {}; VARIANTS.forEach(v => { VAR[v.id] = v; });
-function rollVariant() { let n = Math.random() * 100; for (const v of VARIANTS) if ((n -= v.chance) < 0) return v.id; return ''; }
+function rollVariant() { let n = Math.random() * 100; for (const v of VARIANTS) if ((n -= v.chance * luck()) < 0) return v.id; return ''; }
 const fullName = (sp, v) => (v ? VAR[v].name + ' ' : '') + sp.name;
 function rollSize() { let n = Math.random() * 100; for (const z of SIZES) if ((n -= z.w) < 0) return z; return SIZES[2]; }
 // the worlds: deeper seas, more danger, more money (unlocked with coins)
 const WORLDS = [
-  { id: 'bay',   name: 'SUNNY BAY',    depth: 900,  money: 1,  price: 0,      sink: 85,  reelK: 1,   obsK: 1,   shark: 1,
+  { id: 'bay',   name: 'SUNNY BAY',    depth: 900,  luck: 0.75, money: 1,  price: 0,      sink: 85,  reelK: 1,   obsK: 1,   shark: 1,
     water: [[42, 212, 208], [20, 110, 160], [4, 18, 42]], sky: '#8adcff', haze: '#b8ecff', sun: '#fff3a0', sand: '#b8945a', sandTop: '#d0ac70' },
-  { id: 'reef',  name: 'CORAL REEF',   depth: 1500, money: 2,  price: 5000,   sink: 110, reelK: 1.3, obsK: 1.15, shark: 1.15,
+  { id: 'reef',  name: 'CORAL REEF',   depth: 1500, luck: 1, money: 2,  price: 5000,   sink: 110, reelK: 1.3, obsK: 1.15, shark: 1.15,
     water: [[60, 220, 180], [20, 130, 140], [6, 30, 40]], sky: '#9ae8ff', haze: '#d0f8ff', sun: '#ffe080', sand: '#e0a0a0', sandTop: '#f4c0b8' },
-  { id: 'ice',   name: 'FROZEN SEA',   depth: 2200, money: 4,  price: 30000,  sink: 135, reelK: 1.6, obsK: 1.3, shark: 1.3,
+  { id: 'ice',   name: 'FROZEN SEA',   depth: 2200, luck: 1.25, money: 4,  price: 30000,  sink: 135, reelK: 1.6, obsK: 1.3, shark: 1.3,
     water: [[170, 220, 240], [50, 100, 160], [6, 14, 40]], sky: '#c8d8e8', haze: '#eef4fa', sun: '#ffffff', sand: '#c8d0dc', sandTop: '#eef4fa' },
-  { id: 'lava',  name: 'VOLCANO DEEP', depth: 3000, money: 7,  price: 150000, sink: 160, reelK: 1.9, obsK: 1.45, shark: 1.45,
+  { id: 'lava',  name: 'VOLCANO DEEP', depth: 3000, luck: 1.5, money: 7,  price: 150000, sink: 160, reelK: 1.9, obsK: 1.45, shark: 1.45,
     water: [[60, 150, 150], [70, 40, 50], [40, 6, 6]], sky: '#e08a5a', haze: '#ffb080', sun: '#ff5a2a', sand: '#2a1a1a', sandTop: '#ff6a2a' },
-  { id: 'abyss', name: 'THE ABYSS',    depth: 4000, money: 12, price: 600000, sink: 190, reelK: 2.2, obsK: 1.6, shark: 1.6,
+  { id: 'abyss', name: 'THE ABYSS',    depth: 4000, luck: 1.8, money: 12, price: 600000, sink: 190, reelK: 2.2, obsK: 1.6, shark: 1.6,
     water: [[30, 60, 120], [12, 16, 50], [0, 0, 6]], sky: '#1a1a3a', haze: '#2a2a5a', sun: '#e8e8ff', sand: '#2a1a3a', sandTop: '#5a3a7a' },
 ];
 if (!Array.isArray(save.worlds) || !save.worlds.includes('bay')) save.worlds = ['bay'].concat(Array.isArray(save.worlds) ? save.worlds : []);
@@ -150,9 +150,11 @@ function market(spId, h = hourNow()) {          // the price multiplier of this 
   return clamp(Math.round(Math.exp(v) * 100) / 100, BOSSES.includes(spId) ? 0.8 : 0.3, 3);   // a massive one never sells cheap
 }
 const priceOf = it => Math.max(1, Math.round(it.base * market(it.s)));
+// each world has its own luck: better worlds make every rarity (and the rare colours) more likely, worse ones less
+const luck = () => wld().luck;
+const chanceOf = (r, rd = rod()) => Math.min(95, Math.round(rd.ch[r] * luck() * 10) / 10);   // a 0% stays 0%
 function rollRarity() {
-  const ch = rod().ch;
-  for (const r of ['legend', 'mythic', 'epic', 'super', 'rare']) if (Math.random() * 100 < ch[r]) return r;
+  for (const r of ['legend', 'mythic', 'epic', 'super', 'rare']) if (Math.random() * 100 < chanceOf(r)) return r;
   return 'bad';
 }
 
@@ -715,6 +717,7 @@ function drawShop(t) {
   ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#0c2c48'; for (let y = 0; y < H; y += 8) ctx.fillRect(0, y, W, 1);
   T('SHOP', 8, 6, '#fff', 2, 'left', '#000');
+  T('CHANCES IN ' + wld().name + ' (LUCK X' + luck() + ')', 52, 9, luck() < 1 ? '#ff8a8a' : luck() > 1 ? '#9be36b' : '#9ac8e0', 1, 'left');
   coinsText(W - 8, 6, 'right');
   const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 20, ch = 104;
   RODS.forEach((r, i) => {
@@ -726,7 +729,7 @@ function drawShop(t) {
     ctx.strokeStyle = 'rgba(240,250,255,0.6)'; ctx.beginPath(); ctx.moveTo(x + cw - 14, top + 16); ctx.lineTo(x + cw - 14, top + 32); ctx.stroke();
     const rows = [['legend', 'LEGENDARY'], ['mythic', 'MYTHIC'], ['epic', 'EPIC'], ['super', 'SUPER RARE'], ['rare', 'RARE']];
     rows.forEach(([id, label], k) => {
-      const yy = top + 38 + k * 9, v = r.ch[id];
+      const yy = top + 38 + k * 9, v = chanceOf(id, r);
       T(label, x + 4, yy, v ? RAR[id].color : '#4a5a6a', 1, 'left');
       T(v + '%', x + cw - 4, yy, v ? '#fff' : '#4a5a6a', 1, 'right');
     });
@@ -883,7 +886,7 @@ function drawWorlds(t) {
   ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
   T('WORLDS', 8, 6, '#fff', 2, 'left', '#000');
   coinsText(W - 8, 6, 'right');
-  T('DEEPER SEAS: BIGGER MONEY, BUT MORE DANGER', W / 2, 24, '#9ac8e0', 1, 'center');
+  T('DEEPER SEAS: MORE MONEY AND MORE LUCK, BUT MORE DANGER', W / 2, 24, '#9ac8e0', 1, 'center');
   const gap = 4, n = WORLDS.length, cw = Math.floor((W - 16 - gap * (n - 1)) / n), top = 36, ch = 168;
   WORLDS.forEach((w, i) => {
     const x = 8 + i * (cw + gap), owned = save.worlds.includes(w.id), on = save.world === w.id;
@@ -903,9 +906,10 @@ function drawWorlds(t) {
     const words = w.name.split(' ');
     T(words[0], x + cw / 2, top + 4, owned ? '#fff' : '#9ac8e0', 1, 'center');
     if (words[1]) T(words[1], x + cw / 2, top + 11, owned ? '#fff' : '#9ac8e0', 1, 'center');
-    T(Math.round(w.depth / 10) + ' M DEEP', x + cw / 2, top + 94, '#fff', 1, 'center');
-    T('MONEY X' + w.money, x + cw / 2, top + 106, '#ffd23f', 1, 'center');
-    T(i === 0 ? 'EASY' : ['', 'MORE DANGER', 'LOTS OF DANGER', 'VERY DANGEROUS', 'DEADLY'][i], x + cw / 2, top + 118, ['#5ad43f', '#e0d040', '#ff8a2a', '#ff4a5a', '#c070ff'][i], 1, 'center');
+    T(Math.round(w.depth / 10) + ' M DEEP', x + cw / 2, top + 92, '#fff', 1, 'center');
+    T('MONEY X' + w.money, x + cw / 2, top + 102, '#ffd23f', 1, 'center');
+    T('LUCK X' + w.luck, x + cw / 2, top + 112, w.luck < 1 ? '#ff8a8a' : w.luck > 1 ? '#9be36b' : '#c8f4ff', 1, 'center');
+    T(i === 0 ? 'EASY' : ['', 'MORE DANGER', 'LOTS OF DANGER', 'VERY DANGEROUS', 'DEADLY'][i], x + cw / 2, top + 122, ['#5ad43f', '#e0d040', '#ff8a2a', '#ff4a5a', '#c070ff'][i], 1, 'center');
     const by = top + ch - 24;
     if (on) T('FISHING HERE', x + cw / 2, by + 7, '#ffd23f', 1, 'center');
     else if (owned) { if (UI.button('w_' + w.id, x + 3, by, cw - 6, 20, 'GO', { size: 1, accent: '#5ad43f' })) { setWorld(w.id); sfx('click'); } }
