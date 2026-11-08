@@ -22,7 +22,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
-| **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
+| **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
 
 ## Pixel Wings
 
@@ -208,6 +208,9 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
   COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD (saves you from a crash, every race), TIME WARP (slows your rivals for 4 s, every race).
 - **Tracks:** CITY STREETS (1200 m, easy), SUNSET PARK (1600 m) and NEON NIGHT (2000 m, hard). Finish in the top 3 to
   unlock the next one. Prize for the place (more on harder tracks); ★3 for a win, ★2 for 2nd, ★1 for 3rd.
+- **RACE A FRIEND:** online. CREATE GAME gives a 4-letter code, your friend joins with it (both need the same version).
+  The host picks the track (all 3 are open online). You see your friend's skater and their tricks; first to the finish
+  wins (win: 120 coins and ★3, lose: 40 coins and ★1). The host can start a REMATCH or pick ANOTHER TRACK.
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
 - Coins, tricks, abilities and best places are saved on your phone.
