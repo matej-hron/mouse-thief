@@ -213,6 +213,9 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
   wins (win: 120 coins and ★3, lose: 40 coins and ★1). The host can start a REMATCH or pick ANOTHER TRACK.
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
+- **3D VIEW:** the street is drawn with perspective: buildings, ramps, benches and rails are real boxes (you see their
+  tops and sides as you skate past) and skaters further back look smaller. The 3D / 2D button on the title screen
+  switches back to the flat look.
 - Coins, tricks, abilities and best places are saved on your phone.
 
 ## Pixel Sky Run

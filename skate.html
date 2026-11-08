@@ -41,9 +41,9 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelSkate.save';
-const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
+const freshSave = () => ({ coins: 0, sfx: true, view3d: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
 const save = freshSave();
 try {
@@ -616,11 +616,20 @@ function drawBoard(s, x, y, rot, sx, sy) {      // (x, y): the middle of the boa
 }
 const scrY = (y, d) => GS + cam.y - d - y;
 function drawSkater(s, t) {
+  if (save.view3d) {                                  // 3D: placed in its lane, smaller further back
+    const z = laneZ(s), k = k3(z), [px, py] = P3(s.x, s.y, z);
+    if (px < -60 || px > S.W + 60) return;
+    ctx.save(); ctx.translate(Math.round(px), Math.round(py)); ctx.scale(k, k); drawSkaterAt(s, t, 0, 0); ctx.restore();
+    return;
+  }
   const sx = Math.round(s.x - cam.x), sy = Math.round(scrY(s.y, s.d));
   if (sx < -60 || sx > S.W + 60) return;
+  drawSkaterAt(s, t, sx, sy);
+}
+function drawSkaterAt(s, t, sx, sy) {
   // a shadow on the ground while in the air
   if (!s.ground || s.grind) {
-    const gy = Math.round(scrY(s.grind ? s.grind.h : groundAt(s.x), s.d)), k = clamp(1 - (s.y - groundAt(s.x)) / 160, 0.3, 1);
+    const gy = sy + Math.round(s.y - (s.grind ? s.grind.h : groundAt(s.x))), k = clamp(1 - (s.y - groundAt(s.x)) / 160, 0.3, 1);
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(sx - Math.round(10 * k), gy - 1, Math.round(20 * k), 2);
   }
   if (s.bail > 0) {                                  // bailing: fall over, the board rolls away, get back up
@@ -840,6 +849,7 @@ function drawFinish() {
   }
 }
 function drawWorld(t) {
+  if (save.view3d) return drawWorld3D(t);
   drawBack(t);
   const vis = featsIn(cam.x - 60, cam.x + S.W + 60);
   for (const f of vis) if (f.type === 'kicker' || f.type === 'funbox') drawBlock(f);
@@ -855,6 +865,193 @@ function drawWorld(t) {
   if (G.mode === 'race' && state === 'play') for (const s of G.friend ? [G.friend] : G.rivals) {
     const x = Math.round(s.x - cam.x); if (x < 0 || x > S.W) continue;
     T(s.name, x, Math.round(scrY(s.y, s.d)) - 52, s.color, 1, 'center', '#000');
+  }
+  if (G.warpT > 0 && G.mode === 'race') { ctx.fillStyle = 'rgba(176,122,255,' + (0.12 + 0.05 * Math.sin(t * 8)) + ')'; ctx.fillRect(0, 0, S.W, H); }
+}
+
+/* --- 4b. THE 3D VIEW: still a side view, but with perspective --------------------------------
+   The world gets depth z (0 = the front of the sidewalk, bigger = further back). A point (x, y, z)
+   shrinks towards the horizon by k = F / (F + z), so the street, the ramps and the buildings are
+   real boxes: you see their tops and the side that faces the middle of the screen.              */
+const F3 = 260, VY = 74, WALK = 80;              // focal length, horizon, how deep the sidewalk is
+let xc = 0;                                     // the world x in the middle of the screen
+const k3 = z => F3 / (F3 + z);
+function P3(x, y, z) { const k = k3(z); return [S.W / 2 + (x - xc) * k, VY + (GS - VY + cam.y - y) * k]; }
+function laneZ(s) {                             // grinders slide over to the rail in the middle of the sidewalk
+  const want = s.grind ? 40 : s.d * 4 - 2;
+  s.zv = s.zv === undefined ? want : s.zv + (want - s.zv) * 0.2;
+  return s.zv;
+}
+function poly3(pts, col) {
+  ctx.fillStyle = col; ctx.beginPath();
+  pts.forEach((p, i) => { const [a, b] = P3(p[0], p[1], p[2]); if (i) ctx.lineTo(a, b); else ctx.moveTo(a, b); });
+  ctx.closePath(); ctx.fill();
+}
+function front3(x0, x1, y0, y1, z, col) {         // a face looking at us: just a rectangle
+  const [a, b] = P3(x0, y1, z), [c, d] = P3(x1, y0, z);
+  ctx.fillStyle = col; ctx.fillRect(Math.round(a), Math.round(b), Math.round(c) - Math.round(a), Math.round(d) - Math.round(b));
+}
+function box3(x0, x1, y0, y1, z0, z1, front, side, top) {
+  if (top && y1 < GS - VY + cam.y) poly3([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], top);
+  if (xc < x0) poly3([[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], side);
+  if (xc > x1) poly3([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], side);
+  front3(x0, x1, y0, y1, z0, front);
+}
+function visRange(z, pad = 80) { const k = k3(z); return [xc - S.W / 2 / k - pad, xc + S.W / 2 / k + pad]; }
+function drawBack3D(t) {
+  const th = W.theme, Wd = S.W;
+  for (let y = 0; y < H; y += 6) {                // the sky
+    const k = clamp(y / (VY + 20), 0, 1), a = parseInt(th.sky[0].slice(1), 16), b = parseInt(th.sky[1].slice(1), 16);
+    const mix = sh => Math.round((a >> sh & 255) * (1 - k) + (b >> sh & 255) * k);
+    ctx.fillStyle = `rgb(${mix(16)},${mix(8)},${mix(0)})`; ctx.fillRect(0, y, Wd, 6);
+  }
+  if (th.stars) { for (let i = 0; i < 60; i++) { const x = Math.floor((hash(i, 91) * 900 - xc * 0.02) % (Wd + 20) + Wd + 20) % (Wd + 20), y = hash(i, 92) * 70; ctx.fillStyle = (Math.floor(t * 2 + i) % 7) ? '#d8d8ff' : '#ffffff'; ctx.fillRect(x, Math.round(y), 1, 1); } ctx.fillStyle = '#f4f0d0'; ctx.fillRect(Wd - 170, 14, 14, 14); ctx.fillStyle = th.sky[0]; ctx.fillRect(Wd - 164, 12, 12, 12); }
+  if (th.sun) { const y = VY - 30; ctx.fillStyle = th.sun; ctx.fillRect(Wd - 120, y, 30, 30); ctx.fillRect(Wd - 124, y + 4, 38, 22); ctx.fillStyle = '#ffb05a'; ctx.fillRect(Wd - 124, y + 18, 38, 3); }
+  for (let i = Math.floor((xc * 0.05 - 120) / 160) - 2; i < (xc * 0.05 + Wd + 60) / 160; i++) {     // clouds, very far away
+    const x = Math.round(i * 160 + hash(i, 1) * 60 - xc * 0.05), y = Math.round(8 + hash(i, 2) * 34), s = 1 + Math.floor(hash(i, 3) * 2);
+    ctx.fillStyle = th.cloudS; ctx.fillRect(x, y + 10 * s, 50 * s, 6 * s);
+    ctx.fillStyle = th.cloud; ctx.fillRect(x + 4 * s, y + 6 * s, 40 * s, 6 * s); ctx.fillRect(x + 12 * s, y + 2 * s, 18 * s, 6 * s); ctx.fillRect(x + 18 * s, y, 10 * s, 4 * s);
+  }
+  // the ground behind the sidewalk, all the way to the horizon
+  const [, gy] = P3(0, 0, 3000); ctx.fillStyle = shade(th.grass, 0.75); ctx.fillRect(0, Math.round(gy), Wd, H);
+  // two rows of buildings: real boxes, so you see their sides as you skate past
+  for (const L of [{ z: 430, sp: 170, wmin: 90, wmax: 150, hmin: 180, hmax: 480, d: 120, col: th.far, k: 10 }, { z: 200, sp: 150, wmin: 80, wmax: 130, hmin: 110, hmax: 330, d: 100, col: th.near, k: 20 }]) {
+    const [a, b] = visRange(L.z, 200), list = [];
+    for (let i = Math.floor(a / L.sp); i <= b / L.sp; i++) if (hash(i, L.k + 4) > 0.12) list.push(i);
+    list.sort((p, q) => Math.abs(q * L.sp - xc) - Math.abs(p * L.sp - xc));             // the far-away sides first
+    for (const i of list) {
+      const bw = Math.round(L.wmin + hash(i, L.k) * (L.wmax - L.wmin)), bh = Math.round(L.hmin + hash(i, L.k + 1) * (L.hmax - L.hmin)), x0 = i * L.sp + hash(i, L.k + 2) * 20;
+      const near = L.k === 20, front = L.col, side = near ? th.nearS : shade(L.col, 0.82), top = shade(L.col, 1.15);
+      box3(x0, x0 + bw, 0, bh, L.z, L.z + L.d, front, side, top);
+      if (near && hash(i, 31) < 0.4) box3(x0 + bw / 2 - 10, x0 + bw / 2 + 10, bh, bh + 18, L.z + 20, L.z + 50, front, side, top);
+      // windows on the front
+      const k = k3(L.z);
+      for (let wy = 14; wy < bh - 10; wy += 22) for (let wx = 10; wx < bw - 18; wx += 18) {
+        const hv = hash(i * 131 + wx, wy);
+        if (!near && hv > 0.55) continue;
+        const [p, q] = P3(x0 + wx, bh - wy, L.z);
+        ctx.fillStyle = near ? th.win[Math.floor(hv * th.win.length)] : shade(L.col, 1.25);
+        ctx.fillRect(Math.round(p), Math.round(q), Math.max(1, Math.round(9 * k)), Math.max(1, Math.round(11 * k)));
+      }
+    }
+  }
+  // trees, bushes, lamps and the fence behind the sidewalk
+  const [ta, tb] = visRange(130, 120);
+  ctx.fillStyle = th.grass; { const [, y0] = P3(0, 0, 140), [, y1] = P3(0, 0, WALK); ctx.fillRect(0, Math.round(y0), Wd, Math.round(y1 - y0) + 1); }
+  for (let i = Math.floor(ta / 230); i <= tb / 230; i++) {
+    const x = i * 230 + hash(i, 60) * 90;
+    if (th.lamps && hash(i, 63) < 0.6) {
+      const lx = x + 120; box3(lx, lx + 4, 0, 110, 96, 100, '#2a2a3a', '#1a1a2a');
+      box3(lx - 14, lx + 4, 106, 110, 96, 100, '#2a2a3a', '#1a1a2a');
+      const [p, q] = P3(lx - 14, 106, 96); ctx.fillStyle = '#ffe890'; ctx.fillRect(Math.round(p), Math.round(q), 7, 3);
+      ctx.fillStyle = 'rgba(255,232,144,0.12)'; ctx.beginPath(); ctx.moveTo(p + 2, q + 3); ctx.lineTo(p - 26, P3(0, 0, 10)[1]); ctx.lineTo(p + 30, P3(0, 0, 10)[1]); ctx.fill();
+    }
+    if (hash(i, 61) < 0.35) continue;
+    const k = k3(125), [p, q] = P3(x, 0, 125), tp = treePic(th, Math.floor(hash(i, 62) * 3)), sc = 1.45 * k;
+    ctx.drawImage(tp, Math.round(p - 30 * sc), Math.round(q - 86 * sc), Math.round(60 * sc), Math.round(86 * sc));
+  }
+  for (let i = Math.floor(ta / 60); i <= tb / 60; i++) {
+    if (hash(i, 50) < 0.5) continue;
+    const x = i * 60 + hash(i, 51) * 20, bw = 24 + hash(i, 52) * 30;
+    box3(x, x + bw, 0, 16, 98, 112, th.leaf[1], th.leaf[0], th.leaf[2]);
+  }
+  const fk = k3(92), fp = fencePic(th), fw = 48, [fa, fb] = visRange(92, 60);
+  for (let x = Math.floor(fa / fw) * fw; x < fb; x += fw) { const [p, q] = P3(x, 46, 92); ctx.drawImage(fp, Math.round(p), Math.round(q), Math.ceil(fw * fk) + 1, Math.round(46 * fk)); }
+  // the sidewalk (a raised slab), the curb and the road in front
+  const [, yb] = P3(0, 0, WALK), [, yf] = P3(0, 0, 0);
+  ctx.fillStyle = th.walk; ctx.fillRect(0, Math.round(yb), Wd, Math.round(yf - yb));
+  ctx.fillStyle = shade(th.walk, 1.08); ctx.fillRect(0, Math.round(yb), Wd, 1);
+  const [sa, sb] = visRange(0, 50);
+  for (let x = Math.floor(sa / 44) * 44; x < sb; x += 44) poly3([[x, 0, 0], [x + 1.5, 0, 0], [x + 1.5, 0, WALK], [x, 0, WALK]], th.walkS);
+  poly3([[sa, 0, 40], [sb, 0, 40], [sb, 0, 41], [sa, 0, 41]], th.walkS);
+  front3(sa, sb, -6, 0, 0, th.curb); front3(sa, sb, -1, 0, 0, shade(th.curb, 1.2));
+  const [, yr] = P3(0, -6, 0); ctx.fillStyle = th.road; ctx.fillRect(0, Math.round(yr), Wd, H);
+  const [ra, rb] = visRange(-40, 100);
+  ctx.fillStyle = th.dash;
+  for (let x = Math.floor(ra / 90) * 90; x < rb; x += 90) poly3([[x, -6, -36], [x + 34, -6, -36], [x + 34, -6, -42], [x, -6, -42]], th.dash);
+}
+function drawRamp3D(f) {
+  const th = W.theme, cols = f.type === 'kicker' ? th.ramp : th.box, top = cols[1], front = cols[0], side = shade(cols[0], 0.7), x0 = f.x, x1 = f.x + f.w;
+  if (f.type === 'kicker') {
+    if (xc > x1) poly3([[x1, 0, 0], [x1, f.h, 0], [x1, f.h, WALK], [x1, 0, WALK]], side);
+    poly3([[x0, 0, 0], [x1, f.h, 0], [x1, f.h, WALK], [x0, 0, WALK]], top);
+    poly3([[x0, 0, 0], [x1, f.h, 0], [x1, 0, 0]], front);
+    poly3([[x1 - 3, f.h - 1, 0], [x1, f.h, 0], [x1, f.h, WALK], [x1 - 3, f.h - 1, WALK]], '#d8dce8');
+    if (f.h > 24) {                               // a bit of graffiti on the side
+      const [gx, gy] = P3(x1 - f.w * 0.35, 4, 0); ctx.fillStyle = '#ffd23f';
+      ctx.fillRect(gx, gy, 12, 2); ctx.fillRect(gx, gy - 7, 2, 7); ctx.fillRect(gx + 5, gy - 6, 2, 6); ctx.fillRect(gx + 10, gy - 8, 2, 8);
+    }
+  } else {
+    const a = x0 + f.r, b = x1 - f.r;
+    poly3([[x0, 0, 0], [a, f.h, 0], [a, f.h, WALK], [x0, 0, WALK]], top);
+    poly3([[a, f.h, 0], [b, f.h, 0], [b, f.h, WALK], [a, f.h, WALK]], shade(top, 1.08));
+    poly3([[b, f.h, 0], [x1, 0, 0], [x1, 0, WALK], [b, f.h, WALK]], shade(top, 0.9));
+    poly3([[x0, 0, 0], [a, f.h, 0], [b, f.h, 0], [x1, 0, 0]], front);
+    poly3([[a, f.h, 0], [b, f.h, 0], [b, f.h - 1.5, 0], [a, f.h - 1.5, 0]], '#d8dce8');
+  }
+}
+function drawPad3D(f, t) {
+  poly3([[f.x, 0, 12], [f.x + f.w, 0, 12], [f.x + f.w, 0, 68], [f.x, 0, 68]], '#2a2a3a');
+  for (let k = 0; k < 3; k++) {
+    const on = Math.floor(t * 8 - k) % 3 === 0, x = f.x + 6 + k * 11;
+    poly3([[x, 0, 20], [x + 8, 0, 40], [x, 0, 60], [x + 3, 0, 60], [x + 11, 0, 40], [x + 3, 0, 20]], on ? '#ffffff' : '#9be36b');
+  }
+}
+function drawMid3D(f) {                          // rails, benches and cones stand in the middle of the sidewalk (z = 40)
+  if (f.type === 'rail') {
+    const posts = [f.x + 4]; for (let px = f.x + 70; px < f.x + f.w - 10; px += 70) posts.push(px); posts.push(f.x + f.w - 6);
+    for (const px of posts) box3(px, px + 2.5, groundAt(px), f.h, 39, 41.5, '#6a6a7e', '#4a4a5e');
+    box3(f.x, f.x + f.w, f.h - 2, f.h, 38.5, 42, '#8a8aa0', '#6a6a7e', '#e8ecf4');
+  } else if (f.type === 'bench') {
+    const x0 = f.x, x1 = f.x + f.w;
+    box3(x0 + 2, x1 - 2, f.h + 4, f.h + 18, 46, 48, '#a85a28', '#7a4018', '#c87a3a');          // the backrest
+    for (const lx of [x0 + 4, x1 - 7]) { box3(lx, lx + 3, 0, f.h, 34, 37, '#4a2a1a', '#2a1a10'); box3(lx, lx + 3, 0, f.h + 18, 44, 47, '#4a2a1a', '#2a1a10'); }
+    box3(x0, x1, f.h - 3, f.h, 33, 46, '#c06a30', '#8a4a20', '#e08a4a');
+  } else if (f.type === 'cone') {
+    if (f.down) { box3(f.x - 3, f.x + 11, 0, 5, 37, 43, '#ff6a1a', '#c84a10', '#ff8a4a'); return; }
+    box3(f.x - 2, f.x + 10, 0, 2, 35, 45, '#c84a10', '#8a3008', '#e05a20');
+    box3(f.x, f.x + 8, 2, 8, 38, 42, '#ff6a1a', '#c84a10', '#ffffff');
+    box3(f.x + 1.5, f.x + 6.5, 8, 12, 39, 41, '#ff6a1a', '#c84a10', '#ff8a4a');
+    front3(f.x, f.x + 8, 5, 7, 38, '#ffffff');
+  }
+}
+function drawFinish3D() {
+  if (W.mode !== 'race') return;
+  for (const [fx, label] of [[0, 'START'], [W.len, 'FINISH']]) {
+    const [p] = P3(fx, 0, 0); if (p < -120 || p > S.W + 120) continue;
+    for (let j = 0; j < WALK; j += 8) for (let i = 0; i < 2; i++) poly3([[fx + i * 5, 0, j], [fx + i * 5 + 5, 0, j], [fx + i * 5 + 5, 0, j + 8], [fx + i * 5, 0, j + 8]], (i + j / 8) % 2 ? '#ffffff' : '#14121c');
+    if (label === 'FINISH') {                      // an arch over the sidewalk
+      box3(fx - 2, fx + 2, 0, 100, WALK - 2, WALK + 2, '#d8dce8', '#9a9ab0');
+      poly3([[fx, 100, 0], [fx, 118, 0], [fx, 118, WALK], [fx, 100, WALK]], '#14121c');
+      for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2) poly3([[fx, 100 + j * 9, i * 8], [fx, 109 + j * 9, i * 8], [fx, 109 + j * 9, i * 8 + 8], [fx, 100 + j * 9, i * 8 + 8]], '#ffffff');
+      box3(fx - 2, fx + 2, 0, 100, -2, 2, '#d8dce8', '#9a9ab0');
+      const [tx, ty] = P3(fx, 120, 0); T('FINISH', Math.round(tx), Math.round(ty) - 8, '#ffd23f', 1, 'center', '#000');
+    }
+  }
+}
+function drawWorld3D(t) {
+  xc = cam.x + S.W / 2;
+  drawBack3D(t);
+  const [a, b] = visRange(0, 60), vis = featsIn(a, b);
+  for (const f of vis) if (f.type === 'pad') drawPad3D(f, t);
+  vis.filter(f => f.type === 'kicker' || f.type === 'funbox').sort((p, q) => Math.abs(q.x + q.w / 2 - xc) - Math.abs(p.x + p.w / 2 - xc)).forEach(drawRamp3D);
+  // back to front: skaters behind the middle, the rails / benches / cones / coins, then the skaters in front
+  const order = G.all.slice().sort((p, q) => laneZ(q) - laneZ(p));
+  for (const s of order) if (s.zv > 40.5) drawSkater(s, t);
+  drawFinish3D();
+  for (const f of vis) if (f.type === 'bench' || f.type === 'rail' || f.type === 'cone') drawMid3D(f);
+  const ck = k3(40);
+  for (const c of W.coins) {
+    if (c.got) continue;
+    const [p, q] = P3(c.x, c.y + 10, 40); if (p < -10 || p > S.W + 10) continue;
+    const w = Math.max(2, Math.round(12 * ck * Math.abs(Math.cos(t * 4 + c.x * 0.02))));
+    ctx.drawImage(coinC, Math.round(p - w / 2), Math.round(q - 6 * ck), w, Math.round(12 * ck));
+  }
+  for (const s of order) if (s.zv <= 40.5) drawSkater(s, t);
+  for (const p of G.parts) { const [x, y] = P3(p.x, p.y + 4, 20); ctx.fillStyle = p.color; ctx.fillRect(Math.round(x), Math.round(y), p.s, p.s); }
+  if (G.mode === 'race' && state === 'play') for (const s of G.friend ? [G.friend] : G.rivals) {
+    const z = laneZ(s), [x, y] = P3(s.x, s.y, z); if (x < 0 || x > S.W) continue;
+    T(s.name, Math.round(x), Math.round(y - 52 * k3(z)), s.color, 1, 'center', '#000');
   }
   if (G.warpT > 0 && G.mode === 'race') { ctx.fillStyle = 'rgba(176,122,255,' + (0.12 + 0.05 * Math.sin(t * 8)) + ')'; ctx.fillRect(0, 0, S.W, H); }
 }
@@ -988,6 +1185,7 @@ function drawTitle(t) {
   T('★ ' + PX.Wallet.get(), Wd - 36, 8, '#ffd23f', 2, 'right', '#000');
   coinIcon(Wd - 100, 22); T('' + save.coins, Wd - 36, 22, '#ffd23f', 1, 'right', '#000');
   if (UI.button('sfx', Wd - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  if (UI.button('view', Wd - 30, 30, 24, 20, save.view3d ? '3D' : '2D', { size: 1, on: save.view3d })) { save.view3d = !save.view3d; store(); }
   T('PIXEL', Wd / 2, 32, '#ffd23f', 3, 'center', '#000');
   T('SKATE', Wd / 2, 50, '#fff', 6, 'center', '#ff8a2a');
   T('RACE, JUMP, FLIP AND GRIND. TRICKS = COINS!', Wd / 2, 88, '#ffffff', 1, 'center', '#000');
