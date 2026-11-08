@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -98,10 +98,10 @@ const KINDS = [['flip', 'FLIP', '#ff6bd0'], ['grab', 'GRAB', '#7af0ff'], ['spin'
 // --- abilities (bought with coins) -------------------------------------------------------
 const ABIL = [
   { id: 'speed', name: 'FAST WHEELS', desc: 'HIGHER TOP SPEED', max: 5, cost: [150, 300, 500, 800, 1200], color: '#7af0ff' },
-  { id: 'ollie', name: 'SUPER OLLIE', desc: 'JUMP HIGHER, MORE AIR FOR TRICKS', max: 3, cost: [200, 450, 900], color: '#9be36b' },
+  { id: 'ollie', name: 'SUPER JUMP', desc: 'JUMP HIGHER, MORE AIR FOR TRICKS', max: 3, cost: [200, 450, 900], color: '#9be36b' },
   { id: 'nitro', name: 'NITRO', desc: 'STRONGER, LONGER BOOST', max: 3, cost: [250, 550, 1000], color: '#ff8a2a' },
   { id: 'magnet', name: 'COIN MAGNET', desc: 'PULLS COINS TO YOU', max: 3, cost: [150, 350, 700], color: '#e01e1e' },
-  { id: 'dbl', name: 'DOUBLE JUMP', desc: 'OLLIE AGAIN IN THE AIR', max: 1, cost: [600], color: '#ffd23f' },
+  { id: 'dbl', name: 'DOUBLE JUMP', desc: 'JUMP AGAIN IN THE AIR', max: 1, cost: [600], color: '#ffd23f' },
   { id: 'shield', name: 'NO-BAIL SHIELD', desc: 'SAVES YOU FROM A CRASH (EVERY RACE)', max: 2, cost: [500, 1200], color: '#4aa8ff' },
   { id: 'warp', name: 'TIME WARP', desc: 'SLOWS YOUR RIVALS FOR 4 S (EVERY RACE)', max: 2, cost: [800, 1600], color: '#b07aff' },
 ];
@@ -848,18 +848,45 @@ function panel(w, h, y) {
   ctx.fillStyle = '#ff8a2a'; ctx.fillRect(x, y, w, 2);
   return { x, y };
 }
+// --- little pixel icons for the buttons and the shop ('.' = empty; a = the button's colour) ---
+const ICONS = {
+  jump: ['...a...', '..aaa..', '.aaaaa.', 'aaaaaaa', '..aaa..', '..aaa..', '..aaa..'],
+  push: ['aa..aa..', '.aa..aa.', '..aa..aa', '.aa..aa.', 'aa..aa..'],
+  boost: ['...y...', '..yy...', '..yry..', '.yrry.y', '.yrrryy', 'yrrorry', 'yrooory', '.yrrry.'],
+  warp: ['aaaaaaa', '.awwwa.', '..awa..', '...a...', '..a.a..', '.a.w.a.', 'aaaaaaa'],
+  flip: ['..aaaa..', '.a....a.', '.....aaa', '......a.', '........', 'bbbbbbbb', '.y....y.'],
+  dflip: ['.aa..aa.', 'a..aa..a', '..aaa.aa', '.......a', '........', 'bbbbbbbb', '.y....y.'],
+  shove: ['........', '.aaaaa..', 'a.....a.', '.a...aaa', '......a.', 'bbbbbbbb', '.y....y.'],
+  grab: ['..ss....', '.ssss...', '.sss.s..', '..sss...', '..ss....', 'bbssbbbb', '.y....y.'],
+  superman: ['hh......', 'hhcccss.', '..cccc.s', '..pp..bb', '.pp...bb', 'pp......'],
+  spin: ['..aaa...', '.a...a..', 'a.....a.', 'a.....a.', 'a....aaa', '.a....a.', '..aa....'],
+  back: ['..aaa...', '.a...a..', 'a..h..a.', 'a..c..a.', 'aaa.c.a.', '.a...a..', '...aa...'],
+  front: ['...aaa..', '..a...a.', '.a..h..a', '.a..c..a', '.a.c.aaa', '..a...a.', '...aa...'],
+  wheel: ['..yyy..', '.yyyyy.', 'yyywyyy', 'yywwwyy', 'yyywyyy', '.yyyyy.', '..yyy..'],
+  dbl: ['..a..a..', '.aaaaaa.', 'aaaaaaaa', '..a..a..', '..a..a..', '..a..a..'],
+  magnet: ['rr...rr', 'rr...rr', 'rr...rr', 'rr...rr', 'rrr.rrr', '.rrrrr.', '..rrr..'],
+  shield: ['aaaaaaa', 'aawwwaa', 'aawaaaa', 'aaawaaa', '.aaawa.', '..aaa..', '...a...'],
+};
+const TRICK_ICON = { kickflip: 'flip', heelflip: 'flip', shove: 'shove', treflip: 'dflip', dflip: 'dflip', laser: 'dflip',
+  indy: 'grab', melon: 'grab', nose: 'grab', stale: 'grab', airwalk: 'grab', superman: 'superman',
+  spin360: 'spin', spin720: 'spin', spin1080: 'spin', backflip: 'back', dback: 'back', frontflip: 'front' };
+const ABIL_ICON = { speed: 'wheel', ollie: 'jump', nitro: 'boost', magnet: 'magnet', dbl: 'dbl', shield: 'shield', warp: 'warp' };
+function icon(name, cx, cy, col, s = 2) {
+  PX.drawIcon(ctx, ICONS[name], { a: col, w: '#ffffff', y: '#ffd23f', r: '#ff4a2a', o: '#ff8a2a', b: '#2b2b3a', s: '#f0b88a', h: '#6a3a1a', c: MY_COLOR, p: '#2a2f4a' }, cx, cy, s, '#111111');
+}
 function coinIcon(x, y) { ctx.drawImage(coinC, x, y, 8, 8); }
 function touchButtons() {
   const Wd = S.W, y = H - 44, h = 40, L = [
-    { id: 'push', x: 8, y, w: 70, h, label: 'PUSH', col: '#9be36b' },
-    { id: 'boost', x: 84, y, w: 54, h, label: 'BOOST', col: '#ff8a2a' },
-    { id: 'ollie', x: Wd - 78, y, w: 70, h, label: 'OLLIE', col: '#ffd23f' },
+    { id: 'push', x: 8, y, w: 70, h, label: 'PUSH', col: '#9be36b', ic: 'push', key: 'RIGHT' },
+    { id: 'boost', x: 84, y, w: 54, h, label: 'BOOST', col: '#ff8a2a', ic: 'boost', key: 'E' },
+    { id: 'ollie', x: Wd - 78, y, w: 70, h, label: 'JUMP', col: '#ffd23f', ic: 'jump', key: 'SPACE' },
   ];
-  if (G.warps > 0 || G.warpT > 0) L.push({ id: 'warp', x: 144, y, w: 36, h, label: 'WARP', col: '#b07aff' });
-  KINDS.slice().reverse().forEach(([k, label, col], i) => L.push({ id: k, x: Wd - 78 - 46 * (i + 1), y, w: 42, h, label, col }));
+  if (G.warps > 0 || G.warpT > 0) L.push({ id: 'warp', x: 144, y, w: 36, h, label: 'WARP', col: '#b07aff', ic: 'warp', key: 'Q' });
+  KINDS.slice().reverse().forEach(([k, label, col], i) => L.push({ id: k, x: Wd - 78 - 46 * (i + 1), y, w: 42, h, label, col, ic: TRICK_ICON[save.eq[k]], key: { flip: 'J', grab: 'K', spin: 'L' }[k] }));
   return L;
 }
 const held = new Map();          // finger -> on-screen button
+const lit = {};                  // a key was pressed: light its button up for a moment
 function hud(t) {
   const Wd = S.W, P = G.me;
   // left: your place (race) or your session (free skate)
@@ -907,23 +934,22 @@ function hud(t) {
   else if (G.mode === 'race' && G.t < 0.8) T('GO!', Wd / 2, 70, '#9be36b', 6, 'center', '#000');
   if (G.help > 0 && G.count <= 0) {
     ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(Wd / 2 - 150, 78, 300, 44);
-    T(touchUI ? 'HOLD PUSH TO GO FASTER. OLLIE TO JUMP.' : 'HOLD RIGHT TO PUSH. SPACE TO OLLIE.', Wd / 2, 84, '#ffffff', 1, 'center');
+    T(touchUI ? 'HOLD PUSH TO GO FASTER. TAP JUMP TO JUMP.' : 'HOLD RIGHT TO PUSH. SPACE TO JUMP.', Wd / 2, 84, '#ffffff', 1, 'center');
     T(touchUI ? 'IN THE AIR TAP FLIP, GRAB OR SPIN.' : 'IN THE AIR: J FLIP, K GRAB, L SPIN.', Wd / 2, 95, '#ffffff', 1, 'center');
     T('LAND THE TRICK = COINS + SPEED. LAND MID-TRICK = BAIL!', Wd / 2, 106, '#ffd23f', 1, 'center');
   }
   if (G.flash > 0) { ctx.fillStyle = 'rgba(255,60,60,' + G.flash * 0.4 + ')'; ctx.fillRect(0, 0, Wd, H); }
   // controls: buttons on a touch screen, a reminder of the keys on a computer
-  if (touchUI && !G.done && !(P.finished && G.mode === 'race')) {
+  if (!G.done && !(P.finished && G.mode === 'race')) {
     const on = new Set(held.values());
     for (const b of touchButtons()) {
-      const down = on.has(b.id);
+      const down = on.has(b.id) || (lit[b.id] || 0) > performance.now() || (b.id === 'push' && inp.keyPush);
       ctx.fillStyle = down ? b.col : 'rgba(13,11,19,0.55)'; ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.fillStyle = b.col; ctx.fillRect(b.x, b.y, b.w, 1); ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1); ctx.fillRect(b.x, b.y, 1, b.h); ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
       if (b.id === 'boost') { ctx.fillStyle = 'rgba(255,138,42,0.35)'; ctx.fillRect(b.x + 1, b.y + b.h - 1 - Math.round((b.h - 2) * P.meter / 100), b.w - 2, Math.round((b.h - 2) * P.meter / 100)); }
-      T(b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, down ? '#111' : b.col, 1, 'center');
+      icon(b.ic, b.x + b.w / 2, b.y + 15, down ? '#ffffff' : b.col);
+      T(touchUI ? b.label : b.key + ' ' + b.label, b.x + b.w / 2, b.y + b.h - 10, down ? '#111' : b.col, 1, 'center');
     }
-  } else if (!touchUI && !G.done) {
-    T('RIGHT: PUSH   LEFT: BRAKE   SPACE: OLLIE   J / K / L: FLIP / GRAB / SPIN   E: BOOST' + (G.warps > 0 ? '   Q: WARP' : ''), Wd / 2, H - 12, 'rgba(255,255,255,0.55)', 1, 'center');
   }
 }
 function drawTitle(t) {
@@ -935,7 +961,7 @@ function drawTitle(t) {
   if (UI.button('sfx', Wd - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
   T('PIXEL', Wd / 2, 32, '#ffd23f', 3, 'center', '#000');
   T('SKATE', Wd / 2, 50, '#fff', 6, 'center', '#ff8a2a');
-  T('RACE, OLLIE, FLIP AND GRIND. TRICKS = COINS!', Wd / 2, 88, '#ffffff', 1, 'center', '#000');
+  T('RACE, JUMP, FLIP AND GRIND. TRICKS = COINS!', Wd / 2, 88, '#ffffff', 1, 'center', '#000');
   const bw = 180, bx = Math.round(Wd / 2 - bw / 2);
   if (UI.button('race', bx, 100, bw, 28, 'RACE!', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'tracks'; }
   if (UI.button('free', bx, 134, bw, 22, 'FREE SKATE', { accent: '#7af0ff' })) { sfx('click'); startGame('free'); }
@@ -978,8 +1004,9 @@ function drawShop(t) {
       TRICKS.filter(d => d.kind === kind).forEach((d, i) => {
         const ry = y + 37 + i * 26, own = !!save.owned[d.id], eq = save.eq[kind] === d.id;
         ctx.fillStyle = eq ? '#3a2f5c' : '#262036'; ctx.fillRect(cx, ry, cw, 24);
-        T(d.name, cx + 3, ry + 3, own ? '#ffffff' : '#9a92b8', 1);
-        T(d.pts + ' PTS  ' + d.dur.toFixed(1) + 'S', cx + 3, ry + 14, '#9a92b8', 1);
+        icon(TRICK_ICON[d.id], cx + 9, ry + 12, own ? col : '#5b5275', 1);
+        T(d.name, cx + 18, ry + 3, own ? '#ffffff' : '#9a92b8', 1);
+        T(d.pts + ' PTS  ' + d.dur.toFixed(1) + 'S', cx + 18, ry + 14, '#9a92b8', 1);
         const bw = 42, bx = cx + cw - bw - 2;
         if (eq) T('ON', bx + bw / 2, ry + 9, col, 1, 'center');
         else if (own) { if (UI.button('eq' + d.id, bx, ry + 4, bw, 16, 'USE', { size: 1, accent: col })) { save.eq[kind] = d.id; store(); sfx('click'); } }
@@ -993,8 +1020,9 @@ function drawShop(t) {
     ABIL.forEach((a, i) => {
       const ry = y + 28 + i * 24, L = lvl(a.id);
       ctx.fillStyle = '#262036'; ctx.fillRect(x + 6, ry, pw - 12, 22);
-      T(a.name, x + 12, ry + 3, a.color, 1);
-      T(a.desc, x + 12, ry + 13, '#9a92b8', 1);
+      icon(ABIL_ICON[a.id], x + 18, ry + 11, a.color, 2);
+      T(a.name, x + 32, ry + 3, a.color, 1);
+      T(a.desc, x + 32, ry + 13, '#9a92b8', 1);
       for (let k = 0; k < a.max; k++) { ctx.fillStyle = k < L ? a.color : '#3a2f5c'; ctx.fillRect(x + pw - 132 + k * 9, ry + 8, 7, 5); }
       if (L >= a.max) T(a.max === 1 ? 'OWNED' : 'MAX', x + pw - 14, ry + 8, '#9be36b', 1, 'right');
       else if (UI.button('ab' + a.id, x + pw - 76, ry + 3, 64, 16, '' + a.cost[L], { size: 1, accent: '#5ad43f', disabled: save.coins < a.cost[L], textColor: '#ffd23f' })) {
@@ -1108,7 +1136,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'ArrowRight' || e.code === 'KeyD') inp.keyPush = true;
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') inp.keyBrake = true;
   if (!playing() || e.repeat) return;
-  if (KEYS[e.code]) inp.q.push(KEYS[e.code]);
+  if (KEYS[e.code]) { inp.q.push(KEYS[e.code]); lit[KEYS[e.code]] = performance.now() + 150; }
 });
 window.addEventListener('keyup', e => {
   if (e.code === 'ArrowRight' || e.code === 'KeyD') inp.keyPush = false;
@@ -1151,9 +1179,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 PX.Pad.setup({
   title: 'Pixel Skate: controller', ui: UI, menu: () => !playing(),
-  phone: { stick: 'PUSH / BRAKE', dpad: true, buttons: [['A', 'OLLIE'], ['X', 'FLIP'], ['Y', 'GRAB'], ['B', 'SPIN'], ['RB', 'BOOST'], ['LB', 'WARP']] },
+  phone: { stick: 'PUSH / BRAKE', dpad: true, buttons: [['A', 'JUMP'], ['X', 'FLIP'], ['Y', 'GRAB'], ['B', 'SPIN'], ['RB', 'BOOST'], ['LB', 'WARP']] },
   keys: () => ({ A: 'Space', up: 'Space', X: 'KeyJ', Y: 'KeyK', B: 'KeyL', right: 'ArrowRight', RT: 'ArrowRight', left: 'ArrowLeft', LT: 'ArrowLeft', RB: 'KeyE', LB: 'KeyQ', START: 'KeyP' }),
-  help: [['RT|RIGHT', 'PUSH'], ['LT|LEFT', 'BRAKE'], ['A', 'OLLIE (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+  help: [['RT|RIGHT', 'PUSH'], ['LT|LEFT', 'BRAKE'], ['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 </script>
 </body>

@@ -195,16 +195,16 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
 
 Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY, LOLA, DUKE, PIP and MAX RAD) to the finish line.
 
-- **Controls:** hold PUSH (→ / D, controller RT) to push and go faster, ← / A brakes. OLLIE (Space / ↑, A) jumps; with
+- **Controls:** hold PUSH (→ / D, controller RT) to push and go faster, ← / A brakes. JUMP (Space / ↑, A) jumps (an ollie); with
   DOUBLE JUMP press it again in the air. In the air: **FLIP** (J), **GRAB** (K), **SPIN** (L) (controller X, Y, B).
-  BOOST (E / Shift, RB), TIME WARP (Q, LB). On a phone: on-screen buttons (a tap anywhere else is an ollie too).
+  BOOST (E / Shift, RB), TIME WARP (Q, LB). Every action has a button with a pixel icon at the bottom of the screen (tap them on a phone; a tap anywhere else is a jump too). FLIP, GRAB and SPIN show the icon of the trick you picked in the shop.
 - **Tricks pay:** land a trick and you get coins, a burst of speed and BOOST. Several tricks (and grinds) in one jump are
   a **combo**: the points are multiplied by the number of tricks. Land in the middle of a trick (or hit a cone or a bench)
   and you **bail**: you fall and lose speed.
 - **The street:** cones and benches to ollie over, kickers (ramps that launch you), funboxes, rails and benches to
   **grind** (land on them from above), green boost pads and coins (2 each).
 - **SKATE SHOP:** buy tricks with coins, 6 of each kind, and pick the one each button does. Better tricks score more but
-  take longer, so they need bigger air. **Abilities:** FAST WHEELS (top speed), SUPER OLLIE, NITRO (stronger boost),
+  take longer, so they need bigger air. **Abilities:** FAST WHEELS (top speed), SUPER JUMP, NITRO (stronger boost),
   COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD (saves you from a crash, every race), TIME WARP (slows your rivals for 4 s, every race).
 - **Tracks:** CITY STREETS (1200 m, easy), SUNSET PARK (1600 m) and NEON NIGHT (2000 m, hard). Finish in the top 3 to
   unlock the next one. Prize for the place (more on harder tracks); ★3 for a win, ★2 for 2nd, ★1 for 3rd.
