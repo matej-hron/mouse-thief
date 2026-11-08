@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings and Pixel Sky Run. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch and Pixel Skate. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -75,6 +75,7 @@ const GAMES = [
   { id: 'wings', name: 'PIXEL WINGS', sub: 'AIR BATTLE!', url: 'wings.html', color: '#7ac8ff', cats: ['ACTION', 'PLANES', 'ONLINE', '2 PLAYERS'], tags: 'PLANE PLANES FLY WAR BOMBER FIGHTER SHIP' },
   { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0', cats: ['RUNNING', 'PLANES'], tags: 'PARKOUR JUMP PLANE OFFICER' },
   { id: 'fish', name: 'DEEP CATCH', sub: 'CATCH LEGENDARY FISH!', url: 'fish.html', color: '#2ad4d0', cats: ['SPORTS'], tags: 'FISH FISHING ROD SEA OCEAN BOAT LEGENDARY' },
+  { id: 'skate', name: 'PIXEL SKATE', sub: 'SKATE, TRICK AND RACE!', url: 'skate.html', color: '#b07aff', cats: ['RACING', 'SPORTS'], tags: 'SKATEBOARD SKATE BOARD TRICK TRICKS KICKFLIP OLLIE GRIND RAMP RACE COINS' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -298,6 +299,29 @@ function previewSkyRun(x, y, w, h, t) {
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(cx - 1 + Math.sin(t * 3) * 2), y + h - 12, 2, 2);
   ctx.restore();
 }
+function previewSkate(x, y, w, h, t) {            // a skater ollies over a cone on a city sidewalk
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#4ab8f4'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#fbf3dc'; ctx.fillRect(Math.round(x + w - ((t * 5) % (w + 30))), y + 6, 16, 4);
+  for (let i = 0; i < 7; i++) {                                              // the city, sliding past
+    const bx = Math.round(x + ((i * 23 - t * 12) % (w + 23) + w + 23) % (w + 23) - 23), bh = 18 + (i * 13) % 20;
+    ctx.fillStyle = '#2a64c8'; ctx.fillRect(bx, y + h - 18 - bh, 20, bh);
+    ctx.fillStyle = '#7ec8f8'; for (let k = y + h - 14 - bh; k < y + h - 22; k += 6) { ctx.fillRect(bx + 3, k, 3, 3); ctx.fillRect(bx + 11, k, 3, 3); }
+  }
+  ctx.fillStyle = '#c8c0d0'; ctx.fillRect(x, y + h - 18, w, 10);
+  ctx.fillStyle = '#4a4866'; ctx.fillRect(x, y + h - 8, w, 8);
+  const ph = (t * 0.7) % 1, cx = Math.round(x + w - ph * (w + 20)), gy = y + h - 12;   // the cone
+  ctx.fillStyle = '#ff6a1a'; ctx.fillRect(cx, gy - 6, 4, 6); ctx.fillRect(cx + 1, gy - 9, 2, 3); ctx.fillStyle = '#fff'; ctx.fillRect(cx, gy - 5, 4, 1);
+  const sx = Math.round(x + w * 0.35), d = cx - sx, air = d < 22 && d > -14 ? Math.sin((22 - d) / 36 * Math.PI) * 12 : 0, sy = Math.round(gy - air);
+  ctx.save(); ctx.translate(sx + 5, sy - 1); if (air) ctx.rotate(-0.25 * Math.sin((22 - d) / 36 * Math.PI * 2));
+  ctx.fillStyle = '#2b2b3a'; ctx.fillRect(-7, -1, 14, 2); ctx.fillStyle = '#ffd23f'; ctx.fillRect(-5, 1, 2, 2); ctx.fillRect(3, 1, 2, 2);
+  ctx.restore();
+  ctx.fillStyle = '#2a2f4a'; ctx.fillRect(sx + 1, sy - 9, 2, 7); ctx.fillRect(sx + 6, sy - 9, 2, 7);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(sx + 1, sy - 16, 7, 7);
+  ctx.fillStyle = '#f0b88a'; ctx.fillRect(sx + 2, sy - 21, 5, 5); ctx.fillRect(sx + 8, sy - 14, 3, 2); ctx.fillRect(sx - 2, sy - 13, 3, 2);
+  ctx.fillStyle = '#6a3a1a'; ctx.fillRect(sx + 1, sy - 23, 6, 3);
+  ctx.restore();
+}
 function previewFish(x, y, w, h, t) {             // a golden fish swims past the hook
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   for (let k = 0; k < h; k += 4) { const m = k / h; ctx.fillStyle = `rgb(${Math.round(42 - 30 * m)},${Math.round(212 - 110 * m)},${Math.round(208 - 60 * m)})`; ctx.fillRect(x, y + k, w, 4); }
@@ -322,7 +346,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');

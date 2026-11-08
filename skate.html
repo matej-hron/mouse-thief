@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Skate: race 5 rivals on a skateboard through the city. Ollie, flip, grab, spin and grind for coins, and spend them on new tricks and abilities.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Skate</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL SKATE: skateboard racing (part of the PIXEL ARCADE).
+   A side view of a city sidewalk. You race 5 rivals to the finish line on a skateboard:
+   push to go faster, ollie over cones and benches, fly off kickers and grind rails.
+   In the air you do tricks (FLIP, GRAB, SPIN). Land them and you get COINS, a burst of
+   speed and BOOST. Land in the middle of a trick and you bail.
+   Coins buy new tricks (better tricks score more) and abilities (fast wheels, super ollie,
+   nitro, magnet, double jump, a no-bail shield, time warp).
+   FREE SKATE: an endless skatepark with no rivals, just skate and do whatever you want.
+     1. Setup   2. The world   3. Skaters   4. Drawing   5. Screens   6. Input   7. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelSkate.save';
+const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
+  ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
+const save = freshSave();
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+  if (s) { const d = freshSave(); Object.assign(save, s); save.owned = Object.assign(d.owned, s.owned); save.eq = Object.assign(d.eq, s.eq); save.ab = Object.assign({}, s.ab); save.best = Object.assign({}, s.best); }
+} catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const lvl = id => save.ab[id] | 0;
+const profile = PX.Profile.get();
+const MY_COLOR = PX.AVATAR_COLORS[profile.avatar.color];
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const ord = n => n + (n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH');
+const fmtTime = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + Math.floor(s * 10 % 10);
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16); return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => clamp(Math.round(v * k), 0, 255).toString(16).padStart(2, '0')).join(''); }
+function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; }
+
+// world units are pixels; y goes UP from the sidewalk (0). 10 px = 1 metre.
+const GRAV = 1150, OLLIE_V = 370, DBL_V = 340, PUSH_ADD = 46, PUSH_GAP = 0.3, FRICTION = 16, TOP0 = 280;
+const GS = 186;                    // screen y of the front of the sidewalk (camera at the bottom)
+const DEP = 18;                    // how deep the ramps look (the sidewalk seen from a bit above)
+const BK = 256;                    // the world is kept in buckets this wide
+
+// --- tricks: one of each kind is equipped (the FLIP, GRAB and SPIN buttons) ---------------
+//   bf: board flips   bs: board shove-its   turns: body spins   rot: body flips (- back)   hand/at: the grab
+const TRICKS = [
+  { id: 'kickflip', kind: 'flip', name: 'KICKFLIP', pts: 100, dur: 0.40, cost: 0, bf: 1 },
+  { id: 'shove', kind: 'flip', name: 'POP SHOVE-IT', pts: 110, dur: 0.36, cost: 120, bs: 1 },
+  { id: 'heelflip', kind: 'flip', name: 'HEELFLIP', pts: 140, dur: 0.40, cost: 250, bf: -1 },
+  { id: 'treflip', kind: 'flip', name: '360 FLIP', pts: 260, dur: 0.52, cost: 600, bf: 1, bs: 1 },
+  { id: 'dflip', kind: 'flip', name: 'DOUBLE FLIP', pts: 380, dur: 0.60, cost: 1100, bf: 2 },
+  { id: 'laser', kind: 'flip', name: 'LASER FLIP', pts: 520, dur: 0.64, cost: 2000, bf: -1, bs: -1.5 },
+  { id: 'indy', kind: 'grab', name: 'INDY GRAB', pts: 100, dur: 0.42, cost: 0, hand: 'f', at: [1, 1] },
+  { id: 'melon', kind: 'grab', name: 'MELON', pts: 120, dur: 0.42, cost: 150, hand: 'b', at: [-3, 1] },
+  { id: 'nose', kind: 'grab', name: 'NOSE GRAB', pts: 170, dur: 0.46, cost: 350, hand: 'f', at: [10, -2], tilt: -0.4 },
+  { id: 'stale', kind: 'grab', name: 'STALEFISH', pts: 220, dur: 0.48, cost: 600, hand: 'b', at: [3, 2], tilt: 0.2 },
+  { id: 'airwalk', kind: 'grab', name: 'AIRWALK', pts: 320, dur: 0.55, cost: 1000, hand: 'f', at: [11, -1], tilt: 0.3, walk: true },
+  { id: 'superman', kind: 'grab', name: 'SUPERMAN', pts: 600, dur: 0.72, cost: 2200, hand: 'f', at: [12, -3], superman: true },
+  { id: 'spin360', kind: 'spin', name: '360 SPIN', pts: 150, dur: 0.52, cost: 0, turns: 1 },
+  { id: 'backflip', kind: 'spin', name: 'BACKFLIP', pts: 350, dur: 0.70, cost: 400, rot: -1 },
+  { id: 'frontflip', kind: 'spin', name: 'FRONTFLIP', pts: 400, dur: 0.72, cost: 800, rot: 1 },
+  { id: 'spin720', kind: 'spin', name: '720 SPIN', pts: 450, dur: 0.78, cost: 1200, turns: 2 },
+  { id: 'dback', kind: 'spin', name: 'DOUBLE BACKFLIP', pts: 800, dur: 1.00, cost: 2500, rot: -2 },
+  { id: 'spin1080', kind: 'spin', name: '1080 SPIN', pts: 900, dur: 1.05, cost: 3500, turns: 3 },
+];
+const TRICK = {}; for (const d of TRICKS) TRICK[d.id] = d;
+const KINDS = [['flip', 'FLIP', '#ff6bd0'], ['grab', 'GRAB', '#7af0ff'], ['spin', 'SPIN', '#9be36b']];
+
+// --- abilities (bought with coins) -------------------------------------------------------
+const ABIL = [
+  { id: 'speed', name: 'FAST WHEELS', desc: 'HIGHER TOP SPEED', max: 5, cost: [150, 300, 500, 800, 1200], color: '#7af0ff' },
+  { id: 'ollie', name: 'SUPER OLLIE', desc: 'JUMP HIGHER, MORE AIR FOR TRICKS', max: 3, cost: [200, 450, 900], color: '#9be36b' },
+  { id: 'nitro', name: 'NITRO', desc: 'STRONGER, LONGER BOOST', max: 3, cost: [250, 550, 1000], color: '#ff8a2a' },
+  { id: 'magnet', name: 'COIN MAGNET', desc: 'PULLS COINS TO YOU', max: 3, cost: [150, 350, 700], color: '#e01e1e' },
+  { id: 'dbl', name: 'DOUBLE JUMP', desc: 'OLLIE AGAIN IN THE AIR', max: 1, cost: [600], color: '#ffd23f' },
+  { id: 'shield', name: 'NO-BAIL SHIELD', desc: 'SAVES YOU FROM A CRASH (EVERY RACE)', max: 2, cost: [500, 1200], color: '#4aa8ff' },
+  { id: 'warp', name: 'TIME WARP', desc: 'SLOWS YOUR RIVALS FOR 4 S (EVERY RACE)', max: 2, cost: [800, 1600], color: '#b07aff' },
+];
+
+// --- tracks and rivals -------------------------------------------------------------------
+const TRACKS = [
+  { id: 'city', name: 'CITY STREETS', theme: 'day', len: 1200, seed: 11, ai: [0.8, 0.93], mult: 1, level: 'EASY' },
+  { id: 'park', name: 'SUNSET PARK', theme: 'sunset', len: 1600, seed: 23, ai: [0.9, 1.03], mult: 1.5, level: 'MEDIUM' },
+  { id: 'night', name: 'NEON NIGHT', theme: 'night', len: 2000, seed: 37, ai: [0.98, 1.1], mult: 2, level: 'HARD' },
+];
+const PRIZE = [150, 100, 60, 30, 20, 10];
+const RIVALS = [
+  { name: 'ZIGGY', color: '#e01e5a', hair: '#1a1a1a', skin: '#c88a5a', deck: '#2ad4c4' },
+  { name: 'LOLA', color: '#ffd23f', hair: '#e0782a', skin: '#f0c090', deck: '#7a3fc4' },
+  { name: 'DUKE', color: '#3fae4a', hair: '#3a2a1a', skin: '#8a5a3a', deck: '#ff8a2a' },
+  { name: 'PIP', color: '#b07aff', hair: '#f2e07a', skin: '#f0c8a0', deck: '#3fae4a' },
+  { name: 'MAX RAD', color: '#ff8a2a', hair: '#5a2a8a', skin: '#d8a070', deck: '#2a7fd4' },
+];
+const THEMES = {
+  day: { sky: ['#1ea8f0', '#7fd8ff'], cloud: '#fbf3dc', cloudS: '#b8e2ff', far: '#3f8ae0', near: '#2a64c8', nearS: '#2456b0', win: ['#7ec8f8', '#c8c08a', '#9ad8ff'],
+    leaf: ['#2a8a34', '#3fae4a', '#6ad05a'], trunk: '#9a5a2a', fence: '#2a4a8a', grass: '#3fae4a', walk: '#c8c0d0', walkS: '#a8a0b8', curb: '#7a7494', road: '#4a4866', dash: '#a8a2c4',
+    ramp: ['#d8702a', '#f0a050'], box: ['#7a7890', '#b0aec4'] },
+  sunset: { sky: ['#5a2a8a', '#ff9a5a'], cloud: '#ffcaa0', cloudS: '#d0708a', far: '#8a4a8a', near: '#5a2a6a', nearS: '#4a2058', win: ['#ffd27a', '#ff9a6a', '#7a3a7a'],
+    leaf: ['#2a5a3a', '#3a7a3a', '#6a9a3a'], trunk: '#6a3a2a', fence: '#3a2a5a', grass: '#4a7a3a', walk: '#d0b0b0', walkS: '#a88a9a', curb: '#7a5a7a', road: '#3a3050', dash: '#c09ab0',
+    ramp: ['#c84a5a', '#f07a7a'], box: ['#6a5a7a', '#a08ab0'], sun: '#ffe07a' },
+  night: { sky: ['#06061a', '#2a1a5a'], cloud: '#3a3a6a', cloudS: '#22224a', far: '#1a1a3a', near: '#14142e', nearS: '#0e0e22', win: ['#ffd23f', '#ff6bd0', '#2ad4f0', '#1e1e40', '#1e1e40'],
+    leaf: ['#123a2a', '#1a5a3a', '#2a7a4a'], trunk: '#3a2a2a', fence: '#2a2a5a', grass: '#1a4a3a', walk: '#5a5a7a', walkS: '#45456a', curb: '#3a3a5a', road: '#1e1e34', dash: '#ff6bd0',
+    ramp: ['#7a2ad4', '#b06aff'], box: ['#3a3a6a', '#5a5a9a'], stars: true, lamps: true },
+};
+
+/* --- 2. THE WORLD ---------------------------------------------------------------
+   features (in buckets):  kicker { x, w, h }  funbox { x, w, h, r }  pad { x, w }       (ramps: the whole sidewalk)
+                           rail { x, w, h }    bench { x, w, h }     cone { x, w, h }   (in the middle of the sidewalk)
+   coins: { x, y }                                                                                                  */
+let W = null;                      // the world (race track, free skatepark or the title screen's)
+let G = null;                      // the game being played (or the demo behind the title)
+function newWorld(mode, track) {
+  const seed = track ? track.seed : (Math.random() * 1e9) | 0;
+  W = { mode, track, theme: THEMES[track ? track.theme : 'day'], rnd: mulberry(seed), seedH: seed * 7919, buckets: new Map(), coins: [], genX: 520,
+        len: track ? track.len * 10 : Infinity, id: 0, stamp: 0 };
+  generate(mode === 'race' ? W.len : 2400);
+}
+function addFeat(f) {
+  f.id = W.id++;
+  for (let i = Math.floor(f.x / BK); i <= Math.floor((f.x + f.w) / BK); i++) { let l = W.buckets.get(i); if (!l) W.buckets.set(i, l = []); l.push(f); }
+  return f;
+}
+function featsIn(x0, x1) {
+  const out = [], st = ++W.stamp;
+  for (let i = Math.floor(x0 / BK); i <= Math.floor(x1 / BK); i++) {
+    const l = W.buckets.get(i); if (!l) continue;
+    for (const f of l) if (f._s !== st && f.x <= x1 && f.x + f.w >= x0) { f._s = st; out.push(f); }
+  }
+  return out;
+}
+function groundAt(x) {
+  const l = W.buckets.get(Math.floor(x / BK)); let g = 0;
+  if (l) for (const f of l) {
+    if (x < f.x || x >= f.x + f.w) continue;
+    if (f.type === 'kicker') g = Math.max(g, f.h * (x - f.x) / f.w);
+    else if (f.type === 'funbox') { const u = x - f.x; g = Math.max(g, u < f.r ? f.h * u / f.r : u > f.w - f.r ? f.h * (f.w - u) / f.r : f.h); }
+  }
+  return g;
+}
+const slopeAt = x => (groundAt(x + 2) - groundAt(x - 2)) / 4;
+function coinArc(x0, n, gap, y0, hgt) { for (let i = 0; i < n; i++) W.coins.push({ x: x0 + i * gap, y: y0 + hgt * Math.sin(Math.PI * (i + 0.5) / n) }); }
+function coinLine(x0, n, gap, y) { for (let i = 0; i < n; i++) W.coins.push({ x: x0 + i * gap, y }); }
+function generate(toX) {
+  const free = W.mode !== 'race', hard = W.track ? TRACKS.indexOf(W.track) : 1;
+  const SECTIONS = free
+    ? [['kicker', 22], ['rail', 16], ['funbox', 12], ['boxrail', 10], ['kickrail', 10], ['bench', 10], ['mega', 6], ['pad', 5], ['cones', 5], ['coins', 4]]
+    : [['cones', 18 + hard * 3], ['bench', 13], ['kicker', 18], ['rail', 12], ['funbox', 8], ['boxrail', 4 + hard * 2], ['kickrail', 3 + hard * 3], ['pad', 9], ['coins', 8], ['mega', hard * 2]];
+  const total = SECTIONS.reduce((a, s) => a + s[1], 0);
+  while (W.genX < toX && W.genX < W.len - 600) {
+    const r = W.rnd, x = W.genX;
+    let roll = r() * total, type = SECTIONS[0][0];
+    for (const [k, wgt] of SECTIONS) { if (roll < wgt) { type = k; break; } roll -= wgt; }
+    let w = 0;
+    if (type === 'cones') {
+      const n = 1 + Math.floor(r() * 3); let cx = x;
+      for (let k = 0; k < n; k++) { addFeat({ type: 'cone', x: cx, w: 8, h: 12 }); coinArc(cx - 36, 5, 20, 22, 30); cx += 130 + r() * 70; }
+      w = cx - x;
+    } else if (type === 'bench') {
+      addFeat({ type: 'bench', x, w: 48, h: 16 }); coinArc(x - 30, 6, 20, 30, 26); w = 90;
+    } else if (type === 'kicker' || type === 'mega') {
+      const h = type === 'mega' ? 56 + r() * 10 : 26 + r() * 16, kw = Math.round(h * (type === 'mega' ? 1.9 : 2.2));
+      addFeat({ type: 'kicker', x, w: kw, h }); coinArc(x + kw + 16, 7, 30, h + 26, type === 'mega' ? 90 : 50); w = kw + (type === 'mega' ? 330 : 230);
+    } else if (type === 'rail') {
+      const rw = Math.round(150 + r() * 130); addFeat({ type: 'rail', x, w: rw, h: 24 }); coinLine(x + 14, Math.floor(rw / 26), 26, 38); w = rw + 40;
+    } else if (type === 'kickrail') {
+      const h = 30 + r() * 6, kw = Math.round(h * 2.2); addFeat({ type: 'kicker', x, w: kw, h });
+      const rw = Math.round(170 + r() * 90); addFeat({ type: 'rail', x: x + kw + 100, w: rw, h: 36 }); coinLine(x + kw + 112, Math.floor(rw / 26), 26, 50);
+      w = kw + 100 + rw + 60;
+    } else if (type === 'funbox' || type === 'boxrail') {
+      const rr = 46, top = Math.round(80 + r() * 90), h = Math.round(22 + r() * 10), bw = 2 * rr + top;
+      addFeat({ type: 'funbox', x, w: bw, h, r: rr });
+      if (type === 'boxrail') { addFeat({ type: 'rail', x: x + rr + 8, w: top - 16, h: h + 14 }); coinLine(x + rr + 16, Math.floor((top - 16) / 24), 24, h + 28); }
+      else coinLine(x + rr + 6, Math.floor(top / 22), 22, h + 10);
+      w = bw + 40;
+    } else if (type === 'pad') {
+      addFeat({ type: 'pad', x, w: 40 }); coinLine(x + 60, 6, 22, 10); w = 200;
+    } else {
+      coinLine(x, 7, 18, 46); w = 130;
+    }
+    W.genX = x + w + (free ? 110 + r() * 140 : 150 + r() * 190);
+  }
+}
+function cleanupWorld(x) {
+  const k = Math.floor((x - 900) / BK);
+  for (const key of [...W.buckets.keys()]) if (key < k) W.buckets.delete(key);
+  if (W.coins.length > 300) W.coins = W.coins.filter(c => c.x > x - 600);
+}
+
+/* --- 3. SKATERS -------------------------------------------------------------------------- */
+function newSkater(o) {
+  const [bodyC, bodyG] = makeCanvas(40, 52);
+  return Object.assign({ x: 0, y: 0, vy: 0, speed: 0, ground: true, grind: null, grindPts: 0, lastSlope: 0, tilt: 0, trick: null, combo: [], bail: 0,
+    pushT: 0, pushCD: 0, land: 0, boostT: 0, meter: 0, usedDbl: false, hit: new Set(), finished: 0, airT: 0, jumpBuf: 0, d: 2,
+    top: TOP0, ollieV: OLLIE_V, dbl: false, nitro: 0, name: '', color: '#fff', skin: '#f0b88a', hair: '#6a3a1a', deck: '#e01e1e', ai: null, bodyC, bodyG, sparkT: 0 }, o);
+}
+function newAI(skill) { return { skill, pace: 1, trick: 0.25 + skill * 0.35, grind: 0.3 + skill * 0.5, risky: 0.02 + (1 - skill) * 0.05, cd: 0, dec: new Map() }; }
+function newGame(mode, track, demo) {
+  newWorld(mode, track);
+  const me = newSkater({ name: profile.name || 'YOU', color: MY_COLOR, d: 2, top: TOP0 * (1 + 0.06 * lvl('speed')), ollieV: OLLIE_V * (1 + 0.1 * lvl('ollie')),
+    dbl: lvl('dbl') > 0, nitro: lvl('nitro'), me: true });
+  if (demo) { me.ai = newAI(1); me.ai.trick = 0.6; me.ai.risky = 0; me.top = TOP0 * 0.85; me.dbl = true; me.color = '#ffffff'; me.speed = 200; }
+  G = { mode, track, demo, me, rivals: [], all: [me], t: 0, count: demo || mode === 'free' ? 0 : 3.2, order: [], earned: 0, trickCoins: 0, pickCoins: 0, bestCombo: 0, landed: 0,
+        pops: [], parts: [], shake: 0, flash: 0, warpT: 0, shield: lvl('shield'), warps: lvl('warp'), done: false, endT: 0, help: 0, cleanT: 0, results: null };
+  if (mode === 'race') {
+    RIVALS.forEach((r, i) => {
+      const k = i / (RIVALS.length - 1), skill = 0.45 + 0.5 * k;
+      const s = newSkater(Object.assign({}, r, { d: [17, 14, 11, 8, 5][i], x: -12 * (i + 1) + 40 * Math.random(), ai: newAI(skill),
+        top: TOP0 * (track.ai[0] + (track.ai[1] - track.ai[0]) * k), ollieV: OLLIE_V * (1 + 0.05 * TRACKS.indexOf(track)), dbl: TRACKS.indexOf(track) === 2 && i >= 3, nitro: TRACKS.indexOf(track) }));
+      s.ai.pace = 0.97 + Math.random() * 0.05;
+      G.rivals.push(s); G.all.push(s);
+    });
+    if (!save.seenHelp) G.help = 9;
+  } else if (!demo && !save.seenHelp) G.help = 9;
+  cam.x = me.x - S.W * 0.3; cam.y = 0;
+}
+function pop(text, color, big) { if (!G.demo) G.pops.push({ text, color, t: 0, big }); }
+function puff(x, y, n, color, spread = 40) { for (let i = 0; i < n && G.parts.length < 220; i++) G.parts.push({ x, y, vx: rnd(-spread, spread), vy: rnd(10, 60), life: rnd(0.25, 0.5), color, s: Math.random() < 0.5 ? 1 : 2 }); }
+const isMe = s => G && s === G.me && !G.demo;
+
+function doPush(s, cap) {
+  if (!s.ground || s.grind || s.bail > 0 || s.pushCD > 0 || s.speed >= cap) return;
+  s.speed = Math.min(cap, s.speed + PUSH_ADD * (s.speed < 110 ? 1.5 : 1));
+  s.pushT = 0.3; s.pushCD = PUSH_GAP;
+  if (isMe(s)) { sfx('push'); puff(s.x - 10, s.y, 2, '#d8d0e0', 20); }
+}
+function ollie(s) {
+  if (s.bail > 0) return false;
+  if (s.grind) { endGrind(s); s.vy = s.ollieV * 0.9; s.ground = false; s.airT = 0; s.usedDbl = false; if (isMe(s)) sfx('ollie'); return true; }
+  if (s.ground) {
+    s.vy = s.ollieV + Math.max(0, s.lastSlope) * s.speed * 0.9; s.ground = false; s.airT = 0; s.usedDbl = false;
+    if (isMe(s)) { sfx('ollie'); puff(s.x, s.y, 4, '#d8d0e0'); }
+    return true;
+  }
+  if (s.dbl && !s.usedDbl && s.vy < 260) { s.usedDbl = true; s.vy = DBL_V; if (isMe(s)) { sfx('dbl'); puff(s.x, s.y, 6, '#ffffff', 60); } return true; }
+  return false;
+}
+function startTrick(s, d) {
+  if (!d || s.ground || s.grind || s.trick || s.bail > 0) return false;
+  s.trick = { d, t: 0 };
+  if (isMe(s)) sfx('whoosh');
+  return true;
+}
+function finishTrick(s) {
+  const d = s.trick.d, again = s.combo.some(c => c.id === d.id);
+  s.combo.push({ id: d.id, name: d.name, pts: again ? Math.round(d.pts / 2) : d.pts });
+  s.trick = null;
+  if (isMe(s)) sfx('trick');
+}
+function endGrind(s) {
+  if (s.grindPts > 8) s.combo.push({ id: 'grind' + s.grind.id, name: s.grind.type === 'bench' ? 'BENCH GRIND' : '50-50 GRIND', pts: Math.round(s.grindPts) });
+  s.grind = null;
+}
+function earn(n, kind) {
+  if (!G || G.demo || n <= 0) return;
+  save.coins += n; G.earned += n;
+  if (kind === 'trick') G.trickCoins += n; else G.pickCoins += n;
+}
+function settle(s) {                                    // landed clean: the combo pays out
+  if (!s.combo.length) return;
+  const n = s.combo.length, sum = s.combo.reduce((a, c) => a + c.pts, 0), total = Math.round(sum * n);
+  s.meter = Math.min(100, s.meter + total / 6);
+  s.speed += Math.min(70, 20 + total / 15);
+  if (isMe(s)) {
+    const coins = Math.max(1, Math.round(total / 10));
+    earn(coins, 'trick'); G.landed++;
+    if (total > G.bestCombo) G.bestCombo = total;
+    pop((n > 1 ? 'COMBO X' + n + '  ' : 'LANDED!  ') + '+' + coins, n > 2 || total >= 800 ? '#ffd23f' : '#9be36b', n > 2 || total >= 800);
+    sfx(n > 2 || total >= 800 ? 'big' : 'landed');
+    puff(s.x, s.y, 8, '#ffd23f', 70);
+  }
+  s.combo = [];
+}
+function bail(s) {
+  s.bail = 1.05; s.speed *= 0.3; s.trick = null; s.combo = []; s.grind = null; s.ground = true; s.y = groundAt(s.x); s.vy = 0; s.boostT = 0;
+  if (isMe(s)) { pop('BAIL!', '#ff4040', true); sfx('crash'); G.shake = 0.35; G.flash = 0.4; }
+  if (G) puff(s.x, s.y, 10, '#c8c0d0', 70);
+}
+function crash(s) {
+  if (isMe(s) && G.shield > 0) { G.shield--; s.trick = null; pop('SHIELD SAVED YOU!', '#4aa8ff', true); sfx('shield'); s.speed *= 0.85; return; }
+  bail(s);
+}
+function land(s) {
+  s.ground = true; s.land = 0.15; s.usedDbl = false; s.vy = 0;
+  if (s.trick) { if (s.trick.t / s.trick.d.dur < 0.75) { bail(s); return; } finishTrick(s); }
+  if (isMe(s)) { sfx('land'); puff(s.x, s.y, 5, '#d8d0e0'); }
+  settle(s);
+}
+function useBoost(s) {
+  if (s.meter < 33 || s.boostT > 0 || s.bail > 0) return;
+  s.meter -= 33; s.boostT = 1.2 + 0.35 * s.nitro;
+  if (isMe(s)) sfx('boost');
+}
+function useWarp() {
+  if (!G || G.warps <= 0 || G.warpT > 0) return;
+  G.warps--; G.warpT = 4; sfx('warp'); pop('TIME WARP!', '#b07aff', true);
+}
+function timeToLand(s) {
+  const g = groundAt(s.x + s.speed * 0.3), dy = s.y - g;
+  if (dy < 0) return 0;
+  return (s.vy + Math.sqrt(Math.max(0, s.vy * s.vy + 2 * GRAV * dy))) / GRAV;
+}
+
+function updateSkater(s, dt) {
+  s.pushT = Math.max(0, s.pushT - dt); s.pushCD -= dt; s.land = Math.max(0, s.land - dt);
+  if (s.boostT > 0) s.boostT -= dt;
+  if (s.bail > 0) {
+    s.bail -= dt; s.speed = Math.max(0, s.speed - 200 * dt); s.x += s.speed * dt; s.y = groundAt(s.x); s.vy = 0; s.tilt = 0;
+    return;
+  }
+  const boosting = s.boostT > 0, cap = s.top * (1.32 + 0.08 * s.nitro);
+  if (boosting) { s.speed = Math.min(cap, s.speed + 520 * dt); if (isMe(s) && Math.random() < dt * 30) puff(s.x - 14, s.y + 4, 1, pick(['#ffd23f', '#ff8a2a', '#ff4040']), 10); }
+  else if (s.speed > s.top) s.speed = Math.max(s.top, s.speed - 85 * dt);
+  const prevY = s.y, x0 = s.x;
+  if (s.grind) {
+    s.speed = Math.max(60, s.speed - 6 * dt);
+    s.x += s.speed * dt; s.grindPts += 150 * dt; s.y = s.grind.h; s.tilt *= 0.8;
+    s.sparkT -= dt;
+    if (s.sparkT <= 0) { s.sparkT = 0.05; if (G) for (let i = 0; i < 2; i++) G.parts.push({ x: s.x + rnd(-8, 8), y: s.y, vx: rnd(-120, -20), vy: rnd(20, 90), life: 0.3, color: pick(['#ffd23f', '#ffffff', '#ff8a2a']), s: 1 }); if (isMe(s)) sfx('grind'); }
+    if (s.x > s.grind.x + s.grind.w) { endGrind(s); s.ground = false; s.vy = 90; s.airT = 0; }
+  } else if (s.ground) {
+    s.speed -= (FRICTION + slopeAt(s.x) * GRAV * 0.26) * dt;
+    if (s.speed < 0) s.speed = 0;
+    s.x += s.speed * dt;
+    const g = groundAt(s.x);
+    if (g < s.y - 3) {                                      // off the end of a kicker: fly!
+      s.ground = false; s.airT = 0; s.usedDbl = false;
+      s.vy = Math.max(0, s.lastSlope) * s.speed * 1.25 + (s.lastSlope > 0.1 ? 60 : 0);
+    } else { const dx = s.x - x0; if (dx > 0.01) s.lastSlope = (g - s.y) / dx; s.y = g; }
+    s.tilt += (-Math.atan(s.lastSlope) - s.tilt) * Math.min(1, dt * 20);
+  } else {
+    s.airT += dt;
+    s.x += s.speed * dt; s.vy -= GRAV * dt; s.y += s.vy * dt;
+    s.tilt += (clamp(-s.vy / 1400, -0.35, 0.35) - s.tilt) * Math.min(1, dt * 6);
+    if (s.trick) { s.trick.t += dt; if (s.trick.t >= s.trick.d.dur) finishTrick(s); }
+    if (s.vy < 0) {                                         // falling onto a rail or a bench: grind it
+      for (const f of featsIn(s.x, s.x)) {
+        if ((f.type === 'rail' || f.type === 'bench') && prevY >= f.h - 1 && s.y <= f.h && s.x >= f.x + 1 && s.x <= f.x + f.w - 4) {
+          if (s.trick) { bail(s); return; }
+          s.grind = f; s.y = f.h; s.vy = 0; s.grindPts = 0; s.usedDbl = false; s.sparkT = 0;
+          if (isMe(s)) sfx('land');
+          break;
+        }
+      }
+    }
+    if (!s.grind) { const g = groundAt(s.x); if (s.y <= g) { s.y = g; land(s); if (s.bail > 0) return; } }
+  }
+  // cones, benches and boost pads
+  if (!s.grind) for (const f of featsIn(s.x - 6, s.x + 6)) {
+    if (f.type === 'cone' && !f.down && s.y < f.h - 2) { f.down = true; f.downT = 0; if (isMe(s) || (G && Math.abs(s.x - G.me.x) < 400)) sfx('cone'); crash(s); break; }
+    if (f.type === 'bench' && !s.hit.has(f.id) && s.y < f.h - 4) { s.hit.add(f.id); crash(s); break; }
+    if (f.type === 'pad' && s.ground && !s.hit.has(f.id)) { s.hit.add(f.id); s.boostT = Math.max(s.boostT, 0.8); s.speed = Math.max(s.speed, s.top * 1.1); if (isMe(s)) { sfx('boost'); pop('BOOST PAD!', '#9be36b'); } }
+  }
+}
+
+// the computer skates: push up to its speed, ollie over things, grind rails, do tricks in the air
+function aiThink(s, dt) {
+  const A = s.ai; A.cd -= dt;
+  if (s.bail > 0) return;
+  const decide = (f, p) => { if (!A.dec.has(f.id)) A.dec.set(f.id, Math.random() < p); return A.dec.get(f.id); };
+  let cap = s.top * A.pace;
+  if (G.mode === 'race' && s !== G.me) cap *= 1 + clamp((G.me.x - s.x) / 6000, -0.06, 0.12);
+  if (s.finished) cap = s.top * 0.45;
+  if (s.speed < cap) doPush(s, cap);
+  if (s.ground && !s.grind) {
+    for (const f of featsIn(s.x, s.x + 260)) {
+      const d = f.x - s.x;
+      if ((f.type === 'cone' && !f.down) || f.type === 'bench') {
+        if (d > 0 && d < s.speed * 0.09 + 8 && decide(f, 0.86 + 0.13 * A.skill)) { ollie(s); break; }
+      }
+      if (f.type === 'rail' || f.type === 'bench') {
+        const rel = f.h - s.y;
+        if (rel > 2) {
+          const v = s.ollieV, tt = (v + Math.sqrt(Math.max(0, v * v - 2 * GRAV * rel))) / GRAV, want = s.speed * tt - 20;
+          if (d > 0 && d <= want && d > want - 40 && decide(f, f.type === 'bench' ? A.grind * 0.3 : A.grind)) { ollie(s); break; }
+        }
+      }
+      if (f.type === 'kicker' && s.x > f.x) { const lip = f.x + f.w - s.x; if (lip > 0 && lip < s.speed * 0.035 + 2 && decide(f, 0.3 + A.skill * 0.6)) { ollie(s); break; } }
+    }
+  } else if (!s.ground && !s.grind && !s.trick && A.cd <= 0) {
+    A.cd = 0.12;
+    const tl = timeToLand(s);
+    const fits = TRICKS.filter(d => d.dur + 0.06 < tl);
+    if (fits.length && Math.random() < A.trick) startTrick(s, pick(fits));
+    else if (Math.random() < A.risky) { const p2 = TRICKS.filter(d => d.dur < tl + 0.3); if (p2.length) startTrick(s, pick(p2)); }
+  }
+  if (s.meter >= 33 && s.boostT <= 0 && Math.random() < dt * 0.6) useBoost(s);
+}
+
+const inp = { keyPush: false, keyBrake: false, touchPush: 0, q: [] };
+function playerControl(P, dt) {
+  if (inp.keyPush || inp.touchPush > 0) doPush(P, P.top);
+  if (inp.keyBrake && P.ground && !P.grind) P.speed = Math.max(0, P.speed - 320 * dt);
+  for (const a of inp.q) {
+    if (a === 'ollie') P.jumpBuf = 0.14;
+    else if (a === 'flip' || a === 'grab' || a === 'spin') startTrick(P, TRICK[save.eq[a]]);
+    else if (a === 'boost') useBoost(P);
+    else if (a === 'warp') useWarp();
+  }
+  inp.q.length = 0;
+  if (P.jumpBuf > 0) { P.jumpBuf -= dt; if (ollie(P)) P.jumpBuf = 0; }
+}
+
+function step(dt) {
+  const P = G.me;
+  G.t += dt;
+  if (G.count > 0) {
+    const before = Math.ceil(G.count); G.count -= dt;
+    if (Math.ceil(G.count) !== before) sfx(G.count <= 0 ? 'go' : 'beep');
+    inp.q.length = 0;
+    if (G.count > 0) return;
+    G.t = 0;
+  }
+  if (G.help > 0) G.help -= dt;
+  G.shake = Math.max(0, G.shake - dt); G.flash = Math.max(0, G.flash - dt);
+  if (G.demo) aiThink(P, dt); else if (!(P.finished && G.mode === 'race')) playerControl(P, dt);
+  P.cheer = G.mode === 'race' && P.finished && G.place <= 3 && P.ground;
+  updateSkater(P, dt);
+  const warp = G.warpT > 0 && G.mode === 'race';
+  if (G.warpT > 0) G.warpT -= dt;
+  for (const r of G.rivals) { const rdt = warp ? dt * 0.45 : dt; aiThink(r, rdt); updateSkater(r, rdt); }
+  // coins (the magnet pulls them in)
+  const mag = G.demo ? 0 : lvl('magnet'), reach = 14 + mag * 30, cx = P.x, cy = P.y + 16;
+  for (const c of W.coins) {
+    if (c.got) continue;
+    const dx = cx - c.x, dy = cy - c.y;
+    if (Math.abs(dx) > reach + 40) continue;
+    const dist = Math.hypot(dx, dy);
+    if (mag && dist < reach && dist > 4) { c.x += dx / dist * 420 * dt; c.y += dy / dist * 420 * dt; }
+    if (Math.abs(cx - c.x) < 12 && Math.abs(cy - c.y) < 20) { c.got = true; earn(2, 'coin'); if (!G.demo) sfx('coin'); puff(c.x, c.y, 3, '#ffd23f', 30); }
+  }
+  // falling cones, sparks and dust
+  for (const p of G.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= 300 * dt; }
+  G.parts = G.parts.filter(p => p.life > 0);
+  for (const p of G.pops) p.t += dt;
+  G.pops = G.pops.filter(p => p.t < 1.4);
+  // the finish line
+  if (G.mode === 'race') {
+    for (const s of G.all) if (!s.finished && s.x >= W.len) {
+      s.finished = G.t; G.order.push(s);
+      if (s === P) { G.place = G.order.length; sfx('finish'); pop(ord(G.place) + ' PLACE!', G.place === 1 ? '#ffd23f' : '#ffffff', true); }
+    }
+    if (P.finished) { G.endT += dt; if (G.endT > 3 && !G.done) finishRace(); }
+  } else {
+    generate(P.x + 1200);
+    G.cleanT -= dt; if (G.cleanT <= 0) { G.cleanT = 1; cleanupWorld(P.x); }
+  }
+}
+function placeOf(s) {
+  if (s.finished) return G.order.indexOf(s) + 1;
+  return G.order.length + 1 + G.all.filter(o => !o.finished && o.x > s.x).length;
+}
+function finishRace() {
+  G.done = true;
+  const P = G.me, rest = G.all.filter(s => !s.finished).sort((a, b) => b.x - a.x);
+  const order = G.order.concat(rest), place = order.indexOf(P) + 1, tr = G.track;
+  const prize = Math.round(PRIZE[place - 1] * tr.mult);
+  save.coins += prize;
+  const stars = place === 1 ? 3 : place === 2 ? 2 : place === 3 ? 1 : 0;
+  if (stars) PX.Wallet.add(stars);
+  const b = save.best[tr.id];
+  const nb = { place: Math.min(place, b ? b.place : 9), time: Math.min(P.finished, b && b.time ? b.time : 9999) };
+  const newBest = !b || place < b.place || P.finished < (b.time || 9999);
+  save.best[tr.id] = nb;
+  save.races++; if (place === 1) save.wins++;
+  if (G.bestCombo > save.bestCombo) save.bestCombo = G.bestCombo;
+  save.seenHelp = true; store();
+  G.results = { order, place, prize, stars, newBest };
+  state = 'results';
+}
+function endSession() {                                 // free skate: done skating
+  G.done = true;
+  const stars = Math.min(3, Math.floor(G.earned / 400));
+  if (stars) PX.Wallet.add(stars);
+  const newBest = G.bestCombo > save.bestCombo;
+  if (newBest) save.bestCombo = G.bestCombo;
+  save.seenHelp = true; store();
+  G.results = { stars, newBest };
+  state = 'results'; paused = false;
+}
+
+/* --- 4. DRAWING ------------------------------------------------------------------------ */
+const cam = { x: 0, y: 0 };
+const OUT = '#14121c';
+// a skater is drawn from a list of thick lines and boxes: first all the outlines, then the colours
+function paint(g, L, ax, ay) {
+  g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  for (let pass = 0; pass < 2; pass++) for (const it of L) {
+    if (pass === 0 && it.noOut) continue;
+    g.fillStyle = pass === 0 ? OUT : it.c;
+    const e = pass === 0 ? 1 : 0;
+    if (it.k === 'b') g.fillRect(ax + it.x - e, ay + it.y - e, it.w + 2 * e, it.h + 2 * e);
+    else {
+      const dx = it.x1 - it.x0, dy = it.y1 - it.y0, n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy)))), hw = Math.floor(it.w / 2);
+      for (let i = 0; i <= n; i++) g.fillRect(ax + Math.round(it.x0 + dx * i / n) - hw - e, ay + Math.round(it.y0 + dy * i / n) - hw - e, it.w + 2 * e, it.w + 2 * e);
+    }
+  }
+}
+const BAX = 20, BAY = 44;          // where the feet are in the body picture
+function bodyPose(s) {
+  const L = [], lim = (a, b, w, c) => L.push({ k: 'l', x0: a[0], y0: a[1], x1: b[0], y1: b[1], w, c }), box = (x, y, w, h, c, noOut) => L.push({ k: 'b', x, y, w, h, c, noOut });
+  const tr = s.trick ? s.trick.d : null, p = s.trick ? s.trick.t / s.trick.d.dur : 0;
+  let c = 0;
+  if (s.land > 0) c = 4; else if (!s.ground || s.grind) c = 2;
+  if (tr && tr.kind !== 'grab') c = 5;
+  const grab = tr && tr.kind === 'grab' && p > 0.12 && p < 0.88 ? tr : null;
+  if (grab) c = 7;
+  const pants = '#2a2f4a', pantsD = '#1e2238', shoe = '#f4f4f4', skinD = shade(s.skin, 0.8), shirtD = shade(s.color, 0.8);
+  let hip = [0, -13 + c], sh = [1, -22 + c];
+  let bf = [-6, 0], ff = [5, 0], bk = [-6, -7 + c * 0.5], fk = [6, -7 + c * 0.5];
+  let be = [-5, sh[1] + 4], bh = [-9, sh[1] + 8], fe = [6, sh[1] + 3], fh = [10, sh[1] + 7];
+  if (s.ground && !s.grind && s.pushT > 0) {               // pushing: the back foot kicks the ground
+    const ph = Math.sin((1 - s.pushT / 0.3) * Math.PI);
+    hip = [0, -12]; sh = [2, -21]; ff = [4, 0]; fk = [5, -6]; bf = [-3 - 11 * ph, 5]; bk = [-3 - 5 * ph, -5];
+    be = [-3, -17]; bh = [-6 - 3 * ph, -13]; fe = [7, -18]; fh = [10, -14];
+  }
+  if (grab) {
+    bk = [-8, -7]; fk = [8, -7];
+    const hand = [grab.at[0], grab.at[1]];
+    if (grab.hand === 'f') { fe = [7, sh[1] + 7]; fh = hand; } else { be = [-6, sh[1] + 7]; bh = hand; }
+    if (grab.walk) { ff = [10, -6]; fk = [9, -11]; bf = [-6, 1]; }
+  }
+  if (s.cheer) { be = [-4, sh[1] - 5]; bh = [-6, sh[1] - 10]; fe = [5, sh[1] - 5]; fh = [7, sh[1] - 10]; }
+  // back arm, back leg
+  lim([0, sh[1] + 1], be, 3, skinD); lim(be, bh, 3, skinD);
+  lim([hip[0] - 1, hip[1]], bk, 3, pantsD); lim(bk, [bf[0], bf[1] - 2], 3, pantsD); box(bf[0] - 2, bf[1] - 2, 5, 2, shoe);
+  // body
+  lim([hip[0], hip[1] - 2], [sh[0], sh[1] + 3], 7, s.color);
+  box(sh[0] - 3, sh[1] + 1, 2, 9, shirtD, true);
+  box(hip[0] - 4, hip[1] - 1, 8, 3, pants);
+  // front leg
+  lim([hip[0] + 1, hip[1]], fk, 3, pants); lim(fk, [ff[0], ff[1] - 2], 3, pants); box(ff[0] - 2, ff[1] - 2, 5, 2, shoe);
+  // head and hair
+  const hx = sh[0], hy = sh[1] - 1;
+  box(hx - 4, hy - 9, 9, 9, s.skin);
+  box(hx - 5, hy - 11, 10, 4, s.hair); box(hx - 5, hy - 8, 3, 5, s.hair); box(hx - 3, hy - 12, 2, 1, s.hair); box(hx + 1, hy - 12, 2, 1, s.hair); box(hx + 3, hy - 9, 2, 1, s.hair);
+  box(hx + 2, hy - 6, 1, 2, '#111111', true);
+  // front arm
+  box(sh[0] - 1, sh[1], 4, 3, s.color, true);
+  lim([sh[0] + 1, sh[1] + 2], fe, 3, s.skin); lim(fe, fh, 3, s.skin);
+  paint(s.bodyG, L, BAX, BAY);
+}
+// the board: a side view, and the bottom of it (seen while it flips)
+const boardPics = {};
+function boardPic(deck, under) {
+  const key = deck + under; if (boardPics[key]) return boardPics[key];
+  const [c, g] = makeCanvas(30, 8);
+  const r = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+  r(1, 1, 28, 4, OUT); r(0, 0, 2, 2, OUT); r(28, 0, 2, 2, OUT);
+  r(2, 2, 26, 2, under ? deck : '#2b2b3a'); r(1, 1, 1, 1, under ? deck : '#2b2b3a'); r(28, 1, 1, 1, under ? deck : '#2b2b3a');
+  if (under) { r(8, 2, 3, 2, '#ffffff'); r(14, 2, 2, 2, '#ffd23f'); r(19, 2, 3, 2, '#ffffff'); } else r(2, 2, 26, 1, '#45455a');
+  r(6, 4, 4, 1, '#9a9ab0'); r(20, 4, 4, 1, '#9a9ab0');
+  r(5, 4, 5, 4, OUT); r(20, 4, 5, 4, OUT); r(6, 5, 3, 2, '#ffd23f'); r(21, 5, 3, 2, '#ffd23f');
+  return (boardPics[key] = c);
+}
+function drawBoard(s, x, y, rot, sx, sy) {      // (x, y): the middle of the board
+  ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(rot); ctx.scale(Math.abs(sx) < 0.15 ? 0.15 * Math.sign(sx || 1) : sx, Math.abs(sy) < 0.2 ? 0.2 * Math.sign(sy || 1) : sy);
+  ctx.drawImage(boardPic(s.deck, sy < 0), -15, -4);
+  ctx.restore();
+}
+const scrY = (y, d) => GS + cam.y - d - y;
+function drawSkater(s, t) {
+  const sx = Math.round(s.x - cam.x), sy = Math.round(scrY(s.y, s.d));
+  if (sx < -60 || sx > S.W + 60) return;
+  // a shadow on the ground while in the air
+  if (!s.ground || s.grind) {
+    const gy = Math.round(scrY(s.grind ? s.grind.h : groundAt(s.x), s.d)), k = clamp(1 - (s.y - groundAt(s.x)) / 160, 0.3, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(sx - Math.round(10 * k), gy - 1, Math.round(20 * k), 2);
+  }
+  if (s.bail > 0) {                                  // bailing: fall over, the board rolls away, get back up
+    const k = 1 - s.bail / 1.05;
+    s.trick = null; bodyPose(s);
+    const fall = k < 0.25 ? k / 0.25 : k < 0.75 ? 1 : 1 - (k - 0.75) / 0.25;
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(-fall * 1.45); ctx.drawImage(s.bodyC, -BAX, -5 - BAY + Math.round(fall * 3)); ctx.restore();
+    const bx = sx + 6 + Math.round(Math.min(k, 0.75) * 40), by = sy - 4 - Math.round(Math.sin(Math.min(1, k * 2.2) * Math.PI) * 10);
+    drawBoard(s, bx, by, k < 0.45 ? k * 18 : 0, 1, 1);
+    return;
+  }
+  const tr = s.trick ? s.trick.d : null, p = s.trick ? s.trick.t / tr.dur : 0, e = p < 0 ? 0 : p > 1 ? 1 : p;
+  bodyPose(s);
+  let rot = s.tilt, spin = 1, lift = 0, brot = 0, bsx = 1, bsy = 1;
+  if (tr) {
+    if (tr.turns) spin = Math.cos(Math.PI * 2 * tr.turns * e);
+    if (tr.rot) rot += Math.PI * 2 * tr.rot * e;
+    if (tr.bf || tr.bs) { lift = Math.sin(e * Math.PI) * 7; bsy = Math.cos(Math.PI * 2 * (tr.bf || 0) * e); bsx = Math.cos(Math.PI * 2 * (tr.bs || 0) * e); }
+    if (tr.tilt) brot = tr.tilt * Math.sin(e * Math.PI);
+    if (tr.superman) { const a = Math.sin(e * Math.PI); rot += 1.2 * a; lift = -2 * a; }
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (rot || spin !== 1) { ctx.translate(0, -18); ctx.rotate(rot); ctx.scale(Math.abs(spin) < 0.12 ? 0.12 * Math.sign(spin || 1) : spin, 1); ctx.translate(0, 18); }
+  if (tr && tr.superman) {                       // the board flies out in front, held by one hand
+    const a = Math.sin(e * Math.PI);
+    ctx.drawImage(s.bodyC, -BAX, -5 - BAY - Math.round(a * 6));
+    ctx.restore();
+    drawBoard(s, sx + Math.round(a * 10), sy - 4 - Math.round(a * 2), 0, 1, 1);
+    return;
+  }
+  drawBoard(s, 0, -4 - (tr && tr.kind === 'grab' ? 2 * Math.sin(e * Math.PI) : 0), brot, bsx, bsy);
+  ctx.drawImage(s.bodyC, -BAX, -5 - BAY - Math.round(lift));
+  ctx.restore();
+  if (s.boostT > 0 && Math.floor(t * 20) % 2) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(sx - 20, sy - 6, 6, 2); ctx.fillStyle = '#ffd23f'; ctx.fillRect(sx - 18, sy - 5, 3, 1); }
+}
+
+// --- pictures made once: a tree, the fence, a coin -----------------------------------------
+const pics = {};
+function treePic(th, v) {
+  const key = 'tree' + th.leaf[0] + v; if (pics[key]) return pics[key];
+  const [c, g] = makeCanvas(60, 86), R = mulberry(v * 97 + 5);
+  g.fillStyle = OUT; g.fillRect(25, 44, 10, 42); g.fillStyle = th.trunk; g.fillRect(26, 44, 8, 42); g.fillStyle = shade(th.trunk, 0.75); g.fillRect(31, 44, 3, 42);
+  g.fillStyle = OUT; g.fillRect(20, 82, 20, 4); g.fillStyle = shade(th.trunk, 0.8); g.fillRect(21, 82, 18, 3);
+  const blobs = []; for (let i = 0; i < 7; i++) blobs.push([14 + R() * 32, 14 + R() * 30, 10 + R() * 8]);
+  for (let y = 0; y < 60; y++) for (let x = 0; x < 60; x++) {
+    let inside = false; for (const [bx, by, br] of blobs) if ((x - bx) ** 2 + (y - by) ** 2 < br * br) { inside = true; break; }
+    if (!inside) continue;
+    const k = y / 60 + (R() - 0.5) * 0.35 - (x - 30) / 150;
+    g.fillStyle = k < 0.35 ? th.leaf[2] : k < 0.65 ? th.leaf[1] : th.leaf[0];
+    g.fillRect(x - (x % 2), y - (y % 2), 2, 2);
+  }
+  return (pics[key] = c);
+}
+function fencePic(th) {
+  const key = 'fence' + th.fence; if (pics[key]) return pics[key];
+  const [c, g] = makeCanvas(48, 34);
+  g.fillStyle = th.fence;
+  for (let y = 4; y < 34; y++) for (let x = 0; x < 48; x++) if ((x + y) % 6 === 0 || (x - y + 60) % 6 === 0) g.fillRect(x, y, 1, 1);
+  g.fillStyle = shade(th.fence, 0.7); g.fillRect(0, 0, 3, 34); g.fillStyle = shade(th.fence, 1.2); g.fillRect(0, 2, 48, 2);
+  return (pics[key] = c);
+}
+const [coinC, coinG] = makeCanvas(12, 12);
+(() => { const g = coinG, r = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+  r(3, 0, 6, 12, '#7a4a10'); r(0, 3, 12, 6, '#7a4a10'); r(1, 1, 10, 10, '#7a4a10');
+  r(3, 1, 6, 10, '#ffd23f'); r(1, 3, 10, 6, '#ffd23f'); r(2, 2, 8, 8, '#ffd23f');
+  r(4, 3, 4, 6, '#e0a020'); r(5, 3, 2, 6, '#ffe890'); r(3, 2, 2, 1, '#fff6c0'); })();
+
+function hash(i, k) { let h = Math.imul(i, 374761393) + Math.imul(k, 668265263) + (W ? W.seedH : 0) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function drawBack(t) {
+  const th = W.theme, Wd = S.W;
+  // the sky
+  for (let y = 0; y < H; y += 6) {
+    const k = clamp((y + cam.y * 0.1) / 170, 0, 1), a = parseInt(th.sky[0].slice(1), 16), b = parseInt(th.sky[1].slice(1), 16);
+    const mix = sh => Math.round((a >> sh & 255) * (1 - k) + (b >> sh & 255) * k);
+    ctx.fillStyle = `rgb(${mix(16)},${mix(8)},${mix(0)})`; ctx.fillRect(0, y, Wd, 6);
+  }
+  if (th.stars) { for (let i = 0; i < 60; i++) { const x = Math.floor((hash(i, 91) * 900 - cam.x * 0.02) % (Wd + 20) + Wd + 20) % (Wd + 20), y = hash(i, 92) * 110 + cam.y * 0.05; ctx.fillStyle = (Math.floor(t * 2 + i) % 7) ? '#d8d8ff' : '#ffffff'; ctx.fillRect(x, Math.round(y), 1, 1); } ctx.fillStyle = '#f4f0d0'; ctx.fillRect(Wd - 170, 40 + Math.round(cam.y * 0.05), 14, 14); ctx.fillStyle = th.sky[0]; ctx.fillRect(Wd - 164, 38 + Math.round(cam.y * 0.05), 12, 12); }
+  if (th.sun) { const y = 70 + Math.round(cam.y * 0.05); ctx.fillStyle = th.sun; ctx.fillRect(Wd - 120, y, 30, 30); ctx.fillRect(Wd - 124, y + 4, 38, 22); ctx.fillStyle = '#ffb05a'; ctx.fillRect(Wd - 124, y + 18, 38, 3); ctx.fillRect(Wd - 120, y + 24, 30, 2); }
+  // clouds
+  for (let i = Math.floor((cam.x * 0.1 - 120) / 160); i < (cam.x * 0.1 + Wd + 60) / 160; i++) {
+    const x = Math.round(i * 160 + hash(i, 1) * 60 - cam.x * 0.1), y = Math.round(16 + hash(i, 2) * 56 + cam.y * 0.1), s = 1 + Math.floor(hash(i, 3) * 2);
+    ctx.fillStyle = th.cloudS; ctx.fillRect(x, y + 10 * s, 50 * s, 6 * s);
+    ctx.fillStyle = th.cloud; ctx.fillRect(x + 4 * s, y + 6 * s, 40 * s, 6 * s); ctx.fillRect(x + 12 * s, y + 2 * s, 18 * s, 6 * s); ctx.fillRect(x + 18 * s, y, 10 * s, 4 * s);
+    ctx.fillStyle = th.cloudS; ctx.fillRect(x + 14 * s, y + 9 * s, 6 * s, 2 * s); ctx.fillRect(x + 30 * s, y + 8 * s, 8 * s, 2 * s);
+  }
+  // far city, then the near city
+  const base = GS - 22;
+  for (const L of [{ par: 0.2, sp: 38, hmin: 40, hmax: 95, col: th.far, win: 0.4, k: 10 }, { par: 0.4, sp: 74, hmin: 60, hmax: 150, col: th.near, win: 1, k: 20 }]) {
+    const yb = Math.round(base + cam.y * L.par);
+    for (let i = Math.floor((cam.x * L.par - 80) / L.sp); i < (cam.x * L.par + Wd + 80) / L.sp; i++) {
+      if (hash(i, L.k + 4) < 0.15) continue;
+      const bw = Math.round(L.sp * (0.6 + hash(i, L.k) * 0.5)), bh = Math.round(L.hmin + hash(i, L.k + 1) * (L.hmax - L.hmin));
+      const x = Math.round(i * L.sp - cam.x * L.par), y = yb - bh;
+      ctx.fillStyle = L.col; ctx.fillRect(x, y, bw, bh);
+      if (L.win === 1) { ctx.fillStyle = th.nearS; ctx.fillRect(x + bw - 4, y, 4, bh); if (hash(i, 31) < 0.4) { ctx.fillRect(x + Math.round(bw / 2) - 4, y - 8, 8, 8); ctx.fillStyle = L.col; ctx.fillRect(x + Math.round(bw / 2) - 1, y - 16, 2, 8); } }
+      const ww = L.win === 1 ? 5 : 3, wh = L.win === 1 ? 6 : 3, gx = L.win === 1 ? 9 : 6, gy = L.win === 1 ? 11 : 7;
+      for (let wy = y + 6; wy < yb - 10; wy += gy) for (let wx = x + 5; wx < x + bw - ww - 4; wx += gx) {
+        const hv = hash(i * 131 + wx - x, wy - y);
+        ctx.fillStyle = L.win === 1 ? th.win[Math.floor(hv * th.win.length)] : shade(L.col, 1.25);
+        if (L.win === 1 || hv < 0.5) ctx.fillRect(wx, wy, ww, wh);
+      }
+    }
+  }
+  // bushes, trees, the fence and lamps behind the sidewalk
+  const fy = Math.round(base + cam.y * 0.85), par = 0.85;
+  ctx.fillStyle = th.grass; ctx.fillRect(0, fy - 4, Wd, GS + cam.y - 22 - fy + 6);
+  for (let i = Math.floor((cam.x * par - 80) / 60); i < (cam.x * par + Wd + 80) / 60; i++) {
+    if (hash(i, 50) < 0.5) continue;
+    const x = Math.round(i * 60 + hash(i, 51) * 20 - cam.x * par), bw = 20 + Math.round(hash(i, 52) * 26);
+    ctx.fillStyle = th.leaf[0]; ctx.fillRect(x, fy - 14, bw, 14); ctx.fillStyle = th.leaf[1]; ctx.fillRect(x + 2, fy - 18, bw - 4, 8); ctx.fillStyle = th.leaf[2]; ctx.fillRect(x + 5, fy - 18, bw - 12, 3);
+  }
+  const fp = fencePic(th);
+  for (let x = -((Math.round(cam.x * par) % 48 + 48) % 48); x < Wd; x += 48) ctx.drawImage(fp, x, fy - 34);
+  for (let i = Math.floor((cam.x * par - 80) / 230); i < (cam.x * par + Wd + 80) / 230; i++) {
+    const x = Math.round(i * 230 + hash(i, 60) * 90 - cam.x * par);
+    if (th.lamps && hash(i, 63) < 0.6) {
+      const lx = x + 120; ctx.fillStyle = '#2a2a3a'; ctx.fillRect(lx, fy - 80, 3, 80); ctx.fillRect(lx - 8, fy - 80, 12, 3);
+      ctx.fillStyle = '#ffe890'; ctx.fillRect(lx - 9, fy - 77, 6, 3);
+      ctx.fillStyle = 'rgba(255,232,144,0.12)'; ctx.beginPath(); ctx.moveTo(lx - 8, fy - 74); ctx.lineTo(lx - 30, fy + 30); ctx.lineTo(lx + 14, fy + 30); ctx.fill();
+    }
+    if (hash(i, 61) < 0.35) continue;
+    ctx.drawImage(treePic(th, Math.floor(hash(i, 62) * 3)), x, fy - 84);
+  }
+  // the sidewalk, the curb and the road
+  const top = GS + cam.y - 22, front = GS + cam.y + 4;
+  ctx.fillStyle = th.walk; ctx.fillRect(0, top, Wd, front - top);
+  ctx.fillStyle = shade(th.walk, 1.08); ctx.fillRect(0, top, Wd, 2);
+  ctx.fillStyle = th.walkS;
+  for (let x = -((Math.round(cam.x) % 44 + 44) % 44); x < Wd; x += 44) { ctx.fillRect(x, top, 2, front - top); }
+  ctx.fillRect(0, top + 12, Wd, 1);
+  ctx.fillStyle = th.curb; ctx.fillRect(0, front, Wd, 5); ctx.fillStyle = shade(th.curb, 1.2); ctx.fillRect(0, front, Wd, 1);
+  ctx.fillStyle = th.road; ctx.fillRect(0, front + 5, Wd, H - front);
+  ctx.fillStyle = th.dash;
+  for (let x = -((Math.round(cam.x * 1.05) % 90 + 90) % 90); x < Wd; x += 90) ctx.fillRect(x, front + 26, 34, 4);
+}
+// ramps sit on the whole sidewalk: their front, and their top seen from above (DEP deep)
+function drawBlock(f) {
+  const yb = GS + cam.y, x0 = Math.round(f.x - cam.x), th = W.theme;
+  const cols = f.type === 'kicker' ? th.ramp : th.box;
+  for (let i = 0; i < f.w; i++) {
+    const x = x0 + i; if (x < -2 || x > S.W + 2) continue;
+    const hgt = Math.round(groundAt(f.x + i + 0.5));
+    ctx.fillStyle = cols[1]; ctx.fillRect(x, yb - hgt - DEP, 1, DEP);
+    ctx.fillStyle = cols[0]; ctx.fillRect(x, yb - hgt, 1, hgt + 1);
+    ctx.fillStyle = shade(cols[1], 1.18); ctx.fillRect(x, yb - hgt - 1, 1, 1);
+    ctx.fillStyle = shade(cols[1], 0.85); ctx.fillRect(x, yb - hgt - DEP, 1, 1);
+    if (hgt > 3) { ctx.fillStyle = shade(cols[0], 0.75); ctx.fillRect(x, yb - 2, 1, 3); }
+  }
+  if (f.type === 'kicker') {                      // the metal lip and a bit of graffiti
+    const xe = x0 + f.w, he = Math.round(f.h);
+    ctx.fillStyle = '#d8dce8'; ctx.fillRect(xe - 2, yb - he - DEP, 2, DEP + 1); ctx.fillStyle = OUT; ctx.fillRect(xe, yb - he - DEP, 1, DEP + he + 1);
+    if (f.h > 24) { ctx.fillStyle = '#ffd23f'; const gx = xe - Math.round(f.w * 0.35), gy = yb - 6; ctx.fillRect(gx, gy, 12, 2); ctx.fillRect(gx, gy - 7, 2, 7); ctx.fillRect(gx + 5, gy - 6, 2, 6); ctx.fillRect(gx + 10, gy - 8, 2, 8); ctx.fillRect(gx - 2, gy - 9, 2, 2); ctx.fillRect(gx + 12, gy - 10, 2, 2); }
+  } else {
+    ctx.fillStyle = '#d8dce8'; ctx.fillRect(x0 + f.r, yb - f.h - 1, f.w - 2 * f.r, 1);
+  }
+}
+function drawPad(f, t) {
+  const yb = GS + cam.y, x0 = Math.round(f.x - cam.x);
+  ctx.fillStyle = '#2a2a3a'; ctx.fillRect(x0, yb - DEP + 2, f.w, DEP - 4);
+  for (let k = 0; k < 3; k++) {
+    const on = Math.floor(t * 8 - k) % 3 === 0;
+    ctx.fillStyle = on ? '#ffffff' : '#9be36b';
+    const ax = x0 + 6 + k * 11, ay = yb - DEP / 2;
+    for (let j = 0; j < 4; j++) { ctx.fillRect(ax + j, ay - 4 + j, 2, 1); ctx.fillRect(ax + j, ay + 4 - j, 2, 1); }
+  }
+}
+function drawMid(f, t) {                          // rails, benches and cones: in the middle of the sidewalk
+  const yb = GS + cam.y - 10, x0 = Math.round(f.x - cam.x);
+  if (f.type === 'rail') {
+    const yt = yb - f.h;
+    const posts = [f.x + 4]; for (let px = f.x + 70; px < f.x + f.w - 10; px += 70) posts.push(px); posts.push(f.x + f.w - 6);
+    for (const px of posts) { const g = Math.round(groundAt(px)), sx = Math.round(px - cam.x); ctx.fillStyle = OUT; ctx.fillRect(sx - 1, yt, 4, f.h - g + 1); ctx.fillStyle = '#6a6a7e'; ctx.fillRect(sx, yt, 2, f.h - g); }
+    ctx.fillStyle = OUT; ctx.fillRect(x0 - 1, yt - 2, f.w + 2, 5);
+    ctx.fillStyle = '#d8dce8'; ctx.fillRect(x0, yt - 1, f.w, 2); ctx.fillStyle = '#8a8aa0'; ctx.fillRect(x0, yt + 1, f.w, 1);
+  } else if (f.type === 'bench') {
+    const y = yb - f.h;
+    ctx.fillStyle = OUT; ctx.fillRect(x0 + 1, y - 17, f.w - 2, 12);
+    ctx.fillStyle = '#a85a28'; ctx.fillRect(x0 + 2, y - 16, f.w - 4, 4); ctx.fillRect(x0 + 2, y - 10, f.w - 4, 4);
+    ctx.fillStyle = '#c87a3a'; ctx.fillRect(x0 + 2, y - 16, f.w - 4, 1); ctx.fillRect(x0 + 2, y - 10, f.w - 4, 1);
+    ctx.fillStyle = '#4a2a1a'; ctx.fillRect(x0 + 6, y - 6, 3, 6); ctx.fillRect(x0 + f.w - 9, y - 6, 3, 6);
+    ctx.fillStyle = OUT; ctx.fillRect(x0 + 3, y, 5, f.h + 1); ctx.fillRect(x0 + f.w - 8, y, 5, f.h + 1); ctx.fillRect(x0 - 1, y - 1, f.w + 2, 5);
+    ctx.fillStyle = '#4a2a1a'; ctx.fillRect(x0 + 4, y, 3, f.h); ctx.fillRect(x0 + f.w - 7, y, 3, f.h);
+    ctx.fillStyle = '#c06a30'; ctx.fillRect(x0, y, f.w, 3); ctx.fillStyle = '#e08a4a'; ctx.fillRect(x0, y, f.w, 1);
+  } else if (f.type === 'cone') {
+    if (f.down) {
+      ctx.fillStyle = OUT; ctx.fillRect(x0 - 3, yb - 7, 15, 7);
+      ctx.fillStyle = '#ff6a1a'; ctx.fillRect(x0 - 2, yb - 6, 13, 5); ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + 3, yb - 6, 3, 5);
+      return;
+    }
+    ctx.fillStyle = OUT; ctx.fillRect(x0 - 2, yb - 3, 12, 4); ctx.fillRect(x0, yb - 9, 8, 7); ctx.fillRect(x0 + 1, yb - 13, 6, 5);
+    ctx.fillStyle = '#c84a10'; ctx.fillRect(x0 - 1, yb - 2, 10, 2);
+    ctx.fillStyle = '#ff6a1a'; ctx.fillRect(x0 + 1, yb - 8, 6, 6); ctx.fillRect(x0 + 2, yb - 12, 4, 4);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + 1, yb - 7, 6, 2);
+  }
+}
+function drawCoins(t) {
+  for (const c of W.coins) {
+    if (c.got) continue;
+    const x = c.x - cam.x; if (x < -10 || x > S.W + 10) continue;
+    const w = Math.max(2, Math.round(12 * Math.abs(Math.cos(t * 4 + c.x * 0.02))));
+    ctx.drawImage(coinC, Math.round(x - w / 2), Math.round(GS + cam.y - 10 - c.y - 6), w, 12);
+  }
+}
+function drawFinish() {
+  if (W.mode !== 'race') return;
+  for (const [fx, label] of [[0, 'START'], [W.len, 'FINISH']]) {
+    const x = Math.round(fx - cam.x), yb = GS + cam.y;
+    if (x < -60 || x > S.W + 60) continue;
+    for (let j = 0; j < DEP + 4; j += 4) for (let i = 0; i < 2; i++) { ctx.fillStyle = (i + j / 4) % 2 ? '#ffffff' : '#14121c'; ctx.fillRect(x + i * 4, yb + 2 - DEP - 2 + j, 4, 4); }
+    if (label === 'FINISH') {
+      ctx.fillStyle = '#d8dce8'; ctx.fillRect(x - 1, yb - DEP - 80, 3, 80); ctx.fillRect(x + 7, yb - 82, 3, 82);
+      ctx.fillStyle = OUT; ctx.fillRect(x - 24, yb - DEP - 98, 58, 22);
+      for (let i = 0; i < 14; i++) for (let j = 0; j < 5; j++) { ctx.fillStyle = (i + j) % 2 ? '#ffffff' : '#14121c'; ctx.fillRect(x - 23 + i * 4, yb - DEP - 97 + j * 4, 4, 4); }
+      T('FINISH', x + 5, yb - DEP - 92, '#ffd23f', 1, 'center', '#000');
+    }
+  }
+}
+function drawWorld(t) {
+  drawBack(t);
+  const vis = featsIn(cam.x - 60, cam.x + S.W + 60);
+  for (const f of vis) if (f.type === 'kicker' || f.type === 'funbox') drawBlock(f);
+  for (const f of vis) if (f.type === 'pad') drawPad(f, t);
+  drawFinish();
+  const order = G.all.slice().sort((a, b) => b.d - a.d);
+  for (const s of order) if (s.d >= 10) drawSkater(s, t);
+  for (const f of vis) if (f.type === 'bench' || f.type === 'rail' || f.type === 'cone') drawMid(f, t);
+  drawCoins(t);
+  for (const s of order) if (s.d < 10) drawSkater(s, t);
+  for (const p of G.parts) { ctx.fillStyle = p.color; ctx.fillRect(Math.round(p.x - cam.x), Math.round(GS + cam.y - 8 - p.y), p.s, p.s); }
+  // names over the rivals
+  if (G.mode === 'race' && state === 'play') for (const s of G.rivals) {
+    const x = Math.round(s.x - cam.x); if (x < 0 || x > S.W) continue;
+    T(s.name, x, Math.round(scrY(s.y, s.d)) - 52, s.color, 1, 'center', '#000');
+  }
+  if (G.warpT > 0 && G.mode === 'race') { ctx.fillStyle = 'rgba(176,122,255,' + (0.12 + 0.05 * Math.sin(t * 8)) + ')'; ctx.fillRect(0, 0, S.W, H); }
+}
+function updateCam(dt) {
+  const P = G.me;
+  const tx = P.x - S.W * 0.3, ty = Math.max(0, P.y - 70);
+  cam.x = tx; cam.y += (ty - cam.y) * Math.min(1, dt * 6);
+  if (G.shake > 0) { cam.x += rnd(-2, 2); }
+}
+
+/* --- 5. SCREENS ---------------------------------------------------------------- */
+let state = 'title', paused = false, shopTab = 'tricks';
+let touchUI = (navigator.maxTouchPoints || 0) > 0;
+function panel(w, h, y) {
+  const Wd = S.W, x = Math.round(Wd / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, Wd, H);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#ff8a2a'; ctx.fillRect(x, y, w, 2);
+  return { x, y };
+}
+function coinIcon(x, y) { ctx.drawImage(coinC, x, y, 8, 8); }
+function touchButtons() {
+  const Wd = S.W, y = H - 44, h = 40, L = [
+    { id: 'push', x: 8, y, w: 70, h, label: 'PUSH', col: '#9be36b' },
+    { id: 'boost', x: 84, y, w: 54, h, label: 'BOOST', col: '#ff8a2a' },
+    { id: 'ollie', x: Wd - 78, y, w: 70, h, label: 'OLLIE', col: '#ffd23f' },
+  ];
+  if (G.warps > 0 || G.warpT > 0) L.push({ id: 'warp', x: 144, y, w: 36, h, label: 'WARP', col: '#b07aff' });
+  KINDS.slice().reverse().forEach(([k, label, col], i) => L.push({ id: k, x: Wd - 78 - 46 * (i + 1), y, w: 42, h, label, col }));
+  return L;
+}
+const held = new Map();          // finger -> on-screen button
+function hud(t) {
+  const Wd = S.W, P = G.me;
+  // left: your place (race) or your session (free skate)
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(4, 4, 96, 46);
+  if (G.mode === 'race') {
+    const pl = P.finished ? G.place : placeOf(P);
+    T(ord(pl), 10, 8, pl === 1 ? '#ffd23f' : '#ffffff', 3, 'left', '#000');
+    T('/6', 10 + PX.textWidth(ord(pl), 3) + 3, 16, '#9a92b8', 1);
+    T(fmtTime(P.finished || Math.max(0, G.t)), 96, 10, '#ffffff', 1, 'right');
+  } else {
+    T('FREE SKATE', 10, 9, '#9be36b', 1);
+    T('BEST COMBO', 10, 18, '#9a92b8', 1); T('' + Math.max(G.bestCombo, save.bestCombo), 96, 18, '#ffd23f', 1, 'right');
+  }
+  // boost meter (3 boosts), shield and warp
+  T('BOOST', 10, 29, P.boostT > 0 ? '#ffd23f' : '#ff8a2a', 1);
+  for (let k = 0; k < 3; k++) { const f = clamp((P.meter - k * 33.4) / 33.3, 0, 1); ctx.fillStyle = '#111'; ctx.fillRect(34 + k * 21, 29, 19, 6); ctx.fillStyle = f >= 1 ? '#ff8a2a' : '#7a4a2a'; ctx.fillRect(35 + k * 21, 30, Math.round(17 * f), 4); }
+  T(Math.round(P.speed * 0.13) + ' KM/H', 10, 40, '#9a92b8', 1);
+  let ix = 96;
+  for (let k = 0; k < G.shield; k++) { ix -= 8; ctx.fillStyle = '#4aa8ff'; ctx.fillRect(ix, 40, 6, 4); ctx.fillRect(ix + 1, 44, 4, 1); ctx.fillRect(ix + 2, 45, 2, 1); }
+  for (let k = 0; k < G.warps; k++) { ix -= 8; ctx.fillStyle = '#b07aff'; ctx.fillRect(ix, 40, 6, 1); ctx.fillRect(ix + 1, 41, 4, 2); ctx.fillRect(ix + 2, 43, 2, 1); ctx.fillRect(ix + 1, 44, 4, 1); ctx.fillRect(ix, 45, 6, 1); }
+  // the race: everybody on a line to the finish
+  if (G.mode === 'race') {
+    const bx = Math.round(Wd / 2 - 90), bw = 180;
+    ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(bx - 6, 4, bw + 12, 14);
+    ctx.fillStyle = '#5b5275'; ctx.fillRect(bx, 10, bw, 2);
+    for (let i = 0; i < 4; i++) { ctx.fillStyle = i % 2 ? '#fff' : '#111'; ctx.fillRect(bx + bw, 6 + i * 2, 2, 2); ctx.fillStyle = i % 2 ? '#111' : '#fff'; ctx.fillRect(bx + bw + 2, 6 + i * 2, 2, 2); }
+    for (const s of G.rivals.concat([P])) { const x = bx + Math.round(clamp(s.x / W.len, 0, 1) * bw); ctx.fillStyle = OUT; ctx.fillRect(x - 2, 7, 5, 7); ctx.fillStyle = s.color; ctx.fillRect(x - 1, 8, 3, 5); }
+    const x = bx + Math.round(clamp(P.x / W.len, 0, 1) * bw); ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 1, 15, 3, 1);
+  }
+  // right: coins and pause
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(Wd - 106, 4, 72, 22);
+  coinIcon(Wd - 102, 7); T('' + save.coins, Wd - 38, 7, '#ffd23f', 1, 'right');
+  T('+' + G.earned, Wd - 38, 17, '#9be36b', 1, 'right');
+  if (!G.done && UI.button('pause', Wd - 30, 4, 26, 22, 'II', { size: 1 })) setPause(true);
+  // the trick you're doing and your combo
+  if (P.trick || P.combo.length || P.grind) {
+    const names = P.combo.map(c => c.name); if (P.grind) names.push(P.grind.type === 'bench' ? 'BENCH GRIND' : '50-50 GRIND'); if (P.trick) names.push(P.trick.d.name + '...');
+    let line = names.slice(-3).join(' + '); if (names.length > 3) line = '... + ' + line;
+    T(line, Wd / 2, 26, '#ffffff', 1, 'center', '#000');
+    const n = P.combo.length + (P.grind ? 1 : 0), sum = P.combo.reduce((a, c) => a + c.pts, 0) + (P.grind ? Math.round(P.grindPts) : 0);
+    if (n) T((n > 1 ? 'X' + n + '  ' : '') + sum * n, Wd / 2, 35, n > 1 ? '#ffd23f' : '#9be36b', 2, 'center', '#000');
+  }
+  for (const p of G.pops) { const k = p.t / 1.4; if (k < 0.8 || Math.floor(p.t * 20) % 2) T(p.text, Wd / 2, 60 - Math.round(k * 12), p.color, p.big ? 3 : 2, 'center', '#000'); }
+  if (G.count > 0) { const n = Math.ceil(G.count); T('' + n, Wd / 2, 70, '#ffd23f', 6, 'center', '#000'); T('GET READY!', Wd / 2, 106, '#ffffff', 2, 'center', '#000'); }
+  else if (G.mode === 'race' && G.t < 0.8) T('GO!', Wd / 2, 70, '#9be36b', 6, 'center', '#000');
+  if (G.help > 0 && G.count <= 0) {
+    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(Wd / 2 - 150, 78, 300, 44);
+    T(touchUI ? 'HOLD PUSH TO GO FASTER. OLLIE TO JUMP.' : 'HOLD RIGHT TO PUSH. SPACE TO OLLIE.', Wd / 2, 84, '#ffffff', 1, 'center');
+    T(touchUI ? 'IN THE AIR TAP FLIP, GRAB OR SPIN.' : 'IN THE AIR: J FLIP, K GRAB, L SPIN.', Wd / 2, 95, '#ffffff', 1, 'center');
+    T('LAND THE TRICK = COINS + SPEED. LAND MID-TRICK = BAIL!', Wd / 2, 106, '#ffd23f', 1, 'center');
+  }
+  if (G.flash > 0) { ctx.fillStyle = 'rgba(255,60,60,' + G.flash * 0.4 + ')'; ctx.fillRect(0, 0, Wd, H); }
+  // controls: buttons on a touch screen, a reminder of the keys on a computer
+  if (touchUI && !G.done && !(P.finished && G.mode === 'race')) {
+    const on = new Set(held.values());
+    for (const b of touchButtons()) {
+      const down = on.has(b.id);
+      ctx.fillStyle = down ? b.col : 'rgba(13,11,19,0.55)'; ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = b.col; ctx.fillRect(b.x, b.y, b.w, 1); ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1); ctx.fillRect(b.x, b.y, 1, b.h); ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
+      if (b.id === 'boost') { ctx.fillStyle = 'rgba(255,138,42,0.35)'; ctx.fillRect(b.x + 1, b.y + b.h - 1 - Math.round((b.h - 2) * P.meter / 100), b.w - 2, Math.round((b.h - 2) * P.meter / 100)); }
+      T(b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, down ? '#111' : b.col, 1, 'center');
+    }
+  } else if (!touchUI && !G.done) {
+    T('RIGHT: PUSH   LEFT: BRAKE   SPACE: OLLIE   J / K / L: FLIP / GRAB / SPIN   E: BOOST' + (G.warps > 0 ? '   Q: WARP' : ''), Wd / 2, H - 12, 'rgba(255,255,255,0.55)', 1, 'center');
+  }
+}
+function drawTitle(t) {
+  const Wd = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(0, 0, Wd, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), Wd - 36, 8, '#ffd23f', 2, 'right', '#000');
+  coinIcon(Wd - 100, 22); T('' + save.coins, Wd - 36, 22, '#ffd23f', 1, 'right', '#000');
+  if (UI.button('sfx', Wd - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('PIXEL', Wd / 2, 32, '#ffd23f', 3, 'center', '#000');
+  T('SKATE', Wd / 2, 50, '#fff', 6, 'center', '#ff8a2a');
+  T('RACE, OLLIE, FLIP AND GRIND. TRICKS = COINS!', Wd / 2, 88, '#ffffff', 1, 'center', '#000');
+  const bw = 180, bx = Math.round(Wd / 2 - bw / 2);
+  if (UI.button('race', bx, 100, bw, 28, 'RACE!', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'tracks'; }
+  if (UI.button('free', bx, 134, bw, 22, 'FREE SKATE', { accent: '#7af0ff' })) { sfx('click'); startGame('free'); }
+  if (UI.button('shop', bx, 162, bw, 22, 'SKATE SHOP', { accent: '#ffd23f' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('games', bx, 196, bw, 20, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, Wd - 4, H - 9, '#ffffff', 1, 'right', '#000');
+}
+const unlocked = i => i === 0 || (save.best[TRACKS[i - 1].id] && save.best[TRACKS[i - 1].id].place <= 3);
+function drawTracks(t) {
+  const Wd = S.W, pw = Math.min(Wd - 16, 420), { x, y } = panel(pw, 214, 12);
+  T('PICK A TRACK', Wd / 2, y + 10, '#ffd23f', 2, 'center', '#000');
+  const cw = Math.floor((pw - 24) / 3);
+  TRACKS.forEach((tr, i) => {
+    const cx = x + 8 + i * (cw + 4), cy = y + 32, th = THEMES[tr.theme], open = unlocked(i), b = save.best[tr.id];
+    ctx.fillStyle = th.sky[1]; ctx.fillRect(cx, cy, cw, 50); ctx.fillStyle = th.sky[0]; ctx.fillRect(cx, cy, cw, 18);
+    for (let k = 0; k < 6; k++) { ctx.fillStyle = th.near; const bh = 14 + ((k * 37 + i * 11) % 22); ctx.fillRect(cx + 4 + k * Math.floor(cw / 6), cy + 42 - bh, Math.floor(cw / 6) - 3, bh); }
+    ctx.fillStyle = th.walk; ctx.fillRect(cx, cy + 42, cw, 8); ctx.fillStyle = th.ramp[0]; ctx.fillRect(cx + cw - 30, cy + 36, 20, 6); ctx.fillRect(cx + cw - 20, cy + 32, 10, 4);
+    ctx.fillStyle = '#262036'; ctx.fillRect(cx, cy + 50, cw, 102);
+    T(tr.name, cx + cw / 2, cy + 56, open ? '#ffffff' : '#5b5275', 1, 'center');
+    T(tr.len + ' M  ' + tr.level, cx + cw / 2, cy + 67, ['#9be36b', '#ffd23f', '#ff6b6b'][i], 1, 'center');
+    coinIcon(cx + cw / 2 - 30, cy + 77); T('1ST: ' + Math.round(PRIZE[0] * tr.mult), cx + cw / 2 - 20, cy + 78, '#ffd23f', 1);
+    T(b ? 'BEST: ' + ord(b.place) : 'NOT RACED YET', cx + cw / 2, cy + 90, b && b.place === 1 ? '#ffd23f' : '#9a92b8', 1, 'center');
+    if (b && b.time) T(fmtTime(b.time), cx + cw / 2, cy + 100, '#9a92b8', 1, 'center');
+    if (open) { if (UI.button('tr' + i, cx + 6, cy + 116, cw - 12, 26, 'RACE', { accent: '#5ad43f' })) { sfx('click'); startGame('race', tr); } }
+    else { T('LOCKED', cx + cw / 2, cy + 114, '#ff6b6b', 1, 'center'); T('TOP 3 IN', cx + cw / 2, cy + 125, '#9a92b8', 1, 'center'); T(TRACKS[i - 1].name, cx + cw / 2, cy + 135, '#9a92b8', 1, 'center'); }
+  });
+  if (UI.button('back', Math.round(Wd / 2 - 50), y + 190, 100, 18, 'BACK', { size: 1 }) || UI.back) state = 'title';
+}
+function drawShop(t) {
+  const Wd = S.W, pw = Math.min(Wd - 8, 430), { x, y } = panel(pw, 228, 6);
+  T('SKATE SHOP', x + 8, y + 8, '#ffd23f', 2, 'left', '#000');
+  coinIcon(x + pw - 70, y + 9); T('' + save.coins, x + pw - 8, y + 10, '#ffd23f', 1, 'right');
+  if (UI.button('tabT', x + 120, y + 5, 80, 16, 'TRICKS', { size: 1, on: shopTab === 'tricks' })) shopTab = 'tricks';
+  if (UI.button('tabA', x + 204, y + 5, 80, 16, 'ABILITIES', { size: 1, on: shopTab === 'abil' })) shopTab = 'abil';
+  if (shopTab === 'tricks') {
+    const cw = Math.floor((pw - 16) / 3);
+    KINDS.forEach(([kind, label, col], ci) => {
+      const cx = x + 6 + ci * (cw + 2);
+      T(label, cx + cw / 2, y + 28, col, 1, 'center');
+      TRICKS.filter(d => d.kind === kind).forEach((d, i) => {
+        const ry = y + 37 + i * 26, own = !!save.owned[d.id], eq = save.eq[kind] === d.id;
+        ctx.fillStyle = eq ? '#3a2f5c' : '#262036'; ctx.fillRect(cx, ry, cw, 24);
+        T(d.name, cx + 3, ry + 3, own ? '#ffffff' : '#9a92b8', 1);
+        T(d.pts + ' PTS  ' + d.dur.toFixed(1) + 'S', cx + 3, ry + 14, '#9a92b8', 1);
+        const bw = 42, bx = cx + cw - bw - 2;
+        if (eq) T('ON', bx + bw / 2, ry + 9, col, 1, 'center');
+        else if (own) { if (UI.button('eq' + d.id, bx, ry + 4, bw, 16, 'USE', { size: 1, accent: col })) { save.eq[kind] = d.id; store(); sfx('click'); } }
+        else if (UI.button('buy' + d.id, bx, ry + 4, bw, 16, '' + d.cost, { size: 1, accent: '#5ad43f', disabled: save.coins < d.cost, textColor: '#ffd23f' })) {
+          save.coins -= d.cost; save.owned[d.id] = 1; save.eq[kind] = d.id; store(); sfx('buy');
+        }
+      });
+    });
+    T('BETTER TRICKS SCORE MORE, BUT TAKE LONGER: GET BIG AIR!', Wd / 2, y + 196, '#9a92b8', 1, 'center');
+  } else {
+    ABIL.forEach((a, i) => {
+      const ry = y + 28 + i * 24, L = lvl(a.id);
+      ctx.fillStyle = '#262036'; ctx.fillRect(x + 6, ry, pw - 12, 22);
+      T(a.name, x + 12, ry + 3, a.color, 1);
+      T(a.desc, x + 12, ry + 13, '#9a92b8', 1);
+      for (let k = 0; k < a.max; k++) { ctx.fillStyle = k < L ? a.color : '#3a2f5c'; ctx.fillRect(x + pw - 132 + k * 9, ry + 8, 7, 5); }
+      if (L >= a.max) T(a.max === 1 ? 'OWNED' : 'MAX', x + pw - 14, ry + 8, '#9be36b', 1, 'right');
+      else if (UI.button('ab' + a.id, x + pw - 76, ry + 3, 64, 16, '' + a.cost[L], { size: 1, accent: '#5ad43f', disabled: save.coins < a.cost[L], textColor: '#ffd23f' })) {
+        save.coins -= a.cost[L]; save.ab[a.id] = L + 1; store(); sfx('buy');
+      }
+    });
+  }
+  if (UI.button('back', Math.round(Wd / 2 - 50), y + 206, 100, 18, 'BACK', { size: 1 }) || UI.back) state = 'title';
+}
+function drawPause() {
+  const Wd = S.W, { y } = panel(220, 150), bw = 160, bx = Math.round(Wd / 2 - bw / 2);
+  T('PAUSED', Wd / 2, y + 10, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 34, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (G.mode === 'free') { if (UI.button('end', bx, y + 62, bw, 22, 'END SESSION', { accent: '#ffd23f' })) endSession(); }
+  else if (UI.button('restart', bx, y + 62, bw, 22, 'RESTART', { accent: '#ffd23f' })) { store(); startGame('race', G.track); }
+  if (UI.button('quit', bx, y + 90, bw, 22, 'MENU')) { store(); toTitle(); }
+  T('THE COINS YOU GOT ARE KEPT', Wd / 2, y + 124, '#9a92b8', 1, 'center');
+}
+function drawResults(t) {
+  const Wd = S.W, R = G.results, P = G.me;
+  if (G.mode === 'race') {
+    const { x, y } = panel(330, 214, 12);
+    if (R.place === 1) for (let i = 0; i < 24; i++) { const k = t + i; ctx.fillStyle = ['#ffd23f', '#ff6bd0', '#7af0ff', '#9be36b'][i % 4]; ctx.fillRect(Math.round((i * 47 + k * 30) % Wd), Math.round((k * (40 + i * 3)) % H), 3, 3); }
+    T(R.place === 1 ? 'YOU WIN!' : ord(R.place) + ' PLACE', Wd / 2, y + 8, R.place === 1 ? '#ffd23f' : R.place <= 3 ? '#9be36b' : '#ffffff', 3, 'center', '#000');
+    T(G.track.name, Wd / 2, y + 30, '#9a92b8', 1, 'center');
+    R.order.forEach((s, i) => {
+      const ry = y + 44 + i * 13;
+      if (s === P) { ctx.fillStyle = '#3a2f5c'; ctx.fillRect(x + 8, ry - 2, 150, 11); }
+      T((i + 1) + '.', x + 14, ry, '#9a92b8', 1); ctx.fillStyle = s.color; ctx.fillRect(x + 26, ry, 5, 5);
+      T(s === P ? s.name + ' (YOU)' : s.name, x + 36, ry, s === P ? '#ffffff' : '#c8c0e0', 1);
+      T(s.finished ? fmtTime(s.finished) : 'DNF', x + 154, ry, '#9a92b8', 1, 'right');
+    });
+    const rx = x + 176;
+    T('TRICKS', rx, y + 44, '#9a92b8', 1); T('+' + G.trickCoins, x + 322, y + 44, '#ffd23f', 1, 'right');
+    T('COINS', rx, y + 56, '#9a92b8', 1); T('+' + G.pickCoins, x + 322, y + 56, '#ffd23f', 1, 'right');
+    T('PRIZE', rx, y + 68, '#9a92b8', 1); T('+' + R.prize, x + 322, y + 68, '#ffd23f', 1, 'right');
+    ctx.fillStyle = '#5b5275'; ctx.fillRect(rx, y + 78, 146, 1);
+    coinIcon(rx, y + 83); T('+' + (G.earned + R.prize), x + 322, y + 82, '#ffd23f', 2, 'right');
+    T('BEST COMBO ' + G.bestCombo, rx, y + 104, '#9a92b8', 1);
+    if (R.stars) T('★ +' + R.stars, rx, y + 118, '#ffd23f', 2, 'left', '#000');
+    if (R.newBest) T('NEW BEST!', rx, y + 138, '#9be36b', 1);
+    const i = TRACKS.indexOf(G.track), next = i + 1 < TRACKS.length && unlocked(i + 1) ? TRACKS[i + 1] : null;
+    if (next && R.place <= 3 && i + 1 < TRACKS.length && !(save.best[next.id])) T(next.name + ' UNLOCKED!', rx, y + 150, '#ffd23f', 1);
+    const bw = next ? 100 : 150, gap = 6, n = next ? 3 : 2, bx0 = Math.round(Wd / 2 - (n * bw + (n - 1) * gap) / 2);
+    if (UI.button('menu', bx0, y + 186, bw, 22, 'MENU', { size: 1 }) || UI.back) toTitle();
+    if (UI.button('again', bx0 + bw + gap, y + 186, bw, 22, 'RACE AGAIN', { accent: '#5ad43f', size: 1 })) startGame('race', G.track);
+    if (next && UI.button('next', bx0 + 2 * (bw + gap), y + 186, bw, 22, 'NEXT TRACK', { accent: '#ffd23f', size: 1 })) startGame('race', next);
+  } else {
+    const { y } = panel(260, 170);
+    T('NICE SESSION!', Wd / 2, y + 10, '#9be36b', 3, 'center', '#000');
+    T(Math.floor(P.x / 10) + ' M SKATED   ' + G.landed + ' TRICKS LANDED', Wd / 2, y + 36, '#9a92b8', 1, 'center');
+    coinIcon(Wd / 2 - 40, y + 52); T('+' + G.earned, Wd / 2 - 28, y + 52, '#ffd23f', 2);
+    T('BEST COMBO ' + G.bestCombo, Wd / 2, y + 76, '#ffffff', 1, 'center');
+    if (R.newBest) T('NEW BEST COMBO!', Wd / 2, y + 88, '#9be36b', 1, 'center');
+    if (R.stars) T('★ +' + R.stars, Wd / 2, y + 102, '#ffd23f', 2, 'center', '#000'); else T('400 COINS IN ONE SESSION = ★1', Wd / 2, y + 104, '#9a92b8', 1, 'center');
+    if (UI.button('menu', Math.round(Wd / 2 - 116), y + 136, 112, 24, 'MENU') || UI.back) toTitle();
+    if (UI.button('again', Math.round(Wd / 2 + 4), y + 136, 112, 24, 'SKATE AGAIN', { accent: '#5ad43f', size: 1 })) startGame('free');
+  }
+}
+function startGame(mode, track) { held.clear(); inp.touchPush = 0; inp.q.length = 0; newGame(mode, track, false); state = 'play'; paused = false; }
+function setPause(v) { if (state !== 'play' || (G && G.done)) return; paused = v; if (v) store(); }
+function toTitle() { state = 'title'; paused = false; newGame('free', null, true); }
+
+/* --- sound --- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.12, { vol: 0.1 });
+  else if (k === 'push') s.noise(0.1, { freq: 500, vol: 0.06 });
+  else if (k === 'ollie') { s.noise(0.05, { freq: 2600, vol: 0.18, filter: 'highpass' }); s.tone([200, 420], 0.1, { vol: 0.05, type: 'triangle' }); }
+  else if (k === 'dbl') s.tone([400, 900], 0.15, { vol: 0.07, type: 'triangle' });
+  else if (k === 'land') s.noise(0.09, { freq: 420, vol: 0.2 });
+  else if (k === 'whoosh') s.noise(0.15, { freq: 1800, vol: 0.06, filter: 'bandpass' });
+  else if (k === 'trick') s.tone([660, 990], 0.1, { vol: 0.06 });
+  else if (k === 'landed') s.tone([523, 659, 784], 0.25, { vol: 0.08 });
+  else if (k === 'big') s.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.1 });
+  else if (k === 'grind') s.noise(0.06, { freq: 4200, vol: 0.035, filter: 'bandpass' });
+  else if (k === 'coin') s.tone([988, 1319], 0.08, { vol: 0.05 });
+  else if (k === 'cone') s.tone([500, 300], 0.12, { vol: 0.05, type: 'triangle' });
+  else if (k === 'crash') { s.noise(0.35, { freq: 300, vol: 0.3 }); s.tone([300, 90], 0.3, { vol: 0.07, type: 'sawtooth' }); }
+  else if (k === 'boost') { s.tone([200, 700], 0.4, { vol: 0.06, type: 'sawtooth' }); s.noise(0.4, { freq: 2000, vol: 0.05, filter: 'bandpass' }); }
+  else if (k === 'warp') s.tone([800, 200, 600], 0.6, { vol: 0.08, type: 'sine' });
+  else if (k === 'shield') s.tone([1200, 600], 0.3, { vol: 0.08, type: 'triangle' });
+  else if (k === 'beep') s.tone(440, 0.15, { vol: 0.1 });
+  else if (k === 'go') s.tone(880, 0.4, { vol: 0.12 });
+  else if (k === 'finish') s.tone([523, 659, 784, 1047, 1319], 0.8, { vol: 0.1 });
+  else if (k === 'buy') s.tone([523, 659, 784, 1047], 0.35, { vol: 0.1 });
+}
+
+/* --- 6. INPUT: keys, on-screen buttons, a game controller ---------------------------------- */
+const playing = () => state === 'play' && !paused && G && !G.done;
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (e.pointerType === 'touch') touchUI = true;
+  if (!playing() || UI.downId !== null || !touchUI) return;
+  for (const b of touchButtons()) if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) {
+    held.set(e.pointerId, b.id);
+    if (b.id === 'push') inp.touchPush++; else inp.q.push(b.id);
+    return;
+  }
+  inp.q.push('ollie');                               // a tap anywhere else is an ollie too
+};
+UI.onUp = e => { const id = held.get(e.pointerId); if (id === undefined) return; held.delete(e.pointerId); if (id === 'push') inp.touchPush = Math.max(0, inp.touchPush - 1); };
+const KEYS = { Space: 'ollie', ArrowUp: 'ollie', KeyW: 'ollie', KeyJ: 'flip', KeyZ: 'flip', KeyK: 'grab', KeyX: 'grab', KeyL: 'spin', KeyC: 'spin',
+               KeyE: 'boost', ShiftLeft: 'boost', ShiftRight: 'boost', KeyQ: 'warp' };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play' && G && !G.done) { setPause(!paused); return; }
+  if (e.code === 'Escape') { UI.back = true; return; }
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') inp.keyPush = true;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') inp.keyBrake = true;
+  if (!playing() || e.repeat) return;
+  if (KEYS[e.code]) inp.q.push(KEYS[e.code]);
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') inp.keyPush = false;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') inp.keyBrake = false;
+});
+window.addEventListener('blur', () => { inp.keyPush = inp.keyBrake = false; setPause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+
+/* --- 7. MAIN LOOP ----------------------------------------------------------------- */
+const STEP = 1 / 120;
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  const run = (state !== 'play' || !paused) && state !== 'results';
+  if (run) {
+    acc += dt;
+    const slow = G.mode === 'free' && G.warpT > 0 && !G.demo ? 0.5 : 1;
+    while (acc >= STEP) { step(STEP * slow); if (slow < 1) G.warpT -= STEP * 0.5; acc -= STEP; }
+  } else acc = 0;
+  updateCam(run ? dt : 0);
+  drawWorld(t);
+  if (state === 'title') drawTitle(t);
+  else if (state === 'tracks') drawTracks(t);
+  else if (state === 'shop') drawShop(t);
+  else {
+    hud(t);
+    if (state === 'results') drawResults(t);
+    else if (paused) drawPause();
+  }
+  UI.end();
+  S.blit('#0d0b13');
+  requestAnimationFrame(frame);
+}
+toTitle();
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Skate: controller', ui: UI, menu: () => !playing(),
+  phone: { stick: 'PUSH / BRAKE', dpad: true, buttons: [['A', 'OLLIE'], ['X', 'FLIP'], ['Y', 'GRAB'], ['B', 'SPIN'], ['RB', 'BOOST'], ['LB', 'WARP']] },
+  keys: () => ({ A: 'Space', up: 'Space', X: 'KeyJ', Y: 'KeyK', B: 'KeyL', right: 'ArrowRight', RT: 'ArrowRight', left: 'ArrowLeft', LT: 'ArrowLeft', RB: 'KeyE', LB: 'KeyQ', START: 'KeyP' }),
+  help: [['RT|RIGHT', 'PUSH'], ['LT|LEFT', 'BRAKE'], ['A', 'OLLIE (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>

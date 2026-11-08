@@ -22,6 +22,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
+| **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
 
 ## Pixel Wings
 
@@ -189,6 +190,27 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   pull harder and are easier to bump into things.
 - **Fish book:** all 32 fish (5 of each rarity plus the massive orca and whale, on 2 pages), how many of each you caught and the biggest one.
 - P or Escape pauses. Coins, gear, worlds and the fish book are saved on the device.
+
+## Pixel Skate
+
+Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY, LOLA, DUKE, PIP and MAX RAD) to the finish line.
+
+- **Controls:** hold PUSH (→ / D, controller RT) to push and go faster, ← / A brakes. OLLIE (Space / ↑, A) jumps; with
+  DOUBLE JUMP press it again in the air. In the air: **FLIP** (J), **GRAB** (K), **SPIN** (L) (controller X, Y, B).
+  BOOST (E / Shift, RB), TIME WARP (Q, LB). On a phone: on-screen buttons (a tap anywhere else is an ollie too).
+- **Tricks pay:** land a trick and you get coins, a burst of speed and BOOST. Several tricks (and grinds) in one jump are
+  a **combo**: the points are multiplied by the number of tricks. Land in the middle of a trick (or hit a cone or a bench)
+  and you **bail**: you fall and lose speed.
+- **The street:** cones and benches to ollie over, kickers (ramps that launch you), funboxes, rails and benches to
+  **grind** (land on them from above), green boost pads and coins (2 each).
+- **SKATE SHOP:** buy tricks with coins, 6 of each kind, and pick the one each button does. Better tricks score more but
+  take longer, so they need bigger air. **Abilities:** FAST WHEELS (top speed), SUPER OLLIE, NITRO (stronger boost),
+  COIN MAGNET, DOUBLE JUMP, NO-BAIL SHIELD (saves you from a crash, every race), TIME WARP (slows your rivals for 4 s, every race).
+- **Tracks:** CITY STREETS (1200 m, easy), SUNSET PARK (1600 m) and NEON NIGHT (2000 m, hard). Finish in the top 3 to
+  unlock the next one. Prize for the place (more on harder tracks); ★3 for a win, ★2 for 2nd, ★1 for 3rd.
+- **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
+  Time warp there is slow motion.
+- Coins, tricks, abilities and best places are saved on your phone.
 
 ## Pixel Sky Run
 
@@ -419,4 +441,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html`; online play checks it).
