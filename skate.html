@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -84,18 +84,30 @@ const TRICKS = [
   { id: 'treflip', kind: 'flip', name: '360 FLIP', pts: 260, dur: 0.52, cost: 600, bf: 1, bs: 1 },
   { id: 'dflip', kind: 'flip', name: 'DOUBLE FLIP', pts: 380, dur: 0.60, cost: 1100, bf: 2 },
   { id: 'laser', kind: 'flip', name: 'LASER FLIP', pts: 520, dur: 0.64, cost: 2000, bf: -1, bs: -1.5 },
+  { id: 'varial', kind: 'flip', name: 'VARIAL FLIP', pts: 200, dur: 0.46, cost: 400, bf: 1, bs: 0.5 },
+  { id: 'hardflip', kind: 'flip', name: 'HARDFLIP', pts: 320, dur: 0.54, cost: 850, bf: -1, bs: 0.5 },
+  { id: 'bigspin', kind: 'flip', name: 'BIGSPIN FLIP', pts: 460, dur: 0.66, cost: 1500, bf: 1, bs: 1, turns: 1 },
+  { id: 'tripleflip', kind: 'flip', name: 'TRIPLE FLIP', pts: 680, dur: 0.74, cost: 2800, bf: 3 },
   { id: 'indy', kind: 'grab', name: 'INDY GRAB', pts: 100, dur: 0.42, cost: 0, hand: 'f', at: [1, 1] },
   { id: 'melon', kind: 'grab', name: 'MELON', pts: 120, dur: 0.42, cost: 150, hand: 'b', at: [-3, 1] },
   { id: 'nose', kind: 'grab', name: 'NOSE GRAB', pts: 170, dur: 0.46, cost: 350, hand: 'f', at: [10, -2], tilt: -0.4 },
   { id: 'stale', kind: 'grab', name: 'STALEFISH', pts: 220, dur: 0.48, cost: 600, hand: 'b', at: [3, 2], tilt: 0.2 },
   { id: 'airwalk', kind: 'grab', name: 'AIRWALK', pts: 320, dur: 0.55, cost: 1000, hand: 'f', at: [11, -1], tilt: 0.3, walk: true },
   { id: 'superman', kind: 'grab', name: 'SUPERMAN', pts: 600, dur: 0.72, cost: 2200, hand: 'f', at: [12, -3], superman: true },
+  { id: 'tail', kind: 'grab', name: 'TAIL GRAB', pts: 140, dur: 0.44, cost: 250, hand: 'b', at: [-10, -1], tilt: 0.4 },
+  { id: 'crail', kind: 'grab', name: 'CRAIL GRAB', pts: 270, dur: 0.5, cost: 750, hand: 'f', at: [-8, 1], tilt: 0.2 },
+  { id: 'christ', kind: 'grab', name: 'CHRIST AIR', pts: 460, dur: 0.62, cost: 1600, hand: 'f', at: [13, -10], arms: 'out' },
+  { id: 'rocket', kind: 'grab', name: 'ROCKET AIR', pts: 720, dur: 0.78, cost: 3000, hand: 'f', at: [6, -8], tilt: -1.4 },
   { id: 'spin360', kind: 'spin', name: '360 SPIN', pts: 150, dur: 0.52, cost: 0, turns: 1 },
   { id: 'backflip', kind: 'spin', name: 'BACKFLIP', pts: 350, dur: 0.70, cost: 400, rot: -1 },
   { id: 'frontflip', kind: 'spin', name: 'FRONTFLIP', pts: 400, dur: 0.72, cost: 800, rot: 1 },
   { id: 'spin720', kind: 'spin', name: '720 SPIN', pts: 450, dur: 0.78, cost: 1200, turns: 2 },
   { id: 'dback', kind: 'spin', name: 'DOUBLE BACKFLIP', pts: 800, dur: 1.00, cost: 2500, rot: -2 },
   { id: 'spin1080', kind: 'spin', name: '1080 SPIN', pts: 900, dur: 1.05, cost: 3500, turns: 3 },
+  { id: 'flipback', kind: 'spin', name: 'FLIP BACKFLIP', pts: 600, dur: 0.82, cost: 1800, rot: -1, bf: 1 },
+  { id: 'cork', kind: 'spin', name: 'CORK 720', pts: 760, dur: 0.92, cost: 2600, rot: -1, turns: 2 },
+  { id: 'dfront', kind: 'spin', name: 'DBL FRONTFLIP', pts: 880, dur: 1.02, cost: 3200, rot: 2 },
+  { id: 'spin1440', kind: 'spin', name: '1440 SPIN', pts: 1300, dur: 1.25, cost: 5000, turns: 4 },
 ];
 const TRICK = {}; for (const d of TRICKS) TRICK[d.id] = d;
 const KINDS = [['flip', 'FLIP', '#ff6bd0'], ['grab', 'GRAB', '#7af0ff'], ['spin', 'SPIN', '#9be36b']];
@@ -586,6 +598,7 @@ function bodyPose(s) {
     const hand = [grab.at[0], grab.at[1]];
     if (grab.hand === 'f') { fe = [7, sh[1] + 7]; fh = hand; } else { be = [-6, sh[1] + 7]; bh = hand; }
     if (grab.walk) { ff = [10, -6]; fk = [9, -11]; bf = [-6, 1]; }
+    if (grab.arms === 'out') { be = [-6, sh[1] + 1]; bh = [-12, sh[1] - 1]; fe = [7, sh[1] + 1]; fh = [13, sh[1] - 1]; }
   }
   if (s.cheer) { be = [-4, sh[1] - 5]; bh = [-6, sh[1] - 10]; fe = [5, sh[1] - 5]; fh = [7, sh[1] - 10]; }
   // back arm, back leg
@@ -882,7 +895,8 @@ function updateCam(dt) {
 }
 
 /* --- 5. SCREENS ---------------------------------------------------------------- */
-let state = 'title', paused = false, shopTab = 'tricks';
+let state = 'title', paused = false, shopTab = 'tricks', shopPage = 0;
+const PER_PAGE = 6;
 let touchUI = (navigator.maxTouchPoints || 0) > 0;
 function panel(w, h, y) {
   const Wd = S.W, x = Math.round(Wd / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
@@ -911,7 +925,8 @@ const ICONS = {
   magnet: ['ww...ww', 'aa...aa', 'aa...aa', 'aa...aa', 'aaa.aaa', '.aaaaa.', '..aaa..'],
   shield: ['aaaaaaa', 'aawwwaa', 'aawaaaa', 'aaawaaa', '.aaawa.', '..aaa..', '...a...'],
 };
-const TRICK_ICON = { kickflip: 'flip', heelflip: 'flip', shove: 'shove', treflip: 'dflip', dflip: 'dflip', laser: 'dflip',
+const TRICK_ICON = { varial: 'shove', hardflip: 'flip', bigspin: 'dflip', tripleflip: 'dflip', tail: 'grab', crail: 'grab', christ: 'superman', rocket: 'superman',
+  flipback: 'back', cork: 'spin', dfront: 'front', spin1440: 'spin', kickflip: 'flip', heelflip: 'flip', shove: 'shove', treflip: 'dflip', dflip: 'dflip', laser: 'dflip',
   indy: 'grab', melon: 'grab', nose: 'grab', stale: 'grab', airwalk: 'grab', superman: 'superman',
   spin360: 'spin', spin720: 'spin', spin1080: 'spin', backflip: 'back', dback: 'back', frontflip: 'front' };
 const ABIL_ICON = { speed: 'wheel', ollie: 'jump', nitro: 'boost', magnet: 'magnet', dbl: 'dbl', shield: 'shield', warp: 'warp' };
@@ -1066,7 +1081,7 @@ function drawShop(t) {
     KINDS.forEach(([kind, label, col], ci) => {
       const cx = x + 6 + ci * (cw + 2);
       T(label, cx + cw / 2, y + 28, col, 1, 'center');
-      TRICKS.filter(d => d.kind === kind).forEach((d, i) => {
+      TRICKS.filter(d => d.kind === kind).sort((a, b) => a.cost - b.cost).slice(shopPage * PER_PAGE, shopPage * PER_PAGE + PER_PAGE).forEach((d, i) => {
         const ry = y + 37 + i * 26, own = !!save.owned[d.id], eq = save.eq[kind] === d.id;
         ctx.fillStyle = eq ? '#3a2f5c' : '#262036'; ctx.fillRect(cx, ry, cw, 24);
         icon(TRICK_ICON[d.id], cx + 9, ry + 12, own ? col : '#5b5275', 1);
@@ -1081,6 +1096,9 @@ function drawShop(t) {
       });
     });
     T('BETTER TRICKS SCORE MORE, BUT TAKE LONGER: GET BIG AIR!', Wd / 2, y + 196, '#9a92b8', 1, 'center');
+    const pages = Math.ceil(Math.max(...KINDS.map(([k]) => TRICKS.filter(d => d.kind === k).length)) / PER_PAGE), bx = Math.round(Wd / 2 - 50);
+    if (UI.button('prev', bx - 86, y + 206, 80, 18, shopPage ? '< PAGE ' + shopPage : '<', { size: 1, disabled: shopPage === 0 })) shopPage--;
+    if (UI.button('next', bx + 106, y + 206, 80, 18, shopPage < pages - 1 ? 'PAGE ' + (shopPage + 2) + ' >' : '>', { size: 1, disabled: shopPage >= pages - 1, accent: '#ffd23f' })) shopPage++;
   } else {
     ABIL.forEach((a, i) => {
       const ry = y + 28 + i * 24, L = lvl(a.id);
