@@ -2533,14 +2533,28 @@ function drawIntro(t, dt) {
   const W = S.W, it = intro; if (!it) { state = 'title'; return; }
   const bar = 26;
   if (it.phase !== 'play') {                                   // waiting for a tap (sound needs one) or loading the voices
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    T('PIXEL WINGS', W / 2, H / 2 - 30, '#7ac8ff', 2, 'center');
+    // dawn over the sea: sky bands, the sun, an island far away, a formation of planes going past
+    const sky = ['#141838', '#24285a', '#3a3a78', '#6a4a88', '#a85a80', '#e07a6a', '#f8a868'];
+    sky.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, Math.round(i * 150 / sky.length), W, Math.ceil(150 / sky.length) + 1); });
+    ctx.fillStyle = '#ffe0a0'; for (let dy = -12; dy <= 12; dy++) { const w = Math.floor(Math.sqrt(144 - dy * dy)); if (150 + dy < 150) ctx.fillRect(Math.round(W * 0.68) - w, 150 + dy, w * 2, 1); }
+    ctx.fillStyle = '#1a3a5a'; ctx.fillRect(0, 150, W, H - 150);
+    ctx.fillStyle = '#2a5a7a'; for (let i = 0; i < 40; i++) ctx.fillRect(Math.round((i * 53 + t * 8 * (1 + i % 3)) % W), 156 + (i * 17) % (H - 160), 6 + i % 5, 1);
+    ctx.fillStyle = '#f8c890'; for (let i = 0; i < 10; i++) ctx.fillRect(Math.round(W * 0.68) - 10 + (i * 7) % 20, 154 + i * 4, 6 + (i % 3) * 3, 1);
+    ctx.fillStyle = '#10243a'; ctx.beginPath(); ctx.moveTo(W * 0.12, 151); ctx.lineTo(W * 0.2, 138); ctx.lineTo(W * 0.26, 142); ctx.lineTo(W * 0.32, 134); ctx.lineTo(W * 0.42, 151); ctx.fill();
+    for (let k = 0; k < 5; k++) {                              // the planes, small and dark against the sky
+      const px = Math.round(((t * 22 + k * 26) % (W + 160)) - 80 + (k % 2) * 10), py = 56 + k * 9 + (k % 2) * 4;
+      ctx.fillStyle = '#0d0b18'; ctx.fillRect(px, py, 11, 2); ctx.fillRect(px + 4, py - 3, 2, 8); ctx.fillRect(px, py - 1, 1, 4); ctx.fillRect(px + 10, py, 2, 1);
+    }
+    ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(0, 0, W, H);
+    T('PIXEL', W / 2, H / 2 - 62, '#ffd23f', 3, 'center', '#000');
+    T('WINGS', W / 2 + 2, H / 2 - 40, '#0a1a3a', 6, 'center');
+    T('WINGS', W / 2, H / 2 - 42, '#fff', 6, 'center', '#2a7fd4');
     if (it.phase === 'wait') {
-      if (Math.floor(t * 2) % 2) T('TAP TO BEGIN', W / 2, H / 2, '#fff', 2, 'center');
-      T('(TURN THE SOUND ON)', W / 2, H / 2 + 20, '#5b5275', 1, 'center');
-      if (UI.button('istart', W / 2 - 40, H / 2 + 36, 80, 18, 'START', { size: 1 }) || introTap) { introTap = false; PX.Sound.unlock(); introLoad(); }
+      if (Math.floor(t * 2) % 2) T('TAP TO BEGIN', W / 2, H / 2 + 4, '#fff', 2, 'center', '#000');
+      T('(TURN THE SOUND ON)', W / 2, H / 2 + 22, '#c8c0e0', 1, 'center', '#000');
+      if (UI.button('istart', W / 2 - 50, H / 2 + 36, 100, 22, 'START', { size: 2, accent: '#7ac8ff' }) || introTap) { introTap = false; PX.Sound.unlock(); introLoad(); }
       if (UI.button('iskip0', W - 52, H - 22, 46, 16, 'SKIP', { size: 1 }) || UI.back) introEnd();
-    } else T('LOADING' + '.'.repeat(Math.floor(t * 3) % 4), W / 2, H / 2, '#9a92b8', 1, 'center');
+    } else T('LOADING' + '.'.repeat(Math.floor(t * 3) % 4), W / 2, H / 2 + 8, '#fff', 1, 'center', '#000');
     return;
   }
   it.t += dt; it.st += dt;

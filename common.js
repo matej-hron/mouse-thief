@@ -219,15 +219,25 @@ window.PX = (() => {
       const ctx = S.ctx;
       UI.list.push({ id, x, y, w, h, disabled: !!o.disabled });
       const hot = !o.disabled && UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h;
-      let bg = o.on ? '#3a2f5c' : '#1d1830', fg = '#efe9ff', bd = '#efe9ff';
-      if (hot) { bg = o.accent || '#efe9ff'; fg = '#111'; bd = bg; }
-      if (o.disabled) { bg = '#16121f'; fg = '#5b5275'; bd = fg; }
-      const off = hot ? 1 : 0;
-      if (!hot && !o.disabled) { ctx.fillStyle = bd; ctx.fillRect(x + 2, y + 2, w, h); }
-      ctx.fillStyle = bd; ctx.fillRect(x + off, y + off, w, h);
-      ctx.fillStyle = bg; ctx.fillRect(x + 1 + off, y + 1 + off, w - 2, h - 2);
+      // a pixel key: cut corners, a dark outline, a light top edge and a bottom edge in the button's color.
+      // Lit up in its color when the mouse is over it (or a finger is on it), pressed down 1 px while held.
+      const acc = o.accent || '#8a7ad8', off = hot && UI.pressed ? 1 : 0;
+      const box = (bx, by, bw, bh, col) => { ctx.fillStyle = col; ctx.fillRect(bx + 1, by, bw - 2, bh); ctx.fillRect(bx, by + 1, bw, bh - 2); };
+      let fg = '#efe9ff';
+      if (o.disabled) {
+        box(x, y, w, h, '#0b0912'); box(x + 1, y + 1, w - 2, h - 2, '#16121f'); fg = '#5b5275';
+      } else {
+        if (!off) box(x + 1, y + 2, w, h, 'rgba(0,0,0,0.45)');                       // the shadow
+        const yy = y + off;
+        box(x, yy, w, h, '#0b0912');
+        box(x + 1, yy + 1, w - 2, h - 2, hot ? acc : o.on ? '#3a2f5c' : '#272043');
+        ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(x + 1, yy + Math.round(h * 0.55), w - 2, h - 1 - Math.round(h * 0.55));
+        ctx.fillStyle = hot ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)'; ctx.fillRect(x + 2, yy + 1, w - 4, 1);
+        if (!hot) { ctx.fillStyle = o.on || !/^#[0-9a-f]{6}$/i.test(acc) ? acc : shade(acc, 0.75); ctx.fillRect(x + 2, yy + h - 3, w - 4, 2); }
+        if (hot) fg = '#111';
+      }
       const size = o.size || 2;
-      if (label) drawText(ctx, label, x + w / 2 + off, y + Math.round((h - 5 * size) / 2) + off, o.textColor && !hot && !o.disabled ? o.textColor : fg, size, 'center');
+      if (label) drawText(ctx, label, x + w / 2, y + off + Math.round((h - 5 * size) / 2) - (o.disabled || hot ? 0 : 1), o.textColor && !hot && !o.disabled ? o.textColor : fg, size, 'center', !hot && !o.disabled && size > 1 ? '#0b0912' : null);
       return !o.disabled && UI.click === id;
     };
     canvas.addEventListener('pointerdown', e => {
