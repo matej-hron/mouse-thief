@@ -23,7 +23,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
-| **Pixel Ski** (`ski.html`) | Ski down 10 mountains, each with a green, a red and a black run. Hit anything and you crash: survive to the bottom. |
+| **Pixel Ski** (`ski.html`) | Ski down 10 mountains, each with a green, a red and a black run. Hit anything and you crash: survive to the bottom. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 
 ## Pixel Wings
@@ -254,6 +254,15 @@ hit a tree, a rock, a snowman, a log, a gate pole, another skier or the red safe
 - **On the snow:** stay inside the blue lines: past them is deep powder that slows you to a crawl. **Kickers** (blue
   ramps) throw you in the air: you fly over rocks, logs and snowmen. **Ice** makes it hard to steer. **Slalom gates**
   (a red and a blue pole) are safe to ski through, but don't hit a pole. The bends push you to the outside.
+- **Downhill:** the slope really drops away in front of you: over the edge you see the valley far below.
+- **Bigger mountains:** the later mountains have longer runs, more obstacles and more ramps, and (from NIGHT RACE on)
+  **JUMP LINES**: a yellow warning sign, then a row of ramps across the whole slope and a crevasse right after it.
+  Don't brake there: you need the speed to fly over it (fall in and you crash).
+- **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (both need the same version).
+  The host picks the mountain and the run (all of them are open online). You both ski the same run and see each other
+  (a ghost: you can't collide), with your friend's place on the progress bar and how far ahead or behind they are.
+  First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
+  whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
 - **Fast:** you push off from the start gate and cruise at 50-100 KM/H; tuck on the steep bits for 150+ KM/H.
 - **Coins:** lines of gold coins on the slopes, plus a bonus for getting to the bottom (more on harder runs and later
   mountains). You keep the coins you picked up even when you crash.
