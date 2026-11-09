@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate and Pixel Ski. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski and Pixel Box Fight. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.10.0';
+const VERSION = '2.11.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -78,6 +78,7 @@ const GAMES = [
   { id: 'fish', name: 'DEEP CATCH', sub: 'CATCH LEGENDARY FISH!', url: 'fish.html', color: '#2ad4d0', cats: ['SPORTS'], tags: 'FISH FISHING ROD SEA OCEAN BOAT LEGENDARY' },
   { id: 'skate', name: 'PIXEL SKATE', sub: 'SKATE, TRICK AND RACE!', url: 'skate.html', color: '#b07aff', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'SKATEBOARD SKATE BOARD TRICK TRICKS KICKFLIP OLLIE GRIND RAMP RACE COINS' },
   { id: 'ski', name: 'PIXEL SKI', sub: 'SKI DOWN, DON\'T CRASH!', url: 'ski.html', color: '#7ad8ff', cats: ['RACING', 'SPORTS'], tags: 'SKI SKIING SNOW WINTER MOUNTAIN SLOPE DOWNHILL GREEN RED BLACK' },
+  { id: 'boxfight', name: 'PIXEL BOX FIGHT', sub: 'KNOCK THEM OUT!', url: 'boxfight.html', color: '#ff5a4a', cats: ['ACTION', 'SPORTS', 'ONLINE', '2 PLAYERS'], tags: 'BOX BOXING FIGHT PUNCH RING KO KNOCKOUT GLOVES UPPERCUT' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -349,6 +350,28 @@ function previewSki(x, y, w, h, t) {              // a skier weaves down a snowy
   ctx.fillStyle = '#ffffff'; ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 7, sy + 10, 2, 2); ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 9, sy + 8, 1, 1);
   ctx.restore();
 }
+function previewBoxFight(x, y, w, h, t) {         // two boxers trade punches in the ring
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#1a1230'; ctx.fillRect(x, y, w, h);
+  for (let i = 0; i < w; i += 8) { ctx.fillStyle = ['#3a2f5c', '#4a3a6a', '#2f2650'][(i / 8) % 3]; ctx.fillRect(x + i, y + 6 + ((i / 8) % 2) * 5 - (Math.floor(t * 5 + i) % 7 === 0 ? 1 : 0), 6, 6); }
+  const fy = y + h - 10;
+  ctx.fillStyle = '#c8c8d8'; ctx.fillRect(x + 4, fy - 34, 3, 38); ctx.fillRect(x + w - 7, fy - 34, 3, 38);
+  [['#e01e1e', 30], ['#f2f2f2', 21], ['#2a6ad4', 12]].forEach(([c, d]) => { ctx.fillStyle = c; ctx.fillRect(x + 4, fy - d, w - 8, 2); });
+  ctx.fillStyle = '#5a7ab8'; ctx.fillRect(x, fy, w, 4); ctx.fillStyle = '#2a1f4a'; ctx.fillRect(x, fy + 4, w, 6);
+  const cx = x + w / 2, beat = (t * 2.5) % 2, k = beat < 1 ? beat : 0, hitA = Math.sin(k * Math.PI), hitB = beat >= 1 ? Math.sin((beat - 1) * Math.PI) : 0;
+  const boxer = (bx, face, shorts, gloveC, head, ext, hurt) => {
+    bx = Math.round(bx - face * hurt * 3);
+    ctx.fillStyle = '#e8b088'; ctx.fillRect(bx - 4, fy - 9, 3, 9); ctx.fillRect(bx + 1, fy - 9, 3, 9);
+    ctx.fillStyle = shorts; ctx.fillRect(bx - 5, fy - 14, 10, 6);
+    ctx.fillStyle = '#e8b088'; ctx.fillRect(bx - 5, fy - 25, 10, 11);
+    PX.drawAvatar(ctx, head, bx - 7, fy - 39, 1, null);
+    ctx.fillStyle = gloveC; ctx.fillRect(Math.round(bx + face * (6 + ext * 12)) - 3, fy - 27, 6, 5); ctx.fillRect(bx + face * 3 - 3, fy - 31, 6, 5);
+  };
+  boxer(cx - 12, 1, PX.AVATAR_COLORS[profile.avatar.color], '#e01e1e', profile.avatar, hitA, hitB);
+  boxer(cx + 12, -1, '#3fae4a', '#2a6ad4', { shape: 'frog', color: 3 }, hitB, hitA);
+  if (hitA > 0.8 || hitB > 0.8) { ctx.fillStyle = '#ffe23a'; const sx = cx + (hitA > 0.8 ? 6 : -6); for (let i = 0; i < 6; i++) { const a = i * 1.05; ctx.fillRect(Math.round(sx + Math.cos(a) * 5), Math.round(fy - 26 + Math.sin(a) * 5), 2, 2); } }
+  ctx.restore();
+}
 function previewFish(x, y, w, h, t) {             // a golden fish swims past the hook
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   for (let k = 0; k < h; k += 4) { const m = k / h; ctx.fillStyle = `rgb(${Math.round(42 - 30 * m)},${Math.round(212 - 110 * m)},${Math.round(208 - 60 * m)})`; ctx.fillRect(x, y + k, w, 4); }
@@ -373,7 +396,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');

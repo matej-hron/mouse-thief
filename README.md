@@ -24,6 +24,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
 | **Pixel Ski** (`ski.html`) | Ski down 10 mountains, each with a green, a red and a black run. Hit anything and you crash: survive to the bottom. |
+| **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 
 ## Pixel Wings
 
@@ -218,6 +219,22 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
 - Coins, tricks, abilities and best places are saved on your phone.
+
+## Pixel Box Fight
+
+Boxing in the ring, seen from the side. Your avatar is your boxer's head. Knock the other boxer out (or have more
+health when the 45 seconds run out): **best of 3 rounds**.
+
+- **Fight a bot** (easy, normal or the mega bot), a **friend online** (one makes a game and gets a 4-letter code, the
+  other joins with it), or **2 players on this phone** (each player has their own half of the screen).
+- **Controls:** ◀ ▶ move, PUNCH, hold BLOCK (a block stops almost all of a punch). Keys: A D move, W punch, S block,
+  1 2 3 4 power-ups (2 players: player 2 uses the arrows, up = punch, down = block, and 7 8 9 0). Controller: stick
+  moves, A / RT punch, B / LT block, X Y LB RB power-ups.
+- **Power-ups are free** (like in Pixel Pong): landing punches (and blocking) fills the yellow bar, and it also fills
+  slowly by itself. UPPERCUT (2): your next punch is a big uppercut that breaks through a block. DASH (2): rush in and
+  punch. SHIELD (3): no damage for 4 seconds. STUN (4): the other boxer sees stars and can't move for a moment.
+- **Stars:** win a fight against a bot or a friend online: ★5. Lose: you lose nothing (and win nothing).
+  2 players on one phone is just for fun (no stars).
 
 ## Pixel Ski
 
@@ -482,4 +499,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html`; online play checks it).
