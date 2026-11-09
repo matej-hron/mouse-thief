@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski and Pixel Box Fight. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight and Pixel Bike Run. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.11.0';
+const VERSION = '2.12.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -79,6 +79,7 @@ const GAMES = [
   { id: 'skate', name: 'PIXEL SKATE', sub: 'SKATE, TRICK AND RACE!', url: 'skate.html', color: '#b07aff', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'SKATEBOARD SKATE BOARD TRICK TRICKS KICKFLIP OLLIE GRIND RAMP RACE COINS' },
   { id: 'ski', name: 'PIXEL SKI', sub: 'SKI DOWN, DON\'T CRASH!', url: 'ski.html', color: '#7ad8ff', cats: ['RACING', 'SPORTS'], tags: 'SKI SKIING SNOW WINTER MOUNTAIN SLOPE DOWNHILL GREEN RED BLACK' },
   { id: 'boxfight', name: 'PIXEL BOX FIGHT', sub: 'KNOCK THEM OUT!', url: 'boxfight.html', color: '#ff5a4a', cats: ['ACTION', 'SPORTS', 'ONLINE', '2 PLAYERS'], tags: 'BOX BOXING FIGHT PUNCH RING KO KNOCKOUT GLOVES UPPERCUT' },
+  { id: 'bike', name: 'PIXEL BIKE RUN', sub: 'RIDE AND FLIP!', url: 'bike.html', color: '#f0a07a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'BIKE BICYCLE MOUNTAIN MTB BMX FLIP BACKFLIP WHEELIE TRICK TRICKS HILLS SUNSET MONEY' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -350,6 +351,23 @@ function previewSki(x, y, w, h, t) {              // a skier weaves down a snowy
   ctx.fillStyle = '#ffffff'; ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 7, sy + 10, 2, 2); ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 9, sy + 8, 1, 1);
   ctx.restore();
 }
+function previewBike(x, y, w, h, t) {             // a rider in silhouette rolls over sunset hills
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const sky = ['#5a4a7a', '#7a5a8a', '#9a6a90', '#c07a90', '#e09a8a', '#f0b08a'];
+  sky.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + Math.round(i * h / 6), w, Math.ceil(h / 6) + 1); });
+  ctx.fillStyle = '#fff0c8'; ctx.fillRect(x + w - 26, y + 26, 8, 8); ctx.fillRect(x + w - 27, y + 27, 10, 6);
+  const hill = (k, col, base, amp, sp) => { ctx.fillStyle = col; for (let q = 0; q < w; q += 2) { const u = q + t * sp; ctx.fillRect(x + q, Math.round(y + base - Math.abs(Math.sin(u * 0.03 + k)) * amp - Math.sin(u * 0.11) * 2), 2, h); } };
+  hill(1, '#a8809c', 34, 12, 4); hill(2, '#634e76', 44, 10, 9);
+  const gy = q => y + h - 16 - Math.sin((q + t * 30) * 0.05) * 5 + q * 0.04;
+  ctx.fillStyle = '#231b33'; for (let q = 0; q < w; q++) ctx.fillRect(x + q, Math.round(gy(q)), 1, h);
+  const bx = x + w * 0.42, flip = (t % 4) > 2.6 ? ((t % 4) - 2.6) / 1.4 : 0, by = gy(bx - x) - 7 - Math.sin(flip * Math.PI) * 14;
+  ctx.save(); ctx.translate(Math.round(bx), Math.round(by)); ctx.rotate(flip * Math.PI * 2);
+  ctx.fillStyle = '#111'; for (const wx of [-6, 6]) { ctx.fillRect(wx - 3, 1, 6, 1); ctx.fillRect(wx - 3, 6, 6, 1); ctx.fillRect(wx - 4, 2, 1, 4); ctx.fillRect(wx + 3, 2, 1, 4); }
+  ctx.fillStyle = '#3a7ad4'; ctx.fillRect(-6, 3, 12, 1); ctx.fillRect(-2, -1, 1, 4); ctx.fillRect(4, -2, 1, 5);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(-2, -7, 3, 6);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(-2, -10, 3, 3);
+  ctx.restore(); ctx.restore();
+}
 function previewBoxFight(x, y, w, h, t) {         // two boxers trade punches in the ring
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ctx.fillStyle = '#1a1230'; ctx.fillRect(x, y, w, h);
@@ -396,7 +414,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');
