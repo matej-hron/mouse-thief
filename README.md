@@ -237,13 +237,21 @@ hit a tree, a rock, a snowman, a log, a gate pole, another skier or the red safe
 - **On the snow:** stay inside the blue lines: past them is deep powder that slows you to a crawl. **Kickers** (blue
   ramps) throw you in the air: you fly over rocks, logs and snowmen. **Ice** makes it hard to steer. **Slalom gates**
   (a red and a blue pole) are safe to ski through, but don't hit a pole. The bends push you to the outside.
+- **Fast:** you push off from the start gate and cruise at 50-100 KM/H; tuck on the steep bits for 150+ KM/H.
+- **Coins:** lines of gold coins on the slopes, plus a bonus for getting to the bottom (more on harder runs and later
+  mountains). You keep the coins you picked up even when you crash.
+- **SKI SHOP** (title screen, or SHOP after a crash): UPGRADES: FAST SKIS (top speed), PUSH START (faster start),
+  SHARP EDGES (turning, grip on ice), BIG AIR (higher jumps), COIN MAGNET (5 levels each); HARD HELMET (survive 1-3
+  crashes a run: you blink and slow down instead of crashing) and TURBO (1-3 rocket boosts a run: the TURBO button
+  above the steering slider, Space / E, controller X / RB). LOOKS: ski colors (up to GOLD and RAINBOW) and helmets
+  (up to GOLD and CHROME).
 
 ## First of the month update
 
-The first time you open the arcade in a new month, a **FIRST OF THE MONTH UPDATE** can pop up with a free gift for
-everyone. November 2026: a free **COW** avatar (press OKAY, then pick it in EDIT). Gifts are listed in `MONTHLY` in
-`index.html` (the month and the avatar); gift avatars are in `GIFT_SHAPES` in `common.js` and only show in the avatar
-picker once you have them.
+Only on the **1st of every month** (January 1, February 1, ... December 1): the first time you open the arcade that
+day, the **FIRST OF THE MONTH UPDATE** pops up and gives everyone a free **COW** avatar (press OKAY, then pick it in
+EDIT). On any other day there's no update. The gift is `MONTHLY_GIFT` in `index.html`; gift avatars are in
+`GIFT_SHAPES` in `common.js` and only show in the avatar picker once you have them.
 
 ## Pixel Sky Run
 
