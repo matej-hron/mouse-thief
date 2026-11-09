@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Ski: race down 10 mountains, each with a green, a red and a black run. Hit a tree, a rock or a skier and you're out.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Ski</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL SKI: downhill skiing (part of the PIXEL ARCADE).
+   The camera sits behind the skier and the slope is drawn in perspective, so it looks 3D.
+   10 maps (mountains), each with 3 runs: GREEN (easy), RED and BLACK (hard).
+   Survive to the bottom: hit a tree, a rock, a snowman, another skier or the safety net
+   and you crash, and the run is over. Off the piste (past the blue line) is deep powder: slow.
+   Controls like a phone ski game: a slider on the left steers (left / right), a slider on the
+   right sets the speed (up: tuck, faster; down: brake). Keys: arrows / WASD. A controller works too.
+     1. Setup   2. Maps and runs   3. Building a run   4. Sprites   5. Skiing
+     6. Drawing   7. Screens   8. Input   9. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelSki.save';
+const save = { best: {}, done: {}, sfx: true, seenHelp: false };
+try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) { Object.assign(save, s); save.best = Object.assign({}, s.best); save.done = Object.assign({}, s.done); } } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+const MY_COLOR = PX.AVATAR_COLORS[profile.avatar.color];
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, k) => a + (b - a) * k;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mix(a, b, k) { const x = hex(a), y = hex(b); return '#' + x.map((v, i) => clamp(Math.round(v + (y[i] - v) * k), 0, 255).toString(16).padStart(2, '0')).join(''); }
+function shade(c, k) { return '#' + hex(c).map(v => clamp(Math.round(v * k), 0, 255).toString(16).padStart(2, '0')).join(''); }
+function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; }
+// a time like on the image: 00:18.190
+const fmtTime = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + String(Math.floor(s * 1000 % 1000)).padStart(3, '0');
+
+// the road renderer: one segment is 5 m of slope
+const SEG = 200, METRE = SEG / 5, ROAD_W = 1800, CAM_H = 900, CAM_DEPTH = 0.84, DRAW = 150;
+const PLAYER_Z = CAM_H * CAM_DEPTH * 1.6;                // how far ahead of the camera the skier is
+const HZ = 92;                                           // the horizon (screen y)
+const FX = 104, FY = 195;                                // screen pixels per unit of projected width / height
+
+/* --- 2. MAPS AND RUNS ------------------------------------------------------------ */
+// each map: a look (sky, snow, trees, extras) and how hard it is (d: 0 easy .. 1 hardest)
+const MAPS = [
+  { id: 'meadow', name: 'SNOWY MEADOW', sky: ['#4aa8f4', '#a8dcff'], mtn: ['#8aa8d0', '#dfeaff'], hill: '#4a7a6a', snow: '#f4f8ff', off: '#dfe8f6', tree: '#2f7a3a', d: 0.0, sun: '#fff6c8' },
+  { id: 'pines', name: 'PINE FOREST', sky: ['#5aa0e0', '#c8e8ff'], mtn: ['#7a90b8', '#e8f0ff'], hill: '#2f5a44', snow: '#f0f6ff', off: '#d8e4f2', tree: '#1f5a2a', d: 0.1, sun: '#fff6c8', forest: true },
+  { id: 'night', name: 'NIGHT RACE', sky: ['#05060f', '#1a2240'], mtn: ['#1a2238', '#5a6688'], hill: '#0f1a1e', snow: '#c8d0dc', off: '#8a94a8', tree: '#16301e', d: 0.2, night: true, lights: true, moon: true },
+  { id: 'lake', name: 'FROZEN LAKE', sky: ['#9ac0e0', '#e8f4ff'], mtn: ['#a0b4cc', '#f4f8ff'], hill: '#6a8a9a', snow: '#eef6ff', off: '#d4e6f4', tree: '#3a6a5a', d: 0.3, ice: 2.5, sun: '#ffffff' },
+  { id: 'sunset', name: 'SUNSET RIDGE', sky: ['#5a3a8a', '#ffa86a'], mtn: ['#6a4a7a', '#ffd0b0'], hill: '#4a2f4a', snow: '#ffe8e0', off: '#f0c8c0', tree: '#2a3a2a', d: 0.4, sun: '#ffdc6a', low: true },
+  { id: 'blizzard', name: 'BLIZZARD PASS', sky: ['#9aa4b0', '#d0d6de'], mtn: ['#b8c0cc', '#e4e8ee'], hill: '#8a96a4', snow: '#f0f2f6', off: '#dce0e8', tree: '#4a6058', d: 0.5, fog: '#d8dde4', snowfall: 3 },
+  { id: 'canyon', name: 'ICE CANYON', sky: ['#2a6ab0', '#8ad0f0'], mtn: ['#3a8ac0', '#c8f4ff'], hill: '#2a6a9a', snow: '#e4f6ff', off: '#b4dcf0', tree: '#2a5a6a', d: 0.6, ice: 1.5, narrow: 0.15, sun: '#ffffff' },
+  { id: 'volcano', name: 'VOLCANO SLOPE', sky: ['#2a0a14', '#a03a1a'], mtn: ['#3a1a1a', '#ff6a2a'], hill: '#2a1414', snow: '#e8dcd8', off: '#a8908c', tree: '#2a2420', d: 0.7, rocks: 2, lava: true, night: true },
+  { id: 'aurora', name: 'AURORA PEAK', sky: ['#03050c', '#0e2030'], mtn: ['#12203a', '#4a6a8a'], hill: '#0a1418', snow: '#c0d8e0', off: '#80a0b0', tree: '#10281c', d: 0.85, night: true, aurora: true, lights: true, snowfall: 1 },
+  { id: 'summit', name: 'THE SUMMIT', sky: ['#1a3a8a', '#7ab8ff'], mtn: ['#ffffff', '#ffffff'], hill: '#c8d8f0', snow: '#ffffff', off: '#e4ecf8', tree: '#3a5a4a', d: 1.0, clouds: true, narrow: 0.1, sun: '#ffffff', snowfall: 1 },
+];
+const LEVELS = [
+  { id: 'green', name: 'GREEN', color: '#3fbe4a', d: 0, len: 290, stars: 2 },
+  { id: 'red', name: 'RED', color: '#e8303a', d: 0.5, len: 350, stars: 4 },
+  { id: 'black', name: 'BLACK', color: '#22222a', d: 1, len: 410, stars: 6 },
+];
+const runKey = (m, l) => MAPS[m].id + '_' + LEVELS[l].id;
+// GREEN of map 1 is open. Finish a run and the next one on that mountain opens; finish BLACK and the next mountain opens.
+function isOpen(m, l) {
+  if (l > 0) return !!save.done[runKey(m, l - 1)];
+  return m === 0 || !!save.done[runKey(m - 1, 2)];
+}
+
+/* --- 3. BUILDING A RUN ------------------------------------------------------------ */
+// a run is a list of segments; each has a curve, a steepness (how fast you go), how wide the piste is,
+// an elevation for drawing (crests and dips), things on the snow (obstacles) and decor beside the piste
+let R = null;          // the run being skied
+function buildRun(m, l) {
+  const map = MAPS[m], lev = LEVELS[l], rnd = mulberry(1000 + m * 37 + l * 7);
+  const diff = clamp(map.d * 0.55 + lev.d * 0.6, 0, 1.15);   // 0 (map 1 green) .. 1.15 (the summit, black)
+  const segs = [];
+  const add = (n, curve, steep, width) => {
+    const c0 = segs.length ? segs[segs.length - 1].curve : 0, s0 = segs.length ? segs[segs.length - 1].steep : steep, w0 = segs.length ? segs[segs.length - 1].w : width;
+    for (let i = 0; i < n; i++) {
+      const k = Math.min(1, i / Math.min(12, n * 0.4)), e = k * k * (3 - 2 * k);   // ease into the new values
+      segs.push({ curve: lerp(c0, curve, e), steep: lerp(s0, steep, e), w: lerp(w0, width, e), objs: [], deco: [], y: 0, x: 0 });
+    }
+  };
+  const baseW = 1.25 - diff * 0.35 - (map.narrow || 0);
+  add(30, 0, 0.24, baseW + 0.2);                                         // the start: wide and gentle
+  while (segs.length < lev.len) {
+    const r = rnd(), n = Math.round(22 + rnd() * 34);
+    const curve = (rnd() < 0.5 ? -1 : 1) * (1.5 + rnd() * (2 + diff * 4.5));
+    const steep = 0.18 + rnd() * (0.1 + diff * 0.14);
+    const w = baseW + (rnd() - 0.5) * 0.3;
+    if (r < 0.25) add(n, 0, steep, w);
+    else if (r < 0.6) add(n, curve, steep, w);
+    else if (r < 0.8) { add(Math.round(n * 0.6), curve, steep, w); add(Math.round(n * 0.6), -curve, steep, w); }   // an S-bend
+    else if (r < 0.9) add(Math.round(n * 0.7), curve * 0.3, 0.3 + diff * 0.12, w * 0.9);                       // a steep wall
+    else add(n, curve * 0.5, 0.13, w + 0.15);                                                                      // a flat bit
+  }
+  add(40, 0, 0.15, baseW + 0.3);                                          // the finish area
+  // elevation for drawing: steeper than usual = the slope drops away (a crest), flatter = it rises up at you
+  let y = 0, dy = 0;
+  for (const s of segs) { s.y = y; dy = lerp(dy, -(s.steep - 0.22) * SEG * 1.2, 0.15); y += dy; }
+  // obstacles: more and closer together on harder runs, never in the first and last stretch
+  const start = 40, end = segs.length - 45;
+  const KINDS = [['rock', 0.6], ['tree', 0.4], ['snowman', 0.35], ['kicker', 0.25 + diff * 0.1], ['ice', 0.15 * (map.ice || 1) + diff * 0.1],
+                 ['flags', 0.2], ['log', diff > 0.5 ? 0.25 : 0]];
+  const sumK = KINDS.reduce((a, k) => a + k[1], 0);
+  let i = start;
+  while (i < end) {
+    i += Math.round(lerp(16, 6, Math.min(1, diff)) + rnd() * lerp(14, 6, Math.min(1, diff)));
+    if (i >= end) break;
+    let r = rnd() * sumK, kind = 'rock';
+    for (const [k, w] of KINDS) { if ((r -= w) < 0) { kind = k; break; } }
+    if (map.rocks && kind === 'tree' && rnd() < 0.6) kind = 'rock';
+    const s = segs[i], wid = s.w;
+    if (kind === 'flags') {                             // a slalom gate: two poles, ski between them (they don't hurt)
+      const gx = (rnd() - 0.5) * wid * 0.9, half = 0.32 - diff * 0.06;
+      s.objs.push({ kind: 'pole', x: gx - half, col: '#e8303a' }, { kind: 'pole', x: gx + half, col: '#2a7fd4' });
+      continue;
+    }
+    if (kind === 'log') { s.objs.push({ kind: 'log', x: (rnd() < 0.5 ? -1 : 1) * wid * 0.45 }); continue; }
+    s.objs.push({ kind, x: (rnd() * 2 - 1) * wid * 0.85 });
+    // harder runs: a second obstacle beside it, so you have to pick the gap
+    if (diff > 0.35 && rnd() < diff * 0.55 && kind !== 'kicker' && kind !== 'ice') {
+      const o = s.objs[s.objs.length - 1], gap = lerp(0.75, 0.42, Math.min(1, diff));
+      const x2 = o.x + (o.x > 0 ? -gap : gap);
+      if (Math.abs(x2) < wid) s.objs.push({ kind: rnd() < 0.5 ? 'rock' : 'tree', x: x2 });
+    }
+  }
+  // decor: trees and nets beside the piste, flags on the edges, floodlights at night, the start and finish gates
+  for (let k = 0; k < segs.length; k++) {
+    const s = segs[k];
+    if (k % 2 === 0) s.deco.push({ kind: 'net', side: -1 }, { kind: 'net', side: 1 });
+    if (k % 3 === 0 || (map.forest && k % 2 === 1)) for (const side of [-1, 1]) if (rnd() < 0.8) s.deco.push({ kind: rnd() < 0.15 && map.rocks ? 'bigrock' : 'pine', side, off: 1.15 + rnd() * 3.5 });
+    if (k % 12 === 6) s.deco.push({ kind: k % 24 === 6 ? 'redflag' : 'blueflag', side: k % 24 === 6 ? -1 : 1, off: 0.06 });
+    if (map.lights && k % 20 === 10) s.deco.push({ kind: 'tower', side: k % 40 === 10 ? -1 : 1, off: 1.4 });
+    if (k % 50 === 25 && !map.night) s.deco.push({ kind: 'cannon', side: k % 100 === 25 ? 1 : -1, off: 1.25 });
+    if (k % 60 === 40) s.deco.push({ kind: 'sign', side: -1, off: 1.2 });
+  }
+  segs[8].gate = 'START'; segs[segs.length - 30].gate = 'FINISH';
+  // other skiers on the piste (from the red runs on): they ski down slower than you, swinging left and right
+  const skiers = [];
+  const nSk = Math.round(l === 0 ? map.d * 3 : 2 + diff * 6);
+  for (let k = 0; k < nSk; k++) skiers.push({ z: (60 + rnd() * (segs.length - 120)) * SEG, x: 0, v: 8 + rnd() * 6, ph: rnd() * 6, amp: 0.3 + rnd() * 0.4, col: ['#ffd23f', '#2a7fd4', '#9b4ad4', '#ff8a2a', '#2ad4c4'][k % 5] });
+  return { m, l, map, lev, segs, len: segs.length * SEG, finishZ: (segs.length - 30) * SEG, skiers, diff };
+}
+
+/* --- 4. SPRITES: pixel art, blown up with the distance ------------------------------- */
+function sprite(rows, pal) {
+  const w = Math.max(...rows.map(r => r.length)), h = rows.length, [c, g] = makeCanvas(w, h);
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.' && pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
+  return c;
+}
+let SPR = {};
+function buildSprites(map) {
+  const tr = map.tree, dk = shade(map.tree, 0.7), sn = map.night ? '#c8d4e4' : '#ffffff', tk = '#5a3a1a';
+  SPR.pine = sprite([
+    '.......s.......', '......sgs......', '......ggg......', '.....sgggs.....', '....ggsggdg....', '.....ggggd.....', '....sggggds....',
+    '...ggsgggggd...', '..gggggsgggdd..', '....sggggddd...', '...ggggsggggd..', '..ssggggggsgdd.', '.ggggggsggggddd', 'gggsggggggggddd',
+    '...gggggggdd...', '..sgggsggggdd..', '.ggggggggsgddd.', 'ggggsggggggdddd', '......ttt......', '......ttt......', '......ttt......'],
+    { g: tr, d: dk, s: sn, t: tk });
+  SPR.rock = sprite(['....sss.....', '..ssrrrs....', '.srrrrrrrs..', 'srrrrrrddrs.', 'rrrrrrddddrr', 'rrrrrdddddrr', '.rrddddddddr'],
+    { s: sn, r: map.rocks ? '#5a4a48' : '#8a8a96', d: map.rocks ? '#3a2a28' : '#5a5a66' });
+  SPR.bigrock = sprite(['.....ssss.......', '...ssrrrrss.....', '..srrrrrrrrs..s.', '.rrrrrrrddrrsrrs', 'rrrrrrrdddddrrrr', 'rrrrrdddddddddrr', 'rrrddddddddddddr'],
+    { s: sn, r: '#5a4a48', d: '#2a2020' });
+  SPR.snowman = sprite(['...kkk...', '...kkk...', '..kkkkk..', '..wwwww..', '.wkwwkww.', '.wwwoooo.', '..wwwww..', '.wwwkwww.', 'wwwwwwwww',
+    'wwwwkwwww', '.wwwwwww.', '.wwwwwwww', 'wwwwwwwww', 'wwwwwwwwd', '.wwwwwwd.'], { k: '#222', w: '#ffffff', o: '#ff8a2a', d: '#c8d4e8' });
+  SPR.kicker = sprite(['..............bb', '...........bbwww', '........bbwwwwww', '.....bbwwwwwwwww', '..bbwwwwwwwwwwww', 'bwwwwwwwwwwwwwww', 'dddddddddddddddd'],
+    { b: '#2a7fd4', w: '#ffffff', d: '#b8c8e0' });
+  SPR.log = sprite(['.bbbbbbbbbbbbbbbbbbbbbb.', 'bnnnnbnnnnnnbnnnnnnnbbcb', 'bnnnnnnbnnnnnnnnbnnnbccb', 'bbnnnnnnnnnbnnnnnnnnbbcb', '.bbbbbbbbbbbbbbbbbbbbbb.'],
+    { b: '#4a2a14', n: '#7a4a24', c: '#c8a070' });
+  SPR.pole = c => sprite(['cc', 'cc', 'cc', 'cc', 'cc', 'cc', 'cc', 'cc', 'ww', 'ww', 'ww', 'ww', 'ww', 'ww', 'ww', 'ww', 'ww'], { c, w: '#dddddd' });
+  SPR.redflag = sprite(['rrrrr', 'rwrwr', 'rrrrr', 'rrrrp', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....'], { r: '#e8303a', w: '#ffffff', p: '#cccccc' });
+  SPR.blueflag = sprite(['bbbbb', 'bwbwb', 'bbbbb', 'bbbbp', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....', 'p....'], { b: '#2a7fd4', w: '#ffffff', p: '#cccccc' });
+  SPR.net = sprite(['r.r.r.r.r.r.r.r.r', '.r.r.r.r.r.r.r.r.', 'r.r.r.r.r.r.r.r.r', '.r.r.r.r.r.r.r.r.', 'r.r.r.r.r.r.r.r.r', 'p...............p', 'p...............p'], { r: '#e8402a', p: '#888' });
+  SPR.tower = sprite(['llllll', 'lyyyyl', 'llllll', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '.pppp.'],
+    { l: '#555', y: '#fff8c0', p: '#777' });
+  SPR.cannon = sprite(['.......gg', '.....gggg', '...gggg..', '..ggg....', '..p......', '..p......', '..p......', '.ppp.....'], { g: '#ffd23f', p: '#666' });
+  SPR.sign = sprite(['kkkkkkk', 'kgggggk', 'kgwwwgk', 'kgwwwgk', 'kgggggk', 'kkkkkkk', '...p...', '...p...', '...p...', '...p...'], { k: '#222', g: LEVELS[R ? R.l : 0].color === '#22222a' ? '#555' : LEVELS[R ? R.l : 0].color, w: '#fff', p: '#888' });
+}
+// world widths (in piste half-widths) of each kind, and how tall it is (m) for jumps and how wide it hits
+const KIND = {
+  rock: { ww: 0.2, hit: 0.13, tall: 0.7 }, tree: { ww: 0.3, hit: 0.11, tall: 4, spr: 'pine' }, snowman: { ww: 0.14, hit: 0.1, tall: 1.6 },
+  kicker: { ww: 0.34, hit: 0.17, tall: 0 }, ice: { ww: 0.5, hit: 0.25, tall: 0 }, pole: { ww: 0.03, hit: 0, tall: 2 },
+  log: { ww: 0.6, hit: 0.3, tall: 0.5 },
+  pine: { ww: 0.34 }, bigrock: { ww: 0.5 }, net: { ww: 0.3 }, redflag: { ww: 0.06 }, blueflag: { ww: 0.06 }, tower: { ww: 0.14 }, cannon: { ww: 0.16 }, sign: { ww: 0.1 },
+};
+
+/* --- 5. SKIING ------------------------------------------------------------------- */
+let state = 'title';      // title | maps | play | crashed | finished
+let paused = false, pickMap = 0;
+let P = null;             // the skier
+const inp = { steer: 0, speed: 0, keys: { l: false, r: false, u: false, d: false }, padSteer: 0, padSpeed: 0 };
+const touch = { steer: null, speed: null, steerV: 0, speedV: 0 };   // which finger holds each slider, and where
+let touchUI = matchMedia('(pointer: coarse)').matches;
+let flakes = [];
+function startRun(m, l) {
+  R = buildRun(m, l); buildSprites(R.map);
+  P = { z: 0, x: 0, v: 0, t: 0, h: 0, vh: 0, lean: 0, crashT: 0, count: 2.6, iceT: 0, powder: false, done: false, cause: '', spray: [], tuck: false, brake: false, newBest: false, stars: 0, maxV: 0 };
+  flakes = []; for (let i = 0; i < 70; i++) flakes.push({ x: Math.random() * 560, y: Math.random() * H, s: 0.5 + Math.random() });
+  state = 'play'; paused = false; pickMap = m;
+  sfx('click');
+}
+const segAt = z => R.segs[Math.max(0, Math.floor(z / SEG)) % R.segs.length];
+function crash(cause) {
+  if (P.done) return;
+  P.done = true; P.crashT = 0.001; P.cause = cause; state = 'crashed'; sfx('crash');
+  for (let i = 0; i < 30; i++) P.spray.push({ x: 0, y: 0, vx: (Math.random() - 0.5) * 140, vy: -40 - Math.random() * 90, t: 0.8 + Math.random() * 0.6 });
+}
+function finish() {
+  P.done = true; state = 'finished'; sfx('finish');
+  const k = runKey(R.m, R.l), first = !save.done[k];
+  if (!save.best[k] || P.t < save.best[k]) { P.newBest = !!save.best[k]; save.best[k] = P.t; }
+  if (first) { save.done[k] = 1; P.stars = R.lev.stars + Math.round(R.map.d * 4); PX.Wallet.add(P.stars); }
+  store();
+}
+function step(dt) {
+  if (!P || paused) return;
+  // the snow flies even when you're stopped
+  for (const f of flakes) { f.y += (20 + f.s * 30) * dt * ((R.map.snowfall || 0.4)); f.x -= (P.v * 0.6 * f.s + 6) * dt * (inp.steer || 0.2); if (f.y > H) { f.y = -2; f.x = Math.random() * S.W; } if (f.x < 0) f.x += S.W; if (f.x > S.W) f.x -= S.W; }
+  for (const p of P.spray) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; p.t -= dt; }
+  P.spray = P.spray.filter(p => p.t > 0);
+  if (state === 'crashed') { P.crashT += dt; P.v = Math.max(0, P.v - 30 * dt); P.z += P.v * METRE * dt * 0.4; return; }
+  if (state !== 'play') return;
+  if (P.count > 0) { const c0 = Math.ceil(P.count); P.count -= dt; if (Math.ceil(P.count) !== c0) sfx(P.count > 0 ? 'beep' : 'go'); return; }
+  P.t += dt;
+  // what you want: steer (-1..1), speed (-1 brake .. 1 tuck)
+  const k = inp.keys;
+  let steer = touch.steer !== null ? touch.steerV : (k.l ? -1 : 0) + (k.r ? 1 : 0) || inp.padSteer;
+  let speed = touch.speed !== null ? touch.speedV : (k.u ? 1 : 0) + (k.d ? -1 : 0) || inp.padSpeed;
+  inp.steer = steer; inp.speed = speed;
+  P.tuck = speed > 0.3; P.brake = speed < -0.3;
+  const seg = segAt(P.z + PLAYER_Z), air = P.h > 0;
+  const off = Math.abs(P.x) > seg.w;                                  // past the blue line: deep powder
+  P.powder = off && !air;
+  // speed: gravity down the slope, air drag (less when you tuck), snow, braking, powder
+  const drag = speed > 0 ? lerp(0.0042, 0.0022, speed) : 0.0042;
+  let a = 9.8 * seg.steep - drag * P.v * P.v - 0.25;
+  if (speed < 0 && !air) a -= 14 * -speed;
+  if (P.powder) a = P.v > 4 ? Math.min(a, 0) - 2 - P.v * 0.35 : 1.5;   // deep snow: slows you down to a crawl (but never stops you)
+  if (P.iceT > 0) a += 1.5;
+  if (!air) a -= Math.abs(steer) * P.v * 0.07;                         // carving costs a little speed
+  if (P.v < 5 && speed >= 0 && !P.powder) a += 1.6;                    // skating along the flats
+  P.v = clamp(P.v + a * dt, 0, 45);
+  P.maxV = Math.max(P.maxV, P.v);
+  // steering, and the curve pushing you to the outside
+  const grip = P.iceT > 0 ? 0.3 : air ? 0.35 : 1;
+  P.lean = lerp(P.lean, steer, Math.min(1, dt * 8));
+  P.x += steer * grip * (1.2 + P.v / 28) * dt;
+  P.x -= seg.curve * P.v * 0.0105 * dt;
+  P.iceT = Math.max(0, P.iceT - dt);
+  // jumping off a kicker
+  if (air || P.vh > 0) { P.h += P.vh * dt; P.vh -= 9.8 * dt; if (P.h <= 0) { P.h = 0; P.vh = 0; sfx('land'); } }
+  const z0 = P.z + PLAYER_Z;
+  P.z += P.v * METRE * dt;
+  const z1 = P.z + PLAYER_Z;
+  // the safety net (and the trees behind it)
+  if (Math.abs(P.x) > seg.w + 0.95) { P.x = Math.sign(P.x) * (seg.w + 0.95); crash('YOU HIT THE SAFETY NET!'); return; }
+  // things on the snow, in the segments we passed this step
+  for (let i = Math.floor(z0 / SEG); i <= Math.floor(z1 / SEG); i++) {
+    const s = R.segs[i]; if (!s) continue;
+    const oz = i * SEG + SEG / 2; if (oz < z0 || oz > z1) continue;
+    for (const o of s.objs) {
+      const K = KIND[o.kind]; if (!K.hit) { if (o.kind === 'pole' && Math.abs(P.x - o.x) < 0.04 && P.h < 1.5) crash('YOU HIT A GATE POLE!'); continue; }
+      if (Math.abs(P.x - o.x) > K.hit + 0.06) continue;
+      if (o.kind === 'kicker') { if (P.h === 0) { P.vh = 3 + P.v * 0.16; P.h = 0.01; sfx('jump'); } continue; }
+      if (o.kind === 'ice') { if (P.h === 0) { P.iceT = 1.4; sfx('ice'); } continue; }
+      if (P.h > K.tall) continue;                                       // jumped over it
+      crash({ rock: 'YOU HIT A ROCK!', tree: 'YOU HIT A TREE!', snowman: 'YOU HIT A SNOWMAN!', log: 'YOU HIT A LOG!' }[o.kind]); return;
+    }
+  }
+  // the other skiers
+  for (const sk of R.skiers) {
+    const sz0 = sk.z; sk.z += sk.v * METRE * dt; sk.ph += dt * 1.3;
+    const ss = segAt(sk.z); sk.x = Math.sin(sk.ph) * sk.amp * ss.w;
+    const rel0 = sz0 - z0, rel1 = sk.z - z1;
+    if (rel0 >= -SEG * 0.3 && rel1 <= SEG * 0.3 && Math.abs(sk.x - P.x) < 0.14 && P.h < 1.8) { crash('YOU HIT A SKIER!'); return; }
+  }
+  if (P.powder && Math.random() < 0.6) P.spray.push({ x: (Math.random() - 0.5) * 16, y: 0, vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 40, t: 0.4 });
+  if (Math.abs(steer) > 0.5 && P.v > 12 && !air && Math.random() < 0.5) P.spray.push({ x: -Math.sign(steer) * 8, y: 0, vx: -Math.sign(steer) * (30 + Math.random() * 40), vy: -20 - Math.random() * 30, t: 0.35 });
+  if (P.z + PLAYER_Z >= R.finishZ) finish();
+  if (save.sfx && P.v > 2 && Math.random() < dt * (2 + P.v / 6)) PX.Sound.noise(0.08, { freq: 900 + P.v * 40, vol: 0.012 + P.v * 0.0008, filter: 'bandpass' });
+}
+
+/* --- 6. DRAWING ------------------------------------------------------------------- */
+function project(wx, wy, wz, cx, cy, cz) {
+  const dz = wz - cz; if (dz <= 1) return null;
+  const sc = CAM_DEPTH / dz;
+  return { x: S.W / 2 + sc * (wx - cx) * FX, y: HZ - sc * (wy - cy) * FY, w: sc * ROAD_W * FX, sc };
+}
+function poly(x1, y1, w1, x2, y2, w2, col) {
+  ctx.fillStyle = col; ctx.beginPath();
+  ctx.moveTo(Math.round(x1 - w1), Math.round(y1)); ctx.lineTo(Math.round(x2 - w2), Math.round(y2)); ctx.lineTo(Math.round(x2 + w2), Math.round(y2)); ctx.lineTo(Math.round(x1 + w1), Math.round(y1)); ctx.closePath(); ctx.fill();
+}
+function quad(xa, ya, xb, yb, xc, yc, xd, yd, col) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(Math.round(xa), Math.round(ya)); ctx.lineTo(Math.round(xb), Math.round(yb)); ctx.lineTo(Math.round(xc), Math.round(yc)); ctx.lineTo(Math.round(xd), Math.round(yd)); ctx.closePath(); ctx.fill();
+}
+let skyOff = 0;
+function drawSky(map, t, curveShift) {
+  const W = S.W;
+  for (let k = 0; k < 12; k++) { ctx.fillStyle = mix(map.sky[0], map.sky[1], k / 11); ctx.fillRect(0, Math.round(k * HZ / 12), W, Math.ceil(HZ / 12) + 1); }
+  if (map.night) for (let i = 0; i < 60; i++) { ctx.fillStyle = i % 7 ? '#8a90b8' : '#ffffff'; ctx.fillRect(Math.round(((i * 97.3 + curveShift * 0.1) % W + W) % W), (i * 31) % (HZ - 20), 1, 1); }
+  if (map.aurora) for (let x = 0; x < W; x += 2) {
+    const y = 18 + Math.sin(x * 0.02 + t * 0.6) * 8 + Math.sin(x * 0.051 + t) * 4, h = 14 + Math.sin(x * 0.03 + t * 0.8) * 8;
+    ctx.fillStyle = x % 6 ? 'rgba(80,255,170,0.35)' : 'rgba(150,120,255,0.35)'; ctx.fillRect(x, Math.round(y), 2, Math.round(h));
+  }
+  const sx = Math.round(((W * 0.75 - curveShift * 0.15) % (W + 40) + W + 40) % (W + 40) - 20);
+  if (map.sun) { ctx.fillStyle = map.sun; ctx.fillRect(sx - 6, (map.low ? 52 : 16) - 8, 12, 16); ctx.fillRect(sx - 8, (map.low ? 52 : 16) - 6, 16, 12); }
+  if (map.moon) { ctx.fillStyle = '#f3e9c8'; ctx.fillRect(sx - 4, 8, 8, 12); ctx.fillRect(sx - 6, 10, 12, 8); ctx.fillStyle = '#d8ccA8'; ctx.fillRect(sx - 2, 11, 2, 2); ctx.fillRect(sx + 2, 14, 2, 2); }
+  // far mountains (white tops), slower; near hills with pines, faster
+  const layer = (base, amp, freq, col, top, par, seed) => {
+    ctx.fillStyle = col;
+    for (let x = 0; x < W; x += 2) {
+      const u = x + curveShift * par + seed;
+      const h = base + Math.abs(Math.sin(u * freq)) * amp + Math.sin(u * freq * 2.7) * amp * 0.25;
+      ctx.fillRect(x, Math.round(HZ - h), 2, Math.round(h) + 2);
+      if (top) { ctx.fillStyle = top; ctx.fillRect(x, Math.round(HZ - h), 2, Math.max(2, Math.round((h - base) * 0.4))); ctx.fillStyle = col; }
+    }
+  };
+  layer(18, 34, 0.012, map.mtn[0], map.mtn[1], 0.25, 100);
+  if (map.lava) { ctx.fillStyle = '#ff6a1a'; const vx = Math.round(((W * 0.3 - curveShift * 0.25) % W + W) % W); ctx.fillRect(vx - 2, HZ - 52, 4, 10 + Math.round(Math.sin(t * 3) * 2)); }
+  if (map.clouds) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 8; i++) { const cx = Math.round(((i * 83 - curveShift * 0.35 + t * 4) % (W + 60) + W + 60) % (W + 60) - 30); ctx.fillRect(cx, HZ - 10 - (i % 3) * 3, 30 + (i % 3) * 10, 6); ctx.fillRect(cx + 6, HZ - 14 - (i % 3) * 3, 16, 4); } }
+  layer(6, 14, 0.03, map.hill, null, 0.5, 7);
+  ctx.fillStyle = shade(map.hill, 0.8);
+  for (let x = 0; x < W; x += 6) { const u = x + curveShift * 0.5; if (Math.sin(u * 0.13) > 0.1) { const h = 6 + (Math.floor(u) * 7 % 5); ctx.fillRect(x + 2, HZ - h - 6, 2, h); ctx.fillRect(x + 1, HZ - h - 2, 4, h - 4); } }
+  // a gondola on its cable, sliding across the sky (like the cable car on the image)
+  const gx = ((t * 6 - curveShift * 0.3) % (W + 80) + W + 80) % (W + 80) - 40;
+  ctx.fillStyle = '#333'; for (let x = 0; x < W; x += 2) ctx.fillRect(x, Math.round(26 + x * 0.06), 2, 1);
+  const gy = Math.round(26 + gx * 0.06);
+  ctx.fillStyle = '#444'; ctx.fillRect(Math.round(gx), gy, 1, 6);
+  ctx.fillStyle = '#111'; ctx.fillRect(Math.round(gx) - 7, gy + 5, 15, 13);
+  ctx.fillStyle = map.night ? '#ffd23f' : '#b8d8e0'; ctx.fillRect(Math.round(gx) - 6, gy + 6, 13, 11);
+  ctx.fillStyle = '#2ad4c4'; ctx.fillRect(Math.round(gx) - 6, gy + 6, 13, 2); ctx.fillRect(Math.round(gx) - 6, gy + 14, 13, 3);
+  ctx.fillStyle = '#5a7a8a'; ctx.fillRect(Math.round(gx) - 4, gy + 9, 4, 4); ctx.fillRect(Math.round(gx) + 1, gy + 9, 4, 4);
+}
+function drawSprite(img, x, y, destW, clipY, alpha) {
+  const destH = destW * img.height / img.width;
+  if (destW < 1 || y - destH > clipY) return;
+  const visH = Math.min(destH, clipY - (y - destH));
+  if (visH <= 0) return;
+  const srcH = img.height * visH / destH;
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.drawImage(img, 0, 0, img.width, srcH, Math.round(x - destW / 2), Math.round(y - destH), Math.round(destW), Math.round(visH));
+  if (alpha !== undefined) ctx.globalAlpha = 1;
+}
+function skierSprite(col) {             // an NPC skier from behind (cached per color)
+  SPR['sk' + col] = SPR['sk' + col] || sprite(['..hhh...', '..hhh...', '.cjjjc..', 'cjjjjjc.', 'cjjjjjjc', '.jjjjjp.', '.pp.pp.p', '.pp.pp.p', '.pp.pp..', '.ss..ss.', 'ss....ss', 'ss....ss'],
+    { h: '#222', c: shade(col, 0.7), j: col, p: '#2a2a3a', s: '#e8303a' });
+  return SPR['sk' + col];
+}
+function drawWorld(t) {
+  const W = S.W, map = R.map;
+  const base = Math.floor(P.z / SEG), segPct = (P.z % SEG) / SEG;
+  const pSeg = segAt(P.z + PLAYER_Z), pPct = ((P.z + PLAYER_Z) % SEG) / SEG;
+  const nextP = R.segs[Math.min(R.segs.length - 1, Math.floor((P.z + PLAYER_Z) / SEG) + 1)];
+  const playerY = lerp(pSeg.y, nextP.y, pPct);
+  const camY = playerY + CAM_H + P.h * METRE * 0.8, camX = P.x * ROAD_W;
+  // the curve so far shifts the mountains (they slide when the slope turns)
+  skyOff += pSeg.curve * P.v * 0.02;
+  drawSky(map, t, skyOff);
+  // far snow under the horizon (where the slope drops away out of sight)
+  ctx.fillStyle = mix(map.off, map.fog || map.sky[1], 0.35); ctx.fillRect(0, HZ, W, H - HZ);
+  // the slope, front to back: each segment is a strip between two projected lines
+  let x = 0, dx = -R.segs[base % R.segs.length].curve * segPct;
+  let maxY = H;
+  const vis = [];
+  const fogFar = map.fog ? 70 : DRAW;
+  for (let n = 0; n < DRAW; n++) {
+    const i = base + n; if (i >= R.segs.length) break;
+    const s = R.segs[i], s2 = R.segs[Math.min(R.segs.length - 1, i + 1)];
+    const z1 = i * SEG, z2 = (i + 1) * SEG;
+    const p1 = project(x - camX, s.y, z1 - P.z, 0, camY, 0);
+    const p2 = project(x + dx - camX, s2.y, z2 - P.z, 0, camY, 0);
+    x += dx; dx += s.curve;
+    if (!p1 || !p2) { vis.push(null); continue; }
+    s.p1 = p1; s.p2 = p2; s.clip = maxY;
+    vis.push(s);
+    if (p2.y >= maxY || p2.y >= p1.y) continue;
+    const fog = clamp((n - fogFar * 0.4) / (fogFar * 0.6), 0, 1) * (map.fog ? 1 : 0.35);
+    const fcol = map.fog || map.sky[1];
+    const f = c => fog > 0 ? mix(c, fcol, fog) : c;
+    const alt = Math.floor(i / 2) % 2;
+    const y1 = Math.min(p1.y, maxY);
+    // off-piste snow, everywhere
+    ctx.fillStyle = f(alt ? map.off : shade(map.off, 0.97)); ctx.fillRect(0, Math.round(p2.y), W, Math.ceil(y1 - p2.y) + 1);
+    // the groomed piste (corduroy: two shades)
+    poly(p1.x, y1, p1.w * s.w, p2.x, p2.y, p2.w * s2.w, f(alt ? map.snow : shade(map.snow, 0.95)));
+    // the blue lines on the edges
+    const lw1 = p1.w * 0.03 + 0.5, lw2 = p2.w * 0.03 + 0.5;
+    quad(p1.x - p1.w * s.w - lw1, y1, p2.x - p2.w * s2.w - lw2, p2.y, p2.x - p2.w * s2.w + lw2, p2.y, p1.x - p1.w * s.w + lw1, y1, f('#2a6ad4'));
+    quad(p1.x + p1.w * s.w - lw1, y1, p2.x + p2.w * s2.w - lw2, p2.y, p2.x + p2.w * s2.w + lw2, p2.y, p1.x + p1.w * s.w + lw1, y1, f('#2a6ad4'));
+    // start and finish lines
+    if (s.gate) poly(p1.x, y1, p1.w * s.w, p2.x, p2.y, p2.w * s2.w, s.gate === 'FINISH' ? (alt ? '#e8303a' : '#ffffff') : '#e8303a');
+    // at night the floodlights make pools of light
+    if (map.lights && i % 20 > 6 && i % 20 < 14) poly(p1.x, y1, p1.w * s.w * 0.9, p2.x, p2.y, p2.w * s2.w * 0.9, 'rgba(255,240,180,0.08)');
+    maxY = p2.y;
+  }
+  // things, back to front
+  for (let n = vis.length - 1; n >= 0; n--) {
+    const s = vis[n]; if (!s) continue;
+    const i = base + n, p = s.p1, clip = s.clip;
+    const fog = map.fog ? clamp((n - 25) / 45, 0, 1) : 0, al = fog ? 1 - fog * 0.85 : undefined;
+    for (const d of s.deco) {
+      const K = KIND[d.kind]; let img = SPR[d.kind];
+      const off = d.kind === 'net' ? s.w + 1.05 : s.w + (d.off || 0);
+      const sx = p.x + d.side * off * p.w;
+      if (d.kind === 'net' && i % 2 === 0) { drawSprite(img, sx, p.y, K.ww * p.w * 1.2, clip, al); continue; }
+      drawSprite(img, sx, p.y, K.ww * p.w, clip, al);
+      if (d.kind === 'tower' && map.night) { ctx.fillStyle = 'rgba(255,248,192,0.12)'; const r = K.ww * p.w; ctx.beginPath(); ctx.arc(sx, p.y - r * 3.3, r * 1.2, 0, 7); ctx.fill(); }
+    }
+    for (const o of s.objs) {
+      const K = KIND[o.kind], sx = p.x + o.x * p.w;
+      if (o.kind === 'ice') { const w = K.ww * p.w; ctx.fillStyle = 'rgba(150,220,255,0.75)'; ctx.fillRect(Math.round(sx - w), Math.round(p.y - w * 0.12), Math.round(w * 2), Math.max(1, Math.round(w * 0.12))); ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(Math.round(sx - w * 0.5), Math.round(p.y - w * 0.1), Math.round(w * 0.4), Math.max(1, Math.round(w * 0.04))); continue; }
+      const img = o.kind === 'pole' ? (SPR['pole' + o.col] = SPR['pole' + o.col] || SPR.pole(o.col)) : SPR[K.spr || o.kind];
+      drawSprite(img, sx, p.y, K.ww * p.w, clip, al);
+    }
+    if (s.gate) {                                       // the START / FINISH arch over the piste
+      const w = p.w * s.w * 1.05, top = p.y - w * 0.7, bw = Math.max(1, Math.round(p.w * 0.04));
+      if (top < clip) {
+        ctx.fillStyle = '#333'; ctx.fillRect(Math.round(p.x - w), Math.round(top), bw, Math.round(Math.min(clip, p.y) - top)); ctx.fillRect(Math.round(p.x + w - bw), Math.round(top), bw, Math.round(Math.min(clip, p.y) - top));
+        const bh = Math.max(2, Math.round(w * 0.16));
+        ctx.fillStyle = s.gate === 'FINISH' ? '#e8303a' : '#2a7fd4'; ctx.fillRect(Math.round(p.x - w), Math.round(top), Math.round(w * 2), bh);
+        const sz = Math.max(1, Math.min(4, Math.floor(bh / 6)));
+        if (bh >= 6) T(s.gate, p.x, top + Math.round((bh - 5 * sz) / 2), '#fff', sz, 'center');
+      }
+    }
+    // other skiers in this segment
+    for (const sk of R.skiers) {
+      if (Math.floor(sk.z / SEG) !== i) continue;
+      drawSprite(skierSprite(sk.col), p.x + sk.x * p.w, p.y, 0.17 * p.w, clip, al);
+    }
+  }
+  // snowfall
+  if (map.snowfall) { ctx.fillStyle = '#ffffff'; for (const fl of flakes.slice(0, Math.round(25 * map.snowfall))) ctx.fillRect(Math.round(fl.x), Math.round(fl.y), fl.s > 1 ? 2 : 1, fl.s > 1 ? 2 : 1); }
+  drawPlayer(t);
+  if (map.fog) { ctx.fillStyle = 'rgba(216,221,228,0.18)'; ctx.fillRect(0, 0, W, H); }
+}
+function drawPlayer(t) {
+  // the skier from behind, in the middle at the bottom, in your avatar's color
+  const W = S.W, cx = Math.round(W / 2), base = H - 26 - Math.round(P.h * 10);
+  const lean = Math.round(P.lean * 4), crashed = state === 'crashed';
+  if (P.h > 0) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(cx - 12, H - 24, 24, 3); }
+  const r = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+  if (crashed) {                                       // tumbling in the snow
+    const k = Math.min(1, P.crashT * 2), sp = P.crashT * 12;
+    ctx.save(); ctx.translate(cx, base - 10 + k * 8); ctx.rotate(sp > 8 ? 1.6 : sp);
+    r(-8, -10, 16, 12, MY_COLOR); r(-5, -18, 10, 8, '#ffd23f'); r(-8, 2, 6, 8, '#2a2a3a'); r(2, 2, 6, 8, '#2a2a3a');
+    ctx.restore();
+    ctx.save(); ctx.translate(cx - 14, base + 2); ctx.rotate(0.6 + P.crashT); r(-14, -1, 28, 3, '#3fbe4a'); ctx.restore();
+    ctx.save(); ctx.translate(cx + 16, base); ctx.rotate(-0.9 - P.crashT * 0.7); r(-14, -1, 28, 3, '#3fbe4a'); ctx.restore();
+  } else {
+    const tuck = P.tuck ? 6 : 0, sk = lean * 2;
+    // skis (green, like on the image), a bit apart, the tips pointing down the slope (up the screen)
+    r(cx - 11 + sk, base - 16, 4, 22, '#111'); r(cx - 10 + sk, base - 15, 2, 20, '#3fbe4a');
+    r(cx + 6 + sk, base - 16, 4, 22, '#111'); r(cx + 7 + sk, base - 15, 2, 20, '#3fbe4a');
+    r(cx - 10 + sk, base - 15, 2, 2, '#ffd23f'); r(cx + 7 + sk, base - 15, 2, 2, '#ffd23f');
+    // legs and boots
+    r(cx - 9 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a'); r(cx + 4 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a');
+    r(cx - 10 + sk, base - 4, 6, 4, '#222'); r(cx + 5 + sk, base - 4, 6, 4, '#222');
+    // body: a jacket in your color, a backpack-free race suit
+    const by = base - 28 + tuck * 1.5, bx = cx - 9 + lean * 2;
+    r(bx - 1, by - 1, 20, 17, '#111'); r(bx, by, 18, 15, MY_COLOR); r(bx + 2, by + 2, 14, 3, shade(MY_COLOR, 1.25)); r(bx, by + 11, 18, 4, shade(MY_COLOR, 0.7));
+    // arms and poles
+    const arm = P.brake ? 8 : P.tuck ? -2 : 4;
+    r(bx - 4, by + 3, 5, 9, shade(MY_COLOR, 0.85)); r(bx + 17, by + 3, 5, 9, shade(MY_COLOR, 0.85));
+    r(bx - 4, by + 11, 4, 3, '#222'); r(bx + 18, by + 11, 4, 3, '#222');
+    r(bx - 3 - arm, by + 13, 1, 16, '#ccc'); r(bx + 21 + arm, by + 13, 1, 16, '#ccc');
+    if (!P.tuck) { r(bx - 4 - arm, by + 13, 1, 1, '#ccc'); r(bx + 22 + arm, by + 13, 1, 1, '#ccc'); }
+    // helmet (yellow) with goggles strap
+    const hx = cx - 6 + lean * 3, hy = by - 11 + (P.tuck ? 4 : 0);
+    r(hx - 1, hy - 1, 14, 13, '#111'); r(hx, hy, 12, 11, '#ffd23f'); r(hx + 2, hy + 1, 4, 2, '#fff2a0'); r(hx, hy + 6, 12, 2, '#e8303a');
+  }
+  // snow spray
+  ctx.fillStyle = '#ffffff';
+  for (const p of P.spray) ctx.fillRect(Math.round(cx + p.x), Math.round(H - 26 + p.y), 2, 2);
+}
+
+/* --- 7. SCREENS ---------------------------------------------------------------- */
+function levelIcon(l, cx, cy, s = 1, outline = '#fff') {   // the trail signs: green circle, red square, black diamond
+  const rows = [['..###..', '.#####.', '#######', '#######', '#######', '.#####.', '..###..'],
+                ['#######', '#######', '#######', '#######', '#######', '#######', '#######'],
+                ['...#...', '..###..', '.#####.', '#######', '.#####.', '..###..', '...#...']][l];
+  PX.drawIcon(ctx, rows, { '#': LEVELS[l].color }, cx, cy, s, outline);
+}
+function panel(x, y, w, h, color = '#7ac8ff') { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = 'rgba(29,24,48,0.94)'; ctx.fillRect(x, y, w, h); ctx.fillStyle = color; ctx.fillRect(x, y, w, 2); }
+// the title and the map screen show a run of the picked mountain going by in the background
+let demo = null;
+function demoWorld(t, dt) {
+  if (!demo || demo.m !== pickMap) { R = buildRun(pickMap, 0); buildSprites(R.map); P = { z: 20 * SEG, x: 0, v: 18, h: 0, lean: 0, spray: [], tuck: false, brake: false, count: 0 }; demo = { m: pickMap }; }
+  P.z += 18 * METRE * dt; if (P.z > R.finishZ - 200 * SEG || P.z > R.len - DRAW * SEG) P.z = 20 * SEG;
+  const s = segAt(P.z + PLAYER_Z); P.x = lerp(P.x, Math.sin(t * 0.7) * s.w * 0.4, dt); P.lean = Math.cos(t * 0.7) * 0.4;
+  for (const sk of R.skiers) sk.z = -1e9;
+  drawWorld(t);
+}
+function drawTitle(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(0, 0, W, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), W - 36, 10, '#ffd23f', 2, 'right', '#000');
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('PIXEL', W / 2, 40, '#ffd23f', 3, 'center', '#000');
+  T('SKI', W / 2, 60, '#fff', 8, 'center', '#2a6ad4');
+  T('10 MOUNTAINS. 3 RUNS EACH. DON\'T CRASH!', W / 2, 112, '#ffffff', 1, 'center', '#000');
+  [0, 1, 2].forEach(l => { levelIcon(l, W / 2 - 40 + l * 40, 130, 2); });
+  const bw = 180, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('play', bx, 150, bw, 28, 'PLAY!', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'maps'; }
+  if (UI.button('games', bx, 186, bw, 20, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#ffffff', 1, 'right', '#000');
+}
+function drawMaps(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  if (UI.button('back', 6, 6, 46, 20, 'BACK', { size: 1 }) || UI.back) { state = 'title'; return; }
+  T('PICK A RUN', W / 2, 9, '#fff', 2, 'center', '#000');
+  T('★ ' + PX.Wallet.get(), W - 8, 10, '#ffd23f', 2, 'right', '#000');
+  const cols = 5, gap = 5, cw = Math.floor((W - 12 - gap * (cols - 1)) / cols), ch = 96;
+  MAPS.forEach((map, m) => {
+    const c = m % cols, rw = Math.floor(m / cols), x = 6 + c * (cw + gap), y = 32 + rw * (ch + 6);
+    const open = isOpen(m, 0);
+    panel(x, y, cw, ch, pickMap === m ? '#ffd23f' : open ? '#7ac8ff' : '#4a4068');
+    // a little picture of the mountain
+    ctx.fillStyle = map.sky[1]; ctx.fillRect(x + 3, y + 5, cw - 6, 30); ctx.fillStyle = map.sky[0]; ctx.fillRect(x + 3, y + 5, cw - 6, 10);
+    ctx.fillStyle = map.mtn[0]; ctx.beginPath(); ctx.moveTo(x + 3, y + 35); ctx.lineTo(x + cw * 0.35, y + 12); ctx.lineTo(x + cw * 0.6, y + 26); ctx.lineTo(x + cw * 0.78, y + 15); ctx.lineTo(x + cw - 3, y + 35); ctx.fill();
+    ctx.fillStyle = map.mtn[1]; ctx.fillRect(Math.round(x + cw * 0.35) - 3, y + 12, 6, 4); ctx.fillRect(Math.round(x + cw * 0.78) - 2, y + 15, 4, 3);
+    ctx.fillStyle = map.snow; ctx.fillRect(x + 3, y + 31, cw - 6, 4);
+    if (!open) { ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(x + 3, y + 5, cw - 6, 30); lockIcon(x + cw / 2, y + 20); }
+    T((m + 1) + '', x + 6, y + 8, '#fff', 1, 'left', '#000');
+    const words = map.name.split(' ');
+    words.forEach((wd, k) => T(wd, x + cw / 2, y + 39 + k * 8, open ? '#fff' : '#5b5275', 1, 'center'));
+    // the three runs
+    const bw = Math.floor((cw - 10) / 3);
+    LEVELS.forEach((lev, l) => {
+      const bx = x + 4 + l * (bw + 1), by = y + 58, ok = isOpen(m, l), done = save.done[runKey(m, l)];
+      if (UI.button('run_' + m + '_' + l, bx, by, bw, 22, '', { size: 1, disabled: !ok, accent: lev.color === '#22222a' ? '#9a92b8' : lev.color })) startRun(m, l);
+      if (ok) levelIcon(l, bx + bw / 2, by + 11, 2, '#fff'); else lockIcon(bx + bw / 2, by + 11);
+      if (done) { ctx.fillStyle = '#5ad43f'; ctx.fillRect(bx + bw - 5, by + 2, 3, 3); }
+    });
+    // best time of the hardest run done
+    let best = null; for (let l = 2; l >= 0; l--) if (save.best[runKey(m, l)]) { best = [l, save.best[runKey(m, l)]]; break; }
+    if (best) T(fmtTime(best[1]).slice(1), x + cw / 2, y + 85, LEVELS[best[0]].color === '#22222a' ? '#c8c8d8' : LEVELS[best[0]].color, 1, 'center');
+  });
+  if (!save.seenHelp) T('GREEN = EASY  RED = HARDER  BLACK = HARDEST. FINISH BLACK TO OPEN THE NEXT MOUNTAIN.', W / 2, H - 9, '#ffd23f', 1, 'center', '#000');
+}
+function lockIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '#...#', '#...#', '#####', '##.##', '##.##', '#####'], { '#': '#9a92b8' }, cx, cy, 1); }
+// the on-screen controls, like a phone ski game: a slider on the left (steer) and one on the right (speed)
+function sliders() {
+  const W = S.W;
+  return { steer: { x: 14, y: H - 52, w: 110, h: 30 }, speed: { x: W - 50, y: H - 132, w: 34, h: 112 } };
+}
+function hud(t) {
+  const W = S.W, sl = sliders();
+  // pause (top left)
+  ctx.fillStyle = '#111'; ctx.fillRect(7, 7, 24, 24); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(8, 8, 22, 22);
+  ctx.fillStyle = '#111'; ctx.fillRect(14, 13, 3, 12); ctx.fillRect(21, 13, 3, 12);
+  // km/h and the clock (top right), white boxes like on the image
+  const kmh = Math.round(P.v * 3.6);
+  ctx.fillStyle = '#111'; ctx.fillRect(W - 78, 6, 72, 22); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(W - 77, 7, 70, 20);
+  T('KM/H', W - 74, 9, '#111', 1); T(String(kmh), W - 9, 10, '#111', 3, 'right');
+  ctx.fillStyle = '#111'; ctx.fillRect(W - 78, 30, 72, 16); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(W - 77, 31, 70, 14);
+  ctx.fillStyle = '#5ad43f'; ctx.fillRect(W - 9, 31, 2, 14);
+  T(fmtTime(P.t), W - 12, 35, '#111', 1, 'right');
+  // the run: its sign and how far to the bottom
+  levelIcon(R.l, 44, 19, 1); T(R.map.name, 52, 10, '#fff', 1, 'left', '#000');
+  const prog = clamp((P.z + PLAYER_Z) / R.finishZ, 0, 1), bw = Math.min(160, W - 220);
+  T(LEVELS[R.l].name + ' RUN', 52, 20, LEVELS[R.l].color === '#22222a' ? '#c8c8d8' : LEVELS[R.l].color, 1, 'left', '#000');
+  ctx.fillStyle = '#111'; ctx.fillRect(Math.round(W / 2 - bw / 2) - 1, 9, bw + 2, 6); ctx.fillStyle = '#3a2f5c'; ctx.fillRect(Math.round(W / 2 - bw / 2), 10, bw, 4);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(W / 2 - bw / 2), 10, Math.round(bw * prog), 4);
+  ctx.fillStyle = '#e8303a'; ctx.fillRect(Math.round(W / 2 + bw / 2) - 2, 7, 3, 10);
+  const best = save.best[runKey(R.m, R.l)]; if (best) T('BEST ' + fmtTime(best), W / 2, 18, '#ffffff', 1, 'center', '#000');
+  if (P.powder) T('DEEP SNOW!', W / 2, 52, '#ffffff', 2, 'center', '#2a6ad4');
+  else if (P.iceT > 0) T('ICE!', W / 2, 52, '#9ae0ff', 2, 'center', '#000');
+  else if (P.h > 0.4) T('AIR!', W / 2, 52, '#ffd23f', 2, 'center', '#000');
+  if (P.count > 0) { T(String(Math.ceil(P.count)), W / 2, 66, '#ffd23f', 6, 'center', '#000'); T('GET READY!', W / 2, 102, '#fff', 2, 'center', '#000'); }
+  else if (P.t < 0.8 && state === 'play') T('GO!', W / 2, 66, '#5ad43f', 6, 'center', '#000');
+  if (!save.seenHelp && P.t < 6 && state === 'play') {
+    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(W / 2 - 150, 118, 300, 34);
+    T(touchUI ? 'LEFT SLIDER: STEER.  RIGHT SLIDER: UP = FASTER, DOWN = BRAKE.' : 'ARROWS / A D: STEER.  UP / W: TUCK (FASTER).  DOWN / S: BRAKE.', W / 2, 124, '#fff', 1, 'center');
+    T('DON\'T HIT ANYTHING! STAY INSIDE THE BLUE LINES.', W / 2, 138, '#ffd23f', 1, 'center');
+  }
+  if (state !== 'play') return;
+  // left: the steering slider (a pill with a knob, like on the image)
+  const a = sl.steer, kx = a.x + a.w / 2 + (touch.steer !== null ? touch.steerV : inp.steer) * (a.w / 2 - 14);
+  pill(a.x, a.y, a.w, a.h);
+  arrow(a.x + 10, a.y + a.h / 2, -1); arrow(a.x + a.w - 10, a.y + a.h / 2, 1);
+  knob(kx, a.y + a.h / 2, touch.steer !== null || inp.steer !== 0);
+  // right: the speed slider, standing up
+  const b = sl.speed, ky = b.y + b.h / 2 - (touch.speed !== null ? touch.speedV : inp.speed) * (b.h / 2 - 16);
+  pill(b.x, b.y, b.w, b.h, true);
+  T('FAST', b.x + b.w / 2, b.y - 9, '#fff', 1, 'center', '#000'); T('BRAKE', b.x + b.w / 2, b.y + b.h + 3, '#fff', 1, 'center', '#000');
+  arrowV(b.x + b.w / 2, b.y + 9, -1); arrowV(b.x + b.w / 2, b.y + b.h - 9, 1);
+  knob(b.x + b.w / 2, ky, touch.speed !== null || inp.speed !== 0);
+}
+function pill(x, y, w, h, vert) {
+  const r = Math.min(w, h) / 2;
+  ctx.fillStyle = '#111'; rr(x - 1, y - 1, w + 2, h + 2, r + 1); ctx.fill();
+  ctx.fillStyle = 'rgba(120,120,130,0.75)'; rr(x, y, w, h, r); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; if (vert) ctx.fillRect(x + 3, y + r, 2, h - r * 2); else ctx.fillRect(x + r, y + 3, w - r * 2, 2);
+}
+function rr(x, y, w, h, r) {                // a pixel rounded rectangle (stairs, not curves)
+  ctx.beginPath(); const st = Math.max(2, Math.round(r / 3));
+  ctx.rect(Math.round(x + r), Math.round(y), Math.round(w - 2 * r), Math.round(h));
+  for (let k = 0; k < r; k += st) { const d = Math.round(r - Math.sqrt(r * r - (r - k) * (r - k))); ctx.rect(Math.round(x + k), Math.round(y + d), st, Math.round(h - 2 * d)); ctx.rect(Math.round(x + w - k - st), Math.round(y + d), st, Math.round(h - 2 * d)); }
+}
+function knob(cx, cy, on) {
+  PX.drawIcon(ctx, ['...####...', '.########.', '.########.', '##########', '##########', '##########', '##########', '.########.', '.########.', '...####...'],
+    { '#': on ? '#ffffff' : '#e8e8ee' }, cx, cy, 2, '#111');
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(Math.round(cx - 6), Math.round(cy + 4), 12, 3);
+}
+function arrow(cx, cy, d) { PX.drawIcon(ctx, d < 0 ? ['..#', '.##', '###', '.##', '..#'] : ['#..', '##.', '###', '##.', '#..'], { '#': 'rgba(255,255,255,0.7)' }, cx, cy, 1, null); }
+function arrowV(cx, cy, d) { PX.drawIcon(ctx, d < 0 ? ['..#..', '.###.', '#####'] : ['#####', '.###.', '..#..'], { '#': 'rgba(255,255,255,0.7)' }, cx, cy, 1, null); }
+function drawPause() {
+  const W = S.W, pw = 200, x = Math.round(W / 2 - pw / 2), y = 60;
+  ctx.fillStyle = 'rgba(13,11,19,0.5)'; ctx.fillRect(0, 0, W, H);
+  panel(x, y, pw, 118);
+  T('PAUSED', W / 2, y + 10, '#fff', 3, 'center', '#000');
+  if (UI.button('resume', x + 16, y + 38, pw - 32, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (UI.button('restart', x + 16, y + 64, pw - 32, 20, 'START AGAIN', { size: 1, accent: '#ffd23f' })) startRun(R.m, R.l);
+  if (UI.button('quit', x + 16, y + 88, pw - 32, 20, 'PICK ANOTHER RUN', { size: 1 })) toMaps();
+}
+function nextRun() { return R.l < 2 ? [R.m, R.l + 1] : R.m < MAPS.length - 1 ? [R.m + 1, 0] : null; }
+function drawEnd(t) {
+  const W = S.W, pw = Math.min(300, W - 20), x = Math.round(W / 2 - pw / 2), y = 54, ok = state === 'finished';
+  if (!ok && P.crashT < 0.9) return;
+  ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
+  panel(x, y, pw, 150, ok ? '#5ad43f' : '#e8303a');
+  if (ok) {
+    T('FINISHED!', W / 2, y + 10, '#5ad43f', 3, 'center', '#000');
+    levelIcon(R.l, W / 2 - PX.textWidth(R.map.name + ' ' + LEVELS[R.l].name, 1) / 2 - 8, y + 39, 1);
+    T(R.map.name + ' ' + LEVELS[R.l].name, W / 2 + 4, y + 36, '#fff', 1, 'center');
+    T(fmtTime(P.t), W / 2, y + 50, '#ffd23f', 3, 'center', '#000');
+    T(P.newBest ? 'NEW BEST TIME!' : 'BEST ' + fmtTime(save.best[runKey(R.m, R.l)]), W / 2, y + 74, P.newBest ? '#5ad43f' : '#9a92b8', 1, 'center');
+    T('TOP SPEED ' + Math.round(P.maxV * 3.6) + ' KM/H' + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 86, '#ffffff', 1, 'center');
+    const nx = nextRun();
+    if (nx && UI.button('next', x + 14, y + 100, pw - 28, 22, R.l < 2 ? 'NEXT: ' + LEVELS[R.l + 1].name + ' RUN' : 'NEXT MOUNTAIN', { accent: '#5ad43f' })) startRun(nx[0], nx[1]);
+    if (!nx) T('YOU CONQUERED ALL 10 MOUNTAINS!', W / 2, y + 108, '#ffd23f', 1, 'center');
+  } else {
+    T('CRASH!', W / 2, y + 10, '#e8303a', 4, 'center', '#000');
+    T(P.cause, W / 2, y + 40, '#fff', 1, 'center');
+    T(Math.round(clamp((P.z + PLAYER_Z) / R.finishZ, 0, 1) * 100) + '% OF THE WAY DOWN', W / 2, y + 54, '#9a92b8', 1, 'center');
+    if (UI.button('retry', x + 14, y + 100, pw - 28, 22, 'TRY AGAIN', { accent: '#ffd23f' })) startRun(R.m, R.l);
+  }
+  const hw = Math.floor((pw - 34) / 2);
+  if (ok && UI.button('again', x + 14, y + 126, hw, 18, 'RACE AGAIN', { size: 1 })) startRun(R.m, R.l);
+  if (UI.button('runs', ok ? x + 20 + hw : x + 14, y + 126, ok ? hw : pw - 28, 18, 'PICK A RUN', { size: 1 }) || UI.back) toMaps();
+}
+function toMaps() { state = 'maps'; paused = false; demo = null; save.seenHelp = true; store(); }
+function setPause(on) { if (state === 'play' && P && !P.done) { paused = on; if (on) { touch.steer = touch.speed = null; } } }
+
+/* --- sound --- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.12, { vol: 0.1 });
+  else if (k === 'beep') s.tone(440, 0.15, { vol: 0.1 });
+  else if (k === 'go') s.tone(880, 0.4, { vol: 0.12 });
+  else if (k === 'jump') { s.noise(0.2, { freq: 1600, vol: 0.12, filter: 'bandpass' }); s.tone([300, 700], 0.2, { vol: 0.05, type: 'triangle' }); }
+  else if (k === 'land') s.noise(0.15, { freq: 500, vol: 0.2 });
+  else if (k === 'ice') s.tone([1400, 1800], 0.15, { vol: 0.04, type: 'triangle' });
+  else if (k === 'crash') { s.noise(0.5, { freq: 400, vol: 0.35 }); s.tone([320, 70], 0.4, { vol: 0.08, type: 'sawtooth' }); }
+  else if (k === 'finish') s.tone([523, 659, 784, 1047, 1319], 0.8, { vol: 0.1 });
+}
+
+/* --- 8. INPUT: the two sliders on a touch screen, keys, a controller ---------------------- */
+const inBox = (b, x, y, pad = 16) => x >= b.x - pad && x < b.x + b.w + pad && y >= b.y - pad && y < b.y + b.h + pad;
+// a finger on a slider moves its knob to where it is; a finger anywhere else on that side works from where it first touched
+function slide(id, x, y) {
+  const sl = sliders();
+  if (touch.steer === id) touch.steerV = clamp(touch.steerAbs ? (x - (sl.steer.x + sl.steer.w / 2)) / (sl.steer.w / 2 - 14) : (x - touch.x0) / 40, -1, 1);
+  if (touch.speed === id) touch.speedV = clamp(touch.speedAbs ? -(y - (sl.speed.y + sl.speed.h / 2)) / (sl.speed.h / 2 - 16) : -(y - touch.y0) / 40, -1, 1);
+}
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (e.pointerType === 'touch') touchUI = true;
+  if (state !== 'play' || !P || P.done) return;
+  if (x < 36 && y < 36) { setPause(!paused); return; }          // the pause button
+  if (paused) return;
+  const sl = sliders();
+  // the left half steers (the slider is just where it shows), the right half sets the speed
+  if (inBox(sl.speed, x, y, 24) || x > S.W * 0.62) { touch.speed = e.pointerId; touch.speedAbs = inBox(sl.speed, x, y, 10); touch.y0 = y; touch.speedV = 0; slide(e.pointerId, x, y); }
+  else { touch.steer = e.pointerId; touch.steerAbs = inBox(sl.steer, x, y, 10); touch.x0 = x; touch.steerV = 0; slide(e.pointerId, x, y); }
+};
+UI.onMove = (e, x, y) => { if (state === 'play') slide(e.pointerId, x, y); };
+UI.onUp = e => { if (touch.steer === e.pointerId) { touch.steer = null; touch.steerV = 0; } if (touch.speed === e.pointerId) { touch.speed = null; touch.speedV = 0; } };
+const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd' };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play' && P && !P.done) { setPause(!paused); return; }
+  if (e.code === 'Escape') { UI.back = true; return; }
+  if (KEYMAP[e.code]) { inp.keys[KEYMAP[e.code]] = true; touchUI = false; }
+  if ((e.code === 'Enter' || e.code === 'Space') && (state === 'crashed' || state === 'finished') && (state === 'finished' || P.crashT > 0.9)) {
+    const nx = state === 'finished' ? nextRun() : null; if (nx) startRun(nx[0], nx[1]); else startRun(R.m, R.l);
+  }
+});
+window.addEventListener('keyup', e => { if (KEYMAP[e.code]) inp.keys[KEYMAP[e.code]] = false; });
+window.addEventListener('blur', () => { for (const k in inp.keys) inp.keys[k] = false; setPause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+
+/* --- 9. MAIN LOOP ----------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'title' || state === 'maps') {
+    demoWorld(t, dt);
+    if (state === 'title') drawTitle(t); else drawMaps(t);
+  } else {
+    const sub = 4; for (let k = 0; k < sub; k++) step(dt / sub);
+    drawWorld(t);
+    hud(t);
+    if (state === 'crashed' || state === 'finished') drawEnd(t);
+    else if (paused) drawPause();
+  }
+  UI.end();
+  S.blit('#0d0b13');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.setIcon && PX.setIcon();
+PX.Pad.setup({
+  title: 'Pixel Ski: controller', ui: UI, menu: () => state !== 'play' || paused || (P && P.done),
+  phone: { stick: 'STEER', dpad: true, buttons: [['RT', 'FASTER'], ['LT', 'BRAKE'], ['A', 'FASTER'], ['B', 'BRAKE']] },
+  keys: () => ({ START: 'KeyP' }),
+  onPlay(h) {
+    inp.padSteer = Math.abs(h.ax) > 0.15 ? clamp(h.ax, -1, 1) : 0;
+    inp.padSpeed = h.RT || h.A || h.up ? 1 : h.LT || h.B || h.down ? -1 : 0;
+  },
+  help: [['LEFT|RIGHT', 'STEER (LEFT STICK)'], ['RT|A|UP', 'TUCK: GO FASTER'], ['LT|B|DOWN', 'BRAKE'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>
