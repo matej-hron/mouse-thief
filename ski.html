@@ -42,7 +42,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const SAVE_KEY = 'pixelSki.save';
 const save = { best: {}, done: {}, sfx: true, seenHelp: false, coins: 0, up: {}, skis: 'green', helmet: 'yellow', owned: { green: 1, yellow: 1 }, runStars: {}, daily: '' };
 try {
@@ -385,7 +385,7 @@ function hit(cause) {
   if (P.lives > 0) { P.lives--; P.inv = 1.6; P.v *= 0.6; P.trick = null; say('HELMET SAVED YOU!', 1.4); sfx('saved'); P.shake = 0.4; return false; }
   crash(cause); return true;
 }
-function say(msg, t, col = '#ffffff') { P.msg = msg; P.msgT = t; P.msgC = col; }
+function say(msg, t, col = '#ffffff') { P.msg = msg; P.msgT = t; P.msgT0 = t; P.msgC = col; }
 const canAct = () => state === 'play' && P && !P.done && !paused && P.count <= 0;
 function useTurbo() { if (!canAct() || P.turbos <= 0 || P.turboT > 0) return; P.turbos--; P.turboT = 2.5; sfx('turbo'); say('TURBO!', 1, '#ff5ad0'); }
 function useSlow() { if (!canAct() || P.slows <= 0 || P.slowT > 0) return; P.slows--; P.slowT = 3; sfx('slow'); say('SLOW-MO!', 1, '#4aa8ff'); }
@@ -577,8 +577,9 @@ function drawSky(map, t, curveShift) {
   for (let x = 0; x < W; x += 6) { const u = x + curveShift * 0.5; if (Math.sin(u * 0.13) > 0.1) { const h = 6 + (Math.floor(u) * 7 % 5); ctx.fillRect(x + 2, HZ - h - 6, 2, h); ctx.fillRect(x + 1, HZ - h - 2, 4, h - 4); } }
   // a gondola on its cable, sliding across the sky (like the cable car on the image)
   const gx = ((t * 6 - curveShift * 0.3) % (W + 80) + W + 80) % (W + 80) - 40;
-  ctx.fillStyle = '#333'; for (let x = 0; x < W; x += 2) ctx.fillRect(x, Math.round(26 + x * 0.06), 2, 1);
-  const gy = Math.round(26 + gx * 0.06);
+  const cab = x => 22 + x * 0.05 + Math.sin(clamp(x / W, 0, 1) * Math.PI) * 8;            // the cable sags between the pylons
+  ctx.fillStyle = map.night ? 'rgba(160,170,200,0.35)' : 'rgba(40,40,60,0.35)'; for (let x = 0; x < W; x += 2) ctx.fillRect(x, Math.round(cab(x)), 2, 1);
+  const gy = Math.round(cab(gx));
   ctx.fillStyle = '#444'; ctx.fillRect(Math.round(gx), gy, 1, 6);
   ctx.fillStyle = '#111'; ctx.fillRect(Math.round(gx) - 7, gy + 5, 15, 13);
   ctx.fillStyle = map.night ? '#ffd23f' : '#b8d8e0'; ctx.fillRect(Math.round(gx) - 6, gy + 6, 13, 11);
@@ -725,6 +726,16 @@ function drawWorld(t) {
   }
   // snowfall
   if (map.snowfall) { ctx.fillStyle = '#ffffff'; for (const fl of flakes.slice(0, Math.round(25 * map.snowfall))) ctx.fillRect(Math.round(fl.x), Math.round(fl.y), fl.s > 1 ? 2 : 1, fl.s > 1 ? 2 : 1); }
+  // the avalanche: a white wall of snow rising behind you when it gets close
+  if (R.aval && R.aval.gap < 60 && P.t > 0.5) {
+    const k = clamp((60 - R.aval.gap) / 58, 0, 1), top = Math.round(H - k * 150);
+    for (let x = 0; x < W; x += 4) {
+      const bump = Math.round(Math.abs(Math.sin(x * 0.07 + t * 9)) * 10 + Math.abs(Math.sin(x * 0.023 - t * 5)) * 14);
+      ctx.fillStyle = '#e8eef8'; ctx.fillRect(x, top - bump, 4, H - top + bump);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x, top - bump, 4, 3);
+    }
+    ctx.fillStyle = '#c8d4e8'; for (let q = 0; q < 30; q++) ctx.fillRect(Math.round((q * 53 + t * 300) % W), Math.round(top + 10 + (q * 31 + t * 200) % Math.max(1, H - top)), 3, 3);
+  }
   drawPlayer(t);
   if (map.fog) { ctx.fillStyle = 'rgba(216,221,228,0.18)'; ctx.fillRect(0, 0, W, H); }
   // speed lines: the faster, the more
@@ -739,16 +750,6 @@ function drawWorld(t) {
     }
   }
   if (P.slowT > 0) { ctx.fillStyle = 'rgba(80,140,255,0.16)'; ctx.fillRect(0, 0, W, H); }
-  // the avalanche: a white wall of snow rising behind you when it gets close
-  if (R.aval && R.aval.gap < 60 && P.t > 0.5) {
-    const k = clamp((60 - R.aval.gap) / 58, 0, 1), top = Math.round(H - k * 150);
-    for (let x = 0; x < W; x += 4) {
-      const bump = Math.round(Math.abs(Math.sin(x * 0.07 + t * 9)) * 10 + Math.abs(Math.sin(x * 0.023 - t * 5)) * 14);
-      ctx.fillStyle = '#e8eef8'; ctx.fillRect(x, top - bump, 4, H - top + bump);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(x, top - bump, 4, 3);
-    }
-    ctx.fillStyle = '#c8d4e8'; for (let q = 0; q < 30; q++) ctx.fillRect(Math.round((q * 53 + t * 300) % W), Math.round(top + 10 + (q * 31 + t * 200) % Math.max(1, H - top)), 3, 3);
-  }
   for (const c of P.confetti || []) { if (c.y > -4 && c.y < H) { ctx.fillStyle = c.c; ctx.fillRect(Math.round(c.x), Math.round(c.y), 3, 2); } }
 }
 function drawPlayer(t) {
@@ -778,27 +779,39 @@ function drawPlayer(t) {
     ctx.save(); ctx.translate(cx - 14, base + 2); ctx.rotate(0.6 + P.crashT); r(-14, -1, 28, 3, skiC); ctx.restore();
     ctx.save(); ctx.translate(cx + 16, base); ctx.rotate(-0.9 - P.crashT * 0.7); r(-14, -1, 28, 3, skiC); ctx.restore();
   } else {
-    const tuck = P.tuck ? 6 : 0, sk = lean * 2;
-    // skis (green, like on the image), a bit apart, the tips pointing down the slope (up the screen)
-    r(cx - 11 + sk, base - 16, 4, 22, '#111'); r(cx - 10 + sk, base - 15, 2, 20, skiC);
-    r(cx + 6 + sk, base - 16, 4, 22, '#111'); r(cx + 7 + sk, base - 15, 2, 20, skiC);
-    r(cx - 10 + sk, base - 15, 2, 2, '#ffd23f'); r(cx + 7 + sk, base - 15, 2, 2, '#ffd23f');
-    // legs and boots
-    r(cx - 9 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a'); r(cx + 4 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a');
-    r(cx - 10 + sk, base - 4, 6, 4, '#222'); r(cx + 5 + sk, base - 4, 6, 4, '#222');
-    // body: a jacket in your color, a backpack-free race suit
-    const by = base - 28 + tuck * 1.5, bx = cx - 9 + lean * 2;
-    r(bx - 1, by - 1, 20, 17, '#111'); r(bx, by, 18, 15, MY_COLOR); r(bx + 2, by + 2, 14, 3, shade(MY_COLOR, 1.25)); r(bx, by + 11, 18, 4, shade(MY_COLOR, 0.7));
-    // arms and poles
-    const arm = P.brake ? 8 : P.tuck ? -2 : 4;
-    r(bx - 4, by + 3, 5, 9, shade(MY_COLOR, 0.85)); r(bx + 17, by + 3, 5, 9, shade(MY_COLOR, 0.85));
-    r(bx - 4, by + 11, 4, 3, '#222'); r(bx + 18, by + 11, 4, 3, '#222');
-    r(bx - 3 - arm, by + 13, 1, 16, '#ccc'); r(bx + 21 + arm, by + 13, 1, 16, '#ccc');
-    if (!P.tuck) { r(bx - 4 - arm, by + 13, 1, 1, '#ccc'); r(bx + 22 + arm, by + 13, 1, 1, '#ccc'); }
-    // helmet (yellow) with goggles strap
-    const hx = cx - 6 + lean * 3, hy = by - 11 + (P.tuck ? 4 : 0);
-    r(hx - 1, hy - 1, 14, 13, '#111'); r(hx, hy, 12, 11, helmC); r(hx + 2, hy + 1, 4, 2, 'rgba(255,255,255,0.5)'); r(hx, hy + 6, 12, 2, '#e8303a');
-    if (save.helmet === 'crown') { r(hx, hy - 4, 12, 4, '#ffd23f'); r(hx, hy - 7, 2, 3, '#ffd23f'); r(hx + 5, hy - 7, 2, 3, '#ffd23f'); r(hx + 10, hy - 7, 2, 3, '#ffd23f'); r(hx + 5, hy - 3, 2, 2, '#e8303a'); }
+    const tuck = P.tuck ? 6 : 0, sk = lean * 2, air = P.h > 0.05;
+    const C = MY_COLOR, CD = shade(MY_COLOR, 0.7), CL = shade(MY_COLOR, 1.3), PANTS = '#2a2f4a', PANTS2 = '#3a4266';
+    // skis: outline, color, a lighter tip curling up; in the air they spread a little
+    const spread = air ? 2 : 0;
+    for (const [sx0, d] of [[cx - 11 + sk - spread, -1], [cx + 6 + sk + spread, 1]]) {
+      r(sx0, base - 17, 4, 23, '#111'); r(sx0 + 1, base - 16, 2, 21, skiC); r(sx0 + 1, base - 16, 2, 2, '#ffffff'); r(sx0 + 1, base + 2, 2, 2, shade(skiC === 'rainbow' ? '#ffffff' : '#888888', 1));
+      r(sx0, base - 6, 4, 3, '#555'); // the binding
+    }
+    // boots and legs (knees bend when you tuck)
+    r(cx - 10 + sk, base - 6, 6, 5, '#111'); r(cx - 9 + sk, base - 5, 4, 3, '#4a4a5a');
+    r(cx + 5 + sk, base - 6, 6, 5, '#111'); r(cx + 6 + sk, base - 5, 4, 3, '#4a4a5a');
+    const lh = 11 - tuck;
+    r(cx - 10 + lean, base - 6 - lh, 7, lh + 1, '#111'); r(cx - 9 + lean, base - 5 - lh, 5, lh, PANTS); r(cx - 9 + lean, base - 5 - lh, 1, lh, PANTS2);
+    r(cx + 4 + lean, base - 6 - lh, 7, lh + 1, '#111'); r(cx + 5 + lean, base - 5 - lh, 5, lh, PANTS); r(cx + 9 + lean, base - 5 - lh, 1, lh, PANTS2);
+    // body: race jacket, darker sides, a white bib with your number
+    const by = base - 30 + tuck * 1.5, bx = cx - 10 + lean * 2;
+    r(bx - 1, by - 1, 22, 19, '#111'); r(bx, by, 20, 17, C); r(bx, by, 3, 17, CD); r(bx + 17, by, 3, 17, CD); r(bx + 3, by, 14, 2, CL);
+    r(bx + 5, by + 4, 10, 9, '#111'); r(bx + 6, by + 5, 8, 7, '#f4f4f0'); T('1', bx + 10, by + 6, '#e8303a', 1, 'center');
+    r(bx, by + 15, 20, 2, CD);
+    // arms, gloves, poles (with baskets); arms out when you brake, tucked in when you go fast
+    const arm = P.brake ? 8 : P.tuck ? -2 : 4, ay = by + 3;
+    r(bx - 5, ay - 1, 7, 11, '#111'); r(bx - 4, ay, 5, 9, CD);
+    r(bx + 18, ay - 1, 7, 11, '#111'); r(bx + 19, ay, 5, 9, CD);
+    r(bx - 5, ay + 8, 6, 4, '#111'); r(bx - 4, ay + 9, 4, 2, '#2a2a2a');
+    r(bx + 19, ay + 8, 6, 4, '#111'); r(bx + 20, ay + 9, 4, 2, '#2a2a2a');
+    const pl = P.tuck ? 10 : 17;
+    r(bx - 3 - arm, ay + 11, 1, pl, '#d8d8e0'); r(bx + 22 + arm, ay + 11, 1, pl, '#d8d8e0');
+    if (!P.tuck) { r(bx - 5 - arm, ay + 9 + pl, 5, 1, '#666'); r(bx + 20 + arm, ay + 9 + pl, 5, 1, '#666'); }
+    // helmet with a shine, the goggle strap and the goggles' edges
+    const hx = cx - 7 + lean * 3, hy = by - 12 + (P.tuck ? 4 : 0);
+    r(hx - 1, hy - 1, 16, 14, '#111'); r(hx, hy, 14, 12, helmC); r(hx + 2, hy + 1, 5, 2, 'rgba(255,255,255,0.55)'); r(hx + 1, hy + 9, 12, 3, shade(helmC.startsWith('#') ? helmC : '#ffd23f', 0.75));
+    r(hx, hy + 6, 14, 2, '#111'); r(hx - 1, hy + 5, 2, 4, '#ff8a2a'); r(hx + 13, hy + 5, 2, 4, '#ff8a2a');
+    if (save.helmet === 'crown') { r(hx + 1, hy - 4, 12, 4, '#ffd23f'); r(hx + 1, hy - 7, 2, 3, '#ffd23f'); r(hx + 6, hy - 7, 2, 3, '#ffd23f'); r(hx + 11, hy - 7, 2, 3, '#ffd23f'); r(hx + 6, hy - 3, 2, 2, '#e8303a'); }
   }
   if (spin) ctx.restore();
   // snow spray
@@ -813,7 +826,7 @@ function levelIcon(l, cx, cy, s = 1, outline = '#fff') {   // the trail signs: g
                 ['...#...', '..###..', '.#####.', '#######', '.#####.', '..###..', '...#...']][l];
   PX.drawIcon(ctx, rows, { '#': LEVELS[l].color }, cx, cy, s, outline);
 }
-function panel(x, y, w, h, color = '#7ac8ff') { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = 'rgba(29,24,48,0.94)'; ctx.fillRect(x, y, w, h); ctx.fillStyle = color; ctx.fillRect(x, y, w, 2); }
+function panel(x, y, w, h, color = '#7ac8ff') { glass(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = color; ctx.fillRect(x + 1, y, w - 2, 2); }
 // the title and the map screen show a run of the picked mountain going by in the background
 let demo = null;
 function demoWorld(t, dt) {
@@ -832,8 +845,16 @@ function drawTitle(t) {
     T(ct, W - 36, 30, '#ffd23f', 1, 'right', '#000'); coinIcon(W - 42 - PX.textWidth(ct, 1), 32);
     T(st, W - 36, 41, '#ffd23f', 1, 'right', '#000'); starIcon(W - 42 - PX.textWidth(st, 1), 43, true, true); }
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  // a snowy peak behind the logo
+  ctx.fillStyle = '#2a4a8a'; ctx.beginPath(); ctx.moveTo(W / 2 - 110, 104); ctx.lineTo(W / 2 - 20, 30); ctx.lineTo(W / 2 + 10, 52); ctx.lineTo(W / 2 + 40, 36); ctx.lineTo(W / 2 + 120, 104); ctx.fill();
+  ctx.fillStyle = '#e8f2ff'; ctx.beginPath(); ctx.moveTo(W / 2 - 38, 45); ctx.lineTo(W / 2 - 20, 30); ctx.lineTo(W / 2 - 4, 43); ctx.lineTo(W / 2 - 12, 40); ctx.lineTo(W / 2 - 20, 46); ctx.lineTo(W / 2 - 28, 41); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 28, 44); ctx.lineTo(W / 2 + 40, 36); ctx.lineTo(W / 2 + 54, 46); ctx.lineTo(W / 2 + 44, 44); ctx.lineTo(W / 2 + 36, 48); ctx.fill();
   T('PIXEL', W / 2, 40, '#ffd23f', 3, 'center', '#000');
+  T('SKI', W / 2 + 2, 62, '#0d2a5a', 8, 'center');
   T('SKI', W / 2, 60, '#fff', 8, 'center', '#2a6ad4');
+  ctx.fillStyle = '#ffffff';                            // snow lying on top of the letters
+  const lw = PX.textWidth('SKI', 8), lx0 = Math.round(W / 2 - lw / 2);
+  for (let k = 0; k < lw; k += 4) if ((k * 7) % 11 < 7) ctx.fillRect(lx0 + k, 58 - ((k * 3) % 2), 4, 2);
   T('10 MOUNTAINS. 3 RUNS EACH. DON\'T CRASH!', W / 2, 110, '#ffffff', 1, 'center', '#000');
   if (save.daily !== today() && Math.floor(t * 2) % 2) T('DAILY BONUS: X2 COINS ON YOUR FIRST FINISH TODAY!', W / 2, 31, '#5ad43f', 1, 'center', '#000');
   [0, 1, 2].forEach(l => { levelIcon(l, W / 2 - 40 + l * 40, 126, 2); });
@@ -892,8 +913,9 @@ function drawShop(t) {
   if (shopTab !== 'looks') {
     UPGRADES.filter(u => u.tab === shopTab).forEach((u, i) => {
       const y = 52 + i * 26, l = lvl(u.id), max = l >= u.max, cost = max ? 0 : u.cost[l];
-      panel(x, y, pw, 23, u.col);
-      T(u.name, x + 6, y + 6, u.col, 1, 'left', '#000'); T(u.desc, x + 6, y + 15, '#9a92b8', 1);
+      glass(x, y, pw, 23, u.col);
+      disc(x + 12, y + 12, 8, '#111'); disc(x + 12, y + 12, 7, shade(u.col, 0.45)); shopIcon(u.id, x + 12, y + 12, u.col);
+      T(u.name, x + 24, y + 5, u.col, 1); T(u.desc, x + 24, y + 14, '#9a92b8', 1);
       for (let k = 0; k < u.max; k++) { ctx.fillStyle = '#111'; ctx.fillRect(x + pw - 150 + k * 11, y + 7, 9, 9); ctx.fillStyle = k < l ? u.col : '#3a2f5c'; ctx.fillRect(x + pw - 149 + k * 11, y + 8, 7, 7); }
       if (max) T('MAX', x + pw - 40, y + 9, '#5ad43f', 1, 'center');
       else if (UI.button('buy_' + u.id, x + pw - 84, y + 4, 78, 16, '', { size: 1, accent: u.col, disabled: save.coins < cost })) {
@@ -933,55 +955,82 @@ function lockIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '#...#', '#...#', '#####'
 function sliders() {
   const W = S.W;
   return { steer: { x: 14, y: H - 52, w: 110, h: 30 }, speed: { x: W - 50, y: H - 132, w: 34, h: 112 },
-           jump: { x: W - 112, y: H - 60, w: 54, h: 44 }, turbo: { x: 14, y: H - 92, w: 58, h: 30 }, slow: { x: 76, y: H - 92, w: 58, h: 30 } };
+           jump: { x: W - 108, y: H - 62, w: 46, h: 46 }, turbo: { x: 14, y: H - 92, w: 32, h: 32 }, slow: { x: 52, y: H - 92, w: 32, h: 32 } };
+}
+// a HUD panel: dark glass with a 1 px outline and cut corners (pixel-rounded)
+function glass(x, y, w, h, top) {
+  x = Math.round(x); y = Math.round(y);
+  ctx.fillStyle = '#111'; ctx.fillRect(x + 1, y, w - 2, h); ctx.fillRect(x, y + 1, w, h - 2);
+  ctx.fillStyle = 'rgba(22,18,40,0.86)'; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.fillStyle = top || 'rgba(255,255,255,0.12)'; ctx.fillRect(x + 2, y + 1, w - 4, 1);
+}
+// a filled pixel circle
+function disc(cx, cy, r, col) { ctx.fillStyle = col; for (let dy = -r; dy <= r; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy)); ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1); } }
+// a round button: a ring in its color, dark glass inside (lit up while it works)
+function roundBtn(cx, cy, r, col, on, dim) {
+  disc(cx + 1, cy + 2, r, 'rgba(0,0,0,0.35)');
+  disc(cx, cy, r, '#111'); disc(cx, cy, r - 1, dim ? '#3a3450' : col); disc(cx, cy, r - 3, on ? col : 'rgba(22,18,40,0.88)');
+  if (!on) { ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(Math.round(cx - r * 0.5), Math.round(cy - r + 4), Math.round(r), 2); }
 }
 function hud(t) {
-  const W = S.W, sl = sliders();
-  // pause (top left; not online: you can't stop your friend)
-  if (!R.mp) {
-    ctx.fillStyle = '#111'; ctx.fillRect(7, 7, 24, 24); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(8, 8, 22, 22);
-    ctx.fillStyle = '#111'; ctx.fillRect(14, 13, 3, 12); ctx.fillRect(21, 13, 3, 12);
+  const W = S.W, sl = sliders(), lc = LEVELS[R.l].color === '#22222a' ? '#c8c8d8' : LEVELS[R.l].color;
+  // top left: pause, the run, coins and helmets
+  const lw = Math.max(96, PX.textWidth(R.map.name, 1) + (R.mp ? 26 : 50));
+  glass(6, 6, lw, 28, lc);
+  let lx = 12;
+  if (!R.mp) {                                        // pause (not online: you can't stop your friend)
+    ctx.fillStyle = '#fbf9f3'; ctx.fillRect(11, 11, 18, 18); ctx.fillStyle = '#111'; ctx.fillRect(16, 15, 3, 10); ctx.fillRect(21, 15, 3, 10);
+    lx = 36;
   }
-  // km/h and the clock (top right), white boxes like on the image
-  const kmh = Math.round(P.v * 3.6);
-  ctx.fillStyle = '#111'; ctx.fillRect(W - 78, 6, 72, 22); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(W - 77, 7, 70, 20);
-  T('KM/H', W - 74, 9, '#111', 1); T(String(kmh), W - 9, 10, '#111', 3, 'right');
-  ctx.fillStyle = '#111'; ctx.fillRect(W - 78, 30, 72, 16); ctx.fillStyle = '#fbf9f3'; ctx.fillRect(W - 77, 31, 70, 14);
-  ctx.fillStyle = '#5ad43f'; ctx.fillRect(W - 9, 31, 2, 14);
-  T(fmtTime(P.t), W - 12, 35, '#111', 1, 'right');
-  // the run: its sign and how far to the bottom
-  levelIcon(R.l, 44, 19, 1); T(R.map.name, 52, 10, '#fff', 1, 'left', '#000');
-  const prog = clamp((P.z + PLAYER_Z) / R.finishZ, 0, 1), bw = Math.min(160, W - 220);
-  T(LEVELS[R.l].name + ' RUN', 52, 20, LEVELS[R.l].color === '#22222a' ? '#c8c8d8' : LEVELS[R.l].color, 1, 'left', '#000');
-  ctx.fillStyle = '#111'; ctx.fillRect(Math.round(W / 2 - bw / 2) - 1, 9, bw + 2, 6); ctx.fillStyle = '#3a2f5c'; ctx.fillRect(Math.round(W / 2 - bw / 2), 10, bw, 4);
-  ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(W / 2 - bw / 2), 10, Math.round(bw * prog), 4);
-  ctx.fillStyle = '#e8303a'; ctx.fillRect(Math.round(W / 2 + bw / 2) - 2, 7, 3, 10);
-  const best = save.best[runKey(R.m, R.l)];
-  if (R.mp && Net.friend) {                            // where your friend is
+  T(R.map.name, lx, 11, '#fff', 1);
+  levelIcon(R.l, lx + 3, 25, 1, null); T(LEVELS[R.l].name + ' RUN', lx + 9, 22, lc, 1);
+  glass(6, 36, 64 + P.lives * 11, 14);
+  coinIcon(14, 43); T(P.coins + '/' + R.totalCoins, 21, 40, '#ffd23f', 1);
+  for (let k = 0; k < P.lives; k++) helmIcon(66 + k * 11, 43);
+  // top right: the speedometer and the clock
+  const kmh = Math.round(P.v * 3.6), sx = W - 84;
+  glass(sx, 6, 78, R.mp ? 40 : 50);
+  T(String(kmh), W - 12, 11, '#fff', 3, 'right');
+  T('KM/H', sx + 6, 11, '#9a92b8', 1);
+  const sp = clamp(P.v / 70, 0, 1), sc = sp < 0.55 ? '#5ad43f' : sp < 0.8 ? '#ffd23f' : '#ff5a5a';
+  ctx.fillStyle = '#3a2f5c'; ctx.fillRect(sx + 6, 29, 66, 2); ctx.fillStyle = sc; ctx.fillRect(sx + 6, 29, Math.round(66 * sp), 2);
+  T(fmtTime(P.t), W - 12, 34, '#fff', 1, 'right');
+  if (R.par && !R.mp) { const ok = P.t <= R.par; T('PAR', sx + 6, 43, '#9a92b8', 1); T(fmtTime(R.par).slice(1, 8), W - 12, 43, ok ? '#5ad43f' : '#ff8a8a', 1, 'right'); }
+  // top middle: the way down (a flag at the bottom), you on it (and your friend)
+  const bw = Math.min(170, W - lw - 110), bx = Math.round(W / 2 - bw / 2), prog = progress();
+  ctx.fillStyle = '#111'; ctx.fillRect(bx - 1, 9, bw + 2, 7); ctx.fillStyle = '#2a2440'; ctx.fillRect(bx, 10, bw, 5);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(bx, 10, Math.round(bw * prog), 5); ctx.fillStyle = '#fff2a0'; ctx.fillRect(bx, 10, Math.round(bw * prog), 1);
+  for (let q = 0; q < 6; q++) { ctx.fillStyle = q % 2 ? '#111' : '#fff'; ctx.fillRect(bx + bw + 2 + (q % 2) * 3, 6 + Math.floor(q / 2) * 3, 3, 3); }   // the finish flag
+  ctx.fillStyle = '#888'; ctx.fillRect(bx + bw + 1, 6, 1, 13);
+  if (R.mp && Net.friend) {
     const fp = FR.fin ? 1 : FR.out ? FR.prog : clamp(FR.z / R.finishZ, 0, 1);
-    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(W / 2 - bw / 2 + bw * fp) - 2, 6, 5, 12); ctx.fillStyle = Net.friend.color; ctx.fillRect(Math.round(W / 2 - bw / 2 + bw * fp) - 1, 7, 3, 10);
+    disc(bx + bw * fp, 12, 3, '#111'); disc(bx + bw * fp, 12, 2, Net.friend.color);
+  }
+  disc(bx + bw * prog, 12, 4, '#111'); disc(bx + bw * prog, 12, 3, MY_COLOR); ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(bx + bw * prog) - 1, 10, 2, 1);
+  const best = save.best[runKey(R.m, R.l)];
+  if (R.mp && Net.friend) {
     const gap = Math.round((FR.z - (P.z + PLAYER_Z)) / METRE);
-    T(!Net.live ? 'YOUR FRIEND LEFT' : FR.fin ? Net.friend.name + ' FINISHED!' : FR.out ? Net.friend.name + ' CRASHED!' : Net.friend.name + (gap >= 0 ? ' +' : ' ') + gap + ' M', W / 2, 18, FR.out || !Net.live ? '#ff8a8a' : '#ffffff', 1, 'center', '#000');
-  } else if (best) T('BEST ' + fmtTime(best), W / 2, 18, '#ffffff', 1, 'center', '#000');
-  coinIcon(40, 37); T(P.coins + '/' + R.totalCoins, 47, 34, '#ffd23f', 1, 'left', '#000');
-  for (let k = 0; k < P.lives; k++) helmIcon(86 + k * 11, 37);
-  if (R.par && !R.mp) T('PAR ' + fmtTime(R.par).slice(1, 8), W - 9, 49, P.t <= R.par ? '#5ad43f' : '#ff8a8a', 1, 'right', '#000');
+    T(!Net.live ? 'YOUR FRIEND LEFT' : FR.fin ? Net.friend.name + ' FINISHED!' : FR.out ? Net.friend.name + ' CRASHED!' : Net.friend.name + (gap >= 0 ? ' +' : ' ') + gap + ' M', W / 2, 20, FR.out || !Net.live ? '#ff8a8a' : '#ffffff', 1, 'center', '#000');
+  } else if (best) T('BEST ' + fmtTime(best).slice(1), W / 2, 20, '#ffffff', 1, 'center', '#000');
   if (R.aval && P.t > 0.5 && state === 'play') {
     const g = Math.round(R.aval.gap), warn = g < 60;
-    if (!warn || Math.floor(performance.now() / 200) % 2) T('AVALANCHE ' + g + ' M', W / 2, 26, warn ? '#ff5a5a' : '#ffffff', warn ? 2 : 1, 'center', '#000');
+    if (!warn || Math.floor(performance.now() / 200) % 2) T((warn ? '! AVALANCHE ' : 'AVALANCHE ') + g + ' M', W / 2, 30, warn ? '#ff5a5a' : '#c8d4e8', warn ? 2 : 1, 'center', '#000');
   }
-  if (P.msgT > 0) T(P.msg, W / 2, 38, P.msgC, 2, 'center', '#000');
-  if (P.powder) T('DEEP SNOW!', W / 2, 52, '#ffffff', 2, 'center', '#2a6ad4');
-  else if (P.iceT > 0) T('ICE!', W / 2, 52, '#9ae0ff', 2, 'center', '#000');
-  else if (P.h > 0.4) T('AIR!', W / 2, 52, '#ffd23f', 2, 'center', '#000');
-  if (P.count > 0) { T(String(Math.ceil(P.count)), W / 2, 66, '#ffd23f', 6, 'center', '#000'); T('GET READY!', W / 2, 102, '#fff', 2, 'center', '#000'); }
-  else if (P.t < 0.8 && state === 'play') T('GO!', W / 2, 66, '#5ad43f', 6, 'center', '#000');
-  if (!save.seenHelp && P.t < 6 && state === 'play') {
-    ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(W / 2 - 150, 118, 300, 34);
-    ctx.fillRect(W / 2 - 150, 152, 300, 14);
-    T(touchUI ? 'LEFT SLIDER: STEER.  RIGHT SLIDER: UP = FASTER, DOWN = BRAKE.' : 'ARROWS / A D: STEER.  UP / W: TUCK (FASTER).  DOWN / S: BRAKE.', W / 2, 124, '#fff', 1, 'center');
-    T('DON\'T HIT ANYTHING! STAY INSIDE THE BLUE LINES.', W / 2, 138, '#ffd23f', 1, 'center');
-    T(touchUI ? 'JUMP: TAP JUMP. IN THE AIR TAP AGAIN TO FLIP!' : 'SPACE: JUMP. IN THE AIR AGAIN: FLIP!', W / 2, 155, '#ff6bd0', 1, 'center');
+  // messages: they pop in a bit bigger, then settle
+  if (P.msgT > 0) { const pop = P.msgT > 0.9 * (P.msgT0 || 1) ? 3 : 2; T(P.msg, W / 2, 44 - (pop - 2) * 3, P.msgC, pop, 'center', '#000'); }
+  if (P.powder) T('DEEP SNOW!', W / 2, 62, '#ffffff', 2, 'center', '#2a6ad4');
+  else if (P.iceT > 0 && !R.segs[Math.floor((P.z + PLAYER_Z) / SEG)].sheet) T('ICE!', W / 2, 62, '#9ae0ff', 2, 'center', '#000');
+  // the countdown: each number pops
+  if (P.count > 0) {
+    const n = Math.ceil(P.count), f = P.count - Math.floor(P.count), sz = f > 0.75 ? 8 : 6;
+    T(String(n), W / 2, 62 - (sz - 6) * 2.5, '#ffd23f', sz, 'center', '#000');
+    glass(W / 2 - 52, 104, 104, 18); T('GET READY!', W / 2, 108, '#fff', 2, 'center');
+  } else if (P.t < 0.8 && state === 'play') T('GO!', W / 2, 70 - (P.t < 0.15 ? 6 : 0), '#5ad43f', P.t < 0.15 ? 8 : 6, 'center', '#000');
+  if (!save.seenHelp && P.t < 7 && P.count <= 0 && state === 'play' && !paused) {
+    glass(W / 2 - 152, 116, 304, 52);
+    T(touchUI ? 'LEFT SLIDER: STEER.  RIGHT SLIDER: UP = FASTER, DOWN = BRAKE.' : 'ARROWS / A D: STEER.  UP / W: TUCK (FASTER).  DOWN / S: BRAKE.', W / 2, 123, '#fff', 1, 'center');
+    T('DON\'T HIT ANYTHING! STAY INSIDE THE BLUE LINES.', W / 2, 137, '#ffd23f', 1, 'center');
+    T(touchUI ? 'TAP JUMP TO JUMP. IN THE AIR TAP AGAIN TO FLIP!' : 'SPACE: JUMP. IN THE AIR AGAIN: FLIP!', W / 2, 151, '#ff6bd0', 1, 'center');
   }
   if (state !== 'play') return;
   // left: the steering slider (a pill with a knob, like on the image)
@@ -995,26 +1044,32 @@ function hud(t) {
   T('FAST', b.x + b.w / 2, b.y - 9, '#fff', 1, 'center', '#000'); T('BRAKE', b.x + b.w / 2, b.y + b.h + 3, '#fff', 1, 'center', '#000');
   arrowV(b.x + b.w / 2, b.y + 9, -1); arrowV(b.x + b.w / 2, b.y + b.h - 9, 1);
   knob(b.x + b.w / 2, ky, touch.speed !== null || inp.speed !== 0);
-  // JUMP (in the air: double jump or a flip), next to the speed slider
-  const jb = sl.jump, inAir = P.h > 0.05, jl = !inAir ? 'JUMP' : lvl('double') && !P.dbl && P.vh < 3 ? '2X JUMP' : 'FLIP';
-  const jon = held.has('jump');
-  ctx.fillStyle = '#111'; ctx.fillRect(jb.x - 1, jb.y - 1, jb.w + 2, jb.h + 2);
-  ctx.fillStyle = jon ? '#5ad43f' : 'rgba(29,24,48,0.75)'; ctx.fillRect(jb.x, jb.y, jb.w, jb.h);
-  ctx.fillStyle = inAir ? '#ff6bd0' : '#5ad43f'; ctx.fillRect(jb.x, jb.y, jb.w, 2);
-  PX.drawIcon(ctx, inAir && jl === 'FLIP' ? ['.###.', '#...#', '#.#.#', '#...#', '.##.#', '....#'] : ['..#..', '.###.', '#####', '..#..', '..#..'], { '#': jon ? '#fff' : inAir ? '#ff6bd0' : '#5ad43f' }, jb.x + jb.w / 2, jb.y + 15, 2);
-  T(touchUI ? jl : 'SPACE', jb.x + jb.w / 2, jb.y + jb.h - 11, '#fff', 1, 'center');
-  // TURBO and SLOW-MO (from the shop), above the steering slider
-  const abil = (b, n, on, col, icon, label, key) => {
-    const none = n <= 0 && !on;
-    ctx.fillStyle = '#111'; ctx.fillRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
-    ctx.fillStyle = on ? col : 'rgba(29,24,48,0.8)'; ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.fillStyle = none ? '#5b5275' : col; ctx.fillRect(b.x, b.y, b.w, 2);
-    icon(b.x + 12, b.y + b.h / 2, none ? '#5b5275' : on ? '#fff' : col);
-    T(touchUI ? label : key, b.x + 22, b.y + 6, none ? '#5b5275' : '#fff', 1);
-    T('X' + n, b.x + 22, b.y + 16, none ? '#5b5275' : '#ffd23f', 1);
+  // JUMP: a big round button (in the air: double jump, or FLIP)
+  const jb = sl.jump, jcx = jb.x + jb.w / 2, jcy = jb.y + jb.h / 2, inAir = P.h > 0.05;
+  const jl = !inAir ? 'JUMP' : lvl('double') && !P.dbl && P.vh < 3 ? '2X' : 'FLIP', jon = held.has('jump'), jc = inAir ? '#ff6bd0' : '#5ad43f';
+  roundBtn(jcx, jcy, 22, jc, jon);
+  PX.drawIcon(ctx, jl === 'FLIP' ? ['.###.', '#...#', '#.#.#', '#...#', '.##.#', '....#'] : ['..#..', '.###.', '#####', '..#..', '..#..'], { '#': jon ? '#fff' : jc }, jcx, jcy - 5, 2);
+  T(touchUI ? jl : 'SPACE', jcx, jcy + 7, '#fff', 1, 'center');
+  // TURBO and SLOW-MO (from the shop): small round buttons above the steering slider, with how many are left
+  const abil = (b, n, on, col, icon, key) => {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2, none = n <= 0 && !on;
+    roundBtn(cx, cy, 15, col, on, none);
+    icon(cx, cy - 1, none ? '#5b5275' : on ? '#fff' : col);
+    disc(cx + 11, cy - 11, 5, '#111'); disc(cx + 11, cy - 11, 4, none ? '#3a3450' : '#ffd23f'); T(String(n), cx + 11, cy - 13, '#111', 1, 'center');
+    if (!touchUI) T(key, cx, cy + 9, '#fff', 1, 'center', '#000');
   };
-  if (lvl('turbo')) abil(sl.turbo, P.turbos, P.turboT > 0, '#ff5ad0', rocketIcon, 'TURBO', 'E');
-  if (lvl('slowmo')) abil(sl.slow, P.slows, P.slowT > 0, '#4aa8ff', clockIcon, 'SLOW', 'Q');
+  if (lvl('turbo')) abil(sl.turbo, P.turbos, P.turboT > 0, '#ff5ad0', rocketIcon, 'E');
+  if (lvl('slowmo')) abil(sl.slow, P.slows, P.slowT > 0, '#4aa8ff', clockIcon, 'Q');
+}
+function shopIcon(id, cx, cy, c) {
+  const I = {
+    speed: ['#..##', '.####', '#####', '.####', '#..##'], start: ['#....', '##...', '###..', '##...', '#....'],
+    edge: ['....#', '...#.', '..#..', '.#...', '#....'], air: ['..#..', '.###.', '#.#.#', '..#..', '..#..'],
+    magnet: ['#...#', '#...#', '#...#', '#...#', '.###.'], jump: ['..#..', '.###.', '#####', '..#..', '.###.'],
+    double: ['..#..', '.###.', '..#..', '.###.', '#####'], trick: ['.###.', '#...#', '#.#.#', '#...#', '.##.#'],
+    turbo: ['..#..', '.###.', '.###.', '#####', '.#.#.'], slowmo: ['.###.', '#.#.#', '#.###', '#...#', '.###.'], helmet: ['.###.', '#####', '#####', '#.#.#', '.....'],
+  }[id] || ['#'];
+  PX.drawIcon(ctx, I, { '#': c }, cx, cy, 2, null);
 }
 function clockIcon(cx, cy, c) { PX.drawIcon(ctx, ['.###.', '#.#.#', '#.###', '#...#', '.###.'], { '#': c }, cx, cy, 2); }
 function coinIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '##w##', '#w###', '#####', '.###.'], { '#': '#ffd23f', w: '#fff8c0' }, cx, cy, 1); }
@@ -1077,19 +1132,23 @@ function drawEnd(t) {
   const W = S.W, pw = Math.min(300, W - 20), x = Math.round(W / 2 - pw / 2), y = 54, ok = state === 'finished';
   if (!ok && P.crashT < 0.9) return;
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
-  panel(x, y, pw, 150, ok ? '#5ad43f' : '#e8303a');
+  glass(x - 4, y - 4, pw + 8, 158, ok ? '#5ad43f' : '#e8303a'); ctx.fillStyle = ok ? '#5ad43f' : '#e8303a'; ctx.fillRect(x - 2, y - 3, pw + 4, 2);
   if (ok) {
     T('FINISHED!', W / 2, y + 7, '#5ad43f', 2, 'center', '#000');
     levelIcon(R.l, x + 12, y + 12, 1); T(R.map.name, x + 20, y + 9, '#9a92b8', 1);
     // the three stars
     const lab = ['FINISH', 'COINS ' + P.coins + '/' + Math.ceil(R.totalCoins * 0.6), 'PAR ' + fmtTime(R.par).slice(1, 8)];
+    const et = (P.endT = (P.endT || 0) + 1 / 60);
     for (let q = 0; q < 3; q++) {
-      const sx = x + pw / 2 - 90 + q * 90, on = !!(P.runStars & (1 << q)), pop = on && P.confetti.length && Math.sin(t * 6 + q) > 0.6 ? 1 : 0;
-      PX.drawIcon(ctx, ['....#....', '...###...', '#########', '.#######.', '..#####..', '.###.###.', '##.....##'], { '#': on ? '#ffd23f' : '#3a2f5c' }, sx, y + 33 - pop, 2, '#111');
+      const sx = x + pw / 2 - 90 + q * 90, on = !!(P.runStars & (1 << q)), at = et - 0.35 - q * 0.35, shown = at > 0;
+      if (on && shown && !(P.starSnd & (1 << q))) { P.starSnd = (P.starSnd | 0) | (1 << q); sfx('star'); }
+      const sz = on && shown && at < 0.12 ? 3 : 2;
+      PX.drawIcon(ctx, ['....#....', '...###...', '#########', '.#######.', '..#####..', '.###.###.', '##.....##'], { '#': on && shown ? '#ffd23f' : '#3a2f5c' }, sx, y + 33, sz, '#111');
     }
     for (let q = 0; q < 3; q++) T(lab[q], x + pw / 2 - 90 + q * 90, y + 44, (P.runStars & (1 << q)) ? '#fff' : '#9a92b8', 1, 'center');
     T(fmtTime(P.t) + (P.newBest ? '  NEW BEST!' : ''), W / 2, y + 58, '#ffd23f', 2, 'center', '#000');
-    T('TOP ' + Math.round(P.maxV * 3.6) + ' KM/H   FLIPS ' + P.tricks + '   COINS +' + (P.coins + P.bonus) + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 76, '#ffffff', 1, 'center');
+    const cn = Math.min(P.coins + P.bonus, Math.floor(Math.max(0, (P.endT || 0) - 1.3) * 90));
+    T('TOP ' + Math.round(P.maxV * 3.6) + ' KM/H   FLIPS ' + P.tricks + '   COINS +' + cn + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 76, '#ffffff', 1, 'center');
     if (P.daily) T('DAILY BONUS: COINS X2!', W / 2, y + 87, '#5ad43f', 1, 'center');
     const nx = nextRun();
     if (nx && UI.button('next', x + 14, y + 100, pw - 28, 22, R.l < 2 ? 'NEXT: ' + LEVELS[R.l + 1].name + ' RUN' : 'NEXT MOUNTAIN', { accent: '#5ad43f' })) startRun(nx[0], nx[1]);
@@ -1320,7 +1379,7 @@ window.addEventListener('blur', () => { for (const k in inp.keys) inp.keys[k] = 
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
 
 /* --- 9. MAIN LOOP ----------------------------------------------------------------- */
-let last = performance.now();
+let last = performance.now(), lastState = '', fadeT = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
   UI.begin();
@@ -1340,6 +1399,8 @@ function frame(now) {
     if (state === 'crashed' || state === 'finished') drawEnd(t);
     else if (paused) drawPause();
   }
+  if (state !== lastState) { fadeT = 0.22; lastState = state; }
+  if (fadeT > 0) { fadeT -= dt; ctx.fillStyle = 'rgba(13,11,19,' + clamp(fadeT / 0.22, 0, 1) * 0.85 + ')'; ctx.fillRect(0, 0, S.W, H); }
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);
