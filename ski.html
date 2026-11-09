@@ -36,11 +36,34 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelSki.save';
-const save = { best: {}, done: {}, sfx: true, seenHelp: false };
-try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) { Object.assign(save, s); save.best = Object.assign({}, s.best); save.done = Object.assign({}, s.done); } } catch (e) { /* new player */ }
+const save = { best: {}, done: {}, sfx: true, seenHelp: false, coins: 0, up: {}, skis: 'green', helmet: 'yellow', owned: { green: 1, yellow: 1 } };
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+  if (s) { Object.assign(save, s); save.best = Object.assign({}, s.best); save.done = Object.assign({}, s.done); save.up = Object.assign({}, s.up); save.owned = Object.assign({ green: 1, yellow: 1 }, s.owned); save.coins = s.coins | 0; }
+} catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+// --- the SKI SHOP: coins (picked up on the slopes, and a bonus at the bottom) buy upgrades and looks ---------
+const UPGRADES = [
+  { id: 'speed', name: 'FAST SKIS', desc: 'HIGHER TOP SPEED', col: '#ff8a2a', max: 5, cost: [40, 100, 200, 400, 750] },
+  { id: 'start', name: 'PUSH START', desc: 'FASTER OUT OF THE START GATE', col: '#5ad43f', max: 5, cost: [30, 80, 160, 300, 550] },
+  { id: 'edge', name: 'SHARP EDGES', desc: 'TURN FASTER, GRIP ON ICE', col: '#7ad8ff', max: 5, cost: [40, 100, 200, 400, 750] },
+  { id: 'air', name: 'BIG AIR', desc: 'JUMP HIGHER OFF THE RAMPS', col: '#b07aff', max: 5, cost: [30, 80, 160, 300, 550] },
+  { id: 'magnet', name: 'COIN MAGNET', desc: 'GRAB COINS FROM FURTHER AWAY', col: '#ffd23f', max: 5, cost: [30, 80, 160, 300, 550] },
+  { id: 'helmet', name: 'HARD HELMET', desc: 'SURVIVE A CRASH (PER LEVEL, EACH RUN)', col: '#e8303a', max: 3, cost: [150, 400, 900] },
+  { id: 'turbo', name: 'TURBO', desc: 'A ROCKET BOOST BUTTON (PER LEVEL, EACH RUN)', col: '#ff5ad0', max: 3, cost: [120, 350, 800] },
+];
+const LOOKS = [
+  { id: 'green', kind: 'skis', name: 'GREEN', col: '#3fbe4a', cost: 0 }, { id: 'redski', kind: 'skis', name: 'RED', col: '#e8303a', cost: 30 },
+  { id: 'blueski', kind: 'skis', name: 'BLUE', col: '#2a7fd4', cost: 30 }, { id: 'pinkski', kind: 'skis', name: 'PINK', col: '#ff6bd0', cost: 60 },
+  { id: 'goldski', kind: 'skis', name: 'GOLD', col: '#ffd23f', cost: 250 }, { id: 'rainbow', kind: 'skis', name: 'RAINBOW', col: 'rainbow', cost: 500 },
+  { id: 'yellow', kind: 'helmet', name: 'YELLOW', col: '#ffd23f', cost: 0 }, { id: 'white', kind: 'helmet', name: 'WHITE', col: '#f4f4f4', cost: 30 },
+  { id: 'black', kind: 'helmet', name: 'BLACK', col: '#2a2a33', cost: 30 }, { id: 'redhelm', kind: 'helmet', name: 'RED', col: '#e8303a', cost: 60 },
+  { id: 'goldhelm', kind: 'helmet', name: 'GOLD', col: '#ffc020', cost: 250 }, { id: 'chrome', kind: 'helmet', name: 'CHROME', col: 'chrome', cost: 500 },
+];
+const lvl = id => save.up[id] | 0;
+const lookCol = (id, t) => { const L = LOOKS.find(l => l.id === id) || LOOKS[0]; return L.col === 'rainbow' ? 'hsl(' + Math.round(t * 200) % 360 + ',90%,55%)' : L.col === 'chrome' ? (Math.floor(t * 4) % 2 ? '#e8eef8' : '#a8b4c8') : L.col; };
 const profile = PX.Profile.get();
 const MY_COLOR = PX.AVATAR_COLORS[profile.avatar.color];
 
@@ -150,6 +173,13 @@ function buildRun(m, l) {
       if (Math.abs(x2) < wid) s.objs.push({ kind: rnd() < 0.5 ? 'rock' : 'tree', x: x2 });
     }
   }
+  // coins: lines of 5 on clear stretches of the piste (more on harder runs)
+  for (let i = 45; i < end - 8; i += Math.round(lerp(26, 16, Math.min(1, diff)) + rnd() * 10)) {
+    let clear = true; for (let k = -2; k < 8; k++) if (segs[i + k].objs.length) clear = false;
+    if (!clear) continue;
+    const x0 = (rnd() * 2 - 1) * segs[i].w * 0.6, dx = (rnd() - 0.5) * 0.12;
+    for (let k = 0; k < 5; k++) segs[i + k].coins = [{ x: x0 + dx * k, got: false }];
+  }
   // decor: trees and nets beside the piste, flags on the edges, floodlights at night, the start and finish gates
   for (let k = 0; k < segs.length; k++) {
     const s = segs[k];
@@ -198,6 +228,7 @@ function buildSprites(map) {
   SPR.net = sprite(['r.r.r.r.r.r.r.r.r', '.r.r.r.r.r.r.r.r.', 'r.r.r.r.r.r.r.r.r', '.r.r.r.r.r.r.r.r.', 'r.r.r.r.r.r.r.r.r', 'p...............p', 'p...............p'], { r: '#e8402a', p: '#888' });
   SPR.tower = sprite(['llllll', 'lyyyyl', 'llllll', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '..pp..', '.pppp.'],
     { l: '#555', y: '#fff8c0', p: '#777' });
+  SPR.coin = sprite(['..kkk..', '.kyyyk.', 'kyywyyk', 'kywyyok', 'kyyyyok', '.kyook.', '..kkk..'], { k: '#a06a10', y: '#ffd23f', w: '#fff8c0', o: '#e0a020' });
   SPR.cannon = sprite(['.......gg', '.....gggg', '...gggg..', '..ggg....', '..p......', '..p......', '..p......', '.ppp.....'], { g: '#ffd23f', p: '#666' });
   SPR.sign = sprite(['kkkkkkk', 'kgggggk', 'kgwwwgk', 'kgwwwgk', 'kgggggk', 'kkkkkkk', '...p...', '...p...', '...p...', '...p...'], { k: '#222', g: LEVELS[R ? R.l : 0].color === '#22222a' ? '#555' : LEVELS[R ? R.l : 0].color, w: '#fff', p: '#888' });
 }
@@ -206,11 +237,11 @@ const KIND = {
   rock: { ww: 0.2, hit: 0.13, tall: 0.7 }, tree: { ww: 0.3, hit: 0.11, tall: 4, spr: 'pine' }, snowman: { ww: 0.14, hit: 0.1, tall: 1.6 },
   kicker: { ww: 0.34, hit: 0.17, tall: 0 }, ice: { ww: 0.5, hit: 0.25, tall: 0 }, pole: { ww: 0.03, hit: 0, tall: 2 },
   log: { ww: 0.6, hit: 0.3, tall: 0.5 },
-  pine: { ww: 0.34 }, bigrock: { ww: 0.5 }, net: { ww: 0.3 }, redflag: { ww: 0.06 }, blueflag: { ww: 0.06 }, tower: { ww: 0.14 }, cannon: { ww: 0.16 }, sign: { ww: 0.1 },
+  coin: { ww: 0.09 }, pine: { ww: 0.34 }, bigrock: { ww: 0.5 }, net: { ww: 0.3 }, redflag: { ww: 0.06 }, blueflag: { ww: 0.06 }, tower: { ww: 0.14 }, cannon: { ww: 0.16 }, sign: { ww: 0.1 },
 };
 
 /* --- 5. SKIING ------------------------------------------------------------------- */
-let state = 'title';      // title | maps | play | crashed | finished
+let state = 'title';      // title | maps | shop | play | crashed | finished
 let paused = false, pickMap = 0;
 let P = null;             // the skier
 const inp = { steer: 0, speed: 0, keys: { l: false, r: false, u: false, d: false }, padSteer: 0, padSpeed: 0 };
@@ -219,15 +250,28 @@ let touchUI = matchMedia('(pointer: coarse)').matches;
 let flakes = [];
 function startRun(m, l) {
   R = buildRun(m, l); buildSprites(R.map);
-  P = { z: 0, x: 0, v: 0, t: 0, h: 0, vh: 0, lean: 0, crashT: 0, count: 2.6, iceT: 0, powder: false, done: false, cause: '', spray: [], tuck: false, brake: false, newBest: false, stars: 0, maxV: 0 };
+  P = { z: 0, x: 0, v: 0, t: 0, h: 0, vh: 0, lean: 0, crashT: 0, count: 2.6, iceT: 0, powder: false, done: false, cause: '', spray: [], tuck: false, brake: false, newBest: false, stars: 0, maxV: 0,
+        coins: 0, bonus: 0, lives: lvl('helmet'), inv: 0, turbos: lvl('turbo'), turboT: 0, msg: '', msgT: 0 };
   flakes = []; for (let i = 0; i < 70; i++) flakes.push({ x: Math.random() * 560, y: Math.random() * H, s: 0.5 + Math.random() });
   state = 'play'; paused = false; pickMap = m;
   sfx('click');
 }
 const segAt = z => R.segs[Math.max(0, Math.floor(z / SEG)) % R.segs.length];
+// you hit something: a HARD HELMET saves you (once per level), otherwise you crash. true = the run is over.
+function hit(cause) {
+  if (P.inv > 0 || P.done) return false;
+  if (P.lives > 0) { P.lives--; P.inv = 1.6; P.v *= 0.55; say('HELMET SAVED YOU!', 1.4); sfx('saved'); return false; }
+  crash(cause); return true;
+}
+function say(msg, t) { P.msg = msg; P.msgT = t; }
+function useTurbo() {
+  if (state !== 'play' || !P || P.done || paused || P.count > 0 || P.turbos <= 0 || P.turboT > 0) return;
+  P.turbos--; P.turboT = 2.5; sfx('turbo'); say('TURBO!', 1);
+}
+function bankCoins() { save.coins += P.coins + P.bonus; store(); }
 function crash(cause) {
   if (P.done) return;
-  P.done = true; P.crashT = 0.001; P.cause = cause; state = 'crashed'; sfx('crash');
+  P.done = true; P.crashT = 0.001; P.cause = cause; state = 'crashed'; sfx('crash'); bankCoins();
   for (let i = 0; i < 30; i++) P.spray.push({ x: 0, y: 0, vx: (Math.random() - 0.5) * 140, vy: -40 - Math.random() * 90, t: 0.8 + Math.random() * 0.6 });
 }
 function finish() {
@@ -235,7 +279,8 @@ function finish() {
   const k = runKey(R.m, R.l), first = !save.done[k];
   if (!save.best[k] || P.t < save.best[k]) { P.newBest = !!save.best[k]; save.best[k] = P.t; }
   if (first) { save.done[k] = 1; P.stars = R.lev.stars + Math.round(R.map.d * 4); PX.Wallet.add(P.stars); }
-  store();
+  P.bonus = Math.round((15 + R.l * 15) * (1 + R.m * 0.25));            // coins for getting down in one piece
+  bankCoins();
 }
 function step(dt) {
   if (!P || paused) return;
@@ -245,8 +290,9 @@ function step(dt) {
   P.spray = P.spray.filter(p => p.t > 0);
   if (state === 'crashed') { P.crashT += dt; P.v = Math.max(0, P.v - 30 * dt); P.z += P.v * METRE * dt * 0.4; return; }
   if (state !== 'play') return;
-  if (P.count > 0) { const c0 = Math.ceil(P.count); P.count -= dt; if (Math.ceil(P.count) !== c0) sfx(P.count > 0 ? 'beep' : 'go'); return; }
+  if (P.count > 0) { const c0 = Math.ceil(P.count); P.count -= dt; if (Math.ceil(P.count) !== c0) sfx(P.count > 0 ? 'beep' : 'go'); if (P.count <= 0) P.v = 12 + lvl('start') * 4; return; }
   P.t += dt;
+  P.inv = Math.max(0, P.inv - dt); P.msgT = Math.max(0, P.msgT - dt);
   // what you want: steer (-1..1), speed (-1 brake .. 1 tuck)
   const k = inp.keys;
   let steer = touch.steer !== null ? touch.steerV : (k.l ? -1 : 0) + (k.r ? 1 : 0) || inp.padSteer;
@@ -257,20 +303,21 @@ function step(dt) {
   const off = Math.abs(P.x) > seg.w;                                  // past the blue line: deep powder
   P.powder = off && !air;
   // speed: gravity down the slope, air drag (less when you tuck), snow, braking, powder
-  const drag = speed > 0 ? lerp(0.0042, 0.0022, speed) : 0.0042;
-  let a = 9.8 * seg.steep - drag * P.v * P.v - 0.25;
+  const drag = (speed > 0 ? lerp(0.0030, 0.0016, speed) : 0.0030) * (1 - 0.07 * lvl('speed'));
+  let a = 9.8 * seg.steep * 1.6 - drag * P.v * P.v - 0.2;
+  if (P.turboT > 0) { P.turboT -= dt; a += 10; }
   if (speed < 0 && !air) a -= 14 * -speed;
   if (P.powder) a = P.v > 4 ? Math.min(a, 0) - 2 - P.v * 0.35 : 1.5;   // deep snow: slows you down to a crawl (but never stops you)
   if (P.iceT > 0) a += 1.5;
   if (!air) a -= Math.abs(steer) * P.v * 0.07;                         // carving costs a little speed
-  if (P.v < 5 && speed >= 0 && !P.powder) a += 1.6;                    // skating along the flats
-  P.v = clamp(P.v + a * dt, 0, 45);
+  if (P.v < 14 && speed >= 0 && !P.powder) a += (14 - P.v) * 0.5;     // skating along the flats: never slower than ~50 km/h
+  P.v = clamp(P.v + a * dt, 0, 50 + lvl('speed') * 4 + (P.turboT > 0 ? 12 : 0));
   P.maxV = Math.max(P.maxV, P.v);
   // steering, and the curve pushing you to the outside
-  const grip = P.iceT > 0 ? 0.3 : air ? 0.35 : 1;
+  const grip = (P.iceT > 0 ? 0.3 + lvl('edge') * 0.1 : air ? 0.35 : 1) * (1 + lvl('edge') * 0.1);
   P.lean = lerp(P.lean, steer, Math.min(1, dt * 8));
-  P.x += steer * grip * (1.2 + P.v / 28) * dt;
-  P.x -= seg.curve * P.v * 0.0105 * dt;
+  P.x += steer * grip * (1.3 + P.v / 26) * dt;
+  P.x -= seg.curve * P.v * 0.0095 * dt;
   P.iceT = Math.max(0, P.iceT - dt);
   // jumping off a kicker
   if (air || P.vh > 0) { P.h += P.vh * dt; P.vh -= 9.8 * dt; if (P.h <= 0) { P.h = 0; P.vh = 0; sfx('land'); } }
@@ -278,26 +325,27 @@ function step(dt) {
   P.z += P.v * METRE * dt;
   const z1 = P.z + PLAYER_Z;
   // the safety net (and the trees behind it)
-  if (Math.abs(P.x) > seg.w + 0.95) { P.x = Math.sign(P.x) * (seg.w + 0.95); crash('YOU HIT THE SAFETY NET!'); return; }
+  if (Math.abs(P.x) > seg.w + 0.95) { const sd = Math.sign(P.x); P.x = sd * (seg.w + 0.95); if (hit('YOU HIT THE SAFETY NET!')) return; P.x = sd * (seg.w + 0.6); }
   // things on the snow, in the segments we passed this step
   for (let i = Math.floor(z0 / SEG); i <= Math.floor(z1 / SEG); i++) {
     const s = R.segs[i]; if (!s) continue;
     const oz = i * SEG + SEG / 2; if (oz < z0 || oz > z1) continue;
     for (const o of s.objs) {
-      const K = KIND[o.kind]; if (!K.hit) { if (o.kind === 'pole' && Math.abs(P.x - o.x) < 0.04 && P.h < 1.5) crash('YOU HIT A GATE POLE!'); continue; }
+      const K = KIND[o.kind]; if (!K.hit) { if (o.kind === 'pole' && Math.abs(P.x - o.x) < 0.04 && P.h < 1.5 && hit('YOU HIT A GATE POLE!')) return; continue; }
       if (Math.abs(P.x - o.x) > K.hit + 0.06) continue;
-      if (o.kind === 'kicker') { if (P.h === 0) { P.vh = 3 + P.v * 0.16; P.h = 0.01; sfx('jump'); } continue; }
+      if (o.kind === 'kicker') { if (P.h === 0) { P.vh = (3 + P.v * 0.14) * (1 + lvl('air') * 0.12); P.h = 0.01; sfx('jump'); } continue; }
       if (o.kind === 'ice') { if (P.h === 0) { P.iceT = 1.4; sfx('ice'); } continue; }
       if (P.h > K.tall) continue;                                       // jumped over it
-      crash({ rock: 'YOU HIT A ROCK!', tree: 'YOU HIT A TREE!', snowman: 'YOU HIT A SNOWMAN!', log: 'YOU HIT A LOG!' }[o.kind]); return;
+      if (hit({ rock: 'YOU HIT A ROCK!', tree: 'YOU HIT A TREE!', snowman: 'YOU HIT A SNOWMAN!', log: 'YOU HIT A LOG!' }[o.kind])) return;
     }
+    for (const c of s.coins || []) if (!c.got && Math.abs(P.x - c.x) < 0.12 + lvl('magnet') * 0.09 && P.h < 2.5) { c.got = true; P.coins++; sfx('coin'); }
   }
   // the other skiers
   for (const sk of R.skiers) {
     const sz0 = sk.z; sk.z += sk.v * METRE * dt; sk.ph += dt * 1.3;
     const ss = segAt(sk.z); sk.x = Math.sin(sk.ph) * sk.amp * ss.w;
     const rel0 = sz0 - z0, rel1 = sk.z - z1;
-    if (rel0 >= -SEG * 0.3 && rel1 <= SEG * 0.3 && Math.abs(sk.x - P.x) < 0.14 && P.h < 1.8) { crash('YOU HIT A SKIER!'); return; }
+    if (rel0 >= -SEG * 0.3 && rel1 <= SEG * 0.3 && Math.abs(sk.x - P.x) < 0.14 && P.h < 1.8 && hit('YOU HIT A SKIER!')) return;
   }
   if (P.powder && Math.random() < 0.6) P.spray.push({ x: (Math.random() - 0.5) * 16, y: 0, vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 40, t: 0.4 });
   if (Math.abs(steer) > 0.5 && P.v > 12 && !air && Math.random() < 0.5) P.spray.push({ x: -Math.sign(steer) * 8, y: 0, vx: -Math.sign(steer) * (30 + Math.random() * 40), vy: -20 - Math.random() * 30, t: 0.35 });
@@ -447,6 +495,10 @@ function drawWorld(t) {
         if (bh >= 6) T(s.gate, p.x, top + Math.round((bh - 5 * sz) / 2), '#fff', sz, 'center');
       }
     }
+    for (const c of s.coins || []) if (!c.got) {
+      const w = KIND.coin.ww * p.w, k = Math.max(0.25, Math.abs(Math.cos(t * 5 + i)));
+      drawSprite(SPR.coin, p.x + c.x * p.w, p.y - w * 0.4, w * k, clip, al);
+    }
     // other skiers in this segment
     for (const sk of R.skiers) {
       if (Math.floor(sk.z / SEG) !== i) continue;
@@ -462,20 +514,27 @@ function drawPlayer(t) {
   // the skier from behind, in the middle at the bottom, in your avatar's color
   const W = S.W, cx = Math.round(W / 2), base = H - 26 - Math.round(P.h * 10);
   const lean = Math.round(P.lean * 4), crashed = state === 'crashed';
+  const skiC = lookCol(save.skis, t), helmC = lookCol(save.helmet, t);
+  if (P.inv > 0 && Math.floor(P.inv * 10) % 2) return;                   // blinking: the helmet just saved you
+  if (P.turboT > 0) {                                                     // the rocket flame
+    for (let k = 0; k < 6; k++) { ctx.fillStyle = k % 2 ? '#ffd23f' : '#ff6a1a'; ctx.fillRect(cx - 3 + Math.round(Math.random() * 6 - 3), base + 6 + k * 3 + Math.round(Math.random() * 3), 6, 3); }
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let k = 0; k < 10; k++) { const y = (k * 37 + Math.floor(t * 400)) % H, x = k % 2 ? 10 + (k * 13) % 60 : S.W - 70 + (k * 13) % 60; ctx.fillRect(x, y, 1, 14); }
+  }
   if (P.h > 0) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(cx - 12, H - 24, 24, 3); }
   const r = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
   if (crashed) {                                       // tumbling in the snow
     const k = Math.min(1, P.crashT * 2), sp = P.crashT * 12;
     ctx.save(); ctx.translate(cx, base - 10 + k * 8); ctx.rotate(sp > 8 ? 1.6 : sp);
-    r(-8, -10, 16, 12, MY_COLOR); r(-5, -18, 10, 8, '#ffd23f'); r(-8, 2, 6, 8, '#2a2a3a'); r(2, 2, 6, 8, '#2a2a3a');
+    r(-8, -10, 16, 12, MY_COLOR); r(-5, -18, 10, 8, helmC); r(-8, 2, 6, 8, '#2a2a3a'); r(2, 2, 6, 8, '#2a2a3a');
     ctx.restore();
-    ctx.save(); ctx.translate(cx - 14, base + 2); ctx.rotate(0.6 + P.crashT); r(-14, -1, 28, 3, '#3fbe4a'); ctx.restore();
-    ctx.save(); ctx.translate(cx + 16, base); ctx.rotate(-0.9 - P.crashT * 0.7); r(-14, -1, 28, 3, '#3fbe4a'); ctx.restore();
+    ctx.save(); ctx.translate(cx - 14, base + 2); ctx.rotate(0.6 + P.crashT); r(-14, -1, 28, 3, skiC); ctx.restore();
+    ctx.save(); ctx.translate(cx + 16, base); ctx.rotate(-0.9 - P.crashT * 0.7); r(-14, -1, 28, 3, skiC); ctx.restore();
   } else {
     const tuck = P.tuck ? 6 : 0, sk = lean * 2;
     // skis (green, like on the image), a bit apart, the tips pointing down the slope (up the screen)
-    r(cx - 11 + sk, base - 16, 4, 22, '#111'); r(cx - 10 + sk, base - 15, 2, 20, '#3fbe4a');
-    r(cx + 6 + sk, base - 16, 4, 22, '#111'); r(cx + 7 + sk, base - 15, 2, 20, '#3fbe4a');
+    r(cx - 11 + sk, base - 16, 4, 22, '#111'); r(cx - 10 + sk, base - 15, 2, 20, skiC);
+    r(cx + 6 + sk, base - 16, 4, 22, '#111'); r(cx + 7 + sk, base - 15, 2, 20, skiC);
     r(cx - 10 + sk, base - 15, 2, 2, '#ffd23f'); r(cx + 7 + sk, base - 15, 2, 2, '#ffd23f');
     // legs and boots
     r(cx - 9 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a'); r(cx + 4 + lean, base - 14 + tuck, 5, 12 - tuck, '#e8303a');
@@ -491,7 +550,7 @@ function drawPlayer(t) {
     if (!P.tuck) { r(bx - 4 - arm, by + 13, 1, 1, '#ccc'); r(bx + 22 + arm, by + 13, 1, 1, '#ccc'); }
     // helmet (yellow) with goggles strap
     const hx = cx - 6 + lean * 3, hy = by - 11 + (P.tuck ? 4 : 0);
-    r(hx - 1, hy - 1, 14, 13, '#111'); r(hx, hy, 12, 11, '#ffd23f'); r(hx + 2, hy + 1, 4, 2, '#fff2a0'); r(hx, hy + 6, 12, 2, '#e8303a');
+    r(hx - 1, hy - 1, 14, 13, '#111'); r(hx, hy, 12, 11, helmC); r(hx + 2, hy + 1, 4, 2, 'rgba(255,255,255,0.5)'); r(hx, hy + 6, 12, 2, '#e8303a');
   }
   // snow spray
   ctx.fillStyle = '#ffffff';
@@ -524,10 +583,12 @@ function drawTitle(t) {
   T('PIXEL', W / 2, 40, '#ffd23f', 3, 'center', '#000');
   T('SKI', W / 2, 60, '#fff', 8, 'center', '#2a6ad4');
   T('10 MOUNTAINS. 3 RUNS EACH. DON\'T CRASH!', W / 2, 112, '#ffffff', 1, 'center', '#000');
-  [0, 1, 2].forEach(l => { levelIcon(l, W / 2 - 40 + l * 40, 130, 2); });
+  [0, 1, 2].forEach(l => { levelIcon(l, W / 2 - 40 + l * 40, 128, 2); });
   const bw = 180, bx = Math.round(W / 2 - bw / 2);
-  if (UI.button('play', bx, 150, bw, 28, 'PLAY!', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'maps'; }
-  if (UI.button('games', bx, 186, bw, 20, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T(String(save.coins), W - 36, 30, '#ffd23f', 1, 'right', '#000'); coinIcon(W - 42 - PX.textWidth(String(save.coins), 1), 32);
+  if (UI.button('play', bx, 146, bw, 26, 'PLAY!', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'maps'; }
+  if (UI.button('shop', bx, 177, bw, 22, 'SKI SHOP', { accent: '#ffd23f' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('games', bx, 204, bw, 18, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
   T('V' + VERSION, W - 4, H - 9, '#ffffff', 1, 'right', '#000');
 }
 function drawMaps(t) {
@@ -564,11 +625,54 @@ function drawMaps(t) {
   });
   if (!save.seenHelp) T('GREEN = EASY  RED = HARDER  BLACK = HARDEST. FINISH BLACK TO OPEN THE NEXT MOUNTAIN.', W / 2, H - 9, '#ffd23f', 1, 'center', '#000');
 }
+let shopTab = 'up';
+function drawShop(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.7)'; ctx.fillRect(0, 0, W, H);
+  if (UI.button('back', 6, 6, 46, 20, 'BACK', { size: 1 }) || UI.back) { state = 'title'; return; }
+  T('SKI SHOP', W / 2, 9, '#ffd23f', 2, 'center', '#000');
+  coinIcon(W - PX.textWidth(String(save.coins), 2) - 18, 15); T(String(save.coins), W - 8, 10, '#ffd23f', 2, 'right', '#000');
+  const pw = Math.min(W - 12, 440), x = Math.round(W / 2 - pw / 2);
+  if (UI.button('tab_up', x, 30, 100, 16, 'UPGRADES', { size: 1, on: shopTab === 'up', accent: '#ffd23f' })) shopTab = 'up';
+  if (UI.button('tab_looks', x + 106, 30, 100, 16, 'LOOKS', { size: 1, on: shopTab === 'looks', accent: '#ffd23f' })) shopTab = 'looks';
+  if (shopTab === 'up') {
+    UPGRADES.forEach((u, i) => {
+      const y = 52 + i * 26, l = lvl(u.id), max = l >= u.max, cost = max ? 0 : u.cost[l];
+      panel(x, y, pw, 23, u.col);
+      T(u.name, x + 6, y + 6, u.col, 1, 'left', '#000'); T(u.desc, x + 6, y + 15, '#9a92b8', 1);
+      for (let k = 0; k < u.max; k++) { ctx.fillStyle = '#111'; ctx.fillRect(x + pw - 150 + k * 11, y + 7, 9, 9); ctx.fillStyle = k < l ? u.col : '#3a2f5c'; ctx.fillRect(x + pw - 149 + k * 11, y + 8, 7, 7); }
+      if (max) T('MAX', x + pw - 40, y + 9, '#5ad43f', 1, 'center');
+      else if (UI.button('buy_' + u.id, x + pw - 84, y + 4, 78, 16, '', { size: 1, accent: u.col, disabled: save.coins < cost })) {
+        save.coins -= cost; save.up[u.id] = l + 1; store(); sfx('buy');
+      } else { coinIcon(x + pw - 70, y + 12); T(String(cost), x + pw - 62, y + 10, save.coins >= cost ? '#ffd23f' : '#5b5275', 1); }
+    });
+  } else {
+    ['skis', 'helmet'].forEach((kind, r) => {
+      const y = 54 + r * 86, list = LOOKS.filter(l => l.kind === kind), cw = Math.floor((pw - 5 * 4) / 6);
+      T(kind === 'skis' ? 'SKIS' : 'HELMETS', x, y, '#fff', 1, 'left', '#000');
+      list.forEach((L, i) => {
+        const cx = x + i * (cw + 4), cy = y + 10, owned = save.owned[L.id], worn = save[kind] === L.id;
+        panel(cx, cy, cw, 66, worn ? '#5ad43f' : '#4a4068');
+        const col = lookCol(L.id, t);
+        if (kind === 'skis') { ctx.fillStyle = '#111'; ctx.fillRect(cx + cw / 2 - 9, cy + 6, 6, 30); ctx.fillRect(cx + cw / 2 + 3, cy + 6, 6, 30); ctx.fillStyle = col; ctx.fillRect(cx + cw / 2 - 8, cy + 7, 4, 28); ctx.fillRect(cx + cw / 2 + 4, cy + 7, 4, 28); }
+        else { ctx.fillStyle = '#111'; ctx.fillRect(cx + cw / 2 - 11, cy + 9, 22, 22); ctx.fillStyle = col; ctx.fillRect(cx + cw / 2 - 10, cy + 10, 20, 20); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(cx + cw / 2 - 7, cy + 12, 7, 3); ctx.fillStyle = '#e8303a'; ctx.fillRect(cx + cw / 2 - 10, cy + 21, 20, 3); }
+        T(L.name, cx + cw / 2, cy + 40, '#fff', 1, 'center');
+        const lab = worn ? 'ON' : owned ? 'WEAR' : String(L.cost);
+        if (UI.button('look_' + L.id, cx + 3, cy + 49, cw - 6, 14, owned ? lab : '', { size: 1, on: worn, accent: '#5ad43f', disabled: !owned && save.coins < L.cost })) {
+          if (!owned) { save.coins -= L.cost; save.owned[L.id] = 1; sfx('buy'); } else sfx('click');
+          save[kind] = L.id; store();
+        }
+        if (!owned) { coinIcon(cx + cw / 2 - PX.textWidth(lab, 1) / 2 - 4, cy + 56); T(lab, cx + cw / 2 + 3, cy + 54, save.coins >= L.cost ? '#ffd23f' : '#5b5275', 1, 'center'); }
+      });
+    });
+  }
+  if (shopTab === 'looks') T('COINS: PICK THEM UP ON THE SLOPES, AND GET A BONUS AT THE BOTTOM.', W / 2, H - 9, '#9a92b8', 1, 'center', '#000');
+}
 function lockIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '#...#', '#...#', '#####', '##.##', '##.##', '#####'], { '#': '#9a92b8' }, cx, cy, 1); }
 // the on-screen controls, like a phone ski game: a slider on the left (steer) and one on the right (speed)
 function sliders() {
   const W = S.W;
-  return { steer: { x: 14, y: H - 52, w: 110, h: 30 }, speed: { x: W - 50, y: H - 132, w: 34, h: 112 } };
+  return { steer: { x: 14, y: H - 52, w: 110, h: 30 }, speed: { x: W - 50, y: H - 132, w: 34, h: 112 }, turbo: { x: 14, y: H - 92, w: 58, h: 30 } };
 }
 function hud(t) {
   const W = S.W, sl = sliders();
@@ -590,6 +694,9 @@ function hud(t) {
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(W / 2 - bw / 2), 10, Math.round(bw * prog), 4);
   ctx.fillStyle = '#e8303a'; ctx.fillRect(Math.round(W / 2 + bw / 2) - 2, 7, 3, 10);
   const best = save.best[runKey(R.m, R.l)]; if (best) T('BEST ' + fmtTime(best), W / 2, 18, '#ffffff', 1, 'center', '#000');
+  coinIcon(40, 37); T(String(P.coins), 47, 34, '#ffd23f', 1, 'left', '#000');
+  for (let k = 0; k < P.lives; k++) helmIcon(70 + k * 11, 37);
+  if (P.msgT > 0) T(P.msg, W / 2, 30, P.msg === 'TURBO!' ? '#ff5ad0' : '#ffffff', 2, 'center', '#000');
   if (P.powder) T('DEEP SNOW!', W / 2, 52, '#ffffff', 2, 'center', '#2a6ad4');
   else if (P.iceT > 0) T('ICE!', W / 2, 52, '#9ae0ff', 2, 'center', '#000');
   else if (P.h > 0.4) T('AIR!', W / 2, 52, '#ffd23f', 2, 'center', '#000');
@@ -612,7 +719,20 @@ function hud(t) {
   T('FAST', b.x + b.w / 2, b.y - 9, '#fff', 1, 'center', '#000'); T('BRAKE', b.x + b.w / 2, b.y + b.h + 3, '#fff', 1, 'center', '#000');
   arrowV(b.x + b.w / 2, b.y + 9, -1); arrowV(b.x + b.w / 2, b.y + b.h - 9, 1);
   knob(b.x + b.w / 2, ky, touch.speed !== null || inp.speed !== 0);
+  // the TURBO button (from the shop), above the steering slider
+  if (lvl('turbo')) {
+    const tb = sl.turbo, on = P.turboT > 0, none = P.turbos <= 0 && !on;
+    ctx.fillStyle = '#111'; ctx.fillRect(tb.x - 1, tb.y - 1, tb.w + 2, tb.h + 2);
+    ctx.fillStyle = on ? '#ff5ad0' : 'rgba(29,24,48,0.8)'; ctx.fillRect(tb.x, tb.y, tb.w, tb.h);
+    ctx.fillStyle = none ? '#5b5275' : '#ff5ad0'; ctx.fillRect(tb.x, tb.y, tb.w, 2);
+    rocketIcon(tb.x + 12, tb.y + tb.h / 2, none ? '#5b5275' : on ? '#fff' : '#ff5ad0');
+    T(touchUI ? 'TURBO' : 'SPACE', tb.x + 22, tb.y + 6, none ? '#5b5275' : '#fff', 1);
+    T('X' + P.turbos, tb.x + 22, tb.y + 16, none ? '#5b5275' : '#ffd23f', 1);
+  }
 }
+function coinIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '##w##', '#w###', '#####', '.###.'], { '#': '#ffd23f', w: '#fff8c0' }, cx, cy, 1); }
+function helmIcon(cx, cy) { PX.drawIcon(ctx, ['.###.', '#####', '#w###', 'kkkkk'], { '#': '#e8303a', w: '#ff9a9a', k: '#222' }, cx, cy, 1); }
+function rocketIcon(cx, cy, c) { PX.drawIcon(ctx, ['..#..', '.###.', '.#w#.', '.###.', '#####', '#.o.#', '..o..'], { '#': c, w: '#7ad8ff', o: '#ff8a2a' }, cx, cy, 2); }
 function pill(x, y, w, h, vert) {
   const r = Math.min(w, h) / 2;
   ctx.fillStyle = '#111'; rr(x - 1, y - 1, w + 2, h + 2, r + 1); ctx.fill();
@@ -652,7 +772,7 @@ function drawEnd(t) {
     T(R.map.name + ' ' + LEVELS[R.l].name, W / 2 + 4, y + 36, '#fff', 1, 'center');
     T(fmtTime(P.t), W / 2, y + 50, '#ffd23f', 3, 'center', '#000');
     T(P.newBest ? 'NEW BEST TIME!' : 'BEST ' + fmtTime(save.best[runKey(R.m, R.l)]), W / 2, y + 74, P.newBest ? '#5ad43f' : '#9a92b8', 1, 'center');
-    T('TOP SPEED ' + Math.round(P.maxV * 3.6) + ' KM/H' + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 86, '#ffffff', 1, 'center');
+    T('TOP SPEED ' + Math.round(P.maxV * 3.6) + ' KM/H   COINS +' + (P.coins + P.bonus) + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 86, '#ffffff', 1, 'center');
     const nx = nextRun();
     if (nx && UI.button('next', x + 14, y + 100, pw - 28, 22, R.l < 2 ? 'NEXT: ' + LEVELS[R.l + 1].name + ' RUN' : 'NEXT MOUNTAIN', { accent: '#5ad43f' })) startRun(nx[0], nx[1]);
     if (!nx) T('YOU CONQUERED ALL 10 MOUNTAINS!', W / 2, y + 108, '#ffd23f', 1, 'center');
@@ -660,11 +780,14 @@ function drawEnd(t) {
     T('CRASH!', W / 2, y + 10, '#e8303a', 4, 'center', '#000');
     T(P.cause, W / 2, y + 40, '#fff', 1, 'center');
     T(Math.round(clamp((P.z + PLAYER_Z) / R.finishZ, 0, 1) * 100) + '% OF THE WAY DOWN', W / 2, y + 54, '#9a92b8', 1, 'center');
+    T('COINS +' + P.coins + '   (YOU HAVE ' + save.coins + ')', W / 2, y + 68, '#ffd23f', 1, 'center');
+    if (!lvl('helmet')) T('TIP: A HARD HELMET IN THE SHOP SAVES YOU', W / 2, y + 82, '#9a92b8', 1, 'center');
     if (UI.button('retry', x + 14, y + 100, pw - 28, 22, 'TRY AGAIN', { accent: '#ffd23f' })) startRun(R.m, R.l);
   }
   const hw = Math.floor((pw - 34) / 2);
   if (ok && UI.button('again', x + 14, y + 126, hw, 18, 'RACE AGAIN', { size: 1 })) startRun(R.m, R.l);
-  if (UI.button('runs', ok ? x + 20 + hw : x + 14, y + 126, ok ? hw : pw - 28, 18, 'PICK A RUN', { size: 1 }) || UI.back) toMaps();
+  if (!ok && UI.button('shop2', x + 14, y + 126, hw, 18, 'SHOP', { size: 1, accent: '#ffd23f' })) { toMaps(); state = 'shop'; }
+  if (UI.button('runs', x + 20 + hw, y + 126, hw, 18, 'PICK A RUN', { size: 1 }) || UI.back) toMaps();
 }
 function toMaps() { state = 'maps'; paused = false; demo = null; save.seenHelp = true; store(); }
 function setPause(on) { if (state === 'play' && P && !P.done) { paused = on; if (on) { touch.steer = touch.speed = null; } } }
@@ -680,6 +803,10 @@ function sfx(k) {
   else if (k === 'land') s.noise(0.15, { freq: 500, vol: 0.2 });
   else if (k === 'ice') s.tone([1400, 1800], 0.15, { vol: 0.04, type: 'triangle' });
   else if (k === 'crash') { s.noise(0.5, { freq: 400, vol: 0.35 }); s.tone([320, 70], 0.4, { vol: 0.08, type: 'sawtooth' }); }
+  else if (k === 'coin') s.tone([988, 1319], 0.08, { vol: 0.05 });
+  else if (k === 'buy') s.tone([523, 659, 784, 1047], 0.35, { vol: 0.1 });
+  else if (k === 'saved') s.tone([1200, 600, 1200], 0.4, { vol: 0.09, type: 'triangle' });
+  else if (k === 'turbo') { s.tone([200, 800], 0.5, { vol: 0.07, type: 'sawtooth' }); s.noise(0.6, { freq: 1500, vol: 0.08, filter: 'bandpass' }); }
   else if (k === 'finish') s.tone([523, 659, 784, 1047, 1319], 0.8, { vol: 0.1 });
 }
 
@@ -698,6 +825,7 @@ UI.onDown = (e, x, y) => {
   if (x < 36 && y < 36) { setPause(!paused); return; }          // the pause button
   if (paused) return;
   const sl = sliders();
+  if (lvl('turbo') && inBox(sl.turbo, x, y, 4)) { useTurbo(); return; }
   // the left half steers (the slider is just where it shows), the right half sets the speed
   if (inBox(sl.speed, x, y, 24) || x > S.W * 0.62) { touch.speed = e.pointerId; touch.speedAbs = inBox(sl.speed, x, y, 10); touch.y0 = y; touch.speedV = 0; slide(e.pointerId, x, y); }
   else { touch.steer = e.pointerId; touch.steerAbs = inBox(sl.steer, x, y, 10); touch.x0 = x; touch.steerV = 0; slide(e.pointerId, x, y); }
@@ -711,6 +839,7 @@ window.addEventListener('keydown', e => {
   if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play' && P && !P.done) { setPause(!paused); return; }
   if (e.code === 'Escape') { UI.back = true; return; }
   if (KEYMAP[e.code]) { inp.keys[KEYMAP[e.code]] = true; touchUI = false; }
+  if ((e.code === 'Space' || e.code === 'KeyE' || e.code === 'ShiftLeft') && state === 'play' && !e.repeat) { useTurbo(); touchUI = false; }
   if ((e.code === 'Enter' || e.code === 'Space') && (state === 'crashed' || state === 'finished') && (state === 'finished' || P.crashT > 0.9)) {
     const nx = state === 'finished' ? nextRun() : null; if (nx) startRun(nx[0], nx[1]); else startRun(R.m, R.l);
   }
@@ -724,9 +853,9 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
   UI.begin();
-  if (state === 'title' || state === 'maps') {
+  if (state === 'title' || state === 'maps' || state === 'shop') {
     demoWorld(t, dt);
-    if (state === 'title') drawTitle(t); else drawMaps(t);
+    if (state === 'title') drawTitle(t); else if (state === 'shop') drawShop(t); else drawMaps(t);
   } else {
     const sub = 4; for (let k = 0; k < sub; k++) step(dt / sub);
     drawWorld(t);
@@ -746,13 +875,14 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 PX.setIcon && PX.setIcon();
 PX.Pad.setup({
   title: 'Pixel Ski: controller', ui: UI, menu: () => state !== 'play' || paused || (P && P.done),
-  phone: { stick: 'STEER', dpad: true, buttons: [['RT', 'FASTER'], ['LT', 'BRAKE'], ['A', 'FASTER'], ['B', 'BRAKE']] },
+  phone: { stick: 'STEER', dpad: true, buttons: [['RT', 'FASTER'], ['LT', 'BRAKE'], ['A', 'FASTER'], ['B', 'BRAKE'], ['X', 'TURBO']] },
   keys: () => ({ START: 'KeyP' }),
-  onPlay(h) {
+  onPlay(h, n, dt, edge) {
+    if (edge('RB') || edge('X')) useTurbo();
     inp.padSteer = Math.abs(h.ax) > 0.15 ? clamp(h.ax, -1, 1) : 0;
     inp.padSpeed = h.RT || h.A || h.up ? 1 : h.LT || h.B || h.down ? -1 : 0;
   },
-  help: [['LEFT|RIGHT', 'STEER (LEFT STICK)'], ['RT|A|UP', 'TUCK: GO FASTER'], ['LT|B|DOWN', 'BRAKE'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+  help: [['LEFT|RIGHT', 'STEER (LEFT STICK)'], ['RT|A|UP', 'TUCK: GO FASTER'], ['LT|B|DOWN', 'BRAKE'], ['X|RB', 'TURBO (FROM THE SHOP)'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 </script>
 </body>

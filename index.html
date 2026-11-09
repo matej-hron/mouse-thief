@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.9.0';
+const VERSION = '2.10.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -712,20 +712,22 @@ function drawProfile(t) {
   if (UI.button('cancel', Math.round(W / 2 + 4), 190, bw, 22, 'BACK') || UI.back) { nameInput.blur(); screen = 'home'; }
 }
 
-// --- the first of the month update: every month can bring everyone a free gift ---------------------
-// The arcade shows it the first time you open it in that month (or later, if you missed it): press OKAY and it's yours.
-// To give the next one: add a line here (the month it starts, and the avatar from common.js's GIFT_SHAPES).
-const MONTHLY = [
-  { month: '2026-11', gift: 'cow' },
-];
-function monthNow() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
-function pendingGift() { return MONTHLY.filter(u => u.month <= monthNow() && !PX.Gifts.has(u.gift)).pop() || null; }
-let gift = pendingGift();
+// --- the first of the month update: on the 1st of every month (January 1, February 1, ... December 1) -----
+// The arcade shows it once, the first time you open it that day: a free COW avatar for everyone. Press OKAY and it's yours.
+// It only comes on the 1st: on any other day there's no update.
+const MONTHLY_GIFT = 'cow';
+const SEEN_KEY = 'pixelArcade.monthlySeen';
+function todayKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01'; }
+function updateToday() {
+  if (new Date().getDate() !== 1) return null;
+  let seen = null; try { seen = localStorage.getItem(SEEN_KEY); } catch (e) { /* private mode */ }
+  return seen === todayKey() ? null : { gift: MONTHLY_GIFT };
+}
+let gift = updateToday();
 if (gift) screen = 'gift';
 function claimGift() {
-  if (!gift) { screen = 'home'; return; }
-  PX.Gifts.add(gift.gift); gift = pendingGift(); PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
-  if (!gift) screen = 'home';
+  if (gift) { PX.Gifts.add(gift.gift); try { localStorage.setItem(SEEN_KEY, todayKey()); } catch (e) { /* private mode */ } PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 }); }
+  gift = null; screen = 'home';
 }
 // a cow standing up on its back legs with its arms out, like on the update's picture
 const COW = ['.......k......k.......', '......kkkwwwwkkk......', '.......kwwwwwwk.......', '........wkwwkw........', '........wwwwww........',
@@ -762,7 +764,7 @@ function drawGift(t) {
   const bw = PX.textWidth('FREE AVATAR!', 4);
   T('FREE AVATAR!', W / 2 + 14, y + 124, '#fff', 4, 'center', '#3a2f5c');
   PX.drawAvatar(ctx, { shape: gift.gift, color: 8 }, Math.round(W / 2 + 14 - bw / 2 - 34), y + 120, 2);
-  T('PICK IT IN EDIT, NEXT TO YOUR NAME', W / 2, y + 152, '#9a92b8', 1, 'center');
+  T(PX.Gifts.has(gift.gift) ? 'YOU HAVE IT ALREADY: IT\'S IN EDIT' : 'PICK IT IN EDIT, NEXT TO YOUR NAME', W / 2, y + 152, '#9a92b8', 1, 'center');
   if (UI.button('okay', Math.round(W / 2 - 60), y + 168, 120, 24, pad.used ? 'A: OKAY' : 'OKAY', { accent: '#5ad43f' }) || UI.back) claimGift();
 }
 
