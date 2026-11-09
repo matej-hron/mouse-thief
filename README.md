@@ -23,7 +23,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
-| **Pixel Ski** (`ski.html`) | Ski down 10 mountains, each with a green, a red and a black run. Hit anything and you crash: survive to the bottom. Race a friend online. |
+| **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 
 ## Pixel Wings
@@ -238,39 +238,40 @@ health when the 45 seconds run out): **best of 3 rounds**.
 
 ## Pixel Ski
 
-Downhill skiing, seen from behind the skier: the slope is drawn in perspective, so it looks 3D. **Survive to the bottom:**
-hit a tree, a rock, a snowman, a log, a gate pole, another skier or the red safety net and you crash, and the run is over.
+A fast downhill skiing adventure, seen from behind the skier: the slope is drawn in perspective and really drops away
+in front of you (the valley far below). **Survive to the bottom:** hit a tree, a rock, a snowman, a log, a gate pole,
+another skier, a snowball or the red safety net, fall in a crevasse, land a flip on your head or let the avalanche catch
+you, and the run is over.
 
-- **Controls** (like a phone ski game, in pixels): the slider at the bottom left **steers** (drag the knob left / right,
-  or put your finger anywhere on the left side and slide). The standing slider on the right sets your **speed**: push it up
-  to **tuck** (faster), pull it down to **brake**. Keys: ← → / A D steer, ↑ / W tuck, ↓ / S brake, P pauses.
-  Controller: left stick steers, RT / A tuck, LT / B brake, START pauses. Top left: pause. Top right: KM/H and the clock.
-- **10 mountains, 3 runs each:** SNOWY MEADOW, PINE FOREST, NIGHT RACE (floodlights), FROZEN LAKE (lots of ice),
-  SUNSET RIDGE, BLIZZARD PASS (fog and snowfall), ICE CANYON (narrow), VOLCANO SLOPE (rocks), AURORA PEAK (northern
-  lights) and THE SUMMIT. Every mountain has a **GREEN** run (easy), a **RED** run and a **BLACK** run (hard: narrower,
-  steeper, sharper bends, more obstacles, obstacles side by side, more skiers). Later mountains are harder too.
-- Finish GREEN to open RED, RED to open BLACK, and BLACK to open the next mountain. The first finish of a run pays ★
-  (more for harder runs and mountains); your best time on every run is saved.
-- **On the snow:** stay inside the blue lines: past them is deep powder that slows you to a crawl. **Kickers** (blue
-  ramps) throw you in the air: you fly over rocks, logs and snowmen. **Ice** makes it hard to steer. **Slalom gates**
-  (a red and a blue pole) are safe to ski through, but don't hit a pole. The bends push you to the outside.
-- **Downhill:** the slope really drops away in front of you: over the edge you see the valley far below.
-- **Bigger mountains:** the later mountains have longer runs, more obstacles and more ramps, and (from NIGHT RACE on)
-  **JUMP LINES**: a yellow warning sign, then a row of ramps across the whole slope and a crevasse right after it.
-  Don't brake there: you need the speed to fly over it (fall in and you crash).
+- **Controls** (pixel versions of a phone ski game's): the slider at the bottom left **steers**; the standing slider on
+  the right sets your **speed** (up: tuck, faster; down: brake); the **JUMP** button next to it jumps (a tap in the
+  middle of the screen jumps too). **In the air, JUMP again does a FLIP**: land it for coins (more flips in one jump pay
+  much more) and a burst of speed; land in the middle of one and you crash. TURBO and SLOW-MO buttons (from the shop)
+  sit above the steering slider. Keys: ← → / A D steer, ↑ / W tuck, ↓ / S brake, Space jump / flip, E turbo, Q slow-mo,
+  P pause. Controller: left stick, A jump, RT tuck, LT / B brake, X turbo, Y slow-mo, START pause.
+- **Fast:** you push off at 70+ KM/H and never drop below that unless you brake; tuck down the steep bits for 150-250
+  KM/H. Speed lines, camera shake on hard landings, ski tracks in the snow.
+- **10 mountains, 3 runs each** (GREEN, RED, BLACK; later mountains are bigger and harder). Every mountain has its own
+  downhill thing, and they all have some of everything: SNOWY MEADOW (big ramps), PINE FOREST (fallen trees),
+  NIGHT RACE (boost pads), FROZEN LAKE (ice sheets), SUNSET RIDGE (cliff drops), BLIZZARD PASS (rolling snowballs),
+  ICE CANYON (ice and cliffs), VOLCANO SLOPE (lava boulders), AURORA PEAK (big jumps and boosts), THE SUMMIT (avalanche!).
+  - **Big ramps** throw you high in the air past a line of coins in the sky. **Boost pads** (yellow) shoot you forward.
+    **Cliff drops**: the slope falls away and you fly. **Jump lines**: a row of ramps, then a crevasse to fly over.
+    **Ice sheets**: slippery and very fast. **Snowballs / lava boulders** roll across the slope.
+  - **The avalanche** chases you on every BLACK run and on all of THE SUMMIT: it stays ~150 m behind and catches you
+    if you slow down (brake, deep snow, a crash saved by the helmet).
+- **3 stars per run:** get down, grab 60% of the coins, beat the PAR time (shown under the clock). Every new star pays
+  ★1 and coins. 90 stars in all: 30 unlock the STAR skis, 60 the CROWN.
+- **DAILY BONUS:** your first finish of the day pays double coins.
+- Finish GREEN to open RED, RED to open BLACK, BLACK to open the next mountain. Best times are saved.
+- **SKI SHOP:** UPGRADES (FAST SKIS, PUSH START, SHARP EDGES, BIG AIR, COIN MAGNET), ABILITIES (SUPER JUMP: jump over
+  snowmen; DOUBLE JUMP; TRICK MASTER: faster flips, more coins; TURBO; SLOW-MO; HARD HELMET: survive crashes) and LOOKS
+  (ski and helmet colors, up to RAINBOW, CHROME, and the star rewards).
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (both need the same version).
   The host picks the mountain and the run (all of them are open online). You both ski the same run and see each other
   (a ghost: you can't collide), with your friend's place on the progress bar and how far ahead or behind they are.
   First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
   whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
-- **Fast:** you push off from the start gate and cruise at 50-100 KM/H; tuck on the steep bits for 150+ KM/H.
-- **Coins:** lines of gold coins on the slopes, plus a bonus for getting to the bottom (more on harder runs and later
-  mountains). You keep the coins you picked up even when you crash.
-- **SKI SHOP** (title screen, or SHOP after a crash): UPGRADES: FAST SKIS (top speed), PUSH START (faster start),
-  SHARP EDGES (turning, grip on ice), BIG AIR (higher jumps), COIN MAGNET (5 levels each); HARD HELMET (survive 1-3
-  crashes a run: you blink and slow down instead of crashing) and TURBO (1-3 rocket boosts a run: the TURBO button
-  above the steering slider, Space / E, controller X / RB). LOOKS: ski colors (up to GOLD and RAINBOW) and helmets
-  (up to GOLD and CHROME).
 
 ## First of the month update
 
