@@ -25,6 +25,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
+| **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
 
 ## Pixel Wings
 
@@ -219,6 +220,30 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
 - Coins, tricks, abilities and best places are saved on your phone.
+
+## Pixel Bike Run
+
+Mountain biking, seen from the side, over layered pixel silhouettes of hills at sunset (and misty pines, a golden
+meadow, autumn, night, snow, a volcano and the aurora). The bike is a little physics model (two wheels and the rider,
+held together by springs), so it rolls, bounces, wheelies and flips for real.
+
+- **Controls:** touch: GAS (big green) and BRAKE (red) on the right, LEAN BACK and LEAN FORWARD on the left (a thumb can
+  slide between buttons), NITRO above GAS. Keys: ↑ / W gas, ↓ / S brake, ← → / A D lean, Space nitro, P pause.
+  Controller: left stick lean, RT / A gas, LT / B brake, X nitro.
+- **Tricks pay money:** lean in the air to flip: a BACKFLIP $100, a FRONTFLIP $130, a DOUBLE pays 4x, a TRIPLE 9x. Land
+  with both wheels at once for a PERFECT landing (x1.5). WHEELIE (lean back with gas: it holds at its balance point)
+  $15 every half second, BIG AIR, and $10 notes along the trail. Landing tricks in a row builds a COMBO (+25% each).
+  Land on your head and you crash.
+- **TRAILS:** 8 trails (600-1370 m), each harder: kickers, gaps to fly over (fall in and you crash), cliff drops,
+  tables, rollers and climbs. Finish one to open the next. 3 stars each: finish, earn the trick money goal, beat par.
+  New stars pay ★1; finishing pays a bonus.
+- **FREE RIDE (farm money):** an endless trail; a crash just puts you back at the last checkpoint. QUIT banks your money.
+- **BIKE SHOP:** BIKES: TRAIL BIKE, BMX (flips fast), ENDURO, FAT BIKE (grip, climbs), DOWNHILL (speed), ROCKET, GOLDEN
+  BIKE. ABILITIES: POWER PEDALS, FLIP SPIN, TRICK CASH (+20% a level), NITRO, SECOND CHANCE (keep going after a crash on
+  a trail), MONEY MAGNET.
+- **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
+  the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
+  the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
 
 ## Pixel Box Fight
 
@@ -509,4 +534,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html`; online play checks it).
