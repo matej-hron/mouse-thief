@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.12.0';
+const VERSION = '2.13.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -409,19 +409,29 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
+const NEW_GAMES = ['bike', 'boxfight', 'ski'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
-  ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
+  const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
+  // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
+  if (hot) { ctx.fillStyle = col; ctx.fillRect(x - 1, y - 2, w + 2, h + 4); ctx.fillRect(x - 2, y - 1, w + 4, h + 2); }
+  ctx.fillStyle = '#0b0912'; ctx.fillRect(x, y - 1, w, h + 2); ctx.fillRect(x - 1, y, w + 2, h);
+  ctx.fillStyle = '#251f3a'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#1d182e'; ctx.fillRect(x, y + Math.round(h * 0.55), w, h - Math.round(h * 0.55));
+  ctx.fillStyle = col; ctx.fillRect(x, y, w, 3);
+  ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
+  ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
   ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
+  if (NEW_GAMES.includes(g.id)) {                                       // NEW!
+    const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
+    ctx.fillStyle = '#0b0912'; ctx.fillRect(bx - 1, by - 1, 24, 11); ctx.fillStyle = on ? '#e01e5a' : '#ff3a6a'; ctx.fillRect(bx, by, 22, 9);
+    T('NEW', bx + 11, by + 2, '#fff', 1, 'center');
+  }
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');
-  if (pad.used && pad.focus === i) {                                    // the game the controller picked
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 3, y - 3, w + 6, 2); ctx.fillRect(x - 3, y + h + 1, w + 6, 2); ctx.fillRect(x - 3, y - 3, 2, h + 6); ctx.fillRect(x + w + 1, y - 3, 2, h + 6);
-    UI.mx = x + w / 2; UI.my = y + h - 16;
-  }
+  if (pad.used && pad.focus === i) { UI.mx = x + w / 2; UI.my = y + h - 16; }   // the game the controller picked
   if (UI.button('play_' + g.id, x + 8, y + h - 26, w - 16, 20, pad.used && pad.focus === i ? 'A: PLAY' : 'PLAY', { accent: g.color })) play(g);
 }
 function drawHome(t) {
@@ -511,7 +521,11 @@ function qrRows(url) {                            // the QR code for a phone to 
   if (!qr.loading) { qr.loading = true; const sc = document.createElement('script'); sc.src = 'vendor/qrcode.js'; document.head.appendChild(sc); }
   return null;
 }
-function panel(x, y, w, h, color) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2); ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h); ctx.fillStyle = color; ctx.fillRect(x, y, w, 2); }
+function panel(x, y, w, h, color) {               // dark glass with cut corners and its color on top
+  ctx.fillStyle = '#0b0912'; ctx.fillRect(x, y - 1, w, h + 2); ctx.fillRect(x - 1, y, w + 2, h);
+  ctx.fillStyle = '#251f3a'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#1d182e'; ctx.fillRect(x, y + Math.round(h * 0.6), w, h - Math.round(h * 0.6));
+  ctx.fillStyle = color; ctx.fillRect(x, y, w, 2); ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 1, y + 2, w - 2, 1);
+}
 function drawRemote(t) {
   const W = S.W, R = PX.Remote;
   background(t);
