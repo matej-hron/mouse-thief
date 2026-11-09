@@ -70,8 +70,20 @@ window.PX = (() => {
             '#kkk####kkk#', '.##########.', '..###kk###..', '...######...', '....####....', '.....##.....'],
     ghost: ['...######...', '..########..', '.##########.', '.##ww##ww##.', '.##wk##wk##.', '############',
             '#####kk#####', '############', '############', '############', '##.##..##.##', '#...#..#...#'],
+    // a gift (the first of the month update, November 2026): white with spots in your color, a pink nose
+    cow:   ['.ww......ww.', '..ww###www..', '#dw####wwwd#', '#dwwww#wwwd#', '..wkwwwwkw..', '..wwwwwww#..', '..wwwwww##..',
+            '.pppppppppp.', 'pppppppppppp', 'ppkppppppkpp', 'pppppppppppp', '.pppppppppp.'],
   };
   const AVATAR_SHAPES = Object.keys(AVATARS);
+  // avatars you only get as a gift (in a first of the month update); the arcade remembers which ones you have
+  const GIFT_SHAPES = ['cow'];
+  const GIFTS_KEY = 'pixelArcade.gifts';
+  const Gifts = {
+    list() { try { const g = JSON.parse(localStorage.getItem(GIFTS_KEY)); return Array.isArray(g) ? g : []; } catch (e) { return []; } },
+    has(id) { return this.list().includes(id); },
+    add(id) { const g = this.list(); if (!g.includes(id)) g.push(id); try { localStorage.setItem(GIFTS_KEY, JSON.stringify(g)); } catch (e) { /* private mode */ } },
+    canUse(shape) { return !GIFT_SHAPES.includes(shape) || this.has(shape); },
+  };
   const AVATAR_COLORS = ['#e0782a', '#9b9b9b', '#2a7fd4', '#3fae4a', '#e01e5a', '#7a3fc4', '#e0b030', '#f2f2f2', '#3a3a46', '#2ad4c4'];
   function shade(hex, k) {
     const n = parseInt(hex.slice(1), 16), c = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.round(v * k));
@@ -625,6 +637,6 @@ window.PX = (() => {
   window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
   if (!window.PX_NO_REMOTE) Remote.resume();
 
-  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

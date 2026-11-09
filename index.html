@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch and Pixel Skate. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate and Pixel Ski. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.8.0';
+const VERSION = '2.9.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -39,7 +39,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings
+let screen = 'home';                  // home | search | profile | remote | settings | gift
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -49,6 +49,7 @@ window.addEventListener('keydown', e => {
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
+  if (screen === 'gift') { if (e.key === 'Enter' || e.key === ' ') claimGift(); return; }
   if (screen === 'home' && e.key === '/') { e.preventDefault(); openSearch(); return; }
   if (screen === 'home' || screen === 'search') {
     const step = { ArrowDown: 40, ArrowUp: -40, PageDown: 150, PageUp: -150 }[e.key];
@@ -76,6 +77,7 @@ const GAMES = [
   { id: 'skyrun', name: 'PIXEL SKY RUN', sub: 'PARKOUR ON PLANES!', url: 'skyrun.html', color: '#ff6bd0', cats: ['RUNNING', 'PLANES'], tags: 'PARKOUR JUMP PLANE OFFICER' },
   { id: 'fish', name: 'DEEP CATCH', sub: 'CATCH LEGENDARY FISH!', url: 'fish.html', color: '#2ad4d0', cats: ['SPORTS'], tags: 'FISH FISHING ROD SEA OCEAN BOAT LEGENDARY' },
   { id: 'skate', name: 'PIXEL SKATE', sub: 'SKATE, TRICK AND RACE!', url: 'skate.html', color: '#b07aff', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'SKATEBOARD SKATE BOARD TRICK TRICKS KICKFLIP OLLIE GRIND RAMP RACE COINS' },
+  { id: 'ski', name: 'PIXEL SKI', sub: 'SKI DOWN, DON\'T CRASH!', url: 'ski.html', color: '#7ad8ff', cats: ['RACING', 'SPORTS'], tags: 'SKI SKIING SNOW WINTER MOUNTAIN SLOPE DOWNHILL GREEN RED BLACK' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -322,6 +324,31 @@ function previewSkate(x, y, w, h, t) {            // a skater ollies over a cone
   ctx.fillStyle = '#6a3a1a'; ctx.fillRect(sx + 1, sy - 23, 6, 3);
   ctx.restore();
 }
+function previewSki(x, y, w, h, t) {              // a skier weaves down a snowy slope between the trees
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#4aa8f4'; ctx.fillRect(x, y, w, 20); ctx.fillStyle = '#a8dcff'; ctx.fillRect(x, y + 12, w, 8);
+  ctx.fillStyle = '#8aa8d0'; ctx.beginPath(); ctx.moveTo(x, y + 22); ctx.lineTo(x + w * 0.3, y + 6); ctx.lineTo(x + w * 0.55, y + 16); ctx.lineTo(x + w * 0.8, y + 4); ctx.lineTo(x + w, y + 22); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(x + w * 0.3) - 3, y + 6, 6, 3); ctx.fillRect(Math.round(x + w * 0.8) - 3, y + 4, 6, 3);
+  ctx.fillStyle = '#dfe8f6'; ctx.fillRect(x, y + 20, w, h - 20);
+  const cx = x + w / 2;
+  ctx.fillStyle = '#f4f8ff'; ctx.beginPath(); ctx.moveTo(cx - 6, y + 20); ctx.lineTo(cx + 6, y + 20); ctx.lineTo(cx + w * 0.42, y + h); ctx.lineTo(cx - w * 0.42, y + h); ctx.fill();
+  ctx.fillStyle = '#2a6ad4';
+  for (let k = 0; k < h - 20; k += 2) { const f = k / (h - 20); ctx.fillRect(Math.round(cx - 6 - f * (w * 0.42 - 6)), y + 20 + k, 1 + Math.round(f), 2); ctx.fillRect(Math.round(cx + 6 + f * (w * 0.42 - 6)) - 1, y + 20 + k, 1 + Math.round(f), 2); }
+  for (let i = 0; i < 4; i++) {                                              // trees and flags coming up the slope
+    const f = ((t * 0.5 + i / 4) % 1), sy = y + 20 + f * f * (h - 20), sz = 1 + f * 3, side = i % 2 ? 1 : -1;
+    const tx = cx + side * (8 + f * f * w * 0.5);
+    ctx.fillStyle = '#2f7a3a'; ctx.fillRect(Math.round(tx - sz * 1.5), Math.round(sy - sz * 4), Math.round(sz * 3), Math.round(sz * 3));
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(tx - sz * 0.5), Math.round(sy - sz * 5), Math.round(sz), Math.round(sz));
+    ctx.fillStyle = '#5a3a1a'; ctx.fillRect(Math.round(tx - sz * 0.3), Math.round(sy - sz), Math.max(1, Math.round(sz * 0.6)), Math.round(sz));
+  }
+  const sx = Math.round(cx + Math.sin(t * 2) * 14), sy = y + h - 16, lean = Math.round(Math.cos(t * 2) * 2);
+  ctx.fillStyle = '#3fbe4a'; ctx.fillRect(sx - 5 + lean, sy + 2, 2, 12); ctx.fillRect(sx + 3 + lean, sy + 2, 2, 12);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(sx - 4 + lean, sy - 4, 8, 7);
+  ctx.fillStyle = '#e8303a'; ctx.fillRect(sx - 4 + lean, sy + 3, 3, 5); ctx.fillRect(sx + 1 + lean, sy + 3, 3, 5);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(sx - 2 + lean * 2, sy - 9, 5, 5);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 7, sy + 10, 2, 2); ctx.fillRect(sx - Math.sign(Math.cos(t * 2)) * 9, sy + 8, 1, 1);
+  ctx.restore();
+}
 function previewFish(x, y, w, h, t) {             // a golden fish swims past the hook
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   for (let k = 0; k < h; k += 4) { const m = k / h; ctx.fillStyle = `rgb(${Math.round(42 - 30 * m)},${Math.round(212 - 110 * m)},${Math.round(208 - 60 * m)})`; ctx.fillRect(x, y + k, w, 4); }
@@ -346,7 +373,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.fillStyle = '#262036'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = g ? g.color : '#3a2f5c'; ctx.fillRect(x, y, w, 2);
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki })[g.id](x + 6, y + 8, w - 12, 62, t);
   if (PX.textWidth(g.name, 2) <= w - 4) T(g.name, x + w / 2, y + 80, '#fff', 2, 'center', '#000');
   else g.name.split(' ').forEach((part, k) => T(part, x + w / 2, y + 76 + k * 12, '#fff', 2, 'center', '#000'));
   T(g.sub, x + w / 2, y + 101, '#9a92b8', 1, 'center');
@@ -639,6 +666,7 @@ function padPoll(dt) {
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
     } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
+    else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (edge(1)) UI.back = true;
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
@@ -668,8 +696,8 @@ function drawProfile(t) {
   PX.drawAvatar(ctx, draft.avatar, 18, 40, 5);
   S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26);
   T('NICKNAME ONLY!', 108, 64, '#ff8a8a', 2);
-  PX.AVATAR_SHAPES.forEach((shape, i) => {
-    const x = 108 + (i % 8) * 34, y = 90, on = draft.avatar.shape === shape;
+  PX.AVATAR_SHAPES.filter(sh => PX.Gifts.canUse(sh)).forEach((shape, i) => {
+    const x = 108 + (i % 9) * 32, y = 90, on = draft.avatar.shape === shape;
     if (UI.button('shape_' + shape, x, y, 30, 30, '', { on, accent: '#e0a820' })) draft.avatar.shape = shape;
     PX.drawAvatar(ctx, { shape, color: draft.avatar.color }, x + 1, y + 1, 2, null);
   });
@@ -684,13 +712,67 @@ function drawProfile(t) {
   if (UI.button('cancel', Math.round(W / 2 + 4), 190, bw, 22, 'BACK') || UI.back) { nameInput.blur(); screen = 'home'; }
 }
 
+// --- the first of the month update: every month can bring everyone a free gift ---------------------
+// The arcade shows it the first time you open it in that month (or later, if you missed it): press OKAY and it's yours.
+// To give the next one: add a line here (the month it starts, and the avatar from common.js's GIFT_SHAPES).
+const MONTHLY = [
+  { month: '2026-11', gift: 'cow' },
+];
+function monthNow() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function pendingGift() { return MONTHLY.filter(u => u.month <= monthNow() && !PX.Gifts.has(u.gift)).pop() || null; }
+let gift = pendingGift();
+if (gift) screen = 'gift';
+function claimGift() {
+  if (!gift) { screen = 'home'; return; }
+  PX.Gifts.add(gift.gift); gift = pendingGift(); PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+  if (!gift) screen = 'home';
+}
+// a cow standing up on its back legs with its arms out, like on the update's picture
+const COW = ['.......k......k.......', '......kkkwwwwkkk......', '.......kwwwwwwk.......', '........wkwwkw........', '........wwwwww........',
+             '.......pppppppp.......', '.......ppkppkpp.......', '........pppppp........', '.......wwwwwwww.......', 'hwwwwwwwwkkwwwwwwwwwwh',
+             'hwwkkwwwkkkwwwwwwkwwwh', '.......wwkkwwwwkkw....', '.......wwwwwwwkkkw....', '.......kkwwwwwwwww....', '.......kkkwwwwwwww....',
+             '.......wwwwwwwwkkw....', '.......wwwpppwwkkw....', '.......wwwpppwwwww....', '.......wwwwwwwwwww....', '.......kww....wwwk....',
+             '.......www....www.....', '.......www....www.....', '.......hhh....hhh.....'];
+function cowPicture(x, y, w, h, t) {
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const sky = ['#8a7ac0', '#a888c8', '#c898c8', '#e8a8b8', '#f8c0a8', '#ffd8a8'];         // a sunset, purple to peach
+  sky.forEach((c, k) => { ctx.fillStyle = c; ctx.fillRect(x, y + Math.round(k * h * 0.6 / sky.length), w, Math.ceil(h * 0.6 / sky.length) + 1); });
+  ctx.fillStyle = '#fff6d0'; ctx.fillRect(x + w - 34, y + 10, 12, 12); ctx.fillRect(x + w - 36, y + 12, 16, 8); ctx.fillRect(x + w - 32, y + 8, 8, 16);
+  ctx.fillStyle = '#ffe8d8'; for (let i = 0; i < 5; i++) { const cx = Math.round(x + ((i * 61 + t * 3) % (w + 40)) - 20); ctx.fillRect(cx, y + 8 + (i % 3) * 7, 22, 3); ctx.fillRect(cx + 5, y + 6 + (i % 3) * 7, 10, 2); }
+  ctx.fillStyle = '#2f6a3a';                                              // the trees on the horizon
+  for (let k = 0; k < w; k += 3) { const th = 6 + Math.abs(Math.sin(k * 0.21)) * 7 + (k * 7 % 4); ctx.fillRect(x + k, Math.round(y + h * 0.62 - th), 3, Math.round(th) + 2); }
+  ctx.fillStyle = '#3f8a3a'; ctx.fillRect(x, Math.round(y + h * 0.62), w, h);
+  ctx.fillStyle = '#5aae3f'; for (let k = 0; k < 60; k++) ctx.fillRect(x + (k * 53) % w, Math.round(y + h * 0.66 + (k * 29) % Math.round(h * 0.32)), 2, 1);
+  const n = 4, sp = w / n;
+  for (let i = 0; i < n; i++) {
+    const bob = Math.round(Math.sin(t * 3 + i * 1.7)), cx = x + sp * (i + 0.5);
+    PX.drawIcon(ctx, COW, { w: '#f4f4f0', k: '#1a1a1a', p: '#f0a0b0', h: '#4a4a4a' }, cx, y + h * 0.6 + (i === 2 ? -3 : 3) + bob, 2, '#111');
+  }
+  ctx.restore();
+}
+function drawGift(t) {
+  const W = S.W;
+  drawHome(t);
+  UI.list = [];                                     // only OKAY can be pressed while the update is up
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  const pw = Math.min(330, W - 30), x = Math.round(W / 2 - pw / 2), y = 32, ph = 200;
+  ctx.fillStyle = '#efe9ff'; ctx.fillRect(x - 2, y - 2, pw + 4, ph + 4); ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, pw, ph);
+  T('FIRST OF THE MONTH UPDATE', W / 2, y + 7, '#fff', 2, 'center', '#000');
+  cowPicture(x + 6, y + 24, pw - 12, 92, t);
+  const bw = PX.textWidth('FREE AVATAR!', 4);
+  T('FREE AVATAR!', W / 2 + 14, y + 124, '#fff', 4, 'center', '#3a2f5c');
+  PX.drawAvatar(ctx, { shape: gift.gift, color: 8 }, Math.round(W / 2 + 14 - bw / 2 - 34), y + 120, 2);
+  T('PICK IT IN EDIT, NEXT TO YOUR NAME', W / 2, y + 152, '#9a92b8', 1, 'center');
+  if (UI.button('okay', Math.round(W / 2 - 60), y + 168, 120, 24, pad.used ? 'A: OKAY' : 'OKAY', { accent: '#5ad43f' }) || UI.back) claimGift();
+}
+
 let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();

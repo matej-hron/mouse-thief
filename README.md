@@ -23,6 +23,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
 | **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
+| **Pixel Ski** (`ski.html`) | Ski down 10 mountains, each with a green, a red and a black run. Hit anything and you crash: survive to the bottom. |
 
 ## Pixel Wings
 
@@ -217,6 +218,32 @@ Skateboard racing, seen from the side, on a city sidewalk. Race 5 rivals (ZIGGY,
 - **FREE SKATE:** an endless skatepark with no rivals: skate and do whatever you want. Every 400 coins in a session = ★1 (up to ★3).
   Time warp there is slow motion.
 - Coins, tricks, abilities and best places are saved on your phone.
+
+## Pixel Ski
+
+Downhill skiing, seen from behind the skier: the slope is drawn in perspective, so it looks 3D. **Survive to the bottom:**
+hit a tree, a rock, a snowman, a log, a gate pole, another skier or the red safety net and you crash, and the run is over.
+
+- **Controls** (like a phone ski game, in pixels): the slider at the bottom left **steers** (drag the knob left / right,
+  or put your finger anywhere on the left side and slide). The standing slider on the right sets your **speed**: push it up
+  to **tuck** (faster), pull it down to **brake**. Keys: ← → / A D steer, ↑ / W tuck, ↓ / S brake, P pauses.
+  Controller: left stick steers, RT / A tuck, LT / B brake, START pauses. Top left: pause. Top right: KM/H and the clock.
+- **10 mountains, 3 runs each:** SNOWY MEADOW, PINE FOREST, NIGHT RACE (floodlights), FROZEN LAKE (lots of ice),
+  SUNSET RIDGE, BLIZZARD PASS (fog and snowfall), ICE CANYON (narrow), VOLCANO SLOPE (rocks), AURORA PEAK (northern
+  lights) and THE SUMMIT. Every mountain has a **GREEN** run (easy), a **RED** run and a **BLACK** run (hard: narrower,
+  steeper, sharper bends, more obstacles, obstacles side by side, more skiers). Later mountains are harder too.
+- Finish GREEN to open RED, RED to open BLACK, and BLACK to open the next mountain. The first finish of a run pays ★
+  (more for harder runs and mountains); your best time on every run is saved.
+- **On the snow:** stay inside the blue lines: past them is deep powder that slows you to a crawl. **Kickers** (blue
+  ramps) throw you in the air: you fly over rocks, logs and snowmen. **Ice** makes it hard to steer. **Slalom gates**
+  (a red and a blue pole) are safe to ski through, but don't hit a pole. The bends push you to the outside.
+
+## First of the month update
+
+The first time you open the arcade in a new month, a **FIRST OF THE MONTH UPDATE** can pop up with a free gift for
+everyone. November 2026: a free **COW** avatar (press OKAY, then pick it in EDIT). Gifts are listed in `MONTHLY` in
+`index.html` (the month and the avatar); gift avatars are in `GIFT_SHAPES` in `common.js` and only show in the avatar
+picker once you have them.
 
 ## Pixel Sky Run
 
@@ -447,4 +474,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html`; online play checks it).
