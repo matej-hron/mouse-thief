@@ -33,17 +33,18 @@
    drag the finished meal to the customer.
    You have 3 minutes for one meal; the faster you are, the bigger the tip.
    You start with a CAFE SHOP, then buy an ICE CREAM SHOP, a PIZZA RESTAURANT,
-   a BURGER RESTAURANT, a SUSHI BAR and at last a LUXURY RESTAURANT. New players get a tutorial.
+   a BURGER RESTAURANT, a SUSHI BAR and at last a LUXURY RESTAURANT. You learn by doing: a coach says
+   one or two words and a hand shows the move; the COOKING SCHOOL teaches every meal.
      1. Setup   2. Restaurants and meals   3. The game   4. Your hands
      5. Drawing food   6. Drawing the kitchen   7. Screens   8. Input and the main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '3.0.0';
+const VERSION = '3.1.0';
 const SAVE_KEY = 'pixelCook.save';
 const NREST = 6;
 const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
-               shifts: [0, 0, 0, 0, 0, 0], served: 0, best: 0, tut: false, tips: [false, false, false, false, false, false], hat: false, sfx: true };
+               shifts: [0, 0, 0, 0, 0, 0], served: 0, best: 0, tut: false, tips: [false, false, false, false, false, false], hat: false, sfx: true, learned: {}, clockTip: false };
 try {
   const old = JSON.parse(localStorage.getItem(SAVE_KEY));
   if (old && old.v !== 3) {                 // an older save: the restaurants you had move to their new places (new shops came in between)
@@ -166,23 +167,23 @@ let paused = false, fade = 1;
 let G = null;
 let shown = save.money;         // the money on the screen counts up to what you have
 function go(s) { state = s; fade = 1; buyFlash = null; }
-function newShift(tut = false) {
-  const rest = tut ? 0 : save.rest;
-  G = { rest, tut, tutPage: tut ? 0 : -1, total: tut ? 1 : shiftSize(rest), n: 0, hearts: HEARTS, servedN: 0, earned: 0, tipsSum: 0, mist: 0,
-        O: null, phase: 'wait', phaseT: 0, streak: 0, rateSum: 0, flashT: 0, pops: [], fx: [], shake: 0, stars: 0, newDish: null, tip: null, last: -1, guide: tut || !save.tips[rest], back: null };
-  if (!tut && !save.tips[rest]) G.tip = rest;                      // a short tip the first time in a restaurant
+function newShift(tut = false, lesson = null) {   // a shift, or (lesson) one meal from the COOKING SCHOOL: no clock, the coach helps
+  if (tut) lesson = { rest: 0, i: 1 };
+  const rest = lesson ? lesson.rest : save.rest, free = !!lesson;
+  G = { rest, tut, lesson, free, tutPage: -1, total: free ? 1 : shiftSize(rest), n: 0, hearts: HEARTS, servedN: 0, earned: 0, tipsSum: 0, mist: 0,
+        O: null, phase: 'intro', phaseT: 0, streak: 0, rateSum: 0, flashT: 0, pops: [], fx: [], shake: 0, stars: 0, newDish: null, tip: null, last: -1, guide: free || !save.tips[rest], back: null, praise: null };
   go('play'); paused = false; drag = null;
   resetDish();
-  if (!tut) { G.phase = 'intro'; G.phaseT = 0; }
 }
 function nextCustomer() {
   const rest = REST[G.rest];
-  let i = G.tut ? 1 : 0;
-  if (!G.tut) do { i = Math.floor(Math.random() * dishCount(G.rest)); } while (i === G.last && dishCount(G.rest) > 1);
+  let i = G.lesson ? G.lesson.i : 0;
+  if (!G.lesson) do { i = Math.floor(Math.random() * dishCount(G.rest)); } while (i === G.last && dishCount(G.rest) > 1);
   G.last = i; G.n++;
   G.O = { dish: rest.dishes[i], price: priceOf(rest.dishes[i]), time: MEAL_TIME, mist: 0,
           who: { shape: pick(CUSTOMER_SHAPES), color: Math.floor(Math.random() * PX.AVATAR_COLORS.length) }, shirt: pick(['#3a7ad4', '#3fae4a', '#e0782a', '#b07aff', '#e01e5a', '#2ad4c4']),
           say: '', pay: 0, tipPay: 0 };
+  if (G.free) { G.O.who = { shape: 'bear', color: 7 }; G.O.shirt = '#f4f4f8'; G.O.teacher = true; }
   resetDish();
   G.phase = 'enter'; G.phaseT = 0;
   sfx('bell');
@@ -202,6 +203,7 @@ function puff(x, y, color, n = 5, sp = 30) { for (let i = 0; i < n; i++) { const
 function mistake(text) {
   G.O.mist++; G.mist++; G.shake = 0.3; G.streak = 0;
   pop(text, '#ff6a5a'); sfx('wrong');
+  G.praise = { text: 'OOPS!', t: 1, bad: true };
 }
 function wrong(id) {
   const D = G.D, dish = G.O.dish;
@@ -213,6 +215,7 @@ function wrong(id) {
 function complete(id) {                    // a step is finished
   const D = G.D;
   D.done.push(id); D.got.push(id); D.flash = 0.25;
+  G.praise = { text: pick(['NICE!', 'YES!', 'GREAT!', 'GOOD JOB!', 'YUM!']), t: 0.7 };
   if (!needs().length) { D.gi++; D.got = []; }
   if (dishReady()) { pop('READY!', '#9be36b'); sfx('ready'); }
 }
@@ -264,16 +267,19 @@ function serve() {
   O.rate = rate; G.rateSum += rate;
   let tip = O.price * (0.4 * left + (G.D.perfect ? 0.15 : 0)) * (1 + 0.25 * save.up.tips) * Math.pow(0.8, O.mist) * (1 + 0.1 * Math.min(5, Math.max(0, G.streak - 1)));
   tip = Math.round(tip);
-  O.pay = O.price; O.tipPay = tip;
-  save.money += O.price + tip; save.earned += O.price + tip; save.served++;
-  G.earned += O.price + tip; G.tipsSum += tip; G.servedN++;
+  let pay = O.price;
+  if (G.free) { const key = G.rest + ':' + G.lesson.i; pay = save.learned[key] ? 0 : O.price; tip = 0; save.learned[key] = true; }   // a lesson pays once: when you learn the meal
+  O.pay = pay; O.tipPay = tip;
+  save.money += pay + tip; save.earned += pay + tip; save.served++;
+  G.earned += pay + tip; G.tipsSum += tip; G.servedN++;
   O.say = rate === 3 ? pick(['PERFECT!', 'THE BEST EVER!', 'WOW! SO FAST!']) : rate === 2 ? pick(['YUMMY!', 'DELICIOUS!', 'THANK YOU!', 'SO GOOD!']) : pick(['WELL... THANKS.', 'IT IS OK.']);
-  pop('+$' + O.price, '#ffd23f', customerX() + 60, 50, true);
+  if (pay) pop('+$' + pay, '#ffd23f', customerX() + 60, 50, true);
   if (tip) pop('TIP +$' + tip, '#9be36b', customerX() + 60, 74);
   if (G.streak >= 2) pop('STREAK X' + G.streak + '!', '#ff9ab8', customerX() + 60, 92);
   for (let i = 0; i < 8; i++) G.fx.push({ coin: true, x: customerX() + Math.random() * 30, y: 60 + Math.random() * 20, t: -i * 0.06, life: 0.6 });
   G.phase = 'served'; G.phaseT = 0; drag = null;
-  if (G.guide && !G.tut) { G.guide = false; save.tips[G.rest] = true; }
+  if (G.guide && !G.free) { G.guide = false; save.tips[G.rest] = true; }
+  if (!G.free) save.clockTip = true;
   store(); sfx('cash');
 }
 function customerLeaves() {
@@ -283,7 +289,7 @@ function customerLeaves() {
 }
 function endShift() {
   go('over'); drag = null;
-  if (G.tut) { save.tut = true; save.tips[0] = true; store(); return; }
+  if (G.free) { if (G.tut) { save.tut = true; save.tips[0] = true; } store(); sfx('done'); return; }
   const before = dishCount(G.rest);
   if (G.servedN > 0) {
     save.shifts[G.rest]++;
@@ -300,11 +306,12 @@ function step(dt) {
   G.fx = G.fx.filter(p => { p.t += dt; if (!p.coin) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 60 * dt; } return p.t < p.life; });
   for (const p of G.D.parts) p.t += dt;
   if (G.back && (G.back.t += dt) > 0.25) G.back = null;
+  if (G.praise) G.praise.t -= dt;
   if (G.tutPage >= 0 || G.tip !== null) return;
   if (G.phase === 'intro' && G.phaseT > 1.3) nextCustomer();
   else if (G.phase === 'enter' && G.phaseT > 0.7) { G.phase = 'cook'; G.phaseT = 0; }
   else if (G.phase === 'cook') {
-    if (!G.tut) G.O.time -= dt;                          // the clock waits for you in the tutorial
+    if (!G.free) G.O.time -= dt;                         // the clock waits for you in a lesson
     if (G.O.time <= 10 && Math.floor(G.O.time) !== Math.floor(G.O.time + dt)) sfx('tick');
     if (G.cook) {
       const c = G.cook; c.t += dt;
@@ -750,6 +757,7 @@ function drawCustomer(O, x, t, mood) {        // standing behind the counter
   R(x - 11, y + 22, 22, 40, '#111'); R(x - 10, y + 23, 20, 40, O.shirt); R(x - 10, y + 23, 20, 2, 'rgba(255,255,255,0.25)');
   R(x - 14, y + 26, 4, 12, O.shirt); R(x + 10, y + 26, 4, 12, O.shirt);
   PX.drawAvatar(ctx, O.who, x - 12, y, 2, null);
+  if (O.teacher) chefHat(x, y - 1, false);
   if (mood === 'angry') { R(x - 7, y - 6, 3, 3, '#ff3a2a'); R(x + 5, y - 7, 3, 3, '#ff3a2a'); R(x - 1, y - 9, 3, 3, '#ff3a2a'); }
 }
 function bubble(text, x, y, color = '#111') {
@@ -904,6 +912,10 @@ function drawPlay(t) {
   if (show && held) drawMeal();              // in your hand it goes over everything
   if (O) drawTicket(t); else { R(3, 21, 102, 216, '#111'); R(4, 22, 100, 214, '#2a2238'); T('NO ORDER', 54, 120, '#5b5275', 1, 'center'); }
   if (G.cook) drawCookMeter(t);
+  if (!save.clockTip && !G.free && G.phase === 'cook') {          // the first real order: look, the clock!
+    if (G.phaseT > 5) { save.clockTip = true; store(); }
+    else { const b = Math.round(Math.abs(Math.sin(t * 6)) * 4); R(108 + b, 186, 112, 20, '#111'); R(109 + b, 187, 110, 18, '#ffe23a'); R(104 + b, 193, 4, 6, '#111'); T('↓ 3 MINUTES!', 114 + b, 191, '#111', 2); }
+  }
   // the top bar
   shown += (save.money - shown) * 0.15; if (Math.abs(save.money - shown) < 0.6) shown = save.money;
   R(0, 0, W, 20, '#0d0b13'); R(0, 19, W, 1, rest.color);
@@ -917,7 +929,8 @@ function drawPlay(t) {
   if (G.phase === 'intro') {                   // the shift begins
     const k = clamp(G.phaseT / 0.2, 0, 1) * clamp((1.3 - G.phaseT) / 0.2, 0, 1), bw = Math.round(240 * k);
     R(W / 2 - bw / 2 - 2, 96, bw + 4, 48, '#111'); R(W / 2 - bw / 2, 98, bw, 44, rest.color);
-    if (k >= 1) { T('SHIFT ' + (save.shifts[G.rest] + 1), W / 2, 104, '#111', 3, 'center'); T(G.total + ' CUSTOMERS ARE COMING', W / 2, 128, '#111', 1, 'center'); }
+    if (k >= 1 && G.free) { T(G.tut ? 'LET\'S COOK!' : 'LESSON', W / 2, 104, '#111', 3, 'center'); T(rest.dishes[G.lesson.i].name, W / 2, 128, '#111', 1, 'center'); }
+    else if (k >= 1) { T('SHIFT ' + (save.shifts[G.rest] + 1), W / 2, 104, '#111', 3, 'center'); T(G.total + ' CUSTOMERS ARE COMING', W / 2, 128, '#111', 1, 'center'); }
   }
   for (const p of G.pops) {
     const a = p.t > 1 ? 1 - (p.t - 1) / 0.4 : 1, sc = p.t < 0.08 ? 1 : 0; ctx.globalAlpha = clamp(a, 0, 1);
@@ -927,56 +940,42 @@ function drawPlay(t) {
   if (pad.on && canPlay()) drawHand(pad.x - 2, pad.y - 2, pad.down);
 }
 
-/* --- the tutorial, and a helping hand on the first order in every restaurant ---------------- */
-const TUT_PAGES = [
-  ['WELCOME, CHEF!', 'THIS IS YOUR OWN LITTLE CAFE SHOP.', 'HUNGRY PEOPLE WALK IN AND ORDER.', 'YOU MAKE IT, THEY PAY YOU.'],
-  ['USE YOUR HANDS', 'THE TICKET ON THE LEFT SHOWS EVERY STEP.', 'THE INGREDIENTS ARE ON THE SHELF ON THE RIGHT:', 'DRAG THEM TO THE TABLE. POUR, SPRINKLE, SPREAD!'],
-  ['3 MINUTES!', 'YOU HAVE 3 MINUTES FOR ONE MEAL.', 'THE FASTER YOU ARE, THE BIGGER THE TIP.', 'EARN MONEY AND OPEN NEW RESTAURANTS!'],
-];
-const REST_TIPS = [
-  ['USE YOUR HANDS!', 'THE INGREDIENTS ARE ON THE SHELF ON THE RIGHT.', 'DRAG THEM TO THE TABLE: POUR, SPRINKLE, SPREAD.', 'THEN DRAG THE MEAL TO THE CUSTOMER.'],
-  ['ICE CREAM!', 'BAKE THE CONE IN THE WAFFLE IRON,', 'THEN STACK THE SCOOPS IN THE ORDER', 'ON THE TICKET AND ADD THE TOPPINGS.'],
-  ['PIZZA TIME!', 'EVERY PIZZA IS MADE FROM NEW DOUGH:', 'ROLL IT, SPREAD THE SAUCE, SPRINKLE THE REST,', 'THEN DRAG THE PIZZA INTO THE OVEN.'],
-  ['BURGERS!', 'A BURGER IS A STACK: BUILD IT IN THE SAME', 'ORDER AS ON THE TICKET.', 'THE PATTY GOES ON THE GRILL FIRST.'],
-  ['SUSHI!', 'NORI FIRST, THEN COOK THE RICE AND LAY', 'THE FISH ON IT. RUB THE ROLL MAT OVER IT', 'TO ROLL IT UP, THEN ADD THE REST.'],
-  ['FINE DINING!', 'FIRST THE PLATE. THE MAIN THING GOES', 'IN THE PAN. THEN ADD THE REST', 'OF THE TICKET, IN ANY ORDER.']];
-const RUB_HINT = { roll: 'RUB THE ROLL PIN OVER THE DOUGH UNTIL IT IS FLAT', sauce: 'DRAG THE SAUCE ONTO THE DOUGH AND SPREAD IT AROUND', milk: 'DRAG THE MILK OVER THE CUP AND MOVE IT AROUND TO POUR',
-                   ketchup: 'DRAG THE KETCHUP OVER THE BURGER AND SQUEEZE IT ALONG', mat: 'RUB THE ROLL MAT OVER THE SUSHI TO ROLL IT UP', syrup: 'DRAG THE SYRUP OVER THE TOP SCOOP AND MOVE IT AROUND' };
-function guide() {                            // what to do next: { text, tile, from, to, mode }
-  if (!G.guide || G.phase !== 'cook' || G.tutPage >= 0 || G.tip !== null) return null;
+/* --- learning by doing: the coach says one or two words and a hand shows the move --------------- */
+// (in the COOKING SCHOOL, and on the first order in every new restaurant)
+const RUB_SAY = { roll: 'ROLL!', sauce: 'SPREAD!', milk: 'POUR!', soy: 'POUR!', cream: 'SWIRL!', mat: 'ROLL IT UP!' };
+function guide() {                            // what to do next: { say, icon, tile, from, to, mode }
+  if (!G.guide || G.phase !== 'cook') return null;
   const rest = REST[G.rest], dish = { x: dishX(), y: DISH_Y }, st = { x: stationX() + 27, y: 76 };
-  if (G.cook) { const ok = G.cook.t >= G.cook.wait; return { text: ok ? 'NOW! TAP ANYWHERE BEFORE IT IS TOO LATE!' : 'WAIT FOR THE GREEN ZONE... THEN TAP ANYWHERE', mode: ok ? 'tap' : null, to: dish }; }
-  if (dishReady()) return { text: 'DONE! DRAG THE ' + rest.meal + ' TO THE CUSTOMER TO GET PAID', from: dish, to: { x: customerX(), y: 70 }, mode: 'drag' };
+  if (G.cook) { const ok = G.cook.t >= G.cook.wait; return { say: ok ? 'NOW! TAP!' : 'WAIT...', mode: ok ? 'tap' : null, to: dish }; }
+  if (dishReady()) return { say: 'SERVE IT!', from: dish, to: { x: customerX(), y: 70 }, mode: 'drag' };
   const id = needs()[0], it = ITEMS[id];
-  if (it.k === 'bake') return { text: 'NOW DRAG THE PIZZA INTO THE OVEN', from: dish, to: st, mode: 'drag' };
+  if (it.k === 'bake') return { say: 'INTO THE OVEN!', from: dish, to: st, mode: 'drag' };
   const i = rest.tray.indexOf(id), r = tileRect(i, rest.tray.length), from = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-  if (it.k === 'cook') return { text: 'DRAG THE ' + it.n + ' TO THE ' + rest.st, tile: id, from, to: st, mode: 'drag' };
-  if (it.k === 'rub') return { text: RUB_HINT[id] || 'DRAG THE ' + it.n + ' OVER THE ' + rest.meal + ' AND MOVE IT AROUND', tile: id, from, to: dish, mode: 'rub' };
-  if (it.c > 1) return { text: 'DRAG THE ' + it.n + ' OVER THE ' + rest.meal + ' AND MOVE AROUND TO SPRINKLE IT', tile: id, from, to: dish, mode: 'rub' };
-  return { text: 'DRAG THE ' + it.n + ' FROM THE SHELF ONTO THE ' + (id === 'dough' ? 'BOARD' : id === 'plate' ? 'TABLE' : id === 'nori' ? 'MAT' : SCOOPS[id] ? 'CONE' : rest.meal), tile: id, from, to: dish, mode: 'drag' };
+  if (it.k === 'cook') return { say: 'PUT IT IN!', icon: id, tile: id, from, to: st, mode: 'drag' };
+  if (it.k === 'rub') return { say: RUB_SAY[id] || 'SQUEEZE!', icon: id, tile: id, from, to: dish, mode: 'rub' };
+  return { say: it.c > 1 ? 'SPRINKLE!' : 'DROP IT ON!', icon: id, tile: id, from, to: dish, mode: it.c > 1 ? 'rub' : 'drag' };
 }
 function drawGuide(t, g) {
-  if (!g) return;
-  const x = midX0() + 2, w = shelfX() - 4 - x, lines = wrap(g.text, w - 8), h = lines.length * 8 + 6, y = 238 - h;
-  R(x, y, w, h, '#111'); R(x + 1, y + 1, w - 2, h - 2, '#ffe23a'); lines.forEach((s, i) => T(s, x + w / 2, y + 4 + i * 8, '#111', 1, 'center'));
-  if (drag || !g.mode) return;
+  if (!G.guide) return;
+  const pr = G.praise && G.praise.t > 0 ? G.praise : null;
+  if (!g && !pr) return;
+  const x = midX0() + 2, w = shelfX() - 4 - x, y = 206, bob = pr ? Math.round(Math.abs(Math.sin(t * 14)) * 3) : Math.round(Math.sin(t * 3));
+  PX.drawAvatar(ctx, { shape: 'bear', color: 7 }, x + 2, y + 9 - bob, 2, null); chefHat(x + 14, y + 6 - bob, false);     // the coach
+  const bx = x + 34, bw = w - 36, by = y + 8, text = pr ? pr.text : g.say, pic = !pr && g.icon;
+  R(bx - 1, by - 1, bw + 2, 26, '#111'); R(bx, by, bw, 24, pr ? (pr.bad ? '#ffd8d0' : '#d8ffd0') : '#fff'); R(bx - 5, by + 9, 5, 6, '#111'); R(bx - 4, by + 10, 5, 4, pr ? (pr.bad ? '#ffd8d0' : '#d8ffd0') : '#fff');
+  if (pic) { R(bx + 3, by + 2, 26, 20, '#f0e8d0'); bigIcon(pic, bx + 16, by + 12, 1); }
+  const tx = bx + (pic ? 34 : 8), size = PX.textWidth(text, 2) <= bw - (tx - bx) - 4 ? 2 : 1;
+  T(text, tx, by + (size === 2 ? 7 : 10), pr ? (pr.bad ? '#d8201a' : '#2a8a2a') : '#111', size);
+  if (drag || !g || !g.mode) return;
   if (g.mode === 'tap') { drawHand(g.to.x - 3, g.to.y + Math.round(Math.abs(Math.sin(t * 6)) * 6), true); return; }
   const k = (t % 2.2) / 2.2;                  // a ghost hand shows the move
   let hx, hy;
   if (k < 0.5) { const e = k / 0.5, s = e * e * (3 - 2 * e); hx = g.from.x + (g.to.x - g.from.x) * s; hy = g.from.y + (g.to.y - g.from.y) * s; }
   else if (g.mode === 'rub') { const a = (k - 0.5) * 25; hx = g.to.x + Math.cos(a) * 14; hy = g.to.y + Math.sin(a) * 10; }
   else { hx = g.to.x; hy = g.to.y; }
-  ctx.globalAlpha = k > 0.9 ? (1 - k) * 10 : 0.9; drawHand(hx - 3, hy - 2, k > 0.04); ctx.globalAlpha = 1;
-}
-function infoPanel(lines, btn) {
-  const W = S.W, { y } = panel(340, 120, 44, REST[G.rest].color);
-  T(lines[0], W / 2, y + 12, '#ffd23f', 3, 'center', '#000');
-  lines.slice(1).forEach((s, i) => T(s, W / 2, y + 42 + i * 12, '#efe9ff', 1, 'center'));
-  return UI.button('next', Math.round(W / 2 - 60), y + 88, 120, 24, btn, { accent: '#5ad43f' });
-}
-function drawTutorialPages() {
-  if (infoPanel(TUT_PAGES[G.tutPage], G.tutPage < TUT_PAGES.length - 1 ? 'NEXT' : 'LET\'S COOK!')) { sfx('click'); if (++G.tutPage >= TUT_PAGES.length) { G.tutPage = -1; nextCustomer(); } }
-  if (G.tutPage >= 0) T((G.tutPage + 1) + ' / ' + TUT_PAGES.length, S.W / 2, 174, '#9a92b8', 1, 'center');
+  ctx.globalAlpha = k > 0.9 ? (1 - k) * 10 : 0.9;
+  if (g.icon && k > 0.04) bigIcon(g.icon, hx + 2, hy - 8, 1);       // the hand carries the thing
+  drawHand(hx - 3, hy - 2, k > 0.04); ctx.globalAlpha = 1;
 }
 
 /* --- 7. SCREENS --------------------------------------------------------------- */
@@ -1023,7 +1022,7 @@ function drawTitle(t) {
   if (UI.button('play', bx, 104, bw, 28, save.tut ? 'OPEN THE ' + (rest.short === 'CAFE' ? 'CAFE' : rest.name) : 'START COOKING', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(!save.tut); }
   if (UI.button('rests', bx, 138, hw, 24, 'RESTAURANTS', { size: 1, accent: '#ffb020' })) { sfx('click'); go('rests'); }
   if (UI.button('shop', bx + hw + 4, 138, hw, 24, 'UPGRADES', { size: 1, accent: '#7ac8ff' })) { sfx('click'); go('shop'); }
-  if (UI.button('how', bx, 168, hw, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); newShift(true); }
+  if (UI.button('how', bx, 168, hw, 22, 'COOKING SCHOOL', { size: 1, accent: '#ff9ab8' })) { sfx('click'); schoolRest = save.rest; go('school'); }
   if (UI.button('games', bx + hw + 4, 168, hw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
   T('MEALS SERVED: ' + save.served + '   BEST SHIFT: $' + save.best, W / 2, 202, '#fff', 1, 'center', '#000');
   T('3 MINUTES FOR ONE MEAL. BE FAST FOR A BIG TIP!', W / 2, 214, '#ffd23f', 1, 'center', '#000');
@@ -1058,6 +1057,31 @@ function drawRests(t) {
   });
   drawFlash();
 }
+// the COOKING SCHOOL: every meal as pictures; LEARN one and you cook it with the coach, with no clock
+let schoolRest = 0;
+function drawSchool(t) {
+  const W = S.W;
+  if (header('COOKING SCHOOL')) { go('title'); return; }
+  const owned = REST.map((r, i) => i).filter(i => save.owned[i]);
+  if (!save.owned[schoolRest]) schoolRest = owned[0];
+  const r = REST[schoolRest], at = owned.indexOf(schoolRest);
+  T(r.name, W / 2, 28, r.color, 2, 'center', '#000');
+  if (owned.length > 1) {
+    if (UI.button('prev', Math.round(W / 2 - 110), 25, 22, 16, '<', { size: 1 })) { schoolRest = owned[(at + owned.length - 1) % owned.length]; sfx('click'); }
+    if (UI.button('nxt', Math.round(W / 2 + 88), 25, 22, 16, '>', { size: 1 })) { schoolRest = owned[(at + 1) % owned.length]; sfx('click'); }
+  }
+  const cw = Math.floor((W - 8 - 6) / 3), ch = 94;
+  r.dishes.forEach((d, i) => {
+    const x = 4 + (i % 3) * (cw + 3), y = 45 + Math.floor(i / 3) * (ch + 3), learned = save.learned[schoolRest + ':' + i];
+    R(x - 1, y - 1, cw + 2, ch + 2, '#0b0912'); R(x, y, cw, ch, '#251f3a'); R(x, y + 52, cw, ch - 52, '#1d182e'); R(x, y, cw, 2, learned ? '#ffd23f' : r.color);
+    wrap(d.name, cw - (learned ? 26 : 8)).slice(0, 2).forEach((s, k) => T(s, x + 5, y + 6 + k * 8, '#fff'));
+    if (learned) { disc(x + cw - 11, y + 11, 7, '#b8901a'); disc(x + cw - 11, y + 10, 6, '#ffd23f'); T('★', x + cw - 11, y + 8, '#fff', 1, 'center'); }
+    const ids = d.groups.flat(), per = Math.floor((cw - 8) / 15);      // the recipe, as pictures
+    if (ids.length * 27 <= cw - 8) ids.forEach((id, k) => { const px = x + 18 + k * 27, py = y + 40; R(px - 13, py - 13, 26, 27, '#16121f'); bigIcon(id === 'bake' ? 'oven' : id, px, py, 2); });   // few steps: big pictures
+    else ids.forEach((id, k) => { const px = x + 11 + (k % per) * 15, py = y + 32 + Math.floor(k / per) * 16; R(px - 7, py - 7, 14, 15, '#16121f'); icon(id === 'bake' ? 'oven' : id, px, py); });
+    if (UI.button('l' + i, x + 5, y + ch - 24, cw - 10, 20, learned ? 'COOK IT AGAIN' : 'LEARN  +$' + priceOf(d), { size: 1, accent: learned ? '#8a7ad8' : '#5ad43f', on: !learned })) { sfx('click'); newShift(false, { rest: schoolRest, i }); }
+  });
+}
 let buyFlash = null;
 function drawFlash() {
   if (!buyFlash) return;
@@ -1090,12 +1114,25 @@ function drawPause() {
   const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
-  if (UI.button('quit', bx, y + 70, bw, 22, 'CLOSE FOR TODAY', { size: 1 })) { paused = false; if (G.tut || !G.servedN) toTitle(); else endShift(); }
+  if (UI.button('quit', bx, y + 70, bw, 22, G.free ? 'STOP THE LESSON' : 'CLOSE FOR TODAY', { size: 1 })) { paused = false; if (G.lesson && !G.tut) toSchool(); else if (G.free || !G.servedN) toTitle(); else endShift(); }
 }
 function drawOver(t) {
   const W = S.W;
-  if (G.tut) {
-    if (infoPanel(['YOU ARE A CHEF NOW!', 'THAT WAS YOUR FIRST ORDER.', 'NOW THE CLOCK RUNS: 3 MINUTES FOR A MEAL.', 'WRONG THINGS AND SPILLED COFFEE MEAN A SMALLER TIP.'], 'OPEN UP!')) { sfx('click'); newShift(); }
+  if (G.free) {                               // a lesson is done: the meal you made, and a medal
+    const rest = REST[G.rest], { y } = panel(280, 196, 22, rest.color), r = G.O.rate || 1;
+    for (let i = 0; i < 24; i++) { const q = t + i; R((i * 47 + q * 30) % W, (q * (40 + i * 3)) % H, 3, 3, ['#ffd23f', '#ff6bd0', '#7af0ff', '#9be36b'][i % 4]); }
+    T(G.tut ? 'YOU ARE A CHEF!' : 'LEARNED!', W / 2, y + 10, '#ffd23f', 3, 'center', '#000');
+    T(G.O.dish.name, W / 2, y + 34, '#fff', 1, 'center');
+    const dark = ['lux', 'sushi'].includes(rest.id);
+    R(W / 2 - 62, y + 44, 124, 90, '#0b0912'); R(W / 2 - 61, y + 45, 122, 88, dark ? '#3a3a4a' : '#b8804a');
+    ctx.save(); ctx.beginPath(); ctx.rect(W / 2 - 61, y + 45, 122, 88); ctx.clip(); drawDish(rest.id, Math.round(W / 2), y + (rest.id === 'ice' ? 96 : 89), G.D); ctx.restore();
+    for (let i = 0; i < 3; i++) T('★', W / 2 - 110 + i * 14, y + 82, i < r ? '#ffe680' : '#3a2f5c', 2);
+    if (G.O.pay) { T('+$' + G.O.pay, W / 2 + 98, y + 80, '#ffd23f', 2, 'center', '#000'); T('LEARNED', W / 2 + 98, y + 96, '#9be36b', 1, 'center'); }
+    if (G.tut) { if (UI.button('again', Math.round(W / 2 - 70), y + 162, 140, 26, 'OPEN UP!', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(); } }
+    else {
+      if (UI.button('menu', Math.round(W / 2 - 124), y + 162, 120, 24, 'MENU') || UI.back) toTitle();
+      if (UI.button('school', Math.round(W / 2 + 4), y + 162, 120, 24, 'MORE', { accent: '#ff9ab8' })) { sfx('click'); toSchool(); }
+    }
     return;
   }
   const { y } = panel(280, 178, undefined, REST[G.rest].color), all = G.servedN === G.total;
@@ -1113,6 +1150,7 @@ function drawOver(t) {
   if (UI.button('again', Math.round(W / 2 + 4), y + 146, 120, 24, 'NEXT SHIFT', { accent: '#5ad43f' })) newShift();
 }
 function setPause(v) { if (state !== 'play') return; paused = v; if (v) drag = null; }
+function toSchool() { schoolRest = G.rest; G = null; drag = null; paused = false; go('school'); }
 function toTitle() { G = null; drag = null; paused = false; go('title'); }
 
 /* --- sound --- */
@@ -1160,14 +1198,13 @@ function frame(now) {
   if (state === 'title') drawTitle(t);
   else if (state === 'rests') drawRests(t);
   else if (state === 'shop') drawShop(t);
+  else if (state === 'school') drawSchool(t);
   else {
     const overlay = paused || state === 'over' || G.tutPage >= 0 || G.tip !== null;
     if (state === 'play' && !paused) step(dt);
     if (overlay) { const mx = UI.mx, my = UI.my; UI.mx = UI.my = -99; drawPlay(t); UI.list = []; UI.mx = mx; UI.my = my; } else drawPlay(t);   // the kitchen is only a picture under a panel
     if (paused) drawPause();
     else if (state === 'over') drawOver(t);
-    else if (G.tip !== null) { if (infoPanel(REST_TIPS[G.tip], 'GOT IT!')) { G.tip = null; sfx('click'); } }
-    else if (G.tutPage >= 0) drawTutorialPages();
   }
   if (fade > 0) { ctx.fillStyle = `rgba(13,11,19,${(fade * 0.9).toFixed(2)})`; ctx.fillRect(0, 0, S.W, H); }
   UI.end();
