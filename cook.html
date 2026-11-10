@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Cook: cook meals to order with your own hands. Start with a cafe shop, then open a pizza, a burger and a luxury restaurant. 3 minutes for one meal.">
+<meta name="description" content="Pixel Cook: cook meals to order with your own hands. Start with a cafe shop, then open an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. 3 minutes for one meal.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,23 +32,25 @@
    drag the pizza into the oven, grab it when it is done (in the green!) and
    drag the finished meal to the customer.
    You have 3 minutes for one meal; the faster you are, the bigger the tip.
-   You start with a CAFE SHOP, then buy a PIZZA RESTAURANT, a BURGER RESTAURANT
-   and at last a LUXURY RESTAURANT. New players get a tutorial.
+   You start with a CAFE SHOP, then buy an ICE CREAM SHOP, a PIZZA RESTAURANT,
+   a BURGER RESTAURANT, a SUSHI BAR and at last a LUXURY RESTAURANT. New players get a tutorial.
      1. Setup   2. Restaurants and meals   3. The game   4. Your hands
      5. Drawing food   6. Drawing the kitchen   7. Screens   8. Input and the main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.0.0';
+const VERSION = '3.0.0';
 const SAVE_KEY = 'pixelCook.save';
-const save = { v: 2, money: 0, earned: 0, rest: 0, owned: [true, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
-               shifts: [0, 0, 0, 0], served: 0, best: 0, tut: false, tips: [false, false, false, false], hat: false, sfx: true };
+const NREST = 6;
+const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
+               shifts: [0, 0, 0, 0, 0, 0], served: 0, best: 0, tut: false, tips: [false, false, false, false, false, false], hat: false, sfx: true };
 try {
   const old = JSON.parse(localStorage.getItem(SAVE_KEY));
-  if (old && old.v !== 2) {                 // a save from 1.0 (before the cafe): the restaurants you had move one place up
-    old.owned = [true, ...(old.owned || [true])].slice(0, 4); old.shifts = [0, ...(old.shifts || [])].slice(0, 4);
-    while (old.owned.length < 4) old.owned.push(false); while (old.shifts.length < 4) old.shifts.push(0);
-    old.rest = Math.min(3, (old.rest | 0) + 1); old.tips = [false, false, false, false]; old.v = 2;
+  if (old && old.v !== 3) {                 // an older save: the restaurants you had move to their new places (new shops came in between)
+    const to = old.v === 2 ? [0, 2, 3, 5] : [2, 3, 5], owned = [true, false, false, false, false, false], shifts = [0, 0, 0, 0, 0, 0];
+    to.forEach((n, i) => { if ((old.owned || [])[i]) owned[n] = true; shifts[n] = (old.shifts || [])[i] | 0; });
+    old.owned = owned; old.shifts = shifts; old.rest = to[old.rest | 0] === undefined ? 0 : to[old.rest | 0];
+    old.tips = old.v === 2 ? [true, false, true, true, false, true].map((v, n) => v && shifts[n] > 0) : [false, false, false, false, false, false]; old.v = 3;
   }
   Object.assign(save, old || {});
 } catch (e) { /* new player */ }
@@ -86,6 +88,12 @@ const ITEMS = {
   cup: { n: 'CUP', k: 'cook', s: 'BREW THE COFFEE' }, milk: { n: 'MILK', k: 'rub', need: 110, s: 'POUR THE MILK' }, sugar: { n: 'SUGAR', k: 'place', c: 2 },
   cocoa: { n: 'COCOA', k: 'place', c: 5, s: 'SPRINKLE COCOA' }, cream: { n: 'CREAM', k: 'rub', need: 90, s: 'WHIPPED CREAM' },
   caramel: { n: 'CARAMEL', k: 'rub', need: 110, s: 'CARAMEL SAUCE' }, croissant: { n: 'CROISSANT', k: 'place', c: 1 }, muffin: { n: 'MUFFIN', k: 'place', c: 1 },
+  cone: { n: 'CONE', k: 'cook', s: 'BAKE THE CONE' }, sv: { n: 'VANILLA', k: 'place', c: 1, s: 'VANILLA SCOOP' }, sc: { n: 'CHOCOLATE', k: 'place', c: 1, s: 'CHOCOLATE SCOOP' },
+  ss: { n: 'STRAWBERRY', k: 'place', c: 1, s: 'STRAWBERRY SCOOP' }, sm: { n: 'MINT', k: 'place', c: 1, s: 'MINT SCOOP' }, syrup: { n: 'SYRUP', k: 'rub', need: 90, s: 'CHOCOLATE SYRUP' },
+  sprinkles: { n: 'SPRINKLES', k: 'place', c: 6 }, cherry: { n: 'CHERRY', k: 'place', c: 1 }, wafer: { n: 'WAFER', k: 'place', c: 1 },
+  nori: { n: 'NORI', k: 'place', c: 1, s: 'NORI SHEET' }, rice: { n: 'RICE', k: 'cook', s: 'COOK THE RICE' }, salmon: { n: 'SALMON', k: 'place', c: 1 }, tuna: { n: 'TUNA', k: 'place', c: 1 },
+  avocado: { n: 'AVOCADO', k: 'place', c: 1 }, cucumber: { n: 'CUCUMBER', k: 'place', c: 1 }, shrimp: { n: 'SHRIMP', k: 'place', c: 1 }, mat: { n: 'ROLL MAT', k: 'rub', need: 170, s: 'ROLL IT UP' },
+  sesame: { n: 'SESAME', k: 'place', c: 6 }, wasabi: { n: 'WASABI', k: 'place', c: 1 }, ginger: { n: 'GINGER', k: 'place', c: 1 }, soy: { n: 'SOY SAUCE', k: 'rub', need: 80, s: 'POUR SOY SAUCE' },
   dough: { n: 'DOUGH', k: 'place', c: 1, s: 'NEW PIZZA DOUGH' }, roll: { n: 'ROLL PIN', k: 'rub', need: 200, s: 'ROLL IT FLAT' }, sauce: { n: 'SAUCE', k: 'rub', need: 150, s: 'SPREAD THE SAUCE' },
   mozz: { n: 'MOZZARELLA', k: 'place', c: 5 }, salami: { n: 'SALAMI', k: 'place', c: 5 }, mush: { n: 'MUSHROOM', k: 'place', c: 5, s: 'MUSHROOMS' }, ham: { n: 'HAM', k: 'place', c: 5 },
   pine: { n: 'PINEAPPLE', k: 'place', c: 5 }, olive: { n: 'OLIVES', k: 'place', c: 5 }, pepper: { n: 'PEPPER', k: 'place', c: 5 }, bake: { n: 'OVEN', k: 'bake', s: 'BAKE IT IN THE OVEN' },
@@ -99,39 +107,53 @@ const ITEMS = {
   berry: { n: 'BERRY', k: 'place', c: 3, s: 'STRAWBERRIES' }, gold: { n: 'GOLD', k: 'place', c: 4, s: 'GOLD LEAF' },
 };
 const MAINS = ['steak', 'lobster', 'pasta', 'cake'];
+const SCOOPS = { sv: ['#fff4d0', '#e0cc98'], sc: ['#7a4428', '#5a3018'], ss: ['#ff9ab8', '#e06a90'], sm: ['#9be8c0', '#62c094'] };
+const FILLS = { salmon: '#ff8a50', tuna: '#c82a4a', avocado: '#8ac84a', cucumber: '#3a9a3a', shrimp: '#ffb0a0' };
+const ice = (name, price, scoops, top) => ({ name, price, groups: [['cone'], ...scoops.map(x => [x]), ...(top.length ? [top] : [])] });
+const sushi = (name, price, fill, extra) => ({ name, price, groups: [['nori'], ['rice'], fill, ['mat'], ...(extra.length ? [extra] : [])] });
 const cafe = (name, price, extras) => ({ name, price, groups: extras.length ? [['cup'], extras] : [['cup']] });
 const pizza = (name, price, top) => ({ name, price, groups: [['dough'], ['roll'], ['sauce'], ['mozz', ...top], ['bake']] });
 const burger = (name, price, top) => ({ name, price, groups: [['bun'], ['patty'], ...top.map(x => [x]), ['bun']] });
 const lux = (name, price, main, sides) => ({ name, price, groups: [['plate'], [main], sides] });
 // a meal's steps are groups: the groups go in order, the things inside one group in any order
 const REST = [
-  { id: 'cafe', name: 'CAFE SHOP', price: 0, color: '#3fae8a', st: 'COFFEE MACHINE', verb: 'BREWING', lo: 'FILLING', hi: 'SPILLS', late: 'IT IS SPILLING!', bad: 'SPILLED! TAKE A NEW CUP', meal: 'TRAY', r: 12,
+  { id: 'cafe', name: 'CAFE SHOP', short: 'CAFE', price: 0, color: '#3fae8a', st: 'COFFEE MACHINE', verb: 'BREWING', lo: 'FILLING', hi: 'SPILLS', late: 'IT IS SPILLING!', bad: 'SPILLED! TAKE A NEW CUP', meal: 'TRAY', r: 12,
     tray: ['cup', 'milk', 'sugar', 'cocoa', 'cream', 'caramel', 'croissant', 'muffin'],
     dishes: [cafe('ESPRESSO', 8, []), cafe('COFFEE WITH MILK', 10, ['milk']), cafe('COFFEE AND CROISSANT', 15, ['sugar', 'croissant']),
              cafe('CAPPUCCINO', 14, ['milk', 'cocoa']), cafe('CARAMEL LATTE', 18, ['milk', 'caramel']), cafe('MOCHA AND MUFFIN', 26, ['milk', 'cream', 'cocoa', 'muffin'])] },
-  { id: 'pizza', name: 'PIZZA RESTAURANT', price: 300, color: '#e8402a', st: 'OVEN', verb: 'BAKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! MAKE A NEW PIZZA', meal: 'PIZZA', r: 23,
+  { id: 'ice', name: 'ICE CREAM SHOP', short: 'ICE CREAM', price: 250, color: '#ff8ab8', st: 'WAFFLE IRON', verb: 'BAKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! BAKE A NEW CONE', meal: 'ICE CREAM', r: 10,
+    tray: ['cone', 'sv', 'sc', 'ss', 'sm', 'syrup', 'sprinkles', 'cherry', 'wafer', 'cream'],
+    dishes: [ice('VANILLA CONE', 14, ['sv'], []), ice('SPRINKLE CONE', 18, ['sc'], ['sprinkles']), ice('STRAWBERRY DREAM', 22, ['ss', 'sv'], ['cherry']),
+             ice('MINT CHOCO CONE', 26, ['sm', 'sc'], ['syrup']), ice('CHERRY SUNDAE CONE', 32, ['sv', 'ss'], ['cream', 'cherry', 'wafer']),
+             ice('TRIPLE TOWER', 40, ['sc', 'sm', 'ss'], ['syrup', 'sprinkles', 'cherry'])] },
+  { id: 'pizza', name: 'PIZZA RESTAURANT', short: 'PIZZA', price: 900, color: '#e8402a', st: 'OVEN', verb: 'BAKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! MAKE A NEW PIZZA', meal: 'PIZZA', r: 23,
     tray: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'mush', 'ham', 'pine', 'olive', 'pepper'],
-    dishes: [pizza('PIZZA WITH MOZZARELLA', 20, []), pizza('SALAMI PIZZA', 26, ['salami']), pizza('MUSHROOM PIZZA', 26, ['mush']),
-             pizza('HAWAII PIZZA', 32, ['ham', 'pine']), pizza('VEGGIE PIZZA', 38, ['mush', 'pepper', 'olive']),
-             pizza('DELUXE PIZZA', 46, ['salami', 'ham', 'mush', 'olive'])] },
-  { id: 'burger', name: 'BURGER RESTAURANT', price: 1500, color: '#ffb020', st: 'GRILL', verb: 'GRILLING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! GRILL A NEW PATTY', meal: 'BURGER', r: 5,
+    dishes: [pizza('PIZZA WITH MOZZARELLA', 26, []), pizza('SALAMI PIZZA', 32, ['salami']), pizza('MUSHROOM PIZZA', 32, ['mush']),
+             pizza('HAWAII PIZZA', 40, ['ham', 'pine']), pizza('VEGGIE PIZZA', 48, ['mush', 'pepper', 'olive']),
+             pizza('DELUXE PIZZA', 58, ['salami', 'ham', 'mush', 'olive'])] },
+  { id: 'burger', name: 'BURGER RESTAURANT', short: 'BURGER', price: 2400, color: '#ffb020', st: 'GRILL', verb: 'GRILLING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! GRILL A NEW PATTY', meal: 'BURGER', r: 5,
     tray: ['bun', 'patty', 'cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'ketchup', 'egg'],
     dishes: [burger('HAMBURGER', 45, ['ketchup']), burger('CHEESEBURGER', 55, ['cheese', 'ketchup']),
              burger('SALAD BURGER', 65, ['cheese', 'lettuce', 'tomato']), burger('BACON BURGER', 78, ['cheese', 'bacon', 'onion', 'ketchup']),
              burger('EGG BURGER', 85, ['egg', 'bacon', 'lettuce', 'pickle']), burger('MEGA BURGER', 98, ['cheese', 'bacon', 'lettuce', 'tomato', 'pickle'])] },
-  { id: 'lux', name: 'LUXURY RESTAURANT', price: 5000, color: '#c89aff', st: 'PAN', verb: 'COOKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! COOK A NEW ONE', meal: 'PLATE', r: 24,
+  { id: 'sushi', name: 'SUSHI BAR', short: 'SUSHI', price: 6000, color: '#e8483a', st: 'RICE COOKER', verb: 'COOKING', lo: 'HARD', hi: 'MUSHY', late: 'IT IS GETTING MUSHY!', bad: 'MUSHY RICE! COOK NEW RICE', meal: 'SUSHI', r: 16,
+    tray: ['nori', 'rice', 'salmon', 'tuna', 'avocado', 'cucumber', 'shrimp', 'mat', 'sesame', 'wasabi', 'ginger', 'soy'],
+    dishes: [sushi('CUCUMBER ROLL', 90, ['cucumber'], []), sushi('SALMON ROLL', 105, ['salmon'], ['soy']), sushi('TUNA AVOCADO ROLL', 125, ['tuna', 'avocado'], ['wasabi']),
+             sushi('CALIFORNIA ROLL', 145, ['shrimp', 'avocado', 'cucumber'], ['sesame']), sushi('SALMON DELUXE', 170, ['salmon', 'avocado'], ['sesame', 'ginger', 'soy']),
+             sushi('DRAGON ROLL', 200, ['shrimp', 'tuna', 'cucumber'], ['sesame', 'wasabi', 'ginger', 'soy'])] },
+  { id: 'lux', name: 'LUXURY RESTAURANT', short: 'LUXURY', price: 15000, color: '#c89aff', st: 'PAN', verb: 'COOKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! COOK A NEW ONE', meal: 'PLATE', r: 24,
     tray: ['plate', 'steak', 'lobster', 'pasta', 'cake', 'potato', 'aspar', 'lemon', 'butter', 'cream', 'truffle', 'parm', 'choco', 'berry', 'gold'],
-    dishes: [lux('STEAK AND POTATOES', 150, 'steak', ['potato', 'butter']), lux('CHOCOLATE CAKE', 160, 'cake', ['choco', 'berry']),
-             lux('TRUFFLE PASTA', 185, 'pasta', ['cream', 'truffle', 'parm']), lux('LEMON LOBSTER', 220, 'lobster', ['lemon', 'butter', 'aspar']),
-             lux('ROYAL STEAK', 280, 'steak', ['potato', 'aspar', 'truffle', 'butter']), lux('GOLDEN CAKE', 320, 'cake', ['choco', 'berry', 'cream', 'gold'])] },
+    dishes: [lux('STEAK AND POTATOES', 240, 'steak', ['potato', 'butter']), lux('CHOCOLATE CAKE', 250, 'cake', ['choco', 'berry']),
+             lux('TRUFFLE PASTA', 290, 'pasta', ['cream', 'truffle', 'parm']), lux('LEMON LOBSTER', 340, 'lobster', ['lemon', 'butter', 'aspar']),
+             lux('ROYAL STEAK', 420, 'steak', ['potato', 'aspar', 'truffle', 'butter']), lux('GOLDEN CAKE', 500, 'cake', ['choco', 'berry', 'cream', 'gold'])] },
 ];
 const UPGRADES = [
-  { id: 'timer', name: 'KITCHEN TIMER', text: 'THE GREEN ZONE LASTS LONGER', cost: [150, 500, 1500] },
-  { id: 'stove', name: 'TURBO STOVE', text: 'BREWS, BAKES AND GRILLS FASTER', cost: [120, 450, 1300] },
-  { id: 'tips', name: 'TIP JAR', text: '+25% TIPS A LEVEL', cost: [100, 400, 1200] },
-  { id: 'menu', name: 'FANCY MENU', text: '+15% PRICES A LEVEL', cost: [200, 700, 2000] },
+  { id: 'timer', name: 'KITCHEN TIMER', text: 'THE GREEN ZONE LASTS LONGER', cost: [150, 600, 2500] },
+  { id: 'stove', name: 'TURBO STOVE', text: 'BREWS, BAKES AND GRILLS FASTER', cost: [120, 500, 2000] },
+  { id: 'tips', name: 'TIP JAR', text: '+25% TIPS A LEVEL', cost: [100, 500, 2200] },
+  { id: 'menu', name: 'FANCY MENU', text: '+15% PRICES A LEVEL', cost: [200, 900, 3500] },
 ];
-const HAT_PRICE = 25000;
+const HAT_PRICE = 60000;
 const COOK_WAIT = [3.0, 2.5, 2.0, 1.6], COOK_GREEN = [1.5, 1.9, 2.3, 2.7], COOK_BURN = 1.2;
 const dishCount = r => Math.min(REST[r].dishes.length, 2 + save.shifts[r]);     // new meals open as you finish shifts
 const shiftSize = r => 4 + Math.min(4, Math.floor(save.shifts[r] / 2));         // 4 customers at first, up to 8
@@ -147,7 +169,7 @@ function go(s) { state = s; fade = 1; buyFlash = null; }
 function newShift(tut = false) {
   const rest = tut ? 0 : save.rest;
   G = { rest, tut, tutPage: tut ? 0 : -1, total: tut ? 1 : shiftSize(rest), n: 0, hearts: HEARTS, servedN: 0, earned: 0, tipsSum: 0, mist: 0,
-        O: null, phase: 'wait', phaseT: 0, pops: [], fx: [], shake: 0, stars: 0, newDish: null, tip: null, last: -1, guide: tut || !save.tips[rest], back: null };
+        O: null, phase: 'wait', phaseT: 0, streak: 0, rateSum: 0, flashT: 0, pops: [], fx: [], shake: 0, stars: 0, newDish: null, tip: null, last: -1, guide: tut || !save.tips[rest], back: null };
   if (!tut && !save.tips[rest]) G.tip = rest;                      // a short tip the first time in a restaurant
   go('play'); paused = false; drag = null;
   resetDish();
@@ -178,7 +200,7 @@ function pop(text, color = '#fff', x, y, big = false) {
 }
 function puff(x, y, color, n = 5, sp = 30) { for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, v = sp * (0.4 + Math.random()); G.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 10, c: color, t: 0, life: 0.35 + Math.random() * 0.25 }); } }
 function mistake(text) {
-  G.O.mist++; G.mist++; G.shake = 0.3;
+  G.O.mist++; G.mist++; G.shake = 0.3; G.streak = 0;
   pop(text, '#ff6a5a'); sfx('wrong');
 }
 function wrong(id) {
@@ -197,11 +219,13 @@ function complete(id) {                    // a step is finished
 function placePiece(id, x, y) {            // a piece lands where your hand is
   const D = G.D, rest = REST[G.rest], it = ITEMS[id];
   let dx = x - dishX(), dy = y - DISH_Y;
-  if (rest.id === 'burger') { dx = clamp(dx * 0.2, -rest.r, rest.r); dy = 0; D.off[D.done.length] = Math.round(dx); }
+  if (rest.id === 'burger' || SCOOPS[id]) { dx = clamp(dx * 0.2, -4, 4); dy = 0; D.off[D.done.length] = Math.round(dx); }
+  else if (rest.id === 'ice') { dy -= iceTop(D); const d = Math.hypot(dx, dy); if (d > 10) { dx *= 10 / d; dy *= 10 / d; } }
+  else if (rest.id === 'sushi') { dx = clamp(dx + 12, -27, 27); dy = clamp(dy, FILLS[id] ? -12 : -18, FILLS[id] ? 12 : 18); }
   else { const d = Math.hypot(dx, dy), m = rest.r; if (d > m) { dx *= m / d; dy *= m / d; } }
   D.parts.push({ id, x: Math.round(dx), y: Math.round(dy), t: 0 });
   D.count[id] = (D.count[id] || 0) + 1;
-  puff(dishX() + dx, DISH_Y + dy, '#fff8e0', 3, 18); sfx('put');
+  puff(x, y, '#fff8e0', 3, 18); sfx('put');
   if (D.count[id] >= it.c) { complete(id); return true; }
   return false;
 }
@@ -212,13 +236,13 @@ function startCook(id) {                   // into the coffee machine / the oven
 function takeOut() {
   if (state !== 'play' || paused || !G.cook) return;
   const c = G.cook, D = G.D;
-  if (c.t < c.wait) { pop('NOT READY YET!', '#7ac8ff', stationX() + 27, 110); sfx('wrong'); return; }
+  if (c.t < c.wait) { if (c.t > 0.25) { pop('NOT READY YET!', '#7ac8ff'); sfx('wrong'); } return; }
   const k = (c.t - c.wait) / c.green;       // 0..1 through the green zone
   D.perfect = k > 0.3 && k < 0.7;
   G.cook = null;
   G.back = { id: c.id, x: stationX() + 27, y: 76, t: 0 };          // it flies back to the table
   pop(D.perfect ? 'PERFECT!' : 'GOOD!', D.perfect ? '#ffd23f' : '#9be36b'); sfx(D.perfect ? 'perfect' : 'put');
-  if (D.perfect) puff(dishX(), DISH_Y, '#ffd23f', 12, 60);
+  if (D.perfect) { puff(dishX(), DISH_Y, '#ffd23f', 14, 60); G.flashT = 0.25; }
   complete(c.id);
 }
 function burnt() {
@@ -235,21 +259,25 @@ function trash() {
 function serve() {
   if (state !== 'play' || paused || G.phase !== 'cook' || !dishReady()) return;
   const O = G.O, left = O.time / MEAL_TIME;
-  let tip = O.price * (0.4 * left + (G.D.perfect ? 0.15 : 0)) * (1 + 0.25 * save.up.tips) * Math.pow(0.8, O.mist);
+  if (O.mist === 0) G.streak++; else G.streak = 0;                 // meals in a row without a mistake: a bigger tip
+  const rate = O.mist === 0 && left > 0.6 && G.D.perfect ? 3 : O.mist <= 1 && left > 0.25 ? 2 : 1;
+  O.rate = rate; G.rateSum += rate;
+  let tip = O.price * (0.4 * left + (G.D.perfect ? 0.15 : 0)) * (1 + 0.25 * save.up.tips) * Math.pow(0.8, O.mist) * (1 + 0.1 * Math.min(5, Math.max(0, G.streak - 1)));
   tip = Math.round(tip);
   O.pay = O.price; O.tipPay = tip;
   save.money += O.price + tip; save.earned += O.price + tip; save.served++;
   G.earned += O.price + tip; G.tipsSum += tip; G.servedN++;
-  O.say = pick(['YUMMY!', 'DELICIOUS!', 'THANK YOU!', 'SO GOOD!', 'WOW!']);
+  O.say = rate === 3 ? pick(['PERFECT!', 'THE BEST EVER!', 'WOW! SO FAST!']) : rate === 2 ? pick(['YUMMY!', 'DELICIOUS!', 'THANK YOU!', 'SO GOOD!']) : pick(['WELL... THANKS.', 'IT IS OK.']);
   pop('+$' + O.price, '#ffd23f', customerX() + 60, 50, true);
   if (tip) pop('TIP +$' + tip, '#9be36b', customerX() + 60, 74);
+  if (G.streak >= 2) pop('STREAK X' + G.streak + '!', '#ff9ab8', customerX() + 60, 92);
   for (let i = 0; i < 8; i++) G.fx.push({ coin: true, x: customerX() + Math.random() * 30, y: 60 + Math.random() * 20, t: -i * 0.06, life: 0.6 });
   G.phase = 'served'; G.phaseT = 0; drag = null;
   if (G.guide && !G.tut) { G.guide = false; save.tips[G.rest] = true; }
   store(); sfx('cash');
 }
 function customerLeaves() {
-  G.hearts--; G.O.say = 'TOO SLOW! BYE!';
+  G.hearts--; G.streak = 0; G.O.say = 'TOO SLOW! BYE!';
   G.cook = null; drag = null; G.phase = 'left'; G.phaseT = 0; G.shake = 0.4;
   sfx('angry');
 }
@@ -267,7 +295,7 @@ function endShift() {
   store(); sfx('done');
 }
 function step(dt) {
-  G.phaseT += dt; G.shake = Math.max(0, G.shake - dt); G.D.flash = Math.max(0, G.D.flash - dt);
+  G.phaseT += dt; G.shake = Math.max(0, G.shake - dt); G.flashT = Math.max(0, G.flashT - dt); G.D.flash = Math.max(0, G.D.flash - dt);
   G.pops = G.pops.filter(p => (p.t += dt) < 1.4);
   G.fx = G.fx.filter(p => { p.t += dt; if (!p.coin) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 60 * dt; } return p.t < p.life; });
   for (const p of G.D.parts) p.t += dt;
@@ -306,11 +334,7 @@ let drag = null;                            // what your hand holds: an ingredie
 const canPlay = () => state === 'play' && !paused && G.tutPage < 0 && G.tip === null && G.phase === 'cook';
 function pDown(pid, x, y) {
   if (!canPlay() || drag) return;
-  if (G.cook) {
-    if (overStation(x, y)) takeOut();
-    else if (x >= shelfX() || overDish(x, y)) { pop('WAIT FOR THE ' + REST[G.rest].st + '!', '#7ac8ff'); sfx('wrong'); }
-    return;
-  }
+  if (G.cook) { takeOut(); return; }           // while it bakes / brews / grills: a tap anywhere takes it out
   const tray = REST[G.rest].tray;
   for (let i = 0; i < tray.length; i++) {
     const r = tileRect(i, tray.length);
@@ -411,6 +435,24 @@ function icon(id, cx, cy) {
     case 'caramel': r(-3, -1, 6, 8, '#e89a2a'); r(-2, -3, 4, 2, '#e89a2a'); r(-1, -7, 2, 4, '#8a5a1a'); r(-3, 2, 6, 2, '#fff0c0'); r(-3, 6, 6, 1, '#b8701a'); break;
     case 'croissant': r(-6, 0, 12, 4, '#e0a040'); r(-4, -3, 8, 4, '#e8b050'); r(-7, 2, 3, 3, '#c8883a'); r(4, 2, 3, 3, '#c8883a'); r(-2, -3, 1, 6, '#b87a2a'); r(2, -3, 1, 6, '#b87a2a'); break;
     case 'muffin': d(0, -2, 5, '#7a4428'); r(-4, 1, 8, 6, '#f0d8a0'); r(-3, 2, 1, 5, '#c8a868'); r(0, 2, 1, 5, '#c8a868'); r(3, 2, 1, 5, '#c8a868'); r(-2, -4, 2, 2, '#3a1c0c'); r(2, -2, 1, 1, '#3a1c0c'); break;
+    case 'cone': for (let i = 0; i < 10; i++) { const w = Math.round(6 * (1 - i / 10)); r(-w, -3 + i, w * 2 + 1, 1, i % 3 ? '#e0a858' : '#b87a2a'); } r(-7, -5, 15, 2, '#c8883a'); break;
+    case 'sv': case 'sc': case 'ss': case 'sm': d(0, 0, 5, SCOOPS[id][1]); d(0, -1, 5, SCOOPS[id][0]); r(-3, -4, 2, 1, '#fff'); r(-6, 3, 3, 3, SCOOPS[id][0]); r(3, 3, 3, 2, SCOOPS[id][0]); break;
+    case 'syrup': r(-3, -1, 6, 8, '#5a3018'); r(-2, -3, 4, 2, '#5a3018'); r(-1, -7, 2, 4, '#e8203a'); r(-3, 2, 6, 2, '#f0d8a0'); break;
+    case 'sprinkles': r(-4, -3, 8, 10, '#f4f4f8'); r(-5, -5, 10, 2, '#b07aff'); [['#e8203a', -3, -1], ['#3a7ad4', 1, 0], ['#ffd23f', -1, 2], ['#3fae4a', 2, 4], ['#ff6bd0', -3, 5]].forEach(([c, x, y]) => r(x, y, 2, 1, c)); break;
+    case 'cherry': d(0, 2, 4, '#c8102a'); d(0, 1, 4, '#e8203a'); r(-2, -1, 2, 1, '#ff8a9a'); r(0, -6, 1, 4, '#3a7a2a'); r(1, -7, 3, 1, '#3a7a2a'); break;
+    case 'wafer': r(-2, -6, 5, 13, '#e0a858'); r(-2, -6, 5, 1, '#f0c078'); for (let q = -4; q < 6; q += 3) r(-2, q, 5, 1, '#b87a2a'); break;
+    case 'nori': r(-6, -5, 12, 10, '#1a3a2a'); r(-6, -5, 12, 1, '#2a5a40'); r(-3, -2, 2, 1, '#2a5a40'); r(2, 2, 2, 1, '#2a5a40'); break;
+    case 'rice': r(-6, 0, 12, 5, '#3a3a46'); r(-5, 5, 10, 1, '#22222e'); d(0, -1, 5, '#f8f8f0'); r(-6, 0, 12, 1, '#5a5a68'); r(-2, -4, 1, 1, '#d8d8c8'); r(2, -3, 1, 1, '#d8d8c8'); break;
+    case 'salmon': r(-6, -3, 12, 7, '#ff8a50'); for (let q = -4; q < 6; q += 4) r(q, -3, 1, 7, '#ffd0b0'); r(-6, -3, 12, 1, '#ffa878'); break;
+    case 'tuna': r(-6, -3, 12, 7, '#c82a4a'); r(-6, -3, 12, 1, '#e85a70'); r(-2, 0, 5, 1, '#a01a38'); break;
+    case 'avocado': d(0, 0, 5, '#3a7a2a'); d(0, 0, 4, '#b8dc6a'); d(0, 1, 2, '#7a4a22'); break;
+    case 'cucumber': d(-3, 1, 3, '#2f7a2a'); d(-3, 1, 2, '#b8e08a'); d(3, -1, 3, '#2f7a2a'); d(3, -1, 2, '#b8e08a'); break;
+    case 'shrimp': r(-5, -3, 8, 3, '#ffb0a0'); r(1, -1, 4, 5, '#ffb0a0'); r(-3, 3, 5, 2, '#ffb0a0'); r(-6, 3, 3, 3, '#ff7a6a'); r(-3, -3, 1, 3, '#ff7a6a'); r(0, -3, 1, 3, '#ff7a6a'); break;
+    case 'mat': r(-7, -5, 14, 10, '#b8c86a'); for (let q = -4; q < 5; q += 3) r(-7, q, 14, 1, '#7a9a42'); r(-4, -5, 1, 10, '#fff8e0'); r(3, -5, 1, 10, '#fff8e0'); break;
+    case 'sesame': r(-4, -2, 8, 9, '#f4f4f8'); r(-5, -4, 10, 2, '#8a5a2a'); [[-2, 0], [1, 1], [-1, 3], [2, 4], [-3, 5]].forEach(([x, y]) => r(x, y, 1, 1, '#c8a050')); break;
+    case 'wasabi': d(0, 1, 4, '#5aa838'); d(0, 0, 4, '#8ad85a'); r(-2, -2, 2, 1, '#c8f0a0'); break;
+    case 'ginger': r(-5, 0, 10, 4, '#ffa8c0'); r(-3, -3, 7, 4, '#ffc0d0'); r(-1, -5, 4, 3, '#ffa8c0'); r(-5, 4, 10, 1, '#e080a0'); break;
+    case 'soy': r(-3, -1, 6, 8, '#2a140a'); r(-2, -3, 4, 2, '#2a140a'); r(-2, -6, 4, 3, '#e8203a'); r(-3, 2, 6, 2, '#f4f4f0'); break;
     default: iconFood(id, cx, cy);
   }
 }
@@ -437,7 +479,65 @@ function piece(id, x, y, baked) {
     case 'parm': R(x - 2, y - 1, 4, 2, '#fff0b8'); R(x - 1, y - 2, 2, 1, '#f0e0a0'); break;
     case 'berry': disc(x, y, 3, '#e8203a'); R(x - 1, y - 4, 3, 1, '#3fae4a'); R(x - 1, y, 1, 1, '#ffd0a0'); R(x + 1, y + 1, 1, 1, '#ffd0a0'); break;
     case 'gold': R(x, y - 3, 1, 7, '#ffd23f'); R(x - 3, y, 7, 1, '#ffd23f'); R(x - 1, y - 1, 3, 3, '#ffe680'); R(x, y, 1, 1, '#fff'); break;
+    case 'sesame': R(x, y, 2, 1, '#f0dca0'); R(x + 2, y + 2, 1, 1, '#f0dca0'); break;
   }
+}
+const iceTop = D => -8 - 15 * Math.max(0, D.done.filter(id => SCOOPS[id]).length - 1);   // where the top scoop is
+function drawIce(cx, cy, D) {               // from the side: a cone in its stand, scoops on top of each other
+  const P = D.prog, has = id => D.done.includes(id);
+  R(cx - 26, cy + 36, 52, 3, 'rgba(0,0,0,0.25)'); R(cx - 24, cy + 30, 48, 7, '#8a8a98'); R(cx - 24, cy + 30, 48, 1, '#d8d8e4'); R(cx - 10, cy + 16, 20, 14, '#b8b8c8'); R(cx - 10, cy + 16, 20, 1, '#f0f0f8'); R(cx - 6, cy + 18, 12, 10, '#6a6a78');
+  if (!has('cone')) { T('CONE?', cx, cy - 4, 'rgba(0,0,0,0.3)', 1, 'center'); return; }
+  for (let i = 0; i < 30; i++) { const w = Math.round(14 * (1 - i / 31)); R(cx - w, cy + 2 + i, w * 2 + 1, 1, '#e0a858'); if (i % 5 === 2) R(cx - w, cy + 2 + i, w * 2 + 1, 1, '#b87a2a'); }
+  for (let i = 0; i < 28; i += 2) { R(cx - 12 + i * 0.75, cy + 3 + i, 1, 2, '#b87a2a'); R(cx + 12 - i * 0.75, cy + 3 + i, 1, 2, '#b87a2a'); }
+  R(cx - 16, cy - 1, 33, 4, '#c8883a'); R(cx - 16, cy - 1, 33, 1, '#f0c078');
+  const ty = cy + iceTop(D), wafer = D.parts.find(p => p.id === 'wafer');
+  if (wafer) { const l = Math.round(Math.max(0, 1 - wafer.t / 0.12) * 6); R(cx + 5, ty - 24 - l, 7, 22, '#b87a2a'); R(cx + 6, ty - 24 - l, 5, 22, '#e0a858'); for (let q = 2; q < 20; q += 4) R(cx + 6, ty - 24 - l + q, 5, 1, '#b87a2a'); }
+  let k = 0;
+  D.done.forEach((id, i) => {
+    if (!SCOOPS[id]) return;
+    const [c, c2] = SCOOPS[id], x = cx + (D.off[i] || 0), y = cy - 8 - 15 * k++;
+    disc(x, y + 1, 13, c2); disc(x, y, 12, c); R(x - 7, y - 8, 5, 2, 'rgba(255,255,255,0.6)'); R(x - 9, y - 5, 2, 2, 'rgba(255,255,255,0.6)');
+    for (const [qx, qw, qh] of [[-13, 5, 4], [-5, 4, 6], [3, 5, 3], [9, 4, 5]]) { R(x + qx, y + 8, qw, qh, c); R(x + qx, y + 8 + qh - 1, qw, 1, c2); }
+  });
+  if (!k) return;
+  const sy = has('syrup') ? 1 : (P.syrup || 0);
+  if (sy > 0) { for (let dy = -12; dy <= -12 + Math.round(sy * 9); dy++) { const w = Math.round(Math.sqrt(150 - dy * dy)); R(cx - w, ty + dy, w * 2 + 1, 1, '#4a2410'); } [[-9, 7], [-2, 11], [6, 8]].forEach(([qx, len]) => R(cx + qx, ty - 4, 3, Math.round(len * sy), '#4a2410')); R(cx - 5, ty - 11, 4, 1, '#8a5a3a'); }
+  const cr = has('cream') ? 1 : (P.cream || 0);
+  if (cr > 0) { const w = Math.round(4 + cr * 8); R(cx - w, ty - 13, w * 2, 4, '#fffaf0'); if (cr > 0.4) R(cx - w + 3, ty - 17, w * 2 - 6, 4, '#f0e8d8'); if (cr > 0.75) { R(cx - 4, ty - 20, 8, 3, '#fffaf0'); R(cx - 1, ty - 22, 3, 2, '#fffaf0'); } }
+  D.parts.forEach((p, n) => {
+    const l = Math.round(Math.max(0, 1 - p.t / 0.12) * 6);
+    if (p.id === 'sprinkles') R(cx + p.x - 1, ty + p.y - l, n % 2 ? 3 : 1, n % 2 ? 1 : 3, ['#e8203a', '#3a7ad4', '#ffd23f', '#3fae4a', '#ff6bd0', '#fff'][n % 6]);
+    else if (p.id === 'cherry') { const y = ty - 16 - (cr > 0.75 ? 8 : cr > 0 ? 4 : 0) - l; disc(cx, y + 1, 4, '#a80c22'); disc(cx, y, 4, '#e8203a'); R(cx - 2, y - 2, 2, 1, '#ff8a9a'); R(cx, y - 8, 1, 5, '#3a7a2a'); R(cx + 1, y - 9, 3, 1, '#3a7a2a'); }
+  });
+}
+function drawSushi(cx, cy, D) {             // from above: nori, rice and fish on the mat; rolled up it is cut into six pieces
+  const P = D.prog, has = id => D.done.includes(id), mx = cx - 12;
+  R(cx - 53, cy - 38, 108, 79, 'rgba(0,0,0,0.25)'); R(cx - 54, cy - 40, 108, 78, '#2a180c'); R(cx - 52, cy - 38, 104, 74, '#5a3a20'); R(cx - 52, cy - 38, 104, 1, '#7a5230'); for (let y = cy - 26; y < cy + 34; y += 12) R(cx - 52, y, 104, 1, '#4a2e18');
+  const bx = cx + 37;                         // the little bowl for soy sauce, with wasabi and ginger next to it
+  disc(bx, cy + 21, 10, '#22222e'); disc(bx, cy + 20, 10, '#f4f4f8'); disc(bx, cy + 20, 8, '#dcdce8');
+  const so = has('soy') ? 1 : (P.soy || 0); if (so > 0) { disc(bx, cy + 20, Math.round(2 + so * 5), '#2a140a'); R(bx - 2, cy + 18, 2, 1, '#6a4a3a'); }
+  for (const p of D.parts) {
+    const l = Math.round(Math.max(0, 1 - p.t / 0.12) * 6);
+    if (p.id === 'wasabi') { disc(bx - 2, cy - 24 - l, 5, '#5aa838'); disc(bx - 2, cy - 25 - l, 5, '#8ad85a'); R(bx - 4, cy - 28 - l, 3, 1, '#c8f0a0'); }
+    else if (p.id === 'ginger') { R(bx - 8, cy - 6 - l, 14, 5, '#ffa8c0'); R(bx - 6, cy - 9 - l, 10, 4, '#ffc0d0'); R(bx - 3, cy - 11 - l, 5, 3, '#ffa8c0'); R(bx - 8, cy - 2 - l, 14, 1, '#e080a0'); }
+  }
+  R(mx - 33, cy - 27, 66, 54, '#7a9a42'); R(mx - 32, cy - 26, 64, 52, '#b8c86a'); for (let y = cy - 23; y < cy + 26; y += 4) R(mx - 32, y, 64, 1, '#8aa84a'); R(mx - 18, cy - 26, 1, 52, '#fff8e0'); R(mx + 18, cy - 26, 1, 52, '#fff8e0');
+  if (!has('nori')) return;
+  const fills = D.parts.filter(p => FILLS[p.id]);
+  if (!has('mat')) {
+    const k = P.mat || 0, h = Math.round(40 - k * 24), y0 = cy - Math.round(h / 2);
+    R(mx - 27, y0, 54, h, '#0f2a1c'); R(mx - 26, y0 + 1, 52, h - 2, '#1a3a2a');
+    if (has('rice')) { R(mx - 24, y0 + 3, 48, h - 6, '#f8f8f0'); for (let q = 0; q < 20; q++) R(mx - 22 + (q * 17) % 44, y0 + 4 + (q * 7) % Math.max(1, h - 9), 1, 1, '#d8d8c8'); }
+    for (const p of fills) { const l = Math.round(Math.max(0, 1 - p.t / 0.12) * 6), y = cy + Math.round(p.y * h / 40) - 2 - l; R(mx - 23, y, 46, 4, FILLS[p.id]); R(mx - 23, y, 46, 1, 'rgba(255,255,255,0.35)'); if (p.id === 'salmon') for (let q = -18; q < 22; q += 8) R(mx + q, y, 1, 4, '#ffd0b0'); }
+    if (k > 0) { R(mx - 27, y0, 54, 3, '#0a1c12'); R(mx - 27, y0 + h - 3, 54, 3, '#0a1c12'); }
+    return;
+  }
+  for (let i = 0; i < 6; i++) {
+    const x = mx - 20 + (i % 3) * 20, y = cy - 11 + Math.floor(i / 3) * 22;
+    disc(x + 1, y + 2, 9, 'rgba(0,0,0,0.3)'); disc(x, y, 9, '#0f2a1c'); disc(x, y, 7, '#f8f8f0');
+    fills.slice(0, 3).forEach((p, n) => R(x - 3 + [0, 3, 1][n], y - 3 + [0, 1, 4][n], 3, 3, FILLS[p.id]));
+  }
+  for (const p of D.parts) if (p.id === 'sesame') piece('sesame', mx + p.x, cy + p.y - Math.round(Math.max(0, 1 - p.t / 0.12) * 6));
 }
 function drawParts(cx, cy, D, baked, skip) {
   for (const p of D.parts) { if (skip && skip.includes(p.id)) continue; const lift = Math.round(Math.max(0, 1 - p.t / 0.12) * 6); piece(p.id, cx + p.x, cy + p.y - lift, baked); }
@@ -542,6 +642,8 @@ function drawPlate(cx, cy, D) {             // from above
 }
 function drawDish(restId, cx, cy, D) {
   if (restId === 'cafe') drawCup(cx, cy, D, D.done.includes('cup'));
+  else if (restId === 'ice') drawIce(cx, cy, D);
+  else if (restId === 'sushi') drawSushi(cx, cy, D);
   else if (restId === 'pizza') drawPizza(cx, cy, D, D.done.includes('bake'));
   else if (restId === 'burger') drawBurger(cx, cy, D);
   else drawPlate(cx, cy, D);
@@ -557,6 +659,15 @@ function drawRoom(rest, t) {                  // the wall and the counter (the t
     const bx = Math.round(x0 + w / 2 + 12);       // the chalk board
     R(bx - 2, 26, 64, 32, '#7a4a22'); R(bx, 28, 60, 28, '#22332c'); T('COFFEE', bx + 30, 32, '#f4f4e0', 1, 'center'); R(bx + 8, 40, 44, 1, '#8aa89a'); T('+ CAKE', bx + 30, 45, '#ffd0a0', 1, 'center');
     const lx = x0 + 22; R(lx, 20, 1, 6, '#333'); R(lx - 5, 26, 11, 4, '#e8a030'); R(lx - 3, 30, 7, 2, Math.sin(t * 3) > -0.8 ? '#fff8c0' : '#ffe680');
+  } else if (id === 'ice') {
+    R(0, 0, W, 92, '#ffd0e0'); for (let x = 0; x < W; x += 16) R(x, 20, 8, 50, '#fff0f6');
+    R(0, 68, W, 24, '#8adcc0'); R(0, 68, W, 2, '#c0f0e0'); for (let x = 6; x < W; x += 20) disc(x, 81, 4, '#a8e8d0');
+    const bx = Math.round(x0 + w / 2 + 34); R(bx - 37, 26, 74, 18, '#111'); R(bx - 36, 27, 72, 16, '#ff6aa8'); R(bx - 36, 27, 72, 2, '#ff9ac8'); T('ICE CREAM', bx, 32, '#fff', 1, 'center');
+    for (let i = 0; i < 5; i++) { const c = ['#ffe680', '#ff9ab8', '#9be8c0', '#7ac8ff', '#c89aff'][i]; R(x0 + 60 + i * 9 - 60, 20, 8, 6 + (i % 2) * 2, c); }
+  } else if (id === 'sushi') {
+    R(0, 0, W, 92, '#2a1c18'); for (let x = 0; x < W; x += 10) R(x, 20, 2, 72, '#3a2820'); R(0, 80, W, 12, '#1a100c'); R(0, 80, W, 1, '#5a3a28');
+    for (const lx of [x0 + 20, stationX() - 26]) { R(lx, 20, 1, 8, '#111'); R(lx - 6, 28, 13, 3, '#111'); disc(lx, 38, 8, '#a8201a'); disc(lx, 38, 6, Math.sin(t * 2 + lx) > -0.7 ? '#e8483a' : '#d83a2a'); R(lx - 1, 32, 3, 12, '#ff8a6a'); R(lx - 6, 45, 13, 3, '#111'); }
+    const bx = Math.round(x0 + w / 2 + 34); R(bx - 28, 26, 56, 18, '#111'); R(bx - 27, 27, 54, 16, '#f4ecd8'); disc(bx - 17, 35, 5, '#e8483a'); T('SUSHI', bx + 6, 32, '#111', 1, 'center');
   } else if (id === 'pizza') {
     R(0, 0, W, 92, '#7a3a2a');
     for (let y = 20; y < 92; y += 8) for (let x = -((y / 8) % 2) * 10; x < W; x += 20) { R(x, y, 19, 7, '#8a4632'); R(x, y, 19, 1, '#9a5640'); }
@@ -575,10 +686,10 @@ function drawRoom(rest, t) {                  // the wall and the counter (the t
     const lx = Math.round(x0 + w / 2 + 30);    // a chandelier
     R(lx, 20, 1, 8, '#ffd23f'); R(lx - 14, 28, 29, 2, '#ffd23f'); for (let i = -14; i <= 14; i += 7) { R(lx + i, 30, 1, 4, '#ffd23f'); R(lx + i - 1, 34, 3, 3, Math.sin(t * 6 + i) > -0.5 ? '#fff8c0' : '#ffe680'); }
   }
-  const dark = id === 'lux', top = dark ? '#3a3a4a' : id === 'cafe' ? '#c89860' : '#b8804a', line = dark ? '#4a4a5c' : id === 'cafe' ? '#b08048' : '#a06a3a';
+  const dark = id === 'lux' || id === 'sushi', top = id === 'lux' ? '#3a3a4a' : id === 'sushi' ? '#4a342a' : id === 'ice' ? '#f0e4d4' : id === 'cafe' ? '#c89860' : '#b8804a', line = id === 'lux' ? '#4a4a5c' : id === 'sushi' ? '#5a4234' : id === 'ice' ? '#e0d0bc' : id === 'cafe' ? '#b08048' : '#a06a3a';
   R(0, 92, W, 148, top); for (let y = 106; y < 240; y += 14) R(0, y, W, 1, line);
   if (!dark) for (let x = 30; x < W; x += 90) for (let y = 92; y < 240; y += 28) R(x + (y % 3) * 14, y, 1, 14, line);
-  R(0, 92, W, 2, dark ? '#5a5a70' : '#e0b070'); R(0, 94, W, 3, 'rgba(0,0,0,0.18)');
+  R(0, 92, W, 2, id === 'lux' ? '#5a5a70' : id === 'sushi' ? '#7a5a44' : id === 'ice' ? '#fff' : '#e0b070'); R(0, 94, W, 3, 'rgba(0,0,0,0.18)');
   if (id === 'pizza') { const cx = dishX(), cy = DISH_Y; disc(cx, cy + 2, 37, 'rgba(0,0,0,0.25)'); disc(cx, cy, 37, '#8a5a2a'); disc(cx, cy, 36, '#d8a868'); disc(cx, cy, 33, '#c89858'); R(cx - 4, cy + 34, 8, 12, '#d8a868'); R(cx - 4, cy + 46, 8, 1, '#8a5a2a'); }
 }
 function drawStation(rest, cooking, t) {      // the coffee machine / oven / grill / pan, on the right of the counter
@@ -595,6 +706,18 @@ function drawStation(rest, cooking, t) {      // the coffee machine / oven / gri
       R(x + 20, 88 - Math.round(k * 11), 14, Math.round(k * 11), '#5a2e14');
       if (late) { R(x + 16, 76, 2, 14, '#5a2e14'); R(x + 36, 86, 4, 4, '#5a2e14'); R(x + 12, 88, 30, 2, '#5a2e14'); }
     }
+  } else if (id === 'ice') {                   // a waffle iron
+    R(x - 2, 72, 58, 24, '#22222e'); R(x, 74, 54, 22, '#5a5a68'); R(x, 74, 54, 2, '#8a8a98'); R(x + 4, 78, 46, 6, '#1a1010'); for (let i = 0; i < 7; i++) R(x + 6 + i * 6, 78, 2, 6, hot ? '#ff6a2a' : '#4a4a58');
+    R(x + 40, 88, 6, 4, hot ? (cooking.t >= cooking.wait && !late ? '#5ad43f' : '#ff3a2a') : '#888');
+    const ly = hot ? 62 : 44;                   // the lid: up when empty, down when baking
+    R(x - 2, ly, 58, 14, '#22222e'); R(x, ly + 2, 54, 10, '#6a6a78'); R(x, ly + 2, 54, 2, '#9a9aa8'); R(x + 22, ly - 3, 10, 4, '#22222e');
+    if (!hot) { R(x + 2, 58, 3, 16, '#3a3a46'); R(x + 49, 58, 3, 16, '#3a3a46'); }
+    else { const k = clamp(cooking.t / cooking.wait, 0, 1); R(x + 8, 75, 38, 3, late ? '#1a0c04' : `rgb(${240 - k * 40},${220 - k * 70},${160 - k * 90})`); }
+  } else if (id === 'sushi') {                 // a rice cooker
+    R(x + 2, 60, 50, 36, '#22222e'); R(x + 4, 62, 46, 34, '#f4f4f8'); R(x + 4, 62, 46, 2, '#fff'); R(x + 4, 86, 46, 10, '#dcdce8');
+    R(x + 8, 54, 38, 8, '#22222e'); R(x + 10, 56, 34, 6, '#c8c8d8'); R(x + 22, 51, 10, 4, '#22222e');
+    R(x + 18, 72, 18, 10, '#22222e'); R(x + 20, 74, 14, 6, hot ? (late ? '#ff3a2a' : cooking.t >= cooking.wait ? '#5ad43f' : '#ffb020') : '#3a3a46');
+    if (hot) { const b = Math.round(Math.abs(Math.sin(t * 14)) * 2); R(x + 10, 55 - b, 34, 2, '#e8e8f0'); }
   } else if (id === 'pizza') {
     R(x - 2, 44, 58, 52, '#3a2018'); R(x, 46, 54, 50, '#a8502a');
     for (let y = 46; y < 96; y += 6) for (let bx = x - ((y / 6) % 2) * 5; bx < x + 54; bx += 10) R(Math.max(x, bx), y, 1, 6, '#8a3a1c');
@@ -620,7 +743,7 @@ function drawBin(t, open) {
   R(x + 3, y + 33, 30, 3, 'rgba(0,0,0,0.25)');
   R(x + 4, y + 10, 28, 24, '#3a3a46'); R(x + 5, y + 11, 26, 22, '#5a5a68'); for (let i = 0; i < 4; i++) R(x + 9 + i * 6, y + 14, 2, 16, '#3a3a46');
   const ly = open ? y - 2 : y + 5; R(x + 1, ly, 34, 5, '#3a3a46'); R(x + 2, ly + 1, 32, 3, '#7a7a8a'); R(x + 14, ly - 2, 8, 2, '#3a3a46');
-  T('BIN', x + 18, y + 38, open ? '#fff' : G && G.rest === 3 || !G && save.rest === 3 ? '#9a92b8' : '#3a2f1c', 1, 'center');
+  T('BIN', x + 18, y + 38, open ? '#fff' : ['lux', 'sushi'].includes(REST[G ? G.rest : save.rest].id) ? '#9a92b8' : '#3a2f1c', 1, 'center');
 }
 function drawCustomer(O, x, t, mood) {        // standing behind the counter
   const bob = mood === 'happy' ? Math.round(Math.abs(Math.sin(t * 10)) * 3) : 0, y = 46 - bob;
@@ -665,12 +788,18 @@ function drawTicket(t) {
   const sec = Math.ceil(O.time), str = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
   T('TIME', x + 4, ty + 3, '#6a6250'); T(str, x + w - 4, ty + 1, k <= 0.2 && Math.floor(t * 4) % 2 ? '#fff' : col, 2, 'right', k <= 0.2 ? '#e01e1e' : null);
   R(x + 4, ty + 13, w - 8, 7, '#111'); R(x + 5, ty + 14, Math.round((w - 10) * k), 5, col);
+  if (G.phase === 'served' || G.phase === 'left') {      // a stamp on the ticket
+    const ok = G.phase === 'served', c = ok ? '#2a9a3a' : '#d8201a', sy = y + 138 - Math.round(Math.max(0, 1 - G.phaseT / 0.12) * 10);
+    R(x + 12, sy, w - 24, 30, c); R(x + 14, sy + 2, w - 28, 26, '#fff8e0'); R(x + 16, sy + 4, w - 32, 22, c);
+    T(ok ? 'SERVED' : 'TOO LATE', x + w / 2, sy + (ok ? 6 : 12), '#fff8e0', 1, 'center');
+    if (ok) T('★'.repeat(O.rate) , x + w / 2, sy + 19, '#ffe680', 1, 'center');
+  }
   ctx.restore();
 }
 function drawCookMeter(t) {
   const c = G.cook, rest = REST[G.rest], x = midX0() + 8, w = shelfX() - 8 - x, y = 110, total = c.wait + c.green + COOK_BURN, px = v => Math.round(v / total * w);
   R(x - 4, y - 11, w + 8, 26, '#111'); R(x - 3, y - 10, w + 6, 24, '#1d1830');
-  const st = c.t < c.wait ? rest.verb + '...' : c.t < c.wait + c.green ? 'TAP THE ' + rest.st + ' NOW!' : rest.late;
+  const st = c.t < c.wait ? rest.verb + '... WAIT FOR GREEN' : c.t < c.wait + c.green ? 'NOW! TAP ANYWHERE!' : rest.late;
   T(st, x + w / 2, y - 7, c.t < c.wait ? '#fff' : c.t < c.wait + c.green ? '#9be36b' : '#ff6a5a', 1, 'center');
   R(x - 1, y - 1, w + 2, 12, '#111');
   R(x, y, px(c.wait), 10, '#5a6a9a'); R(x + px(c.wait), y, px(c.green), 10, '#3fae4a');
@@ -689,10 +818,10 @@ function drawShelf(t, g) {                     // the ingredients, on the side
     const hot = !drag && UI.mx >= r.x && UI.mx < r.x + r.w && UI.my >= r.y && UI.my < r.y + r.h;
     R(r.x, r.y + r.h - 3, r.w, 4, '#2a180c'); R(r.x, r.y + r.h - 3, r.w, 1, '#8a5a30');                 // the shelf board
     R(r.x + 2, r.y, r.w - 4, r.h - 3, hot ? '#7a5230' : '#4a2e18'); R(r.x + 2, r.y, r.w - 4, 1, '#6a4428');
-    const big = r.h >= 36;
-    if (!held) { if (big) bigIcon(id, r.x + r.w / 2, r.y + 14 - (hot ? 1 : 0), 2); else icon(id, Math.round(r.x + r.w / 2), r.y + 7 - (hot ? 1 : 0)); }
+    const big = r.h >= 33;
+    if (!held) { if (big) bigIcon(id, r.x + r.w / 2, r.y + (r.h >= 36 ? 14 : 12) - (hot ? 1 : 0), 2); else icon(id, Math.round(r.x + r.w / 2), r.y + 7 - (hot ? 1 : 0)); }
     const name = ITEMS[id].n, label = PX.textWidth(name, 1) <= r.w - 2 ? name : name.slice(0, Math.floor((r.w - 2) / 4));
-    T(label, r.x + r.w / 2, r.y + r.h - (big ? 10 : 9), held ? '#8a7a60' : '#fff0d8', 1, 'center', '#1a1008');
+    T(label, r.x + r.w / 2, r.y + r.h - (r.h >= 36 ? 10 : 9), held ? '#8a7a60' : '#fff0d8', 1, 'center', '#1a1008');
     if (g && g.tile === id && !drag && Math.floor(t * 4) % 2) { ctx.strokeStyle = '#ffe23a'; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y - 1, r.w - 2, r.h); }
   });
 }
@@ -750,7 +879,7 @@ function drawPlay(t) {
   if (G.phase === 'served') { const k = clamp(G.phaseT / 0.25, 0, 1); show = G.phaseT < 0.9; mx += (cxm + 8 - mx) * k; my += (118 - my) * k; }
   const held = drag && drag.id === 'dish';
   if (held) { mx = Math.round(drag.x - drag.ox); my = Math.round(drag.y - drag.oy); }
-  if (show) {
+  const drawMeal = () => {
     if (held || G.phase === 'served') {        // the empty place it came from
       const empty = { done: [], prog: {}, parts: [], count: {}, off: [] };
       if (rest.id !== 'pizza') { ctx.globalAlpha = 0.35; drawDish(rest.id, dishX(), DISH_Y, empty); ctx.globalAlpha = 1; }
@@ -758,7 +887,9 @@ function drawPlay(t) {
     }
     drawDish(rest.id, mx, my, G.D);
     if (G.D.flash > 0) ring(mx, my, 40 + (0.25 - G.D.flash) * 40, '#fff', t);
-  }
+    if (dishReady() && G.phase === 'cook' && !held && !['ice', 'sushi'].includes(rest.id)) for (let i = 0; i < 3; i++) { const k = (t * 0.6 + i / 3) % 1; ctx.globalAlpha = 0.5 * (1 - k); R(mx - 10 + i * 9 + Math.sin(t * 2 + i) * 2, my - 30 - k * 16, 2, 4, '#fff'); ctx.globalAlpha = 1; }   // steam
+  };
+  if (show && !held) drawMeal();
   if (G.back) {                                // the cup / patty / steak flying back from the machine
     const k = clamp(G.back.t / 0.25, 0, 1), bx = G.back.x + (dishX() - G.back.x) * k, by = G.back.y + (DISH_Y - G.back.y) * k - Math.sin(k * 3.14) * 16;
     if (G.back.id !== 'bake') bigIcon(G.back.id, bx, by, 2);
@@ -770,6 +901,7 @@ function drawPlay(t) {
   }
   ctx.restore();
   drawShelf(t, g);
+  if (show && held) drawMeal();              // in your hand it goes over everything
   if (O) drawTicket(t); else { R(3, 21, 102, 216, '#111'); R(4, 22, 100, 214, '#2a2238'); T('NO ORDER', 54, 120, '#5b5275', 1, 'center'); }
   if (G.cook) drawCookMeter(t);
   // the top bar
@@ -778,6 +910,7 @@ function drawPlay(t) {
   T('$' + Math.round(shown), 6, 5, shown !== save.money ? '#fff' : '#ffd23f', 2, 'left', '#000');
   T(rest.name, W / 2, 7, '#efe9ff', 1, 'center');
   for (let i = 0; i < HEARTS; i++) T('♥', W - 74 + i * 9, 7, i < G.hearts ? '#ff4a6a' : '#3a2f5c');
+  if (G.streak >= 2) T('STREAK X' + G.streak, W - 82, 7, Math.floor(t * 4) % 2 ? '#ff9ab8' : '#ffd23f', 1, 'right');
   if (UI.button('pause', W - 26, 2, 22, 16, 'II', { size: 1 })) setPause(true);
   drawGuide(t, g);
   drawHeld(t);
@@ -790,6 +923,7 @@ function drawPlay(t) {
     const a = p.t > 1 ? 1 - (p.t - 1) / 0.4 : 1, sc = p.t < 0.08 ? 1 : 0; ctx.globalAlpha = clamp(a, 0, 1);
     T(p.text, p.x, p.y - Math.min(p.t, 0.5) * 24 - sc * 3, p.color, p.big ? 3 : 2, 'center', '#000'); ctx.globalAlpha = 1;
   }
+  if (G.flashT > 0) { ctx.fillStyle = `rgba(255,240,180,${(G.flashT * 1.6).toFixed(2)})`; ctx.fillRect(0, 0, W, H); }
   if (pad.on && canPlay()) drawHand(pad.x - 2, pad.y - 2, pad.down);
 }
 
@@ -801,15 +935,17 @@ const TUT_PAGES = [
 ];
 const REST_TIPS = [
   ['USE YOUR HANDS!', 'THE INGREDIENTS ARE ON THE SHELF ON THE RIGHT.', 'DRAG THEM TO THE TABLE: POUR, SPRINKLE, SPREAD.', 'THEN DRAG THE MEAL TO THE CUSTOMER.'],
+  ['ICE CREAM!', 'BAKE THE CONE IN THE WAFFLE IRON,', 'THEN STACK THE SCOOPS IN THE ORDER', 'ON THE TICKET AND ADD THE TOPPINGS.'],
   ['PIZZA TIME!', 'EVERY PIZZA IS MADE FROM NEW DOUGH:', 'ROLL IT, SPREAD THE SAUCE, SPRINKLE THE REST,', 'THEN DRAG THE PIZZA INTO THE OVEN.'],
   ['BURGERS!', 'A BURGER IS A STACK: BUILD IT IN THE SAME', 'ORDER AS ON THE TICKET.', 'THE PATTY GOES ON THE GRILL FIRST.'],
+  ['SUSHI!', 'NORI FIRST, THEN COOK THE RICE AND LAY', 'THE FISH ON IT. RUB THE ROLL MAT OVER IT', 'TO ROLL IT UP, THEN ADD THE REST.'],
   ['FINE DINING!', 'FIRST THE PLATE. THE MAIN THING GOES', 'IN THE PAN. THEN ADD THE REST', 'OF THE TICKET, IN ANY ORDER.']];
 const RUB_HINT = { roll: 'RUB THE ROLL PIN OVER THE DOUGH UNTIL IT IS FLAT', sauce: 'DRAG THE SAUCE ONTO THE DOUGH AND SPREAD IT AROUND', milk: 'DRAG THE MILK OVER THE CUP AND MOVE IT AROUND TO POUR',
-                   ketchup: 'DRAG THE KETCHUP OVER THE BURGER AND SQUEEZE IT ALONG' };
+                   ketchup: 'DRAG THE KETCHUP OVER THE BURGER AND SQUEEZE IT ALONG', mat: 'RUB THE ROLL MAT OVER THE SUSHI TO ROLL IT UP', syrup: 'DRAG THE SYRUP OVER THE TOP SCOOP AND MOVE IT AROUND' };
 function guide() {                            // what to do next: { text, tile, from, to, mode }
   if (!G.guide || G.phase !== 'cook' || G.tutPage >= 0 || G.tip !== null) return null;
   const rest = REST[G.rest], dish = { x: dishX(), y: DISH_Y }, st = { x: stationX() + 27, y: 76 };
-  if (G.cook) { const ok = G.cook.t >= G.cook.wait; return { text: ok ? 'NOW! TAP THE ' + rest.st + ' BEFORE IT IS TOO LATE!' : 'WAIT FOR THE GREEN ZONE... THEN TAP THE ' + rest.st, mode: ok ? 'tap' : null, to: st }; }
+  if (G.cook) { const ok = G.cook.t >= G.cook.wait; return { text: ok ? 'NOW! TAP ANYWHERE BEFORE IT IS TOO LATE!' : 'WAIT FOR THE GREEN ZONE... THEN TAP ANYWHERE', mode: ok ? 'tap' : null, to: dish }; }
   if (dishReady()) return { text: 'DONE! DRAG THE ' + rest.meal + ' TO THE CUSTOMER TO GET PAID', from: dish, to: { x: customerX(), y: 70 }, mode: 'drag' };
   const id = needs()[0], it = ITEMS[id];
   if (it.k === 'bake') return { text: 'NOW DRAG THE PIZZA INTO THE OVEN', from: dish, to: st, mode: 'drag' };
@@ -817,7 +953,7 @@ function guide() {                            // what to do next: { text, tile, 
   if (it.k === 'cook') return { text: 'DRAG THE ' + it.n + ' TO THE ' + rest.st, tile: id, from, to: st, mode: 'drag' };
   if (it.k === 'rub') return { text: RUB_HINT[id] || 'DRAG THE ' + it.n + ' OVER THE ' + rest.meal + ' AND MOVE IT AROUND', tile: id, from, to: dish, mode: 'rub' };
   if (it.c > 1) return { text: 'DRAG THE ' + it.n + ' OVER THE ' + rest.meal + ' AND MOVE AROUND TO SPRINKLE IT', tile: id, from, to: dish, mode: 'rub' };
-  return { text: 'DRAG THE ' + it.n + ' FROM THE SHELF ONTO THE ' + (rest.id === 'pizza' ? 'BOARD' : rest.id === 'lux' && id === 'plate' ? 'TABLE' : rest.meal), tile: id, from, to: dish, mode: 'drag' };
+  return { text: 'DRAG THE ' + it.n + ' FROM THE SHELF ONTO THE ' + (id === 'dough' ? 'BOARD' : id === 'plate' ? 'TABLE' : id === 'nori' ? 'MAT' : SCOOPS[id] ? 'CONE' : rest.meal), tile: id, from, to: dish, mode: 'drag' };
 }
 function drawGuide(t, g) {
   if (!g) return;
@@ -859,6 +995,8 @@ const DEMOS = {
   pizza: { done: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'bake'], prog: {}, count: {}, off: [],
            parts: [[0, 0], [-12, -8], [12, -9], [-9, 12], [12, 10]].map(([x, y]) => ({ id: 'mozz', x, y, t: 9 })).concat([[-2, -16], [16, 1], [-17, 2], [2, 17], [6, -4]].map(([x, y]) => ({ id: 'salami', x, y, t: 9 }))) },
   burger: { done: ['bun', 'patty', 'cheese', 'lettuce', 'tomato', 'bun'], prog: {}, parts: [], count: {}, off: [0, 1, -2, 2, -1, 0] },
+  ice: { done: ['cone', 'ss', 'sv', 'syrup', 'cherry'], prog: {}, count: {}, off: [0, 1, -1], parts: [{ id: 'cherry', x: 0, y: 0, t: 9 }] },
+  sushi: { done: ['nori', 'rice', 'salmon', 'avocado', 'mat', 'wasabi', 'soy'], prog: {}, count: {}, off: [], parts: [{ id: 'salmon', x: 0, y: -4, t: 9 }, { id: 'avocado', x: 0, y: 5, t: 9 }, { id: 'wasabi', x: 0, y: 0, t: 9 }] },
   lux: { done: ['plate', 'steak', 'potato', 'butter'], prog: {}, count: {}, off: [], parts: [{ id: 'potato', x: 20, y: -9, t: 9 }, { id: 'potato', x: 23, y: 2, t: 9 }, { id: 'potato', x: 17, y: 12, t: 9 }, { id: 'butter', x: -4, y: 0, t: 9 }] },
 };
 function header(title) {
@@ -882,7 +1020,7 @@ function drawTitle(t) {
   T('COOK', W / 2, 48 + bobY, '#fff', 6, 'center', '#e8402a');
   T('$' + save.money, W / 2, 88, '#ffd23f', 2, 'center', '#000');
   const bw = 210, bx = Math.round(W / 2 - bw / 2), hw = (bw - 4) / 2;
-  if (UI.button('play', bx, 104, bw, 28, save.tut ? 'OPEN THE ' + rest.name.split(' ')[0] : 'START COOKING', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(!save.tut); }
+  if (UI.button('play', bx, 104, bw, 28, save.tut ? 'OPEN THE ' + (rest.short === 'CAFE' ? 'CAFE' : rest.name) : 'START COOKING', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(!save.tut); }
   if (UI.button('rests', bx, 138, hw, 24, 'RESTAURANTS', { size: 1, accent: '#ffb020' })) { sfx('click'); go('rests'); }
   if (UI.button('shop', bx + hw + 4, 138, hw, 24, 'UPGRADES', { size: 1, accent: '#7ac8ff' })) { sfx('click'); go('shop'); }
   if (UI.button('how', bx, 168, hw, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); newShift(true); }
@@ -894,22 +1032,26 @@ function drawTitle(t) {
 function drawRests(t) {
   const W = S.W;
   if (header('RESTAURANTS')) { go('title'); return; }
-  const n = REST.length, cw = Math.floor((W - 8 - (n - 1) * 3) / n);
+  const cw = Math.floor((W - 8 - 6) / 3), ch = 104;
   REST.forEach((r, i) => {
-    const x = 4 + i * (cw + 3), y = 28, h = 206, cur = save.rest === i, owned = save.owned[i], mid = x + cw / 2;
-    R(x - 1, y - 1, cw + 2, h + 2, cur ? r.color : '#0b0912'); R(x, y, cw, h, '#251f3a'); R(x, y + 110, cw, h - 110, '#1d182e'); R(x, y, cw, 3, r.color);
-    r.name.split(' ').forEach((s, k) => T(s, mid, y + 9 + k * 12, '#fff', PX.textWidth(s, 2) <= cw - 4 ? 2 : 1, 'center', '#000'));
-    bigIcon({ cafe: 'cup', pizza: 'salami', burger: 'bun', lux: 'steak' }[r.id], mid, y + 50, 2);
-    T('$' + priceOf(r.dishes[0]) + ' - $' + priceOf(r.dishes[r.dishes.length - 1]) + ' A MEAL', mid, y + 70, '#ffd23f', 1, 'center');
-    r.dishes.forEach((d, k) => { const open = owned && k < dishCount(i); T(open || !owned ? d.name : '? ? ?', mid, y + 84 + k * 9, open ? '#efe9ff' : '#6a6088', 1, 'center'); });
-    if (owned) T('SHIFTS DONE: ' + save.shifts[i], mid, y + 144, '#9a92b8', 1, 'center');
-    else if (!save.owned[i - 1]) T('BUY ' + REST[i - 1].name.split(' ')[0] + ' FIRST', mid, y + 144, '#9a92b8', 1, 'center');
-    else if (save.money < r.price) T('$' + (r.price - save.money) + ' TO GO', mid, y + 144, '#7ac8ff', 1, 'center');
-    if (cur) { R(x + 6, y + h - 34, cw - 12, 24, '#0b0912'); R(x + 7, y + h - 33, cw - 14, 22, '#3fae4a'); T('OPEN NOW', mid, y + h - 25, '#fff', 1, 'center', '#0b0912'); }
-    else if (owned) { if (UI.button('r' + i, x + 6, y + h - 34, cw - 12, 24, 'MOVE HERE', { size: 1, accent: r.color })) { save.rest = i; store(); sfx('click'); } }
+    const x = 4 + (i % 3) * (cw + 3), y = 26 + Math.floor(i / 3) * (ch + 4), cur = save.rest === i, owned = save.owned[i];
+    R(x - 1, y - 1, cw + 2, ch + 2, cur ? r.color : '#0b0912'); R(x, y, cw, ch, '#251f3a'); R(x, y + 56, cw, ch - 56, '#1d182e'); R(x, y, cw, 3, r.color);
+    R(x + 5, y + 8, 26, 26, '#0b0912'); R(x + 6, y + 9, 24, 24, owned ? '#3a2f5c' : '#1a1526');
+    bigIcon({ cafe: 'cup', ice: 'ss', pizza: 'salami', burger: 'bun', sushi: 'salmon', lux: 'steak' }[r.id], x + 18, y + 21, 2);
+    if (!owned) { R(x + 6, y + 9, 24, 24, 'rgba(13,11,19,0.55)'); R(x + 13, y + 20, 10, 8, '#ffd23f'); R(x + 15, y + 15, 6, 6, '#ffd23f'); R(x + 17, y + 17, 2, 4, '#1a1526'); R(x + 17, y + 23, 2, 2, '#111'); }   // a lock
+    const words = r.name.split(' '), l1 = words.length > 2 ? words.slice(0, 2).join(' ') : words[0], l2 = words[words.length - 1], sz = PX.textWidth(l1, 2) <= cw - 40 && PX.textWidth(l2, 2) <= cw - 40 ? 2 : 1;
+    T(l1, x + 36, y + (sz === 2 ? 9 : 12), '#fff', sz, 'left', '#000'); T(l2, x + 36, y + (sz === 2 ? 21 : 21), '#fff', sz, 'left', '#000');
+    T('$' + priceOf(r.dishes[0]) + ' - $' + priceOf(r.dishes[r.dishes.length - 1]) + ' A MEAL', x + 6, y + 41, '#ffd23f');
+    if (owned) { T('MENU ' + dishCount(i) + '/' + r.dishes.length + '   SHIFTS ' + save.shifts[i], x + 6, y + 52, '#9a92b8'); for (let k = 0; k < r.dishes.length; k++) { R(x + 6 + k * 8, y + 61, 6, 4, '#0b0912'); R(x + 7 + k * 8, y + 62, 4, 2, k < dishCount(i) ? r.color : '#3a2f5c'); } }
+    else if (!save.owned[i - 1]) T('BUY ' + REST[i - 1].short + ' FIRST', x + 6, y + 52, '#9a92b8');
+    else if (save.money < r.price) { T('$' + (r.price - save.money) + ' TO GO', x + 6, y + 52, '#7ac8ff'); R(x + 6, y + 61, cw - 12, 4, '#0b0912'); R(x + 7, y + 62, Math.round((cw - 14) * save.money / r.price), 2, '#7ac8ff'); }
+    else T('YOU CAN BUY IT!', x + 6, y + 52, Math.floor(t * 3) % 2 ? '#9be36b' : '#fff');
+    const by = y + ch - 30;
+    if (cur) { R(x + 6, by, cw - 12, 24, '#0b0912'); R(x + 7, by + 1, cw - 14, 22, '#3fae4a'); R(x + 7, by + 1, cw - 14, 1, '#7ad88a'); T('OPEN NOW', x + cw / 2, by + 9, '#fff', 1, 'center', '#0b0912'); }
+    else if (owned) { if (UI.button('r' + i, x + 6, by, cw - 12, 24, 'MOVE HERE', { size: 1, accent: r.color })) { save.rest = i; store(); sfx('click'); } }
     else {
       const can = save.money >= r.price && save.owned[i - 1];
-      if (UI.button('r' + i, x + 6, y + h - 34, cw - 12, 24, 'BUY $' + r.price, { size: 1, accent: '#ffd23f', disabled: !can })) {
+      if (UI.button('r' + i, x + 6, by, cw - 12, 24, 'BUY $' + r.price, { size: PX.textWidth('BUY $' + r.price, 2) <= cw - 20 ? 2 : 1, accent: '#ffd23f', disabled: !can })) {
         save.money -= r.price; shown = save.money; save.owned[i] = true; save.rest = i; PX.Wallet.add(3); store(); sfx('done'); buyFlash = { t: 0, text: r.name + ' IS YOURS!  ★ +3' };
       }
     }
@@ -963,7 +1105,8 @@ function drawOver(t) {
   T('MEALS SERVED: ' + G.servedN + ' OF ' + G.total + '    TIPS: $' + G.tipsSum, W / 2, y + 66, '#efe9ff', 1, 'center');
   T(G.mist ? 'MISTAKES: ' + G.mist : all ? 'NO MISTAKES: A PERFECT SHIFT!' : 'NO MISTAKES', W / 2, y + 78, G.mist ? '#ff8a7a' : '#9be36b', 1, 'center');
   if (G.newBest) T('BEST SHIFT EVER!', W / 2, y + 90, '#9be36b', 1, 'center');
-  if (G.stars) T('★ +' + G.stars, W / 2, y + 102, '#ffd23f', 2, 'center', '#000');
+  if (G.stars) T('★ +' + G.stars, W / 2 + 50, y + 102, '#ffd23f', 2, 'center', '#000');
+  if (G.servedN) { const r = Math.round(G.rateSum / G.servedN); T('RATING', W / 2 - 80, y + 104, '#9a92b8'); T('★'.repeat(r), W / 2 - 50, y + 102, '#ffe680', 2); T('★'.repeat(3 - r), W / 2 - 50 + r * 12, y + 102, '#3a2f5c', 2); }
   if (G.newDish) { R(W / 2 - 126, y + 120, 252, 14, '#3fae4a'); T('NEW ON THE MENU: ' + G.newDish, W / 2, y + 124, '#fff', 1, 'center'); }
   else { const nx = REST[G.rest + 1]; if (nx && !save.owned[G.rest + 1]) T(save.money >= nx.price ? 'YOU CAN BUY THE ' + nx.name + '!' : nx.name + ': $' + (nx.price - save.money) + ' TO GO', W / 2, y + 124, '#7ac8ff', 1, 'center'); }
   if (UI.button('menu', Math.round(W / 2 - 124), y + 146, 120, 24, 'MENU') || UI.back) toTitle();
@@ -1000,7 +1143,7 @@ UI.onMove = (e, x, y) => pMove(e.pointerId, x, y);
 UI.onUp = e => { const { x, y } = S.toLogical(e); pUp(e.pointerId, x, y); };
 window.addEventListener('keydown', e => {
   PX.Sound.unlock();
-  if (canPlay() && G.cook && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); takeOut(); }
+  if (canPlay() && G.cook && !['KeyP', 'Escape'].includes(e.code)) { e.preventDefault(); takeOut(); }
   else if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play') setPause(!paused);
   else if (e.code === 'Escape') UI.back = true;
 });
@@ -1048,7 +1191,7 @@ PX.Pad.setup({
     if (h.A && !pad.down) { pad.down = true; pDown('pad', pad.x, pad.y); }
     else if (!h.A && pad.down) { pad.down = false; pUp('pad', pad.x, pad.y); }
   },
-  help: [['STICK', 'MOVE THE HAND'], ['A', 'HOLD TO GRAB, LET GO TO DROP'], ['A', 'TAP THE OVEN / GRILL: TAKE IT OUT'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+  help: [['STICK', 'MOVE THE HAND'], ['A', 'HOLD TO GRAB, LET GO TO DROP'], ['A', 'WHILE IT BAKES: TAKE IT OUT'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 </script>
 </body>
