@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight and Pixel Bike Run. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run and Pixel Cook. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.13.0';
+const VERSION = '2.14.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -80,6 +80,7 @@ const GAMES = [
   { id: 'ski', name: 'PIXEL SKI', sub: 'SKI DOWN, DON\'T CRASH!', url: 'ski.html', color: '#7ad8ff', cats: ['RACING', 'SPORTS'], tags: 'SKI SKIING SNOW WINTER MOUNTAIN SLOPE DOWNHILL GREEN RED BLACK' },
   { id: 'boxfight', name: 'PIXEL BOX FIGHT', sub: 'KNOCK THEM OUT!', url: 'boxfight.html', color: '#ff5a4a', cats: ['ACTION', 'SPORTS', 'ONLINE', '2 PLAYERS'], tags: 'BOX BOXING FIGHT PUNCH RING KO KNOCKOUT GLOVES UPPERCUT' },
   { id: 'bike', name: 'PIXEL BIKE RUN', sub: 'RIDE AND FLIP!', url: 'bike.html', color: '#f0a07a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'BIKE BICYCLE MOUNTAIN MTB BMX FLIP BACKFLIP WHEELIE TRICK TRICKS HILLS SUNSET MONEY' },
+  { id: 'cook', name: 'PIXEL COOK', sub: 'COOK MEALS TO ORDER!', url: 'cook.html', color: '#e8402a', cats: ['ACTION'], tags: 'COOK COOKING CHEF KITCHEN FOOD MEAL PIZZA MOZZARELLA BURGER RESTAURANT LUXURY MONEY TIP' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -368,6 +369,25 @@ function previewBike(x, y, w, h, t) {             // a rider in silhouette rolls
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(-2, -10, 3, 3);
   ctx.restore(); ctx.restore();
 }
+function previewCook(x, y, w, h, t) {             // a pizza is made on the table: sauce, mozzarella, salami, then it bakes
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#7a3a2a'; ctx.fillRect(x, y, w, h);
+  for (let q = 0; q < w; q += 12) { ctx.fillStyle = (q / 12) % 2 ? '#d8301e' : '#f4f4f4'; ctx.fillRect(x + q, y + 12, 12, 5); }
+  ctx.fillStyle = '#b8804a'; ctx.fillRect(x, y + 17, w, h); ctx.fillStyle = '#a06a3a'; for (let k = 28; k < h; k += 12) ctx.fillRect(x, y + k, w, 1);
+  const cx = Math.round(x + w / 2), cy = y + 38, k = t % 5;
+  const dot = (dx, dy, r, c) => { ctx.fillStyle = c; for (let q = -r; q <= r; q++) { const ww = Math.round(Math.sqrt(r * r - q * q + r * 0.8)); ctx.fillRect(cx + dx - ww, cy + dy + q, ww * 2 + 1, 1); } };
+  const baked = k > 3.6;
+  dot(0, 0, 22, '#8a5a2a'); dot(0, 0, 21, '#d8a868');
+  dot(0, 0, k < 0.6 ? 8 + Math.round(k * 16) : 18, baked ? '#d89a48' : '#f0dca8');
+  if (k > 1.2) dot(0, 0, 15, '#d8301e');
+  if (k > 1.9) { if (baked) dot(0, 0, 13, '#f8e8b0'); for (const [dx, dy] of [[0, 0], [-8, -5], [8, -6], [-6, 8], [8, 7]]) dot(dx, dy, 3, '#fff8e8'); }
+  if (k > 2.6) for (const [dx, dy] of [[-3, -9], [10, 1], [-10, 2], [2, 10]]) dot(dx, dy, 2, '#b83a3a');
+  if (baked) { ctx.fillStyle = 'rgba(255,255,255,0.7)'; for (let i = 0; i < 3; i++) ctx.fillRect(Math.round(cx - 10 + i * 10 + Math.sin(t * 4 + i) * 2), Math.round(cy - 24 - ((t * 12 + i * 5) % 12)), 2, 3); }
+  ctx.fillStyle = '#111'; ctx.fillRect(x + 3, y + 3, 30, 9); ctx.fillStyle = '#fff8e0'; ctx.fillRect(x + 4, y + 4, 28, 7);
+  ctx.fillStyle = '#3fae4a'; ctx.fillRect(x + 5, y + 5, Math.round(26 * (1 - k / 5)), 5);
+  if (baked) T('+$20', cx, cy - 6 - Math.round((k - 3.6) * 8), '#ffd23f', 2, 'center', '#000');
+  ctx.restore();
+}
 function previewBoxFight(x, y, w, h, t) {         // two boxers trade punches in the ring
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ctx.fillStyle = '#1a1230'; ctx.fillRect(x, y, w, h);
@@ -409,7 +429,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['bike', 'boxfight', 'ski'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['cook', 'bike', 'boxfight'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -421,7 +441,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
