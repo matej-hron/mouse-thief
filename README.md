@@ -26,7 +26,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
-| **Pixel Cook** (`cook.html`) | Cook meals to order, 3 minutes for one meal: start with a pizza restaurant, buy a burger restaurant, then a luxury restaurant. With a tutorial. |
+| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 3 minutes for one meal: start with a cafe shop, then buy a pizza, a burger and a luxury restaurant. With a tutorial. |
 
 ## Pixel Wings
 
@@ -249,22 +249,28 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 ## Pixel Cook
 
 You are the chef. A customer walks in and orders (say, a pizza with mozzarella); the order ticket pops up on the left
-with the meal and every step. You cook it on the table: tap the things in the tray below. **You have 3 minutes for
-one meal**, and the faster you are, the bigger the tip.
+with the meal and every step. The ingredients are on the shelf on the right, and you cook with your own hands on the
+table in the middle. **You have 3 minutes for one meal**, and the faster you are, the bigger the tip.
 
-- **Cooking:** a pizza is made from nothing: new DOUGH, roll it flat (tap the ROLL PIN 4 times), TOMATO SAUCE,
-  MOZZARELLA and the toppings, then into the OVEN. While it bakes a bar runs from RAW to BURNT: tap TAKE OUT in the
-  green zone (the gold middle is PERFECT, a bigger tip). Burnt food goes in the bin and you make a new one. Then SERVE.
+- **Your hands:** DRAG an ingredient from the shelf onto the meal. Some things you keep moving: rub the ROLL PIN over
+  the dough until it is flat, spread the SAUCE, pour the MILK, squeeze the KETCHUP, and sprinkle toppings (mozzarella,
+  salami, cocoa, truffle...) piece by piece: they land where your finger is, so every pizza is your own.
+- **Cooking:** drag the CUP to the coffee machine, the PATTY to the grill, the STEAK to the pan, or the whole PIZZA
+  into the oven. A bar runs from RAW to BURNT: tap the oven in the green zone (the gold middle is PERFECT, a bigger
+  tip). Too late and it is burnt (or the coffee spills): make a new one.
+- **Serving:** drag the finished meal to the customer. Drag it to the BIN to start over.
 - **Money:** every meal pays its price and a tip. A wrong ingredient or burnt food makes the tip smaller. Too slow
   (3 minutes) and the customer leaves; three of those and you close early. A shift is 4-8 customers and pays ★1
   (★2 with every meal served and no mistakes). Finishing shifts puts new meals on the menu.
-- **RESTAURANTS:** the PIZZA RESTAURANT (6 pizzas, $20-46), then buy the BURGER RESTAURANT ($1500: burgers are
-  stacked in the order on the ticket, the patty is grilled) and the LUXURY RESTAURANT ($5000: steak, lobster,
-  truffle pasta and golden cake on a plate, $150-320).
+- **RESTAURANTS:** the CAFE SHOP (coffee, cappuccino, croissants and muffins, $8-26), then buy the PIZZA RESTAURANT
+  ($300, 6 pizzas made from new dough), the BURGER RESTAURANT ($1500: burgers are stacked in the order on the ticket)
+  and the LUXURY RESTAURANT ($5000: steak, lobster, truffle pasta and golden cake on a plate, $150-320).
 - **UPGRADES** (for all your restaurants): KITCHEN TIMER (a longer green zone), TURBO STOVE (cooks faster), TIP JAR
   (+25% tips a level), FANCY MENU (+15% prices a level), and the GOLDEN CHEF HAT for the richest chef in town.
-- **Tutorial:** new players cook their first pizza step by step, with the clock stopped (HOW TO PLAY shows it again).
-- **Controls:** tap or click. Keys: Space / Enter serve or take out, P pause. Controller: the stick picks a button, A presses it.
+- **Tutorial:** new players make their first coffee step by step with a hand showing every move and the clock stopped
+  (HOW TO PLAY shows it again). The hand also helps with the first order in every new restaurant.
+- **Controls:** touch or mouse: drag. Keys: Space / Enter take it out of the oven, P pause. Controller: the stick moves
+  a hand, hold A to grab and let go to drop, A on the oven takes it out.
 
 ## Pixel Box Fight
 
