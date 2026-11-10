@@ -275,7 +275,8 @@ table in the middle. **You have 3 minutes for one meal**, and the faster you are
   coach also helps with the first order in every new restaurant.
 - **COOKING SCHOOL:** every meal of your restaurants as a recipe in pictures. LEARN one and you cook it with the coach
   and no clock; you get a medal and the meal's price the first time.
-- **REAL LIFE:** the school also teaches real cooking. Every meal has a REAL RECIPE sheet (what you need, each step with
+- **REAL LIFE:** the school also teaches real cooking. Every meal has a REAL RECIPE sheet in big print, a few steps on a
+  page (what you need, each step with
   its real time and temperature: a pizza bakes 8-12 minutes at 250 C, a burger patty 3-4 minutes a side, sushi rice
   simmers 12-15 minutes...), and while you cook a lesson a REAL LIFE line shows the fact for the step you are doing.
 - **Controls:** touch or mouse: drag. Keys: any key takes it out of the oven, P pause. Controller: the stick moves

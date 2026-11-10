@@ -40,7 +40,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 const SAVE_KEY = 'pixelCook.save';
 const NREST = 6;
 const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
@@ -140,7 +140,7 @@ const REAL = {                             // for the recipe page: what you need
   sushi: ['FOR 2 ROLLS: {1 CUP} RICE, {1.2 CUPS} WATER, 2 NORI SHEETS.', 'RINSE THE RICE UNTIL THE WATER IS CLEAR: ABOUT {4 TIMES}.'],
   lux: ['TAKE MEAT OUT OF THE FRIDGE {30 MIN} BEFORE YOU COOK IT.', 'SALT THE PASTA WATER: {10 G} OF SALT FOR EVERY LITRE.'],
 };
-function rich(str, x, y, maxW, base = '#efe9ff', hi = '#ffd23f', draw = true) {   // text with {highlights}, wrapped; returns the number of lines
+function rich(str, x, y, maxW, base = '#efe9ff', hi = '#ffd23f', draw = true, size = 1) {   // text with {highlights}, wrapped; returns the number of lines
   const words = []; let on = false, w = { runs: [], text: '' };
   for (const ch of str) {
     if (ch === '{') { on = true; continue; } if (ch === '}') { on = false; continue; }
@@ -150,12 +150,19 @@ function rich(str, x, y, maxW, base = '#efe9ff', hi = '#ffd23f', draw = true) { 
   words.push(w);
   let cx = x, line = 0;
   for (const wd of words) {
-    const ww = PX.textWidth(wd.text, 1);
+    const ww = PX.textWidth(wd.text, size);
     if (cx > x && cx + ww > x + maxW) { cx = x; line++; }
-    for (const r of wd.runs) { if (draw) T(r.s, cx, y + line * 8, r.hi ? hi : base); cx += PX.textWidth(r.s, 1) + (r === wd.runs[wd.runs.length - 1] ? 0 : 1); }
-    cx += 4;
+    for (const r of wd.runs) { if (draw) T(r.s, cx, y + line * 6 * size, r.hi ? hi : base, size); cx += PX.textWidth(r.s, size) + (r === wd.runs[wd.runs.length - 1] ? 0 : size); }
+    cx += 4 * size;
   }
   return line + 1;
+}
+// little drawn signs (crisper than letters): an arrow, pause bars, a speaker
+function arrowUp(x, y, c) { for (let i = 0; i < 5; i++) R(x - i - 1, y + i, i * 2 + 3, 1, '#111'); R(x - 3, y + 5, 7, 7, '#111'); for (let i = 0; i < 4; i++) R(x - i, y + i + 1, i * 2 + 1, 1, c); R(x - 2, y + 5, 5, 6, c); }
+function iconButton(id, x, y, w, h, o, drawIt) {   // a button with a picture instead of letters
+  const hit = UI.button(id, x, y, w, h, '', o), hot = UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h;
+  drawIt(x, y + (hot && UI.pressed ? 1 : 0), hot ? '#111' : '#efe9ff');
+  return hit;
 }
 const MAINS = ['steak', 'lobster', 'pasta', 'cake'];
 const SCOOPS = { sv: ['#fff4d0', '#e0cc98'], sc: ['#7a4428', '#5a3018'], ss: ['#ff9ab8', '#e06a90'], sm: ['#9be8c0', '#62c094'] };
@@ -926,7 +933,7 @@ function drawPlay(t) {
     ctx.save(); ctx.beginPath(); ctx.rect(midX0() - 4, 0, W, 92); ctx.clip();
     drawCustomer(O, cxp, t, mood);
     ctx.restore();
-    if (G.phase === 'cook' && dishReady()) { bubble('BRING IT TO ME!', cxm + 22, 26, '#2a8a2a'); if (!drag) T('↑', cxm, 104 + Math.round(Math.abs(Math.sin(t * 5)) * 4), '#9be36b', 2, 'center', '#000'); }
+    if (G.phase === 'cook' && dishReady()) { bubble('BRING IT TO ME!', cxm + 22, 26, '#2a8a2a'); if (!drag) arrowUp(cxm, 100 + Math.round(Math.abs(Math.sin(t * 5)) * 5), '#9be36b'); }
     else if (G.phase === 'cook' && G.phaseT < 3.5 && !G.cook) bubble(O.dish.name + ', PLEASE!', cxm + 22, 26);
     else if (G.phase === 'cook' && O.time < 30) bubble('HURRY UP!', cxm + 22, 26, '#e01e1e');
     else if (G.phase === 'served' || (G.phase === 'left' && G.phaseT < 0.9)) bubble(O.say, cxm + 22, 26, G.phase === 'left' ? '#e01e1e' : '#2a8a2a');
@@ -964,16 +971,16 @@ function drawPlay(t) {
   if (G.cook) drawCookMeter(t);
   if (!save.clockTip && !G.free && G.phase === 'cook') {          // the first real order: look, the clock!
     if (G.phaseT > 5) { save.clockTip = true; store(); }
-    else { const b = Math.round(Math.abs(Math.sin(t * 6)) * 4); R(108 + b, 186, 112, 20, '#111'); R(109 + b, 187, 110, 18, '#ffe23a'); R(104 + b, 193, 4, 6, '#111'); T('↓ 3 MINUTES!', 114 + b, 191, '#111', 2); }
+    else { const b = Math.round(Math.abs(Math.sin(t * 6)) * 4); R(110 + b, 207, 104, 20, '#111'); R(111 + b, 208, 102, 18, '#ffe23a'); R(106 + b, 213, 4, 8, '#111'); R(102 + b, 215, 4, 4, '#111'); T('3 MINUTES!', 162 + b, 212, '#111', 2, 'center'); }
   }
   // the top bar
   shown += (save.money - shown) * 0.15; if (Math.abs(save.money - shown) < 0.6) shown = save.money;
   R(0, 0, W, 20, '#0d0b13'); R(0, 19, W, 1, rest.color);
   T('$' + Math.round(shown), 6, 5, shown !== save.money ? '#fff' : '#ffd23f', 2, 'left', '#000');
   T(rest.name, W / 2, 7, '#efe9ff', 1, 'center');
-  for (let i = 0; i < HEARTS; i++) T('♥', W - 74 + i * 9, 7, i < G.hearts ? '#ff4a6a' : '#3a2f5c');
-  if (G.streak >= 2) T('STREAK X' + G.streak, W - 82, 7, Math.floor(t * 4) % 2 ? '#ff9ab8' : '#ffd23f', 1, 'right');
-  if (UI.button('pause', W - 26, 2, 22, 16, 'II', { size: 1 })) setPause(true);
+  for (let i = 0; i < HEARTS; i++) T('♥', W - 66 + i * 10, 7, i < G.hearts ? '#ff4a6a' : '#3a2f5c');
+  if (G.streak >= 2) T('STREAK X' + G.streak, W - 74, 7, Math.floor(t * 4) % 2 ? '#ff9ab8' : '#ffd23f', 1, 'right');
+  if (iconButton('pause', W - 30, 2, 26, 16, {}, (x, y, c) => { R(x + 8, y + 4, 4, 8, c); R(x + 14, y + 4, 4, 8, c); })) setPause(true);
   drawGuide(t, g);
   drawHeld(t);
   if (G.phase === 'intro') {                   // the shift begins
@@ -1069,8 +1076,8 @@ function drawTitle(t) {
   drawShelf(t, null);
   ctx.fillStyle = 'rgba(13,11,19,0.62)'; ctx.fillRect(0, 0, W, H);
   PX.drawAvatar(ctx, profile.avatar, 8, 14, 2); chefHat(20, 10, save.hat); T(profile.name, 40, 22, '#fff', 2, 'left', '#000');
-  T('★ ' + PX.Wallet.get(), W - 36, 8, '#ffd23f', 2, 'right', '#000');
-  if (UI.button('sfx', W - 30, 4, 24, 18, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('★ ' + PX.Wallet.get(), W - 38, 8, '#ffd23f', 2, 'right', '#000');
+  if (iconButton('sfx', W - 30, 4, 26, 18, { on: save.sfx }, (x, y, c) => { R(x + 6, y + 7, 3, 4, c); R(x + 9, y + 6, 2, 6, c); R(x + 11, y + 4, 2, 10, c); if (save.sfx) { R(x + 15, y + 7, 1, 4, c); R(x + 17, y + 5, 1, 8, c); R(x + 19, y + 3, 1, 12, c); } else { for (let i = 0; i < 5; i++) { R(x + 15 + i, y + 6 + i, 1, 2, '#ff6a5a'); R(x + 19 - i, y + 6 + i, 1, 2, '#ff6a5a'); } } })) { save.sfx = !save.sfx; store(); sfx('click'); }
   const bobY = Math.round(Math.sin(t * 2) * 2);
   T('PIXEL', W / 2, 30 + bobY, '#ffd23f', 3, 'center', '#000');
   T('COOK', W / 2, 48 + bobY, '#fff', 6, 'center', '#e8402a');
@@ -1135,10 +1142,10 @@ function drawSchool(t) {
     if (learned) { disc(x + cw - 11, y + 11, 7, '#b8901a'); disc(x + cw - 11, y + 10, 6, '#ffd23f'); T('★', x + cw - 11, y + 8, '#fff', 1, 'center'); }
     const ids = d.groups.flat(), per = Math.floor((cw - 8) / 15);      // the recipe, as pictures
     if (ids.length * 27 <= cw - 8) ids.forEach((id, k) => { const px = x + 18 + k * 27, py = y + 40; R(px - 13, py - 13, 26, 27, '#16121f'); bigIcon(id === 'bake' ? 'oven' : id, px, py, 2); });   // few steps: big pictures
-    else ids.forEach((id, k) => { const px = x + 11 + (k % per) * 15, py = y + 32 + Math.floor(k / per) * 16; R(px - 7, py - 7, 14, 15, '#16121f'); icon(id === 'bake' ? 'oven' : id, px, py); });
+    else ids.forEach((id, k) => { const px = x + 11 + (k % per) * 15, py = y + (ids.length <= per ? 40 : 32) + Math.floor(k / per) * 16; R(px - 7, py - 7, 14, 15, '#16121f'); icon(id === 'bake' ? 'oven' : id, px, py); });
     const rw = 44;
     if (UI.button('l' + i, x + 5, y + ch - 24, cw - 13 - rw, 20, learned ? 'COOK AGAIN' : 'LEARN +$' + priceOf(d), { size: 1, accent: learned ? '#8a7ad8' : '#5ad43f', on: !learned })) { sfx('click'); newShift(false, { rest: schoolRest, i }); }
-    if (UI.button('q' + i, x + cw - 5 - rw, y + ch - 24, rw, 20, 'RECIPE', { size: 1, accent: '#ff9ab8' })) { sfx('click'); recipe = { rest: schoolRest, i }; go('recipe'); }
+    if (UI.button('q' + i, x + cw - 5 - rw, y + ch - 24, rw, 20, 'RECIPE', { size: 1, accent: '#ff9ab8' })) { sfx('click'); recipe = { rest: schoolRest, i, page: 0 }; go('recipe'); }
   });
 }
 // a REAL RECIPE: how you would make this meal in a real kitchen, step by step, on a sheet of paper
@@ -1147,23 +1154,28 @@ function drawRecipe(t) {
   const W = S.W, r = REST[recipe.rest], d = r.dishes[recipe.i];
   if (header('REAL RECIPE')) { go('school'); return; }
   const px = 8, pw = W - 16, ink = '#3a2f1c', red = '#c8301e';
-  R(px + 2, 28, pw, 210, 'rgba(0,0,0,0.4)'); R(px - 1, 25, pw + 2, 212, '#111'); R(px, 26, pw, 210, '#fff8e0'); R(px, 26, pw, 14, r.color);
+  R(px + 2, 28, pw, 210, 'rgba(0,0,0,0.4)'); R(px - 1, 25, pw + 2, 212, '#111'); R(px, 26, pw, 210, '#fff8e0'); R(px, 26, pw, 18, r.color); R(px, 26, pw, 2, 'rgba(255,255,255,0.3)');
   for (let q = px; q < px + pw; q += 6) R(q + 1, 234, 4, 2, '#111');
-  T(d.name, px + 8, 31, '#111'); T('IN REAL LIFE', px + pw - 8, 31, '#111', 1, 'right');
-  let y = 46;
-  R(px + 6, y - 2, pw - 12, 13, '#f0e4c0'); T('YOU NEED', px + 10, y + 2, red); rich(REAL[r.id][0], px + 52, y + 2, pw - 62, ink, red); y += 16;
-  const ids = [...new Set(d.groups.flat())], rowH = Math.min(15, Math.floor(134 / ids.length));
-  ids.forEach((id, k) => {
-    const yy = y + k * rowH;
-    if (k % 2) R(px + 6, yy - 1, pw - 12, rowH, '#f8eed0');
-    T(String(k + 1), px + 14, yy + Math.floor(rowH / 2) - 3, red, 1, 'center');
-    icon(id === 'bake' ? 'oven' : id, px + 30, yy + Math.floor(rowH / 2) - 1);
-    rich(FACTS[id] || ITEMS[id].n, px + 44, yy + Math.floor(rowH / 2) - 3, pw - 54, ink, red);
+  T(d.name, px + 8, 30, '#111', PX.textWidth(d.name, 2) <= pw - 16 ? 2 : 1);
+  const ids = [...new Set(d.groups.flat())];
+  const rows = [{ tag: 'YOU|NEED', text: REAL[r.id][0] }, ...ids.map((id, k) => ({ n: k + 1, id, text: FACTS[id] || ITEMS[id].n })),
+                { tag: 'GOOD TO|KNOW', text: REAL[r.id][1] }, { tag: 'TAKE|CARE', text: 'ALWAYS COOK WITH A GROWN-UP: OVENS ARE HOT AND KNIVES ARE SHARP.' }];
+  const per = 4, pages = Math.ceil(rows.length / per), page = recipe.page = clamp(recipe.page | 0, 0, pages - 1);
+  rows.slice(page * per, page * per + per).forEach((row, k) => {
+    const y = 48 + k * 40;
+    R(px + 6, y, pw - 12, 37, k % 2 ? '#f8eed0' : '#f0e4c0'); R(px + 6, y + 36, pw - 12, 1, '#d8c8a0');
+    if (row.tag) { R(px + 8, y + 2, 58, 33, red); R(px + 8, y + 2, 58, 1, '#e86a5a'); row.tag.split('|').forEach((str, q) => T(str, px + 37, y + 8 + q * 12, '#fff8e0', 2, 'center')); }
+    else {
+      disc(px + 19, y + 18, 9, '#8a1c10'); disc(px + 19, y + 17, 9, red); T(String(row.n), px + 20, y + (row.n > 9 ? 15 : 13), '#fff8e0', row.n > 9 ? 1 : 2, 'center');
+      R(px + 33, y + 3, 32, 31, '#d8c8a0'); R(px + 34, y + 4, 30, 29, '#fff8e0'); bigIcon(row.id === 'bake' ? 'oven' : row.id, px + 49, y + 19, 2);
+    }
+    const tx = px + 74, tw = pw - 84, n = rich(row.text, 0, 0, tw, '', '', false, 2);
+    rich(row.text, tx, y + 19 - n * 6 + 1, tw, ink, red, true, 2);
   });
-  y += ids.length * rowH + 3;
-  R(px + 6, y - 2, pw - 12, 13, '#f0e4c0'); T('GOOD TO KNOW', px + 10, y + 2, red); rich(REAL[r.id][1], px + 68, y + 2, pw - 78, ink, red);
-  T('ALWAYS COOK WITH A GROWN-UP: OVENS ARE HOT, KNIVES ARE SHARP.', px + 8, 222, '#8a7a5a');
-  if (UI.button('cook', W - 108, 214, 96, 18, 'COOK IT HERE', { size: 1, accent: '#5ad43f', on: true })) { sfx('click'); newShift(false, recipe); }
+  if (UI.button('pp', px + 6, 211, 44, 22, '<', { disabled: page === 0 })) { recipe.page--; sfx('click'); }
+  T((page + 1) + ' / ' + pages, px + 84, 217, ink, 2, 'center');
+  if (UI.button('pn', px + 118, 211, 44, 22, '>', { disabled: page === pages - 1, accent: '#5ad43f', on: true })) { recipe.page++; sfx('click'); }
+  if (UI.button('cook', px + pw - 136, 211, 130, 22, 'COOK IT HERE', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(false, { rest: recipe.rest, i: recipe.i }); }
 }
 let buyFlash = null;
 function drawFlash() {
