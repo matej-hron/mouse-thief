@@ -26,7 +26,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
-| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 3 minutes for one meal: start with a cafe shop, then buy a pizza, a burger and a luxury restaurant. With a tutorial. |
+| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 3 minutes for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
 
 ## Pixel Wings
 
@@ -256,21 +256,24 @@ table in the middle. **You have 3 minutes for one meal**, and the faster you are
   the dough until it is flat, spread the SAUCE, pour the MILK, squeeze the KETCHUP, and sprinkle toppings (mozzarella,
   salami, cocoa, truffle...) piece by piece: they land where your finger is, so every pizza is your own.
 - **Cooking:** drag the CUP to the coffee machine, the PATTY to the grill, the STEAK to the pan, or the whole PIZZA
-  into the oven. A bar runs from RAW to BURNT: tap the oven in the green zone (the gold middle is PERFECT, a bigger
+  into the oven. A bar runs from RAW to BURNT: tap anywhere in the green zone (the gold middle is PERFECT, a bigger
   tip). Too late and it is burnt (or the coffee spills): make a new one.
 - **Serving:** drag the finished meal to the customer. Drag it to the BIN to start over.
 - **Money:** every meal pays its price and a tip. A wrong ingredient or burnt food makes the tip smaller. Too slow
   (3 minutes) and the customer leaves; three of those and you close early. A shift is 4-8 customers and pays ★1
-  (★2 with every meal served and no mistakes). Finishing shifts puts new meals on the menu.
-- **RESTAURANTS:** the CAFE SHOP (coffee, cappuccino, croissants and muffins, $8-26), then buy the PIZZA RESTAURANT
-  ($300, 6 pizzas made from new dough), the BURGER RESTAURANT ($1500: burgers are stacked in the order on the ticket)
-  and the LUXURY RESTAURANT ($5000: steak, lobster, truffle pasta and golden cake on a plate, $150-320).
+  (★2 with every meal served and no mistakes). Finishing shifts puts new meals on the menu. Meals in a row without a
+  mistake build a STREAK (+10% tip each, up to +50%), and every meal gets a rating of 1-3 stars on its ticket.
+- **RESTAURANTS** (6, each much dearer than the last): the CAFE SHOP (coffee, cappuccino, croissants and muffins),
+  the ICE CREAM SHOP ($250: bake the cone, stack the scoops, add syrup, sprinkles and a cherry), the PIZZA RESTAURANT
+  ($900, pizzas made from new dough), the BURGER RESTAURANT ($2400: stacked in the order on the ticket), the SUSHI BAR
+  ($6000: nori, rice from the rice cooker, fish, roll it up with the mat) and the LUXURY RESTAURANT ($15000: steak,
+  lobster, truffle pasta and golden cake on a plate, $240-500).
 - **UPGRADES** (for all your restaurants): KITCHEN TIMER (a longer green zone), TURBO STOVE (cooks faster), TIP JAR
   (+25% tips a level), FANCY MENU (+15% prices a level), and the GOLDEN CHEF HAT for the richest chef in town.
 - **Tutorial:** new players make their first coffee step by step with a hand showing every move and the clock stopped
   (HOW TO PLAY shows it again). The hand also helps with the first order in every new restaurant.
-- **Controls:** touch or mouse: drag. Keys: Space / Enter take it out of the oven, P pause. Controller: the stick moves
-  a hand, hold A to grab and let go to drop, A on the oven takes it out.
+- **Controls:** touch or mouse: drag. Keys: any key takes it out of the oven, P pause. Controller: the stick moves
+  a hand, hold A to grab and let go to drop, A takes it out of the oven.
 
 ## Pixel Box Fight
 

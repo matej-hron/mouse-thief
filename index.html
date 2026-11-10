@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.15.0';
+const VERSION = '2.16.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -80,7 +80,7 @@ const GAMES = [
   { id: 'ski', name: 'PIXEL SKI', sub: 'SKI DOWN, DON\'T CRASH!', url: 'ski.html', color: '#7ad8ff', cats: ['RACING', 'SPORTS'], tags: 'SKI SKIING SNOW WINTER MOUNTAIN SLOPE DOWNHILL GREEN RED BLACK' },
   { id: 'boxfight', name: 'PIXEL BOX FIGHT', sub: 'KNOCK THEM OUT!', url: 'boxfight.html', color: '#ff5a4a', cats: ['ACTION', 'SPORTS', 'ONLINE', '2 PLAYERS'], tags: 'BOX BOXING FIGHT PUNCH RING KO KNOCKOUT GLOVES UPPERCUT' },
   { id: 'bike', name: 'PIXEL BIKE RUN', sub: 'RIDE AND FLIP!', url: 'bike.html', color: '#f0a07a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'BIKE BICYCLE MOUNTAIN MTB BMX FLIP BACKFLIP WHEELIE TRICK TRICKS HILLS SUNSET MONEY' },
-  { id: 'cook', name: 'PIXEL COOK', sub: 'COOK MEALS TO ORDER!', url: 'cook.html', color: '#e8402a', cats: ['ACTION'], tags: 'COOK COOKING CHEF KITCHEN FOOD MEAL CAFE COFFEE PIZZA MOZZARELLA BURGER RESTAURANT LUXURY MONEY TIP' },
+  { id: 'cook', name: 'PIXEL COOK', sub: 'COOK MEALS TO ORDER!', url: 'cook.html', color: '#e8402a', cats: ['ACTION'], tags: 'COOK COOKING CHEF KITCHEN FOOD MEAL CAFE COFFEE ICE CREAM SUSHI PIZZA MOZZARELLA BURGER RESTAURANT LUXURY MONEY TIP' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
