@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelRuns.save';
 const save = { coins: 0, best: 0, bestScore: 0, runs: 0, tut: false, up: { dj: 0, power: 0, shield: 0, magnet: 0 }, skins: [true], skin: 0,
                missions: [], tiers: {}, done: 0, sfx: true };
@@ -526,7 +526,17 @@ function drawHud(t) {
     const w = Math.max(PX.textWidth(words[0], 3), PX.textWidth(words[1], 1)) + 24;
     R(W / 2 - w / 2 - 2, 92, w + 4, 44, '#111'); R(W / 2 - w / 2, 94, w, 40, '#ffe23a'); T(words[0], W / 2, 99, '#111', 3, 'center'); T(words[1], W / 2, 122, '#111', 1, 'center');
   }
-  if (save.runs <= 3 && G.dist < 80 && !G.dead) { ctx.globalAlpha = 0.5 + Math.sin(t * 5) * 0.2; R(0, 200, W / 2 - 1, 40, 'rgba(58,138,232,0.5)'); R(W / 2 + 1, 200, W / 2, 40, 'rgba(90,212,63,0.5)'); ctx.globalAlpha = 1; T('SLIDE', W / 4, 214, '#fff', 2, 'center', '#000'); T('JUMP', W * 3 / 4, 214, '#fff', 2, 'center', '#000'); }
+  if (!G.dead) {                                   // the two buttons: SLIDE on the left, JUMP on the right (the whole half of the screen counts)
+    const btn = (cx, cy, on, col, label, up) => {
+      disc(cx + 1, cy + 2, 23, 'rgba(0,0,0,0.35)'); disc(cx, cy + (on ? 1 : 0), 23, '#0b0912'); disc(cx, cy + (on ? 1 : 0), 21, on ? col : '#272043'); ctx.globalAlpha = 0.25; disc(cx, cy - 4 + (on ? 1 : 0), 15, '#fff'); ctx.globalAlpha = 1;
+      disc(cx, cy + (on ? 1 : 0), 17, on ? col : '#31295a');
+      const c = on ? '#111' : col, y = cy + (on ? 1 : 0);
+      for (let q = 0; q < 6; q++) R(cx - q, up ? y - 11 + q : y + 5 - q, q * 2 + 1, 1, c);      // an arrow
+      R(cx - 2, up ? y - 5 : y - 11, 5, 11, c);
+      T(label, cx, cy + 27, '#fff', 1, 'center', '#000');
+    };
+    ctx.globalAlpha = 0.9; btn(36, H - 44, input.slide, '#7ac8ff', 'SLIDE', false); btn(W - 36, H - 44, input.jump, '#9be36b', 'JUMP', true); ctx.globalAlpha = 1;
+  }
 }
 
 /* --- 6. SCREENS --------------------------------------------------------------- */

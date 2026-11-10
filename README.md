@@ -289,8 +289,8 @@ table in the middle. **You have 1 minute for one meal**, and the faster you are,
 Parkour over the rooftops, seen from the side. Your runner (with your avatar's head) runs alone and gets faster; you
 only choose when to jump and when to slide.
 
-- **Controls:** touch: the right half of the screen JUMPS (hold for a higher, longer jump), the left half SLIDES (in the
-  air: a dive). Keys: Space / ↑ / W jump, ↓ / S slide, P pause. Controller: A jump, B slide.
+- **Controls:** touch: a round JUMP button on the right (hold for a higher, longer jump) and a SLIDE button on the left
+  (in the air: a dive); the whole half of the screen around each button counts, so you cannot miss. Keys: Space / ↑ / W jump, ↓ / S slide, P pause. Controller: A jump, B slide.
 - **Moves:** jump at a wall (the yellow marks) and you RUN UP it. Land on a box to STOMP it. Slide under SLIDE / DUCK
   signs. ZIP LINES carry you over the wide streets, pink TRAMPOLINES throw you high. A jump from the very last step and
   a landing on the very edge pay extra.
