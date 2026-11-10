@@ -299,7 +299,8 @@ only choose when to jump and when to slide.
 - **MISSIONS:** three at a time (run 500 m in one run, slide under 15 signs, make a x4 combo...). A finished mission
   pays coins and is replaced by a harder one; every 3 missions raise your RANK (ROOKIE up to CITY LEGEND, ★2 each).
 - **Power-ups on the roofs:** MAGNET, SHIELD (one free crash), COINS X2.
-- **SHOP:** UPGRADES (DOUBLE JUMP, POWER TIME, HEAD START with a shield, LONG ARMS) and 6 RUNNERS with their own trail.
+- **SHOP:** UPGRADES (DOUBLE JUMP, POWER TIME, HEAD START with a shield, LONG ARMS) and 7 RUNNERS with their own trail. Everyone starts as the
+  ALL WHITE runner: white from head to toe, with your avatar's head in white.
 - **Crash or fall:** once a run you can KEEP RUNNING for 60 coins. A run pays ★1 for every 250 m.
 - **The first run** teaches by doing: the next move is named and time runs slower near it.
 
