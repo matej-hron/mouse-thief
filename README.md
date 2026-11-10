@@ -289,8 +289,8 @@ table in the middle. **You have 1 minute for one meal**, and the faster you are,
 Parkour over the rooftops, seen from the side. Your runner (with your avatar's head) runs alone and gets faster; you
 only choose when to jump and when to slide.
 
-- **Controls:** touch: the right half of the screen JUMPS (hold for a higher, longer jump), the left half SLIDES (in the
-  air: a dive). Keys: Space / ↑ / W jump, ↓ / S slide, P pause. Controller: A jump, B slide.
+- **Controls:** touch: a round JUMP button on the right (hold for a higher, longer jump) and a SLIDE button on the left
+  (in the air: a dive); the whole half of the screen around each button counts, so you cannot miss. Keys: Space / ↑ / W jump, ↓ / S slide, P pause. Controller: A jump, B slide.
 - **Moves:** jump at a wall (the yellow marks) and you RUN UP it. Land on a box to STOMP it. Slide under SLIDE / DUCK
   signs. ZIP LINES carry you over the wide streets, pink TRAMPOLINES throw you high. A jump from the very last step and
   a landing on the very edge pay extra.
@@ -299,7 +299,8 @@ only choose when to jump and when to slide.
 - **MISSIONS:** three at a time (run 500 m in one run, slide under 15 signs, make a x4 combo...). A finished mission
   pays coins and is replaced by a harder one; every 3 missions raise your RANK (ROOKIE up to CITY LEGEND, ★2 each).
 - **Power-ups on the roofs:** MAGNET, SHIELD (one free crash), COINS X2.
-- **SHOP:** UPGRADES (DOUBLE JUMP, POWER TIME, HEAD START with a shield, LONG ARMS) and 6 RUNNERS with their own trail.
+- **SHOP:** UPGRADES (DOUBLE JUMP, POWER TIME, HEAD START with a shield, LONG ARMS) and 7 RUNNERS with their own trail. Everyone starts as the
+  ALL WHITE runner: white from head to toe, with your avatar's head in white.
 - **Crash or fall:** once a run you can KEEP RUNNING for 60 coins. A run pays ★1 for every 250 m.
 - **The first run** teaches by doing: the next move is named and time runs slower near it.
 
