@@ -40,7 +40,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const SAVE_KEY = 'pixelCook.save';
 const NREST = 6;
 const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
@@ -107,6 +107,56 @@ const ITEMS = {
   truffle: { n: 'TRUFFLE', k: 'place', c: 4 }, parm: { n: 'PARMESAN', k: 'place', c: 5 }, choco: { n: 'CHOCO', k: 'rub', need: 100, s: 'CHOCOLATE SAUCE' },
   berry: { n: 'BERRY', k: 'place', c: 3, s: 'STRAWBERRIES' }, gold: { n: 'GOLD', k: 'place', c: 4, s: 'GOLD LEAF' },
 };
+// REAL LIFE: what you would really do in a kitchen. {braces} mark the numbers worth remembering.
+const FACTS = {
+  cup: 'AN ESPRESSO RUNS FOR ONLY {25-30 SECONDS}.', milk: 'WARM THE MILK TO {60-65 C}. NEVER LET IT BOIL.', sugar: 'ONE SUGAR CUBE IS ABOUT {4 GRAMS}.',
+  cocoa: 'DUST COCOA THROUGH A SMALL SIEVE.', cream: 'WHIP COLD CREAM FOR {2-3 MINUTES} UNTIL IT STANDS.', caramel: 'SUGAR TURNS INTO CARAMEL AT {170 C}. VERY HOT!',
+  croissant: 'CROISSANTS BAKE {15-20 MIN} AT {200 C}.', muffin: 'MUFFINS BAKE {20-25 MIN} AT {180 C}.',
+  cone: 'A WAFFLE BAKES {1-2 MIN}. ROLL IT WHILE IT IS HOT.', sv: 'TAKE ICE CREAM OUT {5 MIN} BEFORE YOU SCOOP.', sc: 'DIP THE SCOOP IN WARM WATER FIRST.',
+  ss: 'A FREEZER KEEPS ICE CREAM AT {-18 C}.', sm: 'ROLL THE SCOOP TO MAKE A ROUND BALL.', syrup: 'MELT CHOCOLATE SLOWLY OVER HOT WATER.',
+  sprinkles: 'ADD SPRINKLES LAST, SO THEY STAY CRUNCHY.', cherry: 'THE CHERRY GOES ON TOP, LAST OF ALL.', wafer: 'WAFERS GO SOFT IN ICE CREAM: SERVE FAST.',
+  dough: 'KNEAD DOUGH {10 MIN}, THEN LET IT RISE {1-2 HOURS}.', roll: 'ROLL IT THIN: ABOUT {3-5 MM}.', sauce: 'SAUCE: CRUSHED TOMATOES, SALT, OLIVE OIL. NOT COOKED.',
+  mozz: 'PAT MOZZARELLA DRY, OR THE PIZZA GETS WET.', salami: 'NOT TOO MANY TOPPINGS: THE DOUGH MUST STILL BAKE.', mush: 'SLICE MUSHROOMS THIN SO THEY COOK THROUGH.',
+  ham: 'HAM IS ALREADY COOKED: IT ONLY WARMS UP.', pine: 'DRY THE PINEAPPLE WITH A PAPER TOWEL FIRST.', olive: 'USE OLIVES WITHOUT STONES.', pepper: 'CUT PEPPERS INTO THIN STRIPS.',
+  bake: 'HOME OVEN: {250 C} FOR {8-12 MINUTES}. HEAT IT UP FIRST!',
+  bun: 'TOAST THE BUN FOR {1 MINUTE}, CUT SIDE DOWN.', patty: 'GRILL {3-4 MIN} EACH SIDE: NO PINK INSIDE ({71 C}).', cheese: 'PUT CHEESE ON THE HOT PATTY SO IT MELTS.',
+  lettuce: 'WASH AND DRY LETTUCE. WET LEAVES GO SOGGY.', tomato: 'SLICE TOMATO ABOUT {5 MM} THICK.', onion: 'CUT THIN ONION RINGS: ABOUT {2 MM}.',
+  bacon: 'FRY BACON {3-4 MIN} EACH SIDE UNTIL CRISP.', pickle: 'PICKLES ARE CUCUMBERS KEPT IN VINEGAR.', ketchup: 'A LITTLE SAUCE IS ENOUGH: ABOUT {1 SPOON}.', egg: 'FRY AN EGG {2-3 MIN} ON MEDIUM HEAT.',
+  nori: 'NORI: SHINY SIDE DOWN, ROUGH SIDE UP.', rice: 'SUSHI RICE: SIMMER {12-15 MIN}, THEN REST {10 MIN}.', salmon: 'RAW FISH MUST BE SOLD AS {SUSHI GRADE}.',
+  tuna: 'CUT FISH WITH A VERY SHARP, WET KNIFE.', avocado: 'A RIPE AVOCADO GIVES A LITTLE WHEN PRESSED.', cucumber: 'CUT CUCUMBER INTO LONG THIN STICKS.',
+  shrimp: 'BOIL SHRIMP {2-3 MIN} UNTIL THEY TURN PINK.', mat: 'LEAVE {2 CM} OF NORI FREE. CUT INTO {6-8} PIECES.', sesame: 'TOAST SESAME {2 MIN} IN A DRY PAN.',
+  wasabi: 'WASABI IS VERY HOT: USE A TINY BIT.', ginger: 'GINGER CLEANS YOUR MOUTH BETWEEN PIECES.', soy: 'DIP THE FISH SIDE IN SOY SAUCE, NOT THE RICE.',
+  plate: 'WARM THE PLATES: HOT FOOD STAYS HOT LONGER.', steak: 'STEAK: {2-3 MIN} EACH SIDE, THEN REST {5 MIN}.', lobster: 'BOIL LOBSTER {8-12 MIN} UNTIL BRIGHT RED.',
+  pasta: 'BOIL DRY PASTA {8-11 MIN} IN SALTY WATER.', cake: 'CAKE: {30-35 MIN} AT {180 C}. TEST WITH A TOOTHPICK.', potato: 'BOIL POTATOES {15-20 MIN} UNTIL A FORK GOES IN.',
+  aspar: 'ASPARAGUS NEEDS ONLY {2-4 MIN} IN BOILING WATER.', lemon: 'ROLL A LEMON ON THE TABLE: MORE JUICE COMES OUT.', butter: 'BUTTER BURNS FAST: ADD IT AT THE END.',
+  truffle: 'TRUFFLE IS SHAVED ON RAW, AT THE VERY END.', parm: 'GRATE PARMESAN FRESH, RIGHT BEFORE SERVING.', choco: 'MELT CHOCOLATE GENTLY: IT BURNS ABOVE {50 C}.',
+  berry: 'WASH BERRIES JUST BEFORE YOU USE THEM.', gold: 'GOLD LEAF IS REAL GOLD, AND YOU CAN EAT IT.',
+};
+const REAL = {                             // for the recipe page: what you need, and something worth knowing
+  cafe: ['FOR 1 CUP: {7-9 G} GROUND COFFEE AND {30 ML} OF WATER AT {93 C}.', 'A CAPPUCCINO IS {1/3} ESPRESSO, {1/3} MILK AND {1/3} FOAM.'],
+  ice: ['CONE BATTER: EGG, SUGAR, BUTTER, FLOUR AND A LITTLE MILK.', 'ICE CREAM IS STIRRED WHILE IT FREEZES, SO IT STAYS SOFT.'],
+  pizza: ['FOR 2 PIZZAS: {500 G} FLOUR, {325 ML} WATER, {7 G} YEAST, {10 G} SALT.', 'A REAL PIZZA OVEN IS {450 C}: THE PIZZA IS DONE IN {90 SECONDS}!'],
+  burger: ['FOR 1 BURGER: {150 G} MINCED BEEF, A PINCH OF SALT, ONE BUN.', 'LET THE PATTY REST {2 MIN} AFTER GRILLING: IT STAYS JUICY.'],
+  sushi: ['FOR 2 ROLLS: {1 CUP} RICE, {1.2 CUPS} WATER, 2 NORI SHEETS.', 'RINSE THE RICE UNTIL THE WATER IS CLEAR: ABOUT {4 TIMES}.'],
+  lux: ['TAKE MEAT OUT OF THE FRIDGE {30 MIN} BEFORE YOU COOK IT.', 'SALT THE PASTA WATER: {10 G} OF SALT FOR EVERY LITRE.'],
+};
+function rich(str, x, y, maxW, base = '#efe9ff', hi = '#ffd23f', draw = true) {   // text with {highlights}, wrapped; returns the number of lines
+  const words = []; let on = false, w = { runs: [], text: '' };
+  for (const ch of str) {
+    if (ch === '{') { on = true; continue; } if (ch === '}') { on = false; continue; }
+    if (ch === ' ') { words.push(w); w = { runs: [], text: '' }; continue; }
+    const last = w.runs[w.runs.length - 1]; if (last && last.hi === on) last.s += ch; else w.runs.push({ s: ch, hi: on }); w.text += ch;
+  }
+  words.push(w);
+  let cx = x, line = 0;
+  for (const wd of words) {
+    const ww = PX.textWidth(wd.text, 1);
+    if (cx > x && cx + ww > x + maxW) { cx = x; line++; }
+    for (const r of wd.runs) { if (draw) T(r.s, cx, y + line * 8, r.hi ? hi : base); cx += PX.textWidth(r.s, 1) + (r === wd.runs[wd.runs.length - 1] ? 0 : 1); }
+    cx += 4;
+  }
+  return line + 1;
+}
 const MAINS = ['steak', 'lobster', 'pasta', 'cake'];
 const SCOOPS = { sv: ['#fff4d0', '#e0cc98'], sc: ['#7a4428', '#5a3018'], ss: ['#ff9ab8', '#e06a90'], sm: ['#9be8c0', '#62c094'] };
 const FILLS = { salmon: '#ff8a50', tuna: '#c82a4a', avocado: '#8ac84a', cucumber: '#3a9a3a', shrimp: '#ffb0a0' };
@@ -959,6 +1009,13 @@ function drawGuide(t, g) {
   if (!G.guide) return;
   const pr = G.praise && G.praise.t > 0 ? G.praise : null;
   if (!g && !pr) return;
+  const fid = G.cook ? G.cook.id : g && (g.icon || (g.say === 'INTO THE OVEN!' ? 'bake' : null));   // in real life: a fact about this step
+  if (fid && FACTS[fid] && G.phase === 'cook') {
+    const fx = midX0() + 32, fw = shelfX() - 4 - fx,   // (next to the coach's hat)
+     n = rich(FACTS[fid], 0, 0, fw - 56, '', '', false), fh = n * 8 + 5, fy = 206 - fh;
+    R(fx, fy, fw, fh, '#111'); R(fx + 1, fy + 1, fw - 2, fh - 2, '#1d1830'); R(fx + 1, fy + 1, 46, fh - 2, '#ff9ab8'); T('REAL LIFE', fx + 5, fy + Math.round(fh / 2) - 2, '#111');
+    rich(FACTS[fid], fx + 52, fy + 3, fw - 56);
+  }
   const x = midX0() + 2, w = shelfX() - 4 - x, y = 206, bob = pr ? Math.round(Math.abs(Math.sin(t * 14)) * 3) : Math.round(Math.sin(t * 3));
   PX.drawAvatar(ctx, { shape: 'bear', color: 7 }, x + 2, y + 9 - bob, 2, null); chefHat(x + 14, y + 6 - bob, false);     // the coach
   const bx = x + 34, bw = w - 36, by = y + 8, text = pr ? pr.text : g.say, pic = !pr && g.icon;
@@ -1079,8 +1136,34 @@ function drawSchool(t) {
     const ids = d.groups.flat(), per = Math.floor((cw - 8) / 15);      // the recipe, as pictures
     if (ids.length * 27 <= cw - 8) ids.forEach((id, k) => { const px = x + 18 + k * 27, py = y + 40; R(px - 13, py - 13, 26, 27, '#16121f'); bigIcon(id === 'bake' ? 'oven' : id, px, py, 2); });   // few steps: big pictures
     else ids.forEach((id, k) => { const px = x + 11 + (k % per) * 15, py = y + 32 + Math.floor(k / per) * 16; R(px - 7, py - 7, 14, 15, '#16121f'); icon(id === 'bake' ? 'oven' : id, px, py); });
-    if (UI.button('l' + i, x + 5, y + ch - 24, cw - 10, 20, learned ? 'COOK IT AGAIN' : 'LEARN  +$' + priceOf(d), { size: 1, accent: learned ? '#8a7ad8' : '#5ad43f', on: !learned })) { sfx('click'); newShift(false, { rest: schoolRest, i }); }
+    const rw = 44;
+    if (UI.button('l' + i, x + 5, y + ch - 24, cw - 13 - rw, 20, learned ? 'COOK AGAIN' : 'LEARN +$' + priceOf(d), { size: 1, accent: learned ? '#8a7ad8' : '#5ad43f', on: !learned })) { sfx('click'); newShift(false, { rest: schoolRest, i }); }
+    if (UI.button('q' + i, x + cw - 5 - rw, y + ch - 24, rw, 20, 'RECIPE', { size: 1, accent: '#ff9ab8' })) { sfx('click'); recipe = { rest: schoolRest, i }; go('recipe'); }
   });
+}
+// a REAL RECIPE: how you would make this meal in a real kitchen, step by step, on a sheet of paper
+let recipe = null;
+function drawRecipe(t) {
+  const W = S.W, r = REST[recipe.rest], d = r.dishes[recipe.i];
+  if (header('REAL RECIPE')) { go('school'); return; }
+  const px = 8, pw = W - 16, ink = '#3a2f1c', red = '#c8301e';
+  R(px + 2, 28, pw, 210, 'rgba(0,0,0,0.4)'); R(px - 1, 25, pw + 2, 212, '#111'); R(px, 26, pw, 210, '#fff8e0'); R(px, 26, pw, 14, r.color);
+  for (let q = px; q < px + pw; q += 6) R(q + 1, 234, 4, 2, '#111');
+  T(d.name, px + 8, 31, '#111'); T('IN REAL LIFE', px + pw - 8, 31, '#111', 1, 'right');
+  let y = 46;
+  R(px + 6, y - 2, pw - 12, 13, '#f0e4c0'); T('YOU NEED', px + 10, y + 2, red); rich(REAL[r.id][0], px + 52, y + 2, pw - 62, ink, red); y += 16;
+  const ids = [...new Set(d.groups.flat())], rowH = Math.min(15, Math.floor(134 / ids.length));
+  ids.forEach((id, k) => {
+    const yy = y + k * rowH;
+    if (k % 2) R(px + 6, yy - 1, pw - 12, rowH, '#f8eed0');
+    T(String(k + 1), px + 14, yy + Math.floor(rowH / 2) - 3, red, 1, 'center');
+    icon(id === 'bake' ? 'oven' : id, px + 30, yy + Math.floor(rowH / 2) - 1);
+    rich(FACTS[id] || ITEMS[id].n, px + 44, yy + Math.floor(rowH / 2) - 3, pw - 54, ink, red);
+  });
+  y += ids.length * rowH + 3;
+  R(px + 6, y - 2, pw - 12, 13, '#f0e4c0'); T('GOOD TO KNOW', px + 10, y + 2, red); rich(REAL[r.id][1], px + 68, y + 2, pw - 78, ink, red);
+  T('ALWAYS COOK WITH A GROWN-UP: OVENS ARE HOT, KNIVES ARE SHARP.', px + 8, 222, '#8a7a5a');
+  if (UI.button('cook', W - 108, 214, 96, 18, 'COOK IT HERE', { size: 1, accent: '#5ad43f', on: true })) { sfx('click'); newShift(false, recipe); }
 }
 let buyFlash = null;
 function drawFlash() {
@@ -1128,6 +1211,8 @@ function drawOver(t) {
     ctx.save(); ctx.beginPath(); ctx.rect(W / 2 - 61, y + 45, 122, 88); ctx.clip(); drawDish(rest.id, Math.round(W / 2), y + (rest.id === 'ice' ? 96 : 89), G.D); ctx.restore();
     for (let i = 0; i < 3; i++) T('★', W / 2 - 110 + i * 14, y + 82, i < r ? '#ffe680' : '#3a2f5c', 2);
     if (G.O.pay) { T('+$' + G.O.pay, W / 2 + 98, y + 80, '#ffd23f', 2, 'center', '#000'); T('LEARNED', W / 2 + 98, y + 96, '#9be36b', 1, 'center'); }
+    const key = G.O.dish.groups.flat().find(id => ['cook', 'bake'].includes(ITEMS[id].k));   // remember this one
+    if (key && FACTS[key]) { R(W / 2 - 134, y + 138, 268, 18, '#16121f'); R(W / 2 - 134, y + 138, 46, 18, '#ff9ab8'); T('REAL LIFE', W / 2 - 130, y + 144, '#111'); rich(FACTS[key], W / 2 - 84, y + (rich(FACTS[key], 0, 0, 214, '', '', false) > 1 ? 140 : 144), 214); }
     if (G.tut) { if (UI.button('again', Math.round(W / 2 - 70), y + 162, 140, 26, 'OPEN UP!', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(); } }
     else {
       if (UI.button('menu', Math.round(W / 2 - 124), y + 162, 120, 24, 'MENU') || UI.back) toTitle();
@@ -1199,6 +1284,7 @@ function frame(now) {
   else if (state === 'rests') drawRests(t);
   else if (state === 'shop') drawShop(t);
   else if (state === 'school') drawSchool(t);
+  else if (state === 'recipe') drawRecipe(t);
   else {
     const overlay = paused || state === 'over' || G.tutPage >= 0 || G.tip !== null;
     if (state === 'play' && !paused) step(dt);
