@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelRuns.save';
 const save = { coins: 0, best: 0, bestScore: 0, runs: 0, tut: false, up: { dj: 0, power: 0, shield: 0, magnet: 0 }, skins: [true], skin: 0,
                missions: [], tiers: {}, done: 0, sfx: true };
@@ -66,6 +66,7 @@ const GRAV = 820, JUMP = 268, JUMP2 = 236, HOLD = 0.55;   // hold the jump butto
 const BIG = 1.5;                  // how big your runner is drawn
 const TALL = 32, LOW = 15;      // how tall it is standing, and sliding
 const WALL_REACH = 56;          // jump at a wall: this far below its top you still run up it
+const COMBO_T = 2;              // seconds to do the next move, or the combo is over
 const DISTRICT = 500;           // metres in one district
 
 /* --- 2. DISTRICTS, SHOP, MISSIONS ---------------------------------------------------- */
@@ -189,11 +190,11 @@ function newRun(demo = false) {
   G = { demo, x: 0, y: 160, vy: 0, st: 'run', on: null, jumps: 0, coyote: 0, buffer: 0, cut: false, slideT: 0, wallB: null, zip: null, zipK: 0,
         v: 118, dist: 0, coins: 0, tricks: 0, combo: 0, comboT: 0, bestCombo: 0, blds: [], coinsOn: [], powers: [], gen: 0,
         pops: [], parts: [], trail: [], shake: 0, shield: !demo && save.up.shield > 0, inv: 0, magnetT: 0, x2T: 0, theme: 0, themeK: 1, themeFrom: 0, banner: 0,
-        dead: false, deadT: 0, revived: false, askT: 0, missionsDone: [], toasts: [], hint: null, slow: 1, stars: 0, newBest: false, t: 0, flash: 0 };
+        freeze: 0, squash: 0, stepT: 0, coinN: 0, coinT: 0, bump: 0, dead: false, deadT: 0, revived: false, askT: 0, missionsDone: [], toasts: [], hint: null, slow: 1, stars: 0, newBest: false, t: 0, flash: 0 };
   addBuilding('start');
   if (!demo && !save.tut) for (const s of ['flat', 'box', 'sign', 'wall']) addBuilding(s);
   G.on = G.blds[0]; G.y = G.on.y;
-  if (!demo) { state = 'play'; fade = 1; paused = false; save.runs++; for (const m of save.missions) if (MISSIONS[m.type].kind === 'run') m.prog = 0; store(); }
+  if (!demo) { G.pops.push({ text: 'GO!', color: '#9be36b', x: GX + 20, y: 120, t: 0, big: true }); state = 'play'; fade = 1; paused = false; save.runs++; for (const m of save.missions) if (MISSIONS[m.type].kind === 'run') m.prog = 0; store(); }
 }
 const score = () => Math.floor(G.dist) + G.tricks;
 const powerTime = () => 7 + save.up.power * 2.5;
@@ -201,7 +202,7 @@ function pop(text, color = '#fff', big = false) { G.pops.push({ text, color, x: 
 function toast(text) { G.toasts.push({ text, t: 0 }); }
 function puff(x, y, c, n = 5, sp = 40) { for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, v = sp * (0.3 + Math.random()); G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, c, t: 0, life: 0.3 + Math.random() * 0.3 }); } }
 function trick(name, pts, type) {                  // a move: moves one after another make a combo
-  G.combo = G.comboT > 0 ? Math.min(9, G.combo + 1) : 1; G.comboT = 2.6; G.bestCombo = Math.max(G.bestCombo, G.combo);
+  G.combo = G.comboT > 0 ? Math.min(9, G.combo + 1) : 1; G.comboT = COMBO_T; G.bestCombo = Math.max(G.bestCombo, G.combo);
   G.tricks += pts * G.combo;
   pop(name + ' +' + pts * G.combo, G.combo >= 4 ? '#ffd23f' : G.combo >= 2 ? '#7af0ff' : '#fff', G.combo >= 4);
   sfx('trick');
@@ -211,7 +212,7 @@ function trick(name, pts, type) {                  // a move: moves one after an
 function hit(why) {
   if (G.inv > 0 || G.dead) return;
   if (G.shield) { G.shield = false; G.inv = 1.2; G.shake = 0.3; pop('SHIELD!', '#7af0ff', true); puff(G.x, G.y - 12, '#7af0ff', 14, 90); sfx('shield'); return; }
-  G.dead = true; G.deadT = 0; G.why = why; G.shake = 0.4; G.vy = -180; G.combo = 0; G.comboT = 0;
+  G.dead = true; G.deadT = 0; G.why = why; G.shake = 0.4; G.freeze = 0.1; G.vy = -180; G.combo = 0; G.comboT = 0;
   puff(G.x, G.y - 10, '#fff', 12, 90); sfx('crash');
 }
 function revive() {
@@ -256,6 +257,8 @@ function auto() {                                // a simple robot runner
 }
 function step(dt) {
   G.t += dt;
+  if (G.freeze > 0) { G.freeze -= dt; return; }       // a hit: the world stands still for a moment
+  G.squash = Math.max(0, G.squash - dt); G.bump = Math.max(0, G.bump - dt); G.coinT -= dt;
   if (G.dead) {                                  // falling away; then: keep running for coins? or the results
     G.deadT += dt; G.vy += GRAV * dt; G.y += G.vy * dt; G.shake = Math.max(0, G.shake - dt);
     stepFx(dt);
@@ -285,6 +288,7 @@ function step(dt) {
   if (G.st === 'run' || G.st === 'slide') {
     const b = G.on;
     G.x += v * dt; G.y = b.y;
+    if (G.st === 'run' && (G.stepT -= dt) <= 0) { G.stepT = 34 / v; sfx('step'); if (v > 170) G.parts.push({ x: G.x - 4, y: G.y - 1, vx: -30, vy: -14, c: '#d8d0c0', t: 0, life: 0.18 }); }
     if (G.st === 'slide') {
       G.slideT += dt;
       const under = b.obs.some(o => o.type === 'sign' && G.x + 6 > o.x && G.x - 6 < o.x + o.w);
@@ -292,7 +296,7 @@ function step(dt) {
       if (Math.random() < dt * 30) G.parts.push({ x: G.x - 8, y: G.y - 1, vx: -30, vy: -10, c: '#d8d0c0', t: 0, life: 0.25 });
     } else if (input.slide) { G.st = 'slide'; G.slideT = 0; sfx('slide'); }
     if (G.buffer > 0) {
-      if (b.x + b.w - G.x < 12) trick('LAST STEP', 20);
+      if (b.x + b.w - G.x < 7) trick('LAST STEP', 20);
       G.vy = -JUMP; G.st = 'air'; G.on = null; G.jumps = 1; G.buffer = 0; G.cut = false; puff(G.x, G.y, '#d8d0c0', 4, 30); sfx('jump');
     } else if (G.x > b.x + b.w + 2) { G.st = 'air'; G.on = null; G.vy = 0; G.jumps = 0; G.coyote = 0.1; }
   } else if (G.st === 'air') {
@@ -308,7 +312,7 @@ function step(dt) {
       if (G.x - 5 > b.x + b.w) continue;
       if (G.vy >= 0 && py <= b.y + 4 && G.y >= b.y && G.x + 4 >= b.x) {                 // landed
         const drop = G.vy; G.y = b.y; G.st = input.slide ? 'slide' : 'run'; G.slideT = 0; G.on = b; G.vy = 0; G.jumps = 0;
-        puff(G.x, G.y, '#d8d0c0', drop > 330 ? 9 : 4, 40); if (drop > 330) G.shake = 0.12; sfx('land');
+        puff(G.x, G.y, '#d8d0c0', drop > 330 ? 9 : 4, 40); if (drop > 330) G.shake = 0.12; G.squash = 0.12; sfx('land');
         if (G.x - b.x < 10 && drop > 60) trick('EDGE LANDING', 15);
         break;
       }
@@ -339,7 +343,7 @@ function step(dt) {
       if (o.type === 'tramp') { if (G.y >= b.y - 3 && G.vy >= 0 && G.st !== 'zip') { G.vy = -400; G.st = 'air'; G.on = null; G.jumps = 1; G.cut = true; o.t = 0.3; puff(G.x, b.y, '#ff6bd0', 10, 70); sfx('tramp'); trick('BOUNCE', 30, 'tramp'); } }
       else if (o.type === 'box' && !o.gone) {
         const top = b.y - o.h;
-        if (G.st === 'air' && G.vy > 0 && py <= top + 4) { G.vy = -210; G.jumps = 1; G.cut = true; o.gone = true; puff(o.x + 6, top, '#c8c8d8', 10, 70); sfx('stomp'); trick('STOMP', 25, 'stomp'); }   // on top of it: stomp
+        if (G.st === 'air' && G.vy > 0 && py <= top + 4) { G.vy = -210; G.jumps = 1; G.cut = true; o.gone = true; G.freeze = 0.04; puff(o.x + 6, top, '#c8c8d8', 10, 70); sfx('stomp'); trick('STOMP', 25, 'stomp'); }   // on top of it: stomp
         else if (G.y > top + 2) hit('box');
       } else if (o.type === 'sign') {
         if (G.y - tall < b.y - 20 && G.y > b.y - 60) hit('sign'); else if (G.y > b.y - 20) o.under = true;
@@ -352,7 +356,7 @@ function step(dt) {
     if (c.got) continue;
     const dx = c.x - G.x, dy = c.y - (G.y - 16), d = Math.hypot(dx, dy);
     if (d < reach && d > 13) { c.x -= dx / d * 260 * dt; c.y -= dy / d * 260 * dt; }
-    if (d <= 15) { c.got = true; const n = G.x2T > 0 ? 2 : 1; G.coins += n; G.parts.push({ x: c.x, y: c.y, vx: 0, vy: -40, c: '#fff0a0', t: 0, life: 0.25 }); sfx('coin'); progress('coins', G.coins, true); }
+    if (d <= 15) { c.got = true; const n = G.x2T > 0 ? 2 : 1; G.coins += n; G.parts.push({ x: c.x, y: c.y, vx: 0, vy: -40, c: '#fff0a0', t: 0, life: 0.25 }); G.coinN = G.coinT > 0 ? G.coinN + 1 : 0; G.coinT = 0.45; G.bump = 0.12; sfx('coin', G.coinN); progress('coins', G.coins, true); }
   }
   for (const p of G.powers) if (!p.got && Math.abs(p.x - G.x) < 12 && Math.abs(p.y - (G.y - 16)) < 24) {
     p.got = true; sfx('power'); puff(p.x, p.y, '#fff', 12, 80);
@@ -366,7 +370,7 @@ function step(dt) {
   if (G.coinsOn.length > 160) G.coinsOn = G.coinsOn.filter(c => c.x > G.x - GX - 20 && !c.got);
   if (G.powers.length > 6) G.powers = G.powers.filter(p => p.x > G.x - GX - 20);
   const th = Math.floor(G.dist / DISTRICT) % THEMES.length;
-  if (th !== G.theme) { G.themeFrom = G.theme; G.theme = th; G.themeK = 0; G.banner = 3; if (!G.demo) { sfx('district'); } }
+  if (th !== G.theme) { G.themeFrom = G.theme; G.theme = th; G.themeK = 0; G.banner = 3; G.flash = 0.14; if (!G.demo) { sfx('district'); } }
   G.themeK = Math.min(1, G.themeK + dt / 2.5); G.banner = Math.max(0, G.banner - dt);
   if (THEMES[G.theme].rain && Math.random() < dt * 0.12) { G.flash = 0.18; }
   G.trail.unshift({ x: G.x, y: G.y, st: G.st }); if (G.trail.length > 8) G.trail.pop();
@@ -499,10 +503,12 @@ function drawWorld(t) {
   if (save.best > 20 && !G.demo) { const fx = save.best * PPM - cam; if (fx > -20 && fx < W + 20) { const b = G.blds.find(q => q.x <= save.best * PPM && q.x + q.w >= save.best * PPM); const fy = b ? b.y : 150; R(fx, fy - 30, 1, 30, '#fff'); R(fx + 1, fy - 30, 14, 8, '#ffd23f'); T('BEST', fx + 2, fy - 29, '#111'); } }
   for (const c of G.coinsOn) { if (c.got) continue; const x = c.x - cam; if (x > -8 && x < W + 8) coinAt(Math.round(x), Math.round(c.y), t); }
   for (const p of G.powers) { if (p.got) continue; const x = p.x - cam; if (x < -16 || x > W + 16) continue; const y = p.y + Math.sin(t * 4) * 3; ctx.globalAlpha = 0.3; disc(x, y, 10, '#fff'); ctx.globalAlpha = 1; disc(x, y, 8, '#111'); disc(x, y, 7, '#f4f4f8'); powerIcon(p.type, Math.round(x), Math.round(y)); }
+  { const sb = G.blds.find(q => q.x <= G.x + 4 && q.x + q.w >= G.x - 4); if (sb && !G.dead && G.y <= sb.y + 2 && G.st !== 'wall') { const k = clamp(1 - (sb.y - G.y) / 90, 0.3, 1), w = Math.round(11 * k); R(GX - w, sb.y, w * 2, 2, 'rgba(0,0,0,' + (0.35 * k).toFixed(2) + ')'); } }   // its shadow on the roof
   // your runner, a trail when you are fast or in a combo
   if (!G.dead && (G.combo >= 2 || G.v > 190)) G.trail.forEach((p, i) => { if (i && i % 2 === 0) drawRunner(p.x - cam, p.y, p.st, t, skin, 0.28 - i * 0.03); });
   if (!(G.inv > 0 && Math.floor(t * 16) % 2)) {
     if (G.dead) { ctx.save(); ctx.translate(GX, G.y - 18); ctx.rotate(G.deadT * 7); drawRunner(0, 18, 'air', t, skin); ctx.restore(); }
+    else if (G.squash > 0) { ctx.save(); ctx.translate(GX, G.y); ctx.scale(1.14, 0.84); drawRunner(0, 0, G.st, t, skin); ctx.restore(); }
     else drawRunner(GX, G.y, G.st, t, skin);
   }
   if (G.shield && !G.dead) { ctx.strokeStyle = 'rgba(122,240,255,' + (0.5 + Math.sin(t * 8) * 0.2) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(GX, G.y - 20, 26, 0, 6.29); ctx.stroke(); }
@@ -521,11 +527,12 @@ function drawHud(t) {
   const W = S.W;
   T(Math.floor(G.dist) + ' M', 8, 6, '#fff', 3, 'left', '#000');
   T('SCORE ' + score(), 9, 28, '#efe9ff', 1, 'left', '#000');
-  coinAt(W - 44, 12, t); T(String(G.coins), W - 52, 8, '#ffd23f', 2, 'right', '#000');
+  coinAt(W - 44, 12, t); T(String(G.coins), W - 52, 8 - (G.bump > 0 ? 2 : 0), G.bump > 0 ? '#fff' : '#ffd23f', 2, 'right', '#000');
+  { const k = (G.dist % DISTRICT) / DISTRICT, nx = THEMES[(G.theme + 1) % THEMES.length]; R(8, 38, 72, 5, '#111'); R(9, 39, 70, 3, '#3a2f5c'); R(9, 39, Math.round(70 * k), 3, nx.win); T('> ' + nx.name, 84, 38, '#efe9ff', 1, 'left', '#000'); }   // how far to the next district
   if (UI.button('pause', W - 30, 4, 24, 18, 'II', { size: 1 })) setPause(true);
   let px = 9;
-  for (const [on, k, type] of [[G.magnetT, G.magnetT / powerTime(), 'magnet'], [G.x2T, G.x2T / powerTime(), 'x2'], [G.shield ? 1 : 0, 1, 'shield']]) if (on > 0) { disc(px + 7, 46, 8, '#111'); disc(px + 7, 46, 7, '#f4f4f8'); powerIcon(type, px + 7, 46); R(px, 56, 15, 3, '#111'); R(px + 1, 57, Math.round(13 * k), 1, '#9be36b'); px += 20; }
-  if (G.combo >= 2) { const s = G.combo >= 5 ? 3 : 2, c = G.combo >= 5 ? '#ffd23f' : '#7af0ff'; T('X' + G.combo + ' COMBO', W / 2, 8, c, s, 'center', '#000'); R(W / 2 - 30, 10 + s * 6, 60, 3, '#111'); R(W / 2 - 29, 11 + s * 6, Math.round(58 * G.comboT / 2.6), 1, c); }
+  for (const [on, k, type] of [[G.magnetT, G.magnetT / powerTime(), 'magnet'], [G.x2T, G.x2T / powerTime(), 'x2'], [G.shield ? 1 : 0, 1, 'shield']]) if (on > 0) { disc(px + 7, 56, 8, '#111'); disc(px + 7, 56, 7, '#f4f4f8'); powerIcon(type, px + 7, 56); R(px, 66, 15, 3, '#111'); R(px + 1, 67, Math.round(13 * k), 1, '#9be36b'); px += 20; }
+  if (G.combo >= 2) { const s = G.combo >= 5 ? 3 : 2, c = G.combo >= 5 ? '#ffd23f' : '#7af0ff'; T('X' + G.combo + ' COMBO', W / 2, 8, c, s, 'center', '#000'); R(W / 2 - 30, 10 + s * 6, 60, 3, '#111'); R(W / 2 - 29, 11 + s * 6, Math.round(58 * G.comboT / COMBO_T), 1, c); }
   if (G.banner > 0) { const k = Math.min(1, (3 - G.banner) * 4) * Math.min(1, G.banner * 2), w = Math.round(220 * k); R(W / 2 - w / 2 - 2, 60, w + 4, 30, '#111'); R(W / 2 - w / 2, 62, w, 26, '#ffd23f'); if (k >= 1) { T(THEMES[G.theme].name, W / 2, 66, '#111', 2, 'center'); T(Math.floor(G.dist / DISTRICT) * DISTRICT + ' M', W / 2, 80, '#111', 1, 'center'); } }
   G.toasts.forEach((p, i) => { const k = Math.min(1, p.t * 5) * Math.min(1, (2.6 - p.t) * 4), w = PX.textWidth(p.text, 1) + 16, y = 40 + i * 16; R(W - Math.round((w + 6) * k), y, w + 2, 14, '#111'); R(W - Math.round((w + 6) * k) + 1, y + 1, w, 12, '#3fae4a'); T(p.text, W - Math.round((w + 6) * k) + 9, y + 5, '#fff'); });
   if (G.hint && !G.dead) {                          // the first run: what to do, in one word
@@ -577,8 +584,9 @@ function drawTitle(t) {
   T('PIXEL', W / 2, 22 + by, '#ffd23f', 3, 'center', '#000');
   T('RUNS', W / 2, 40 + by, '#fff', 6, 'center', '#e8402a');
   const mw = Math.min(300, W - 40), mx = Math.round(W / 2 - mw / 2);
-  T('MISSIONS', mx, 82, '#ffd23f', 1, 'left', '#000'); T('RANK ' + (rankOf() + 1) + ': ' + (3 - save.done % 3) + ' TO GO', mx + mw, 82, '#9a92b8', 1, 'right', '#000');
-  missionRows(mx, 91, mw, save.missions);
+  R(mx - 7, 77, mw + 14, 73, '#0b0912'); R(mx - 6, 78, mw + 12, 71, 'rgba(37,31,58,0.92)'); R(mx - 6, 78, mw + 12, 2, '#ffd23f');
+  T('MISSIONS', mx, 83, '#ffd23f', 1, 'left', '#000'); T('RANK ' + (rankOf() + 1) + ': ' + (3 - save.done % 3) + ' TO GO', mx + mw, 83, '#9a92b8', 1, 'right', '#000');
+  missionRows(mx, 92, mw, save.missions);
   const bw = 210, bx = Math.round(W / 2 - bw / 2), hw = (bw - 4) / 2;
   if (UI.button('play', bx, 152, bw, 30, 'RUN!', { accent: '#5ad43f', on: true })) { sfx('click'); newRun(); }
   if (UI.button('shop', bx, 187, hw, 22, 'SHOP', { size: 1, accent: '#ffd23f' })) { sfx('click'); state = 'shop'; fade = 1; }
@@ -632,7 +640,7 @@ function drawAsk(t) {                              // crashed: keep running for 
   T('YOU HAVE $' + save.coins, W / 2, y + 96, '#ffd23f', 1, 'center');
 }
 function drawOver(t) {
-  const W = S.W, n = G.missionsDone.length, h = 150 + n * 19 + (n ? 12 : 0), { y } = panel(290, h, Math.max(4, Math.round((H - h) / 2)), '#e8402a'), k = clamp((1 - fade) * 1.3, 0, 1);
+  const W = S.W, n = G.missionsDone.length, h = 162 + n * 19 + (n ? 12 : 0), { y } = panel(290, h, Math.max(4, Math.round((H - h) / 2)), '#e8402a'), k = clamp((1 - fade) * 1.3, 0, 1);
   if (G.newBest) for (let i = 0; i < 24; i++) { const q = t + i; R((i * 47 + q * 30) % W, (q * (40 + i * 3)) % H, 3, 3, ['#ffd23f', '#ff6bd0', '#7af0ff', '#9be36b'][i % 4]); }
   T(G.newBest ? 'NEW BEST!' : G.why === 'fall' ? 'YOU FELL!' : 'CRASH!', W / 2, y + 9, '#ffd23f', 3, 'center', '#000');
   T(Math.round(Math.floor(G.dist) * k) + ' M', W / 2, y + 34, '#fff', 4, 'center', '#000');
@@ -641,7 +649,8 @@ function drawOver(t) {
   T('COINS', cx, y + 66, '#9a92b8', 1, 'center'); T('+' + (G.coins + (G.pay || 0)), cx, y + 76, '#ffd23f', 2, 'center', '#000');
   T('BEST COMBO', cx + 96, y + 66, '#9a92b8', 1, 'center'); T('X' + G.bestCombo, cx + 96, y + 76, '#7af0ff', 2, 'center', '#000');
   T('BEST ' + save.best + ' M' + (G.stars ? '     ★ +' + G.stars : ''), cx, y + 96, '#efe9ff', 1, 'center');
-  let yy = y + 108;
+  T({ fall: 'TIP: HOLD JUMP LONGER TO FLY FURTHER', wall: 'TIP: JUMP AT A WALL A LITTLE EARLIER', box: 'TIP: LAND ON TOP OF A BOX TO STOMP IT', sign: 'TIP: KEEP SLIDING UNTIL YOU ARE PAST THE SIGN' }[G.why] || 'TIP: MOVES IN A ROW MAKE A COMBO', cx, y + 108, '#7ac8ff', 1, 'center');
+  let yy = y + 120;
   if (n) { T(G.rankUp ? 'MISSIONS DONE: YOU ARE NOW A ' + RANKS[rankOf()] + '!' : 'MISSIONS DONE', cx, yy, '#9be36b', 1, 'center'); missionRows(cx - 130, yy + 9, 260, G.missionsDone); yy += 12 + n * 19; }
   if (UI.button('menu', Math.round(cx - 138), yy + 10, 84, 24, 'MENU', { size: 1 }) || UI.back) { G = null; state = 'title'; fade = 1; return; }
   if (UI.button('shop', Math.round(cx - 50), yy + 10, 84, 24, 'SHOP', { size: 1, accent: '#ffd23f' })) { G = null; state = 'shop'; fade = 1; return; }
@@ -650,7 +659,7 @@ function drawOver(t) {
 function setPause(v) { if (state !== 'play' || G.dead) return; paused = v; input.jump = input.slide = false; }
 
 /* --- sound --- */
-function sfx(k) {
+function sfx(k, n = 0) {
   if (!save.sfx || (G && G.demo && k !== 'click' && k !== 'buy')) return;
   const s = PX.Sound;
   if (k === 'click') s.tone([523, 784], 0.12, { vol: 0.1 });
@@ -662,7 +671,8 @@ function sfx(k) {
   else if (k === 'zip') s.tone([900, 500], 0.5, { vol: 0.06, type: 'sawtooth' });
   else if (k === 'tramp') s.tone([180, 760], 0.25, { vol: 0.1, type: 'triangle' });
   else if (k === 'stomp') s.noise(0.12, { freq: 700, vol: 0.2 });
-  else if (k === 'coin') s.tone([1175, 1568], 0.07, { vol: 0.06 });
+  else if (k === 'coin') { const f = 988 * Math.pow(2, Math.min(n, 12) / 12); s.tone([f, f * 1.33], 0.07, { vol: 0.06 }); }   // coins in a row: higher and higher
+  else if (k === 'step') s.noise(0.025, { freq: 900, vol: 0.035 });
   else if (k === 'trick') s.tone([784, 1175], 0.1, { vol: 0.07, delay: 0.02 });
   else if (k === 'power' || k === 'buy') { s.tone(659, 0.08, { vol: 0.1 }); s.tone(988, 0.08, { vol: 0.1, delay: 0.08 }); s.tone(1319, 0.16, { vol: 0.1, delay: 0.16 }); }
   else if (k === 'shield') s.tone([900, 300], 0.3, { vol: 0.1 });
