@@ -28,6 +28,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
 | **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
+| **Pixel Runs** (`runs.html`) | Parkour over the rooftops: jump, slide, run up walls, ride zip lines and bounce through five city districts. Combos, missions, ranks, upgrades and runners to unlock. |
 
 ## Pixel Wings
 
@@ -282,6 +283,25 @@ table in the middle. **You have 1 minute for one meal**, and the faster you are,
   simmers 12-15 minutes...), and while you cook a lesson a REAL LIFE line shows the fact for the step you are doing.
 - **Controls:** touch or mouse: drag. Keys: any key takes it out of the oven, P pause. Controller: the stick moves
   a hand, hold A to grab and let go to drop, A takes it out of the oven.
+
+## Pixel Runs
+
+Parkour over the rooftops, seen from the side. Your runner (with your avatar's head) runs alone and gets faster; you
+only choose when to jump and when to slide.
+
+- **Controls:** touch: the right half of the screen JUMPS (hold for a higher, longer jump), the left half SLIDES (in the
+  air: a dive). Keys: Space / ↑ / W jump, ↓ / S slide, P pause. Controller: A jump, B slide.
+- **Moves:** jump at a wall (the yellow marks) and you RUN UP it. Land on a box to STOMP it. Slide under SLIDE / DUCK
+  signs. ZIP LINES carry you over the wide streets, pink TRAMPOLINES throw you high. A jump from the very last step and
+  a landing on the very edge pay extra.
+- **COMBO:** moves done one after another (within 2.6 s) multiply their points, up to x9.
+- **The city changes every 500 m:** SUNSET CITY, NEON NIGHT, SNOW TOWN, STORM FRONT, DAWN HARBOR, and round again, faster.
+- **MISSIONS:** three at a time (run 500 m in one run, slide under 15 signs, make a x4 combo...). A finished mission
+  pays coins and is replaced by a harder one; every 3 missions raise your RANK (ROOKIE up to CITY LEGEND, ★2 each).
+- **Power-ups on the roofs:** MAGNET, SHIELD (one free crash), COINS X2.
+- **SHOP:** UPGRADES (DOUBLE JUMP, POWER TIME, HEAD START with a shield, LONG ARMS) and 6 RUNNERS with their own trail.
+- **Crash or fall:** once a run you can KEEP RUNNING for 60 coins. A run pays ★1 for every 250 m.
+- **The first run** teaches by doing: the next move is named and time runs slower near it.
 
 ## Pixel Box Fight
 
@@ -572,4 +592,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html`; online play checks it).
