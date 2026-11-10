@@ -26,7 +26,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
-| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 3 minutes for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
+| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
 
 ## Pixel Wings
 
@@ -250,7 +250,7 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 
 You are the chef. A customer walks in and orders (say, a pizza with mozzarella); the order ticket pops up on the left
 with the meal and every step. The ingredients are on the shelf on the right, and you cook with your own hands on the
-table in the middle. **You have 3 minutes for one meal**, and the faster you are, the bigger the tip.
+table in the middle. **You have 1 minute for one meal**, and the faster you are, the bigger the tip.
 
 - **Your hands:** DRAG an ingredient from the shelf onto the meal. Some things you keep moving: rub the ROLL PIN over
   the dough until it is flat, spread the SAUCE, pour the MILK, squeeze the KETCHUP, and sprinkle toppings (mozzarella,
@@ -260,7 +260,7 @@ table in the middle. **You have 3 minutes for one meal**, and the faster you are
   tip). Too late and it is burnt (or the coffee spills): make a new one.
 - **Serving:** drag the finished meal to the customer. Drag it to the BIN to start over.
 - **Money:** every meal pays its price and a tip. A wrong ingredient or burnt food makes the tip smaller. Too slow
-  (3 minutes) and the customer leaves; three of those and you close early. A shift is 4-8 customers and pays ★1
+  (1 minute) and the customer leaves; three of those and you close early. A shift is 4-8 customers and pays ★1
   (★2 with every meal served and no mistakes). Finishing shifts puts new meals on the menu. Meals in a row without a
   mistake build a STREAK (+10% tip each, up to +50%), and every meal gets a rating of 1-3 stars on its ticket.
 - **RESTAURANTS** (6, each much dearer than the last): the CAFE SHOP (coffee, cappuccino, croissants and muffins),
@@ -275,7 +275,8 @@ table in the middle. **You have 3 minutes for one meal**, and the faster you are
   coach also helps with the first order in every new restaurant.
 - **COOKING SCHOOL:** every meal of your restaurants as a recipe in pictures. LEARN one and you cook it with the coach
   and no clock; you get a medal and the meal's price the first time.
-- **REAL LIFE:** the school also teaches real cooking. Every meal has a REAL RECIPE sheet (what you need, each step with
+- **REAL LIFE:** the school also teaches real cooking. Every meal has a REAL RECIPE sheet in big print, a few steps on a
+  page (what you need, each step with
   its real time and temperature: a pizza bakes 8-12 minutes at 250 C, a burger patty 3-4 minutes a side, sushi rice
   simmers 12-15 minutes...), and while you cook a lesson a REAL LIFE line shows the fact for the step you are doing.
 - **Controls:** touch or mouse: drag. Keys: any key takes it out of the oven, P pause. Controller: the stick moves
