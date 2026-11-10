@@ -40,7 +40,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '3.4.0';
+const VERSION = '3.4.1';
 const SAVE_KEY = 'pixelCook.save';
 const NREST = 6;
 const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
@@ -1110,8 +1110,10 @@ function drawRests(t) {
     else if (save.money < r.price) { T('$' + (r.price - save.money) + ' TO GO', x + 6, y + 52, '#7ac8ff'); R(x + 6, y + 61, cw - 12, 4, '#0b0912'); R(x + 7, y + 62, Math.round((cw - 14) * save.money / r.price), 2, '#7ac8ff'); }
     else T('YOU CAN BUY IT!', x + 6, y + 52, Math.floor(t * 3) % 2 ? '#9be36b' : '#fff');
     const by = y + ch - 30;
-    if (cur) { R(x + 6, by, cw - 12, 24, '#0b0912'); R(x + 7, by + 1, cw - 14, 22, '#3fae4a'); R(x + 7, by + 1, cw - 14, 1, '#7ad88a'); T('OPEN NOW', x + cw / 2, by + 9, '#fff', 1, 'center', '#0b0912'); }
-    else if (owned) { if (UI.button('r' + i, x + 6, by, cw - 12, 24, 'MOVE HERE', { size: 1, accent: r.color })) { save.rest = i; store(); sfx('click'); } }
+    if (owned) {                               // every restaurant you own has a real OPEN button: it moves you there and starts cooking
+      if (cur) { const tw = PX.textWidth('HERE', 1) + 8; R(x + cw - tw - 6, y + 38, tw, 11, r.color); T('HERE', x + cw - 6 - tw / 2, y + 41, '#111', 1, 'center'); }
+      if (UI.button('r' + i, x + 6, by, cw - 12, 24, cur ? 'OPEN NOW' : 'MOVE HERE AND OPEN', { size: PX.textWidth(cur ? 'OPEN NOW' : 'MOVE HERE AND OPEN', 2) <= cw - 20 ? 2 : 1, accent: cur ? '#5ad43f' : r.color, on: cur })) { save.rest = i; store(); sfx('click'); newShift(!save.tut); }
+    }
     else {
       const can = save.money >= r.price && save.owned[i - 1];
       if (UI.button('r' + i, x + 6, by, cw - 12, 24, 'BUY $' + r.price, { size: PX.textWidth('BUY $' + r.price, 2) <= cw - 20 ? 2 : 1, accent: '#ffd23f', disabled: !can })) {
