@@ -270,8 +270,11 @@ table in the middle. **You have 3 minutes for one meal**, and the faster you are
   lobster, truffle pasta and golden cake on a plate, $240-500).
 - **UPGRADES** (for all your restaurants): KITCHEN TIMER (a longer green zone), TURBO STOVE (cooks faster), TIP JAR
   (+25% tips a level), FANCY MENU (+15% prices a level), and the GOLDEN CHEF HAT for the richest chef in town.
-- **Tutorial:** new players make their first coffee step by step with a hand showing every move and the clock stopped
-  (HOW TO PLAY shows it again). The hand also helps with the first order in every new restaurant.
+- **Learning by doing (no pages to read):** new players make their first coffee with a coach: a chef bear who says one
+  or two words (PUT IT IN! WAIT... NOW! TAP! POUR! SERVE IT!) while a hand shows the move, with the clock stopped. The
+  coach also helps with the first order in every new restaurant.
+- **COOKING SCHOOL:** every meal of your restaurants as a recipe in pictures. LEARN one and you cook it with the coach
+  and no clock; you get a medal and the meal's price the first time.
 - **Controls:** touch or mouse: drag. Keys: any key takes it out of the oven, P pause. Controller: the stick moves
   a hand, hold A to grab and let go to drop, A takes it out of the oven.
 
