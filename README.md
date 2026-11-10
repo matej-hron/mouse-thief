@@ -294,7 +294,7 @@ only choose when to jump and when to slide.
 - **Moves:** jump at a wall (the yellow marks) and you RUN UP it. Land on a box to STOMP it. Slide under SLIDE / DUCK
   signs. ZIP LINES carry you over the wide streets, pink TRAMPOLINES throw you high. A jump from the very last step and
   a landing on the very edge pay extra.
-- **COMBO:** moves done one after another (within 2.6 s) multiply their points, up to x9.
+- **COMBO:** moves done one after another (within 2 s) multiply their points, up to x9.
 - **The city changes every 500 m:** SUNSET CITY, NEON NIGHT, SNOW TOWN, STORM FRONT, DAWN HARBOR, and round again, faster.
 - **MISSIONS:** three at a time (run 500 m in one run, slide under 15 signs, make a x4 combo...). A finished mission
   pays coins and is replaced by a harder one; every 3 missions raise your RANK (ROOKIE up to CITY LEGEND, ★2 each).
