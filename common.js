@@ -237,6 +237,18 @@ window.PX = (() => {
         if (hot) fg = '#111';
       }
       const size = o.size || 2;
+      // pause and sound buttons are drawn signs, the same in every game: two thick bars, a speaker (a red cross when it is off)
+      const sign = label === 'II' ? 'pause' : label === 'SND' ? 'snd' : label === 'OFF' && id === 'sfx' ? 'mute' : null;
+      if (sign) {
+        const cx = Math.round(x + w / 2), cy = Math.round(y + off + h / 2) - (o.disabled || hot ? 0 : 1), bar = (bx, by, bw, bh, col) => { ctx.fillStyle = col; ctx.fillRect(bx, by, bw, bh); };
+        const col = o.disabled ? '#5b5275' : hot ? '#111' : '#efe9ff';
+        if (sign === 'pause') { bar(cx - 5, cy - 4, 4, 9, col); bar(cx + 1, cy - 4, 4, 9, col); }
+        else {
+          bar(cx - 8, cy - 2, 3, 5, col); bar(cx - 5, cy - 3, 2, 7, col); bar(cx - 3, cy - 5, 2, 11, col);
+          if (sign === 'snd') { bar(cx + 1, cy - 2, 1, 5, col); bar(cx + 3, cy - 4, 1, 9, col); bar(cx + 5, cy - 5, 1, 11, col); }
+          else for (let i = 0; i < 5; i++) { bar(cx + 1 + i, cy - 2 + i, 1, 2, hot ? '#111' : '#ff6a5a'); bar(cx + 5 - i, cy - 2 + i, 1, 2, hot ? '#111' : '#ff6a5a'); }
+        }
+      } else
       if (label) drawText(ctx, label, x + w / 2, y + off + Math.round((h - 5 * size) / 2) - (o.disabled || hot ? 0 : 1), o.textColor && !hot && !o.disabled ? o.textColor : fg, size, 'center', !hot && !o.disabled && size > 1 ? '#0b0912' : null);
       return !o.disabled && UI.click === id;
     };

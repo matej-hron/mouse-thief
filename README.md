@@ -8,6 +8,7 @@ PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
 when you add the arcade to an iPhone's home screen after setting your avatar).
 The **controller button** next to the ★ counter turns phones into game controllers for a big screen (see below).
+In every game the pause button is two thick bars and the sound button a speaker (a red cross when the sound is off).
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
 MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 
