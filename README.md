@@ -26,6 +26,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
+| **Pixel Cook** (`cook.html`) | Cook meals to order, 3 minutes for one meal: start with a pizza restaurant, buy a burger restaurant, then a luxury restaurant. With a tutorial. |
 
 ## Pixel Wings
 
@@ -244,6 +245,26 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Cook
+
+You are the chef. A customer walks in and orders (say, a pizza with mozzarella); the order ticket pops up on the left
+with the meal and every step. You cook it on the table: tap the things in the tray below. **You have 3 minutes for
+one meal**, and the faster you are, the bigger the tip.
+
+- **Cooking:** a pizza is made from nothing: new DOUGH, roll it flat (tap the ROLL PIN 4 times), TOMATO SAUCE,
+  MOZZARELLA and the toppings, then into the OVEN. While it bakes a bar runs from RAW to BURNT: tap TAKE OUT in the
+  green zone (the gold middle is PERFECT, a bigger tip). Burnt food goes in the bin and you make a new one. Then SERVE.
+- **Money:** every meal pays its price and a tip. A wrong ingredient or burnt food makes the tip smaller. Too slow
+  (3 minutes) and the customer leaves; three of those and you close early. A shift is 4-8 customers and pays ★1
+  (★2 with every meal served and no mistakes). Finishing shifts puts new meals on the menu.
+- **RESTAURANTS:** the PIZZA RESTAURANT (6 pizzas, $20-46), then buy the BURGER RESTAURANT ($1500: burgers are
+  stacked in the order on the ticket, the patty is grilled) and the LUXURY RESTAURANT ($5000: steak, lobster,
+  truffle pasta and golden cake on a plate, $150-320).
+- **UPGRADES** (for all your restaurants): KITCHEN TIMER (a longer green zone), TURBO STOVE (cooks faster), TIP JAR
+  (+25% tips a level), FANCY MENU (+15% prices a level), and the GOLDEN CHEF HAT for the richest chef in town.
+- **Tutorial:** new players cook their first pizza step by step, with the clock stopped (HOW TO PLAY shows it again).
+- **Controls:** tap or click. Keys: Space / Enter serve or take out, P pause. Controller: the stick picks a button, A presses it.
 
 ## Pixel Box Fight
 
@@ -534,4 +555,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html`; online play checks it).

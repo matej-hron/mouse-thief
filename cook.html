@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Cook: cook meals to order. Start with a pizza restaurant, open a burger restaurant, then a luxury restaurant. 3 minutes for one meal.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Cook</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL COOK: cook meals to order (part of the PIXEL ARCADE).
+   A customer walks in and orders. The ticket on the left shows the meal and
+   every step. You cook it on the table: tap the ingredients in the tray, roll
+   the dough, bake / grill / cook it (take it out in the green!) and SERVE.
+   You have 3 minutes for one meal; the faster you are, the bigger the tip.
+   You start with a PIZZA RESTAURANT, then buy a BURGER RESTAURANT and at last
+   a LUXURY RESTAURANT. New players get a tutorial.
+     1. Setup   2. Restaurants and meals   3. The game   4. Drawing food
+     5. Drawing the kitchen   6. Screens   7. Input and the main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelCook.save';
+const save = { money: 0, earned: 0, rest: 0, owned: [true, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
+               shifts: [0, 0, 0], served: 0, best: 0, tut: false, tips: [false, false, false], hat: false, sfx: true };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+function disc(cx, cy, r, c) {              // a pixel circle
+  ctx.fillStyle = c; cx = Math.round(cx); cy = Math.round(cy);
+  for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(r * r - dy * dy + r * 0.8)); ctx.fillRect(cx - w, cy + dy, w * 2 + 1, 1); }
+}
+
+const MEAL_TIME = 180;                     // 3 minutes for one meal
+const ROLLS = 4;                           // taps of the rolling pin to roll the dough flat
+const HEARTS = 3;                          // customers who may leave hungry before you close early
+
+/* --- 2. RESTAURANTS AND MEALS --------------------------------------------------- */
+// everything in the trays: n = the name on the button, s = the step on the ticket (tools have tool: true)
+const ITEMS = {
+  dough: { n: 'DOUGH', s: 'PIZZA DOUGH' }, roll: { n: 'ROLL PIN', s: 'ROLL IT FLAT', tool: true }, sauce: { n: 'SAUCE', s: 'TOMATO SAUCE' },
+  mozz: { n: 'MOZZARELLA' }, salami: { n: 'SALAMI' }, mush: { n: 'MUSHROOM', s: 'MUSHROOMS' }, ham: { n: 'HAM' },
+  pine: { n: 'PINEAPPLE' }, olive: { n: 'OLIVES' }, pepper: { n: 'PEPPER' }, oven: { n: 'OVEN', s: 'BAKE IT', tool: true },
+  bun: { n: 'BUN' }, patty: { n: 'PATTY', s: 'MEAT PATTY' }, grill: { n: 'GRILL', s: 'GRILL IT', tool: true }, cheese: { n: 'CHEESE' },
+  lettuce: { n: 'LETTUCE' }, tomato: { n: 'TOMATO' }, onion: { n: 'ONION' }, bacon: { n: 'BACON' }, pickle: { n: 'PICKLE' },
+  ketchup: { n: 'KETCHUP' }, egg: { n: 'EGG', s: 'FRIED EGG' },
+  plate: { n: 'PLATE' }, steak: { n: 'STEAK' }, lobster: { n: 'LOBSTER' }, pasta: { n: 'PASTA' }, cake: { n: 'CAKE' },
+  stove: { n: 'COOK', s: 'COOK IT', tool: true }, potato: { n: 'POTATO', s: 'POTATOES' }, aspar: { n: 'ASPARAG.', s: 'ASPARAGUS' },
+  lemon: { n: 'LEMON' }, butter: { n: 'BUTTER' }, cream: { n: 'CREAM' }, truffle: { n: 'TRUFFLE' }, parm: { n: 'PARMESAN' },
+  choco: { n: 'CHOCO', s: 'CHOCOLATE' }, berry: { n: 'BERRY', s: 'STRAWBERRY' }, gold: { n: 'GOLD', s: 'GOLD LEAF' },
+};
+const pizza = (name, price, top) => ({ name, price, groups: [['dough'], ['roll'], ['sauce'], ['mozz', ...top], ['oven']] });
+const burger = (name, price, top) => ({ name, price, groups: [['bun'], ['patty'], ['grill'], ...top.map(x => [x]), ['bun']] });
+const lux = (name, price, main, sides) => ({ name, price, groups: [['plate'], [main], ['stove'], sides] });
+// a meal's steps are groups: the groups go in order, the things inside one group in any order
+const REST = [
+  { id: 'pizza', name: 'PIZZA RESTAURANT', price: 0, color: '#e8402a', tool: 'oven', verb: 'BAKING',
+    tray: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'mush', 'ham', 'pine', 'olive', 'pepper', 'oven'],
+    dishes: [pizza('PIZZA WITH MOZZARELLA', 20, []), pizza('SALAMI PIZZA', 26, ['salami']), pizza('MUSHROOM PIZZA', 26, ['mush']),
+             pizza('HAWAII PIZZA', 32, ['ham', 'pine']), pizza('VEGGIE PIZZA', 38, ['mush', 'pepper', 'olive']),
+             pizza('DELUXE PIZZA', 46, ['salami', 'ham', 'mush', 'olive'])] },
+  { id: 'burger', name: 'BURGER RESTAURANT', price: 1500, color: '#ffb020', tool: 'grill', verb: 'GRILLING',
+    tray: ['bun', 'patty', 'grill', 'cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'ketchup', 'egg'],
+    dishes: [burger('HAMBURGER', 45, ['ketchup']), burger('CHEESEBURGER', 55, ['cheese', 'ketchup']),
+             burger('SALAD BURGER', 65, ['cheese', 'lettuce', 'tomato']), burger('BACON BURGER', 78, ['cheese', 'bacon', 'onion', 'ketchup']),
+             burger('EGG BURGER', 85, ['egg', 'bacon', 'lettuce', 'pickle']), burger('MEGA BURGER', 98, ['cheese', 'bacon', 'lettuce', 'tomato', 'pickle'])] },
+  { id: 'lux', name: 'LUXURY RESTAURANT', price: 5000, color: '#c89aff', tool: 'stove', verb: 'COOKING',
+    tray: ['plate', 'steak', 'lobster', 'pasta', 'cake', 'stove', 'potato', 'aspar', 'lemon', 'butter', 'cream', 'truffle', 'parm', 'choco', 'berry', 'gold'],
+    dishes: [lux('STEAK AND POTATOES', 150, 'steak', ['potato', 'butter']), lux('CHOCOLATE CAKE', 160, 'cake', ['choco', 'berry']),
+             lux('TRUFFLE PASTA', 185, 'pasta', ['cream', 'truffle', 'parm']), lux('LEMON LOBSTER', 220, 'lobster', ['lemon', 'butter', 'aspar']),
+             lux('ROYAL STEAK', 280, 'steak', ['potato', 'aspar', 'truffle', 'butter']), lux('GOLDEN CAKE', 320, 'cake', ['choco', 'berry', 'cream', 'gold'])] },
+];
+const UPGRADES = [
+  { id: 'timer', name: 'KITCHEN TIMER', text: 'THE GREEN ZONE LASTS LONGER', cost: [150, 500, 1500] },
+  { id: 'stove', name: 'TURBO STOVE', text: 'BAKES AND GRILLS FASTER', cost: [120, 450, 1300] },
+  { id: 'tips', name: 'TIP JAR', text: '+25% TIPS A LEVEL', cost: [100, 400, 1200] },
+  { id: 'menu', name: 'FANCY MENU', text: '+15% PRICES A LEVEL', cost: [200, 700, 2000] },
+];
+const HAT_PRICE = 25000;
+const COOK_WAIT = [3.2, 2.7, 2.2, 1.7], COOK_GREEN = [1.4, 1.8, 2.2, 2.6], COOK_BURN = 1.2;
+const dishCount = r => Math.min(REST[r].dishes.length, 2 + save.shifts[r]);     // new meals open as you finish shifts
+const shiftSize = r => 4 + Math.min(4, Math.floor(save.shifts[r] / 2));         // 4 customers at first, up to 8
+const priceOf = d => Math.round(d.price * (1 + 0.15 * save.up.menu));
+const CUSTOMER_SHAPES = PX.AVATAR_SHAPES.filter(s => !PX.GIFT_SHAPES.includes(s));
+
+/* --- 3. THE GAME --------------------------------------------------------------- */
+let state = 'title';            // title | rests | shop | play | over
+let paused = false;
+let G = null;
+function newShift(tut = false) {
+  const rest = tut ? 0 : save.rest;
+  G = { rest, tut, tutPage: tut ? 0 : -1, total: tut ? 1 : shiftSize(rest), n: 0, hearts: HEARTS, servedN: 0, earned: 0, tipsSum: 0, mist: 0,
+        O: null, phase: 'wait', phaseT: 0, pops: [], shake: 0, stars: 0, newDish: null, tip: null, last: -1 };
+  if (!tut && !save.tips[rest] && rest > 0) G.tip = rest;          // a short tip the first time in a new restaurant
+  state = 'play'; paused = false;
+  if (!tut) nextCustomer();
+}
+function nextCustomer() {
+  const rest = REST[G.rest];
+  let i = 0;
+  if (!G.tut) do { i = Math.floor(Math.random() * dishCount(G.rest)); } while (i === G.last && dishCount(G.rest) > 1);
+  G.last = i; G.n++;
+  G.O = { dish: rest.dishes[i], price: priceOf(rest.dishes[i]), time: MEAL_TIME, mist: 0,
+          who: { shape: pick(CUSTOMER_SHAPES), color: Math.floor(Math.random() * PX.AVATAR_COLORS.length) }, shirt: pick(['#3a7ad4', '#3fae4a', '#e0782a', '#b07aff', '#e01e5a', '#2ad4c4']),
+          say: '', pay: 0, tipPay: 0 };
+  resetDish();
+  G.phase = 'enter'; G.phaseT = 0;
+  sfx('bell');
+}
+function resetDish() { G.D = { done: [], gi: 0, got: [], rolls: 0, perfect: false }; G.cook = null; }
+const dishReady = () => G.D.gi >= G.O.dish.groups.length;
+const needs = () => (dishReady() ? [] : G.O.dish.groups[G.D.gi].filter(id => !G.D.got.includes(id)));
+function pop(text, color = '#fff', x, y, big = false) {
+  if (y === undefined) y = 108 + G.pops.filter(p => p.t < 0.5).length * 16;      // two at once: one under the other
+  G.pops.push({ text, color, x: x === undefined ? tableX() + tableW() / 2 : x, y, t: 0, big });
+}
+function mistake(text) {
+  G.O.mist++; G.mist++; G.shake = 0.3;
+  pop(text, '#ff6a5a'); sfx('wrong');
+}
+function addItem(id) {
+  if (state !== 'play' || paused || G.phase !== 'cook' || G.cook) return;
+  const D = G.D, dish = G.O.dish, need = needs();
+  if (!need.includes(id)) {
+    if (dishReady()) mistake('IT IS DONE: SERVE IT!');
+    else if (dish.groups.some((g, k) => k > D.gi && g.includes(id))) mistake('NOT YET!');
+    else if (dish.groups.some(g => g.includes(id))) mistake('ALREADY ON IT!');
+    else mistake('NOT IN THE ORDER!');
+    return;
+  }
+  if (id === 'roll') {
+    D.rolls++; sfx('roll');
+    if (D.rolls < ROLLS) return;
+  } else if (ITEMS[id].tool) {             // into the oven / onto the grill / into the pan
+    G.cook = { t: 0, wait: COOK_WAIT[save.up.stove], green: COOK_GREEN[save.up.timer] };
+    sfx('sizzle'); return;
+  } else sfx('put');
+  D.done.push(id); D.got.push(id);
+  if (!needs().length) { D.gi++; D.got = []; }
+  if (dishReady()) { pop('READY! SERVE IT', '#9be36b'); sfx('ready'); }
+}
+function takeOut() {
+  if (state !== 'play' || paused || !G.cook) return;
+  const c = G.cook, D = G.D;
+  if (c.t < c.wait) { pop('NOT READY YET!', '#7ac8ff'); sfx('wrong'); return; }
+  const k = (c.t - c.wait) / c.green;       // 0..1 through the green zone
+  D.perfect = k > 0.3 && k < 0.7;
+  G.cook = null;
+  const tool = G.O.dish.groups[D.gi][0];
+  D.done.push(tool); D.gi++; D.got = [];
+  pop(D.perfect ? 'PERFECT!' : 'GOOD!', D.perfect ? '#ffd23f' : '#9be36b'); sfx(D.perfect ? 'perfect' : 'put');
+  if (dishReady()) sfx('ready');
+}
+function burnt() {
+  resetDish();
+  mistake('BURNT! MAKE A NEW ONE');
+}
+function trash() {
+  if (state !== 'play' || paused || G.phase !== 'cook' || !G.D.done.length && !G.D.rolls && !G.cook) return;
+  resetDish(); pop('IN THE BIN. START AGAIN', '#9a92b8'); sfx('trash');
+}
+function serve() {
+  if (state !== 'play' || paused || G.phase !== 'cook' || !dishReady()) return;
+  const O = G.O, left = O.time / MEAL_TIME;
+  let tip = O.price * (0.4 * left + (G.D.perfect ? 0.15 : 0)) * (1 + 0.25 * save.up.tips) * Math.pow(0.8, O.mist);
+  tip = Math.round(tip);
+  O.pay = O.price; O.tipPay = tip;
+  save.money += O.price + tip; save.earned += O.price + tip; save.served++;
+  G.earned += O.price + tip; G.tipsSum += tip; G.servedN++;
+  O.say = pick(['YUMMY!', 'DELICIOUS!', 'THANK YOU!', 'SO GOOD!', 'WOW!']);
+  pop('+$' + O.price, '#ffd23f', undefined, 100, true);
+  if (tip) pop('TIP +$' + tip, '#9be36b', undefined, 122);
+  G.phase = 'served'; G.phaseT = 0;
+  store(); sfx('cash');
+}
+function customerLeaves() {
+  G.hearts--; G.O.say = 'TOO SLOW! BYE!';
+  G.cook = null; G.phase = 'left'; G.phaseT = 0; G.shake = 0.4;
+  sfx('angry');
+}
+function endShift() {
+  state = 'over';
+  if (G.tut) { save.tut = true; store(); return; }
+  const before = dishCount(G.rest);
+  if (G.servedN > 0) {
+    save.shifts[G.rest]++;
+    G.stars = 1 + (G.servedN === G.total && G.mist === 0 ? 1 : 0);
+    PX.Wallet.add(G.stars);
+  }
+  if (dishCount(G.rest) > before) G.newDish = REST[G.rest].dishes[before].name;
+  if (G.earned > save.best) { save.best = G.earned; G.newBest = true; }
+  store(); sfx('done');
+}
+function step(dt) {
+  G.phaseT += dt; G.shake = Math.max(0, G.shake - dt);
+  G.pops = G.pops.filter(p => (p.t += dt) < 1.4);
+  if (G.tutPage >= 0 || G.tip !== null) return;
+  if (G.phase === 'enter' && G.phaseT > 0.7) { G.phase = 'cook'; G.phaseT = 0; }
+  else if (G.phase === 'cook') {
+    if (!G.tut) G.O.time -= dt;                          // the clock waits for you in the tutorial
+    if (G.O.time <= 10 && Math.floor(G.O.time) !== Math.floor(G.O.time + dt)) sfx('tick');
+    if (G.cook) { G.cook.t += dt; if (G.cook.t > G.cook.wait + G.cook.green + COOK_BURN) burnt(); else if (G.cook.t > G.cook.wait + G.cook.green && !G.cook.smoke) { G.cook.smoke = true; sfx('wrong'); } }
+    if (G.O.time <= 0) { G.O.time = 0; customerLeaves(); }
+  } else if ((G.phase === 'served' || G.phase === 'left') && G.phaseT > 1.6) {
+    if (G.n >= G.total || G.hearts <= 0) endShift(); else nextCustomer();
+  }
+}
+
+/* --- 4. DRAWING FOOD --------------------------------------------------------------- */
+// little pictures for the tray buttons (about 14 x 12, around cx, cy)
+function icon(id, cx, cy) {
+  const r = (x, y, w, h, c) => R(cx + x, cy + y, w, h, c), d = (x, y, rr, c) => disc(cx + x, cy + y, rr, c);
+  switch (id) {
+    case 'dough': d(0, 0, 5, '#f0dca8'); r(-3, -3, 3, 2, '#fff4d8'); break;
+    case 'roll': r(-8, -1, 3, 2, '#8a5a2a'); r(5, -1, 3, 2, '#8a5a2a'); r(-5, -3, 10, 6, '#d8a868'); r(-5, -3, 10, 1, '#f0c890'); break;
+    case 'sauce': d(0, 0, 5, '#d8301e'); r(-3, -3, 3, 2, '#ff7a5a'); break;
+    case 'mozz': d(-2, 1, 4, '#fff8e8'); d(4, -2, 2, '#fff8e8'); r(-4, 3, 5, 1, '#d8d0c0'); break;
+    case 'salami': d(0, 0, 5, '#b83a3a'); r(-3, -2, 1, 1, '#f0b0a0'); r(1, -3, 1, 1, '#f0b0a0'); r(2, 1, 1, 1, '#f0b0a0'); r(-2, 2, 1, 1, '#f0b0a0'); break;
+    case 'mush': r(-4, -5, 8, 1, '#d8c8b0'); r(-6, -4, 12, 4, '#d8c8b0'); r(-2, 0, 4, 5, '#f4ecdc'); r(-4, -3, 2, 1, '#b8a890'); break;
+    case 'ham': r(-5, -4, 10, 8, '#f08aa0'); r(-5, -4, 10, 2, '#f8c8d0'); r(-2, 0, 2, 2, '#d86a84'); break;
+    case 'pine': d(0, 0, 5, '#f0c830'); d(0, 0, 1, '#b88a10'); r(-1, -7, 2, 2, '#3fae4a'); break;
+    case 'olive': d(-3, 1, 3, '#2a2a3a'); d(4, -1, 3, '#2a2a3a'); r(-4, 0, 2, 2, '#b83a2a'); r(3, -2, 2, 2, '#b83a2a'); break;
+    case 'pepper': r(-4, -3, 9, 8, '#3fae4a'); r(-5, -1, 11, 4, '#3fae4a'); r(-1, -6, 2, 3, '#2a6a2a'); r(-3, -2, 2, 3, '#7ad46a'); break;
+    case 'oven': r(-7, -6, 14, 12, '#a8502a'); r(-7, -6, 14, 1, '#c8703a'); r(-4, -3, 8, 9, '#1a1010'); r(-3, 2, 6, 4, '#ff8a2a'); r(-1, 3, 2, 3, '#ffd23f'); break;
+    case 'bun': r(-4, -6, 8, 1, '#d89a48'); r(-6, -5, 12, 5, '#d89a48'); r(-3, -4, 1, 1, '#fff0c0'); r(1, -5, 1, 1, '#fff0c0'); r(3, -3, 1, 1, '#fff0c0'); r(-6, 2, 12, 3, '#c8883a'); break;
+    case 'patty': r(-6, -3, 12, 6, '#6a3a1a'); r(-5, -4, 10, 8, '#6a3a1a'); r(-4, -2, 2, 1, '#8a5a3a'); r(1, 1, 3, 1, '#4a2410'); break;
+    case 'grill': r(-7, -1, 14, 6, '#4a4a58'); for (let i = -6; i < 7; i += 3) r(i, -3, 1, 2, '#9a9aa8'); r(-7, -1, 14, 1, '#ff6a2a'); r(-5, 5, 2, 2, '#333'); r(3, 5, 2, 2, '#333'); break;
+    case 'cheese': r(-6, -3, 12, 7, '#ffc830'); r(-6, -3, 12, 1, '#ffe680'); r(-3, 0, 2, 2, '#d89a10'); r(2, -1, 2, 2, '#d89a10'); break;
+    case 'lettuce': r(-6, -2, 12, 5, '#5ad43f'); for (let i = -6; i < 6; i += 4) { r(i, -4, 2, 2, '#5ad43f'); r(i + 2, 3, 2, 2, '#3a9a2a'); } break;
+    case 'tomato': d(0, 0, 5, '#e8302a'); r(-3, -3, 2, 2, '#ff8a7a'); r(-1, -1, 2, 2, '#f8c060'); break;
+    case 'onion': d(0, 0, 5, '#b07ac8'); d(0, 0, 3, '#f0e0f8'); d(0, 0, 1, '#b07ac8'); break;
+    case 'bacon': r(-6, -4, 12, 2, '#b8322a'); r(-6, -2, 12, 2, '#f0c0b0'); r(-6, 0, 12, 2, '#b8322a'); r(-6, 2, 12, 2, '#f0c0b0'); break;
+    case 'pickle': d(0, 0, 4, '#4a9a3a'); d(0, 0, 2, '#9ad47a'); break;
+    case 'ketchup': r(-3, -2, 6, 8, '#d8201a'); r(-2, -4, 4, 2, '#d8201a'); r(-1, -7, 2, 3, '#f4f4f4'); r(-2, 0, 4, 3, '#fff'); break;
+    case 'egg': r(-6, -3, 12, 7, '#fff'); r(-4, -5, 8, 10, '#fff'); d(0, 0, 2, '#ffb820'); break;
+    case 'plate': d(0, 0, 6, '#f4f4f8'); d(0, 0, 4, '#d0d0e0'); d(0, 0, 3, '#f4f4f8'); break;
+    case 'steak': r(-6, -3, 11, 7, '#8a3a2a'); r(-4, -5, 8, 10, '#8a3a2a'); r(4, -2, 2, 5, '#f0d8c0'); r(-3, -2, 5, 1, '#5a2014'); r(-3, 1, 5, 1, '#5a2014'); break;
+    case 'lobster': r(-2, -3, 4, 8, '#e8402a'); r(-6, -6, 3, 4, '#e8402a'); r(3, -6, 3, 4, '#e8402a'); r(-4, -3, 2, 1, '#e8402a'); r(2, -3, 2, 1, '#e8402a'); r(-3, 5, 6, 2, '#c82a1a'); break;
+    case 'pasta': d(0, 0, 5, '#f0d060'); r(-3, -2, 6, 1, '#c8a030'); r(-4, 1, 7, 1, '#c8a030'); r(-1, -4, 1, 8, '#c8a030'); break;
+    case 'cake': r(-5, -4, 10, 3, '#4a2414'); r(-5, -1, 10, 1, '#fff0e0'); r(-5, 0, 10, 5, '#7a4428'); r(-1, -6, 2, 2, '#e8203a'); break;
+    case 'stove': d(-1, 0, 5, '#3a3a46'); d(-1, 0, 3, '#6a6a78'); r(4, -1, 5, 2, '#3a3a46'); break;
+    case 'potato': d(-2, 1, 3, '#e0b060'); d(3, -2, 3, '#e0b060'); r(-3, 0, 1, 1, '#b88a40'); r(3, -3, 1, 1, '#b88a40'); break;
+    case 'aspar': for (let i = -4; i <= 4; i += 4) { r(i, -3, 2, 9, '#5ab84a'); r(i, -6, 2, 3, '#2f7a2a'); } break;
+    case 'lemon': d(0, 0, 5, '#ffe23a'); d(0, 0, 3, '#fff8b0'); r(-3, 0, 7, 1, '#ffe23a'); r(0, -3, 1, 7, '#ffe23a'); break;
+    case 'butter': r(-5, -3, 10, 6, '#ffe680'); r(-5, 3, 10, 2, '#d8b840'); r(-5, -3, 10, 1, '#fff4c0'); break;
+    case 'cream': r(-5, 2, 10, 3, '#fffaf0'); r(-4, 0, 8, 2, '#fffaf0'); r(-3, -2, 6, 2, '#f0e8d8'); r(-2, -4, 4, 2, '#fffaf0'); r(-1, -6, 2, 2, '#fffaf0'); break;
+    case 'truffle': d(0, 0, 4, '#2a2018'); r(-2, -2, 1, 1, '#6a5a48'); r(1, 0, 1, 1, '#6a5a48'); r(-1, 2, 1, 1, '#6a5a48'); break;
+    case 'parm': r(-5, 1, 11, 4, '#f0e0a0'); r(-3, -1, 9, 2, '#f0e0a0'); r(0, -3, 6, 2, '#f0e0a0'); r(3, -5, 3, 2, '#f0e0a0'); r(-5, 4, 11, 1, '#c8b060'); break;
+    case 'choco': r(-5, -4, 10, 8, '#5a3018'); r(-5, 0, 10, 1, '#3a1c0c'); r(-2, -4, 1, 8, '#3a1c0c'); r(2, -4, 1, 8, '#3a1c0c'); break;
+    case 'berry': d(0, 1, 4, '#e8203a'); r(-3, -5, 6, 2, '#3fae4a'); r(-1, 0, 1, 1, '#ffd0a0'); r(2, 2, 1, 1, '#ffd0a0'); r(-2, 3, 1, 1, '#ffd0a0'); break;
+    case 'gold': r(-1, -6, 2, 12, '#ffd23f'); r(-6, -1, 12, 2, '#ffd23f'); r(-3, -3, 6, 6, '#ffe680'); r(-1, -1, 2, 2, '#fff'); break;
+  }
+}
+// spots on a pizza for topping number k
+function spots(k) { const out = []; for (let i = 0; i < 6; i++) { const a = i * 1.047 + k * 0.42, rr = i % 2 ? 9 : 19; out.push([Math.round(Math.cos(a) * rr), Math.round(Math.sin(a) * rr)]); } return out; }
+function drawPizza(cx, cy, D, sc = 1) {    // from above. sc < 1: a small one (in the oven, on the title)
+  const done = D.done, has = id => done.includes(id), baked = has('oven');
+  if (!has('dough')) return;
+  if (!has('roll')) { const rr = Math.round((8 + D.rolls * 6) * sc); disc(cx, cy, rr, '#d8c490'); disc(cx - 1, cy - 1, Math.max(1, rr - 2), '#f0dca8'); return; }
+  const r0 = Math.round(32 * sc);
+  disc(cx, cy, r0, baked ? '#a86a2a' : '#d8c490'); disc(cx, cy, r0 - 1, baked ? '#d89a48' : '#f0dca8');
+  if (has('sauce')) disc(cx, cy, r0 - 5, baked ? '#c02a18' : '#d8301e');
+  let k = 0;
+  for (const id of done) {
+    if (id === 'mozz') {
+      if (baked) { disc(cx, cy, r0 - 8, '#f8e8b0'); for (const [x, y] of spots(3)) disc(cx + x * sc, cy + y * sc, Math.round(4 * sc), '#fff8e8'); for (const [x, y] of spots(1)) R(cx + x * sc, cy + y * sc, 2, 2, '#e8b860'); }
+      else for (const [x, y] of [[0, 0], [-14, -8], [13, -10], [-11, 13], [14, 11], [0, -18], [1, 18]]) { disc(cx + x * sc, cy + y * sc, Math.round(5 * sc), '#fff8e8'); R(cx + x * sc - 2, cy + y * sc - 2, 2, 1, '#fff'); }
+      continue;
+    }
+    if (['dough', 'roll', 'sauce', 'oven'].includes(id)) continue;
+    k++;
+    for (const [sx, sy] of spots(k * 2 + 1)) {
+      const x = cx + sx * sc, y = cy + sy * sc;
+      if (id === 'salami') { disc(x, y, 3, '#b83a3a'); R(x - 1, y - 1, 1, 1, '#f0b0a0'); R(x + 1, y + 1, 1, 1, '#f0b0a0'); }
+      else if (id === 'mush') { R(x - 3, y - 2, 6, 3, '#d8c8b0'); R(x - 1, y + 1, 2, 2, '#f4ecdc'); }
+      else if (id === 'ham') { R(x - 2, y - 2, 5, 5, '#f08aa0'); R(x - 2, y - 2, 5, 1, '#f8c8d0'); }
+      else if (id === 'pine') { R(x - 2, y - 2, 5, 5, '#f0c830'); R(x, y, 1, 1, '#b88a10'); }
+      else if (id === 'olive') { disc(x, y, 2, '#2a2a3a'); R(x, y, 1, 1, '#b83a2a'); }
+      else if (id === 'pepper') { R(x - 3, y - 1, 7, 2, '#3fae4a'); R(x - 3, y - 1, 1, 4, '#3fae4a'); }
+    }
+  }
+}
+function drawBurger(cx, cy, D, skipPatty) {   // from the side: a stack, in the order you put it together
+  let y = cy + 26, buns = 0;
+  const lay = (w, h, c, c2) => { y -= h; R(cx - w / 2, y, w, h, c); if (c2) R(cx - w / 2, y, w, 1, c2); };
+  const grilled = D.done.includes('grill');
+  for (const id of D.done) {
+    if (id === 'bun') {
+      if (!buns++) { lay(50, 7, '#c8883a', '#e0a858'); R(cx - 23, y + 6, 46, 1, '#a86a2a'); }
+      else { y -= 1; lay(50, 6, '#d89a48'); lay(46, 4, '#d89a48'); lay(38, 3, '#e0a858'); for (const [sx, sy] of [[-14, 3], [-5, 1], [6, 2], [15, 5], [-9, 6], [10, 7]]) R(cx + sx, y + sy, 2, 1, '#fff0c0'); }
+    } else if (id === 'patty') { if (!skipPatty) { lay(52, 7, grilled ? '#5a2e14' : '#d86a6a', grilled ? '#7a4a2a' : '#f09a9a'); if (grilled) for (let i = -20; i < 22; i += 8) R(cx + i, y + 2, 4, 1, '#2a1408'); } }
+    else if (id === 'cheese') { lay(54, 3, '#ffc830', '#ffe680'); R(cx - 25, y + 3, 3, 3, '#ffc830'); R(cx + 14, y + 3, 4, 4, '#ffc830'); }
+    else if (id === 'lettuce') { lay(56, 3, '#5ad43f'); for (let i = -28; i < 28; i += 6) R(cx + i, y + 3, 3, 2, '#3a9a2a'); }
+    else if (id === 'tomato') { lay(48, 4, '#e8302a', '#ff8a7a'); }
+    else if (id === 'onion') { lay(46, 3, '#f0e0f8'); for (let i = -22; i < 22; i += 6) R(cx + i, y, 3, 3, '#b07ac8'); }
+    else if (id === 'bacon') { lay(54, 3, '#b8322a'); for (let i = -27; i < 26; i += 8) R(cx + i, y + 1, 4, 1, '#f0c0b0'); }
+    else if (id === 'pickle') { lay(40, 3, '#4a9a3a'); for (let i = -18; i < 18; i += 10) R(cx + i, y + 1, 5, 1, '#9ad47a'); }
+    else if (id === 'ketchup') { lay(44, 2, '#d8201a'); R(cx - 20, y + 2, 2, 3, '#d8201a'); R(cx + 12, y + 2, 2, 2, '#d8201a'); }
+    else if (id === 'egg') { lay(50, 3, '#ffffff'); R(cx - 6, y - 2, 12, 3, '#ffb820'); R(cx - 4, y - 3, 8, 1, '#ffb820'); }
+  }
+}
+function drawMain(id, cx, cy, cooked) {       // the big thing on a luxury plate
+  if (id === 'steak') {
+    const c = cooked ? '#7a3420' : '#d85a5a';
+    R(cx - 16, cy - 8, 30, 17, c); R(cx - 13, cy - 11, 24, 23, c); R(cx + 12, cy - 6, 4, 12, '#f0d8c0');
+    if (cooked) for (let i = -6; i <= 6; i += 6) R(cx - 11, cy + i, 20, 2, '#3a1408'); else R(cx - 9, cy - 6, 8, 2, '#f09a9a');
+  } else if (id === 'lobster') {
+    const c = cooked ? '#e8402a' : '#5a7a9a', c2 = cooked ? '#c82a1a' : '#3a5a7a';
+    R(cx - 5, cy - 8, 10, 20, c); for (let i = -4; i < 12; i += 5) R(cx - 5, cy + i, 10, 1, c2);
+    R(cx - 15, cy - 16, 7, 9, c); R(cx + 8, cy - 16, 7, 9, c); R(cx - 12, cy - 8, 8, 2, c); R(cx + 4, cy - 8, 8, 2, c);
+    R(cx - 7, cy + 12, 14, 4, c2); R(cx - 3, cy - 11, 2, 3, '#111'); R(cx + 1, cy - 11, 2, 3, '#111');
+  } else if (id === 'pasta') {
+    const c = cooked ? '#f0d060' : '#f4e8b0', c2 = cooked ? '#c8a030' : '#d0c080';
+    disc(cx, cy, 15, c); for (let i = -10; i <= 10; i += 5) { R(cx - 12, cy + i, 24, 1, c2); R(cx + i, cy - 12, 1, 24, c2); } disc(cx, cy, 4, c);
+  } else if (id === 'cake') {
+    const c = cooked ? '#6a3a22' : '#e8d0a0', c2 = cooked ? '#4a2414' : '#d0b888';
+    disc(cx, cy, 15, c2); disc(cx, cy - 1, 13, c); if (cooked) { R(cx - 8, cy - 5, 6, 1, '#8a5438'); R(cx + 2, cy + 4, 6, 1, '#8a5438'); }
+  }
+}
+function drawPlate(cx, cy, D, skipMain) {     // from above
+  const done = D.done, has = id => done.includes(id);
+  if (!has('plate')) return;
+  disc(cx, cy, 34, '#b8b8c8'); disc(cx, cy, 33, '#f4f4f8'); disc(cx, cy, 26, '#dcdce8'); disc(cx, cy, 25, '#f8f8fc');
+  const main = done.find(id => ['steak', 'lobster', 'pasta', 'cake'].includes(id)), mx = cx - 5, my = cy;
+  if (main && !skipMain) drawMain(main, mx, my, has('stove'));
+  for (const id of done) {
+    if (id === 'potato') for (const [x, y] of [[20, -10], [24, 0], [19, 9]]) { disc(cx + x, cy + y, 4, '#e0b060'); R(cx + x - 2, cy + y - 2, 2, 1, '#f8d890'); }
+    else if (id === 'aspar') for (let i = 0; i < 3; i++) { R(cx - 22 + i * 4, cy + 14 + i * 2, 18, 2, '#5ab84a'); R(cx - 26 + i * 4, cy + 14 + i * 2, 4, 2, '#2f7a2a'); }
+    else if (id === 'lemon') { disc(cx + 18, cy - 17, 6, '#ffe23a'); disc(cx + 18, cy - 17, 4, '#fff8b0'); R(cx + 14, cy - 17, 9, 1, '#ffe23a'); R(cx + 18, cy - 21, 1, 9, '#ffe23a'); }
+    else if (id === 'butter') { R(mx - 4, my - 3, 8, 6, '#ffe680'); R(mx - 4, my + 2, 8, 1, '#d8b840'); R(mx - 6, my + 3, 12, 2, 'rgba(255,230,128,0.6)'); }
+    else if (id === 'cream') { R(mx - 8, my + 2, 14, 4, '#fffaf0'); R(mx - 6, my - 1, 10, 3, '#fffaf0'); R(mx - 4, my - 4, 6, 3, '#f0e8d8'); R(mx - 2, my - 6, 3, 2, '#fffaf0'); }
+    else if (id === 'truffle') for (const [x, y] of [[-10, -7], [5, -9], [9, 6], [-7, 8], [0, 0]]) { R(mx + x, my + y, 4, 2, '#2a2018'); R(mx + x + 1, my + y, 1, 1, '#6a5a48'); }
+    else if (id === 'parm') for (const [x, y] of [[-3, -10], [10, -3], [-11, 2], [3, 9], [-6, -3], [6, 3]]) R(mx + x, my + y, 3, 2, '#fff0b8');
+    else if (id === 'choco') { R(mx - 11, my - 6, 22, 2, '#3a1c0c'); R(mx - 12, my, 24, 2, '#3a1c0c'); R(mx - 10, my + 6, 20, 2, '#3a1c0c'); R(mx + 9, my + 8, 2, 4, '#3a1c0c'); }
+    else if (id === 'berry') for (const [x, y] of [[-6, -9], [7, -4], [-2, 9]]) { disc(mx + x, my + y, 3, '#e8203a'); R(mx + x - 1, my + y - 4, 3, 1, '#3fae4a'); }
+    else if (id === 'gold') for (const [x, y] of [[-12, -12], [10, -11], [13, 8], [-10, 11], [1, -2]]) { R(mx + x, my + y - 2, 1, 5, '#ffd23f'); R(mx + x - 2, my + y, 5, 1, '#ffd23f'); }
+  }
+}
+function drawDish(restId, cx, cy, D, cooking) {
+  if (restId === 'pizza') { if (!cooking) drawPizza(cx, cy, D); }
+  else if (restId === 'burger') drawBurger(cx, cy, D, cooking);
+  else drawPlate(cx, cy, D, cooking);
+}
+
+/* --- 5. DRAWING THE KITCHEN ---------------------------------------------------------- */
+const tableX = () => 126, tableW = () => S.W - 130;
+function drawRoom(rest, t) {                  // the wall, the counter and the oven / grill / stove
+  const W = S.W, x0 = tableX(), w = tableW(), id = rest.id;
+  if (id === 'pizza') {
+    R(0, 0, W, 92, '#7a3a2a');
+    for (let y = 20; y < 92; y += 8) for (let x = -((y / 8) % 2) * 10; x < W; x += 20) { R(x, y, 19, 7, '#8a4632'); R(x, y, 19, 1, '#9a5640'); }
+    for (let x = 0; x < W; x += 16) R(x, 84, 8, 8, '#f4f4f4');
+    for (let x = 8; x < W; x += 16) R(x, 84, 8, 8, '#d8301e');
+  } else if (id === 'burger') {
+    R(0, 0, W, 92, '#2a9a9a');
+    for (let x = 0; x < W; x += 12) R(x, 20, 6, 64, '#33a8a8');
+    for (let x = 0; x < W; x += 12) { R(x, 84, 6, 8, '#111'); R(x + 6, 84, 6, 8, '#f4f4f4'); }
+    R(x0 + w / 2 - 34, 28, 68, 16, '#111'); R(x0 + w / 2 - 33, 29, 66, 14, Math.floor(t * 2) % 2 ? '#e8302a' : '#ff5a4a'); T('BURGERS', x0 + w / 2, 33, '#fff0c0', 1, 'center');
+  } else {
+    R(0, 0, W, 92, '#2a1a3a');
+    for (let x = 6; x < W; x += 22) { R(x, 20, 1, 72, '#3a264e'); R(x + 9, 30, 3, 3, '#3a264e'); R(x + 9, 54, 3, 3, '#3a264e'); R(x + 9, 76, 3, 3, '#3a264e'); }
+    R(0, 86, W, 6, '#ffd23f'); R(0, 88, W, 1, '#b8901a');
+    const lx = x0 + w / 2;                    // a chandelier
+    R(lx, 20, 1, 8, '#ffd23f'); R(lx - 14, 28, 29, 2, '#ffd23f'); for (let i = -14; i <= 14; i += 7) { R(lx + i, 30, 1, 4, '#ffd23f'); R(lx + i - 1, 34, 3, 3, Math.sin(t * 6 + i) > -0.5 ? '#fff8c0' : '#ffe680'); }
+  }
+  // the counter (the table where the magic happens)
+  const top = id === 'lux' ? '#3a3a4a' : '#b8804a', line = id === 'lux' ? '#4a4a5c' : '#a06a3a', edge = id === 'lux' ? '#22222e' : '#7a4a22';
+  R(0, 92, W, 84, top); for (let y = 104; y < 172; y += 14) R(0, y, W, 1, line);
+  if (id !== 'lux') for (let x = 30; x < W; x += 90) for (let y = 92; y < 172; y += 28) R(x + (y % 3) * 14, y, 1, 14, line);
+  R(0, 92, W, 2, id === 'lux' ? '#5a5a70' : '#d89a5a'); R(0, 172, W, 4, edge);
+  // the cutting board / the tray under the meal
+  const cx = dishX(), cy = 132;
+  if (id === 'pizza') { disc(cx, cy, 37, '#8a5a2a'); disc(cx, cy, 36, '#d8a868'); disc(cx, cy, 33, '#c89858'); R(cx + 34, cy - 4, 14, 8, '#d8a868'); R(cx + 34, cy + 4, 14, 1, '#8a5a2a'); }
+  else if (id === 'burger') { R(cx - 36, cy + 22, 72, 10, '#8a2a2a'); R(cx - 38, cy + 24, 76, 6, '#c83a3a'); R(cx - 36, cy + 24, 72, 1, '#e86a6a'); }
+  else { R(cx - 44, cy - 38, 88, 76, '#e8e0f0'); R(cx - 42, cy - 36, 84, 72, '#f8f4ff'); R(cx - 42, cy - 36, 84, 1, '#fff'); }
+}
+const dishX = () => Math.round(tableX() + tableW() / 2 - 24);
+function drawStation(rest, cooking, t) {      // on the right of the counter
+  const x = S.W - 60, id = rest.id, hot = !!cooking;
+  if (id === 'pizza') {
+    R(x - 2, 44, 58, 52, '#3a2018'); R(x, 46, 54, 50, '#a8502a');
+    for (let y = 46; y < 96; y += 6) for (let bx = x - ((y / 6) % 2) * 5; bx < x + 54; bx += 10) R(Math.max(x, bx), y, 1, 6, '#8a3a1c');
+    R(x + 4, 42, 46, 4, '#c8703a'); R(x + 18, 30, 12, 12, '#a8502a'); R(x + 16, 28, 16, 3, '#3a2018');
+    R(x + 8, 62, 38, 34, '#1a1010'); R(x + 12, 58, 30, 4, '#1a1010');
+    const f = hot ? 10 : 5;
+    for (let i = 0; i < 6; i++) { const h = f + Math.sin(t * 9 + i * 2) * 3; R(x + 10 + i * 6, 96 - h, 5, h, '#ff6a2a'); R(x + 11 + i * 6, 96 - h * 0.6, 3, h * 0.6, '#ffd23f'); }
+    if (hot) drawPizza(x + 27, 78, G.D, 0.4);
+  } else if (id === 'burger') {
+    R(x - 2, 62, 58, 34, '#22222e'); R(x, 64, 54, 32, '#4a4a58'); R(x, 64, 54, 2, '#7a7a8a');
+    R(x + 2, 68, 50, 12, '#1a1010'); for (let i = 0; i < 9; i++) R(x + 4 + i * 6, 68, 2, 12, hot ? '#ff6a2a' : '#6a6a78');
+    R(x + 8, 86, 6, 4, hot ? '#ff3a2a' : '#888'); R(x + 20, 86, 6, 4, '#888'); R(x + 40, 86, 6, 4, '#888');
+    if (hot) {
+      const k = clamp(cooking.t / cooking.wait, 0, 1), late = cooking.t > cooking.wait + cooking.green;
+      R(x + 10, 69, 34, 9, late ? '#1a0c04' : k < 1 ? `rgb(${216 - k * 126},${106 - k * 60},${106 - k * 86})` : '#5a2e14');
+      for (let i = 0; i < 4; i++) { const yy = 62 - ((t * 20 + i * 9) % 26); R(x + 12 + i * 9 + Math.sin(t * 3 + i) * 2, yy, 2, 2, late ? '#333' : 'rgba(255,255,255,0.5)'); }
+    }
+  } else {
+    R(x - 2, 62, 58, 34, '#111118'); R(x, 64, 54, 32, '#2a2a36'); R(x, 64, 54, 2, '#ffd23f');
+    disc(x + 27, 78, 12, '#1a1a22'); if (hot) { disc(x + 27, 78, 11, '#ff6a2a'); disc(x + 27, 78, 9, '#1a1a22'); }
+    if (hot) {
+      disc(x + 27, 76, 13, '#3a3a46'); disc(x + 27, 76, 11, '#5a5a68'); R(x + 38, 74, 16, 4, '#3a3a46');
+      const main = G.D.done.find(q => ['steak', 'lobster', 'pasta', 'cake'].includes(q)), late = cooking.t > cooking.wait + cooking.green;
+      ctx.save(); ctx.translate(x + 27, 76); ctx.scale(0.55, 0.55); drawMain(main, 0, 0, cooking.t > cooking.wait * 0.8); ctx.restore();
+      for (let i = 0; i < 4; i++) { const yy = 60 - ((t * 20 + i * 9) % 26); R(x + 16 + i * 7 + Math.sin(t * 3 + i) * 2, yy, 2, 2, late ? '#333' : 'rgba(255,255,255,0.5)'); }
+    }
+  }
+}
+function drawCustomer(O, x, t, mood) {        // standing behind the counter
+  const bob = mood === 'happy' ? Math.round(Math.abs(Math.sin(t * 10)) * 3) : 0, y = 48 - bob;
+  R(x - 11, y + 22, 22, 40, '#111'); R(x - 10, y + 23, 20, 40, O.shirt); R(x - 10, y + 23, 20, 2, 'rgba(255,255,255,0.25)');
+  R(x - 14, y + 26, 4, 12, O.shirt); R(x + 10, y + 26, 4, 12, O.shirt);
+  PX.drawAvatar(ctx, O.who, x - 12, y, 2, null);
+  if (mood === 'angry') { R(x - 7, y - 6, 3, 3, '#ff3a2a'); R(x + 5, y - 7, 3, 3, '#ff3a2a'); R(x - 1, y - 9, 3, 3, '#ff3a2a'); }
+}
+function bubble(text, x, y, color = '#111') {
+  const w = PX.textWidth(text, 1) + 10;
+  R(x - 1, y - 1, w + 2, 15, '#111'); R(x, y, w, 13, '#fff'); R(x + 4, y + 13, 5, 3, '#111'); R(x + 5, y + 13, 3, 2, '#fff');
+  T(text, x + 5, y + 4, color);
+}
+function drawTicket(t) {
+  const O = G.O, x = 4, y = 22, w = 118, h = 150;
+  const slide = G.phase === 'enter' ? Math.round((1 - clamp(G.phaseT / 0.5, 0, 1)) * -130) : 0;
+  ctx.save(); ctx.translate(slide, 0);
+  R(x + 2, y + 2, w, h, 'rgba(0,0,0,0.4)'); R(x - 1, y - 1, w + 2, h + 2, '#111'); R(x, y, w, h, '#fff8e0');
+  R(x, y, w, 12, REST[G.rest].color); T('ORDER ' + G.n + ' OF ' + G.total, x + 4, y + 4, '#111'); T('$' + O.price, x + w - 4, y + 4, '#111', 1, 'right');
+  // the meal's name, in up to 2 lines
+  const words = O.dish.name.split(' '), lines = [''];
+  for (const wd of words) { const L = lines.length - 1, s = lines[L] ? lines[L] + ' ' + wd : wd; if (PX.textWidth(s, 1) > w - 8 && lines[L]) lines.push(wd); else lines[L] = s; }
+  lines.forEach((s, i) => T(s, x + 4, y + 16 + i * 8, '#a8301e'));
+  R(x + 4, y + 33, w - 8, 1, '#c8b890');
+  // the steps
+  let ly = y + 38;
+  O.dish.groups.forEach((g, gi) => g.forEach(id => {
+    const done = gi < G.D.gi || (gi === G.D.gi && G.D.got.includes(id)), now = gi === G.D.gi && !done;
+    const blink = now && Math.floor(t * 3) % 2 === 0;
+    R(x + 4, ly - 1, 7, 7, '#111'); R(x + 5, ly, 5, 5, done ? '#3fae4a' : now ? (blink ? '#ffd23f' : '#fff') : '#fff');
+    if (done) { R(x + 6, ly + 2, 1, 2, '#fff'); R(x + 7, ly + 3, 1, 1, '#fff'); R(x + 8, ly + 1, 1, 2, '#fff'); }
+    let s = ITEMS[id].s || ITEMS[id].n;
+    if (id === 'bun') s = gi === 0 ? 'BUN (BOTTOM)' : 'BUN (TOP)';
+    if (id === 'roll' && now && G.D.rolls) s += ' ' + G.D.rolls + '/' + ROLLS;
+    T(s, x + 14, ly, done ? '#8a8270' : now ? '#111' : '#6a6250');
+    if (ITEMS[id].tool && !done) T('*', x + w - 8, ly, '#a8301e');
+    ly += 9;
+  }));
+  // the clock: 3 minutes
+  const k = O.time / MEAL_TIME, ty = y + h - 24, col = k > 0.5 ? '#3fae4a' : k > 0.2 ? '#e0a020' : '#e01e1e';
+  R(x + 4, ty - 2, w - 8, 1, '#c8b890');
+  const sec = Math.ceil(O.time), str = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  T('TIME', x + 4, ty + 3, '#6a6250'); T(str, x + w - 4, ty + 1, k <= 0.2 && Math.floor(t * 4) % 2 ? '#fff' : col, 2, 'right', k <= 0.2 ? '#e01e1e' : null);
+  R(x + 4, ty + 13, w - 8, 7, '#111'); R(x + 5, ty + 14, Math.round((w - 10) * k), 5, col);
+  ctx.restore();
+}
+function drawCookMeter(t) {
+  const c = G.cook, x = tableX() + 14, w = tableW() - 90, y = 110, total = c.wait + c.green + COOK_BURN, px = v => Math.round(v / total * w);
+  R(x - 3, y - 14, w + 6, 40, 'rgba(13,11,19,0.8)');
+  const st = c.t < c.wait ? REST[G.rest].verb + '...' : c.t < c.wait + c.green ? 'TAKE IT OUT NOW!' : 'IT IS BURNING!';
+  T(st, x + w / 2, y - 10, c.t < c.wait ? '#fff' : c.t < c.wait + c.green ? '#9be36b' : '#ff6a5a', 1, 'center');
+  R(x - 1, y - 1, w + 2, 12, '#111');
+  R(x, y, px(c.wait), 10, '#5a6a9a'); R(x + px(c.wait), y, px(c.green), 10, '#3fae4a');
+  R(x + px(c.wait + c.green * 0.3), y, px(c.green * 0.4), 10, '#ffd23f'); R(x + px(c.wait + c.green), y, w - px(c.wait + c.green), 10, '#c8301e');
+  T('RAW', x + 3, y + 3, '#c8d0f0'); T('BURNT', x + w - 3, y + 3, '#ffc0b0', 1, 'right');
+  const p = x + px(Math.min(c.t, total));
+  R(p - 1, y - 3, 3, 16, '#111'); R(p, y - 2, 1, 14, '#fff');
+  T('GREEN = GOOD   GOLD = PERFECT', x + w / 2, y + 16, '#9a92b8', 1, 'center');
+}
+let hintId = null;                            // the tutorial points at this button
+function trayButton(id, x, y, w, h, t) {
+  const it = ITEMS[id], next = G.phase === 'cook' && !G.cook && needs().includes(id);
+  const hot = UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h;
+  const hit = UI.button('i_' + id, x, y, w, h, '', { accent: it.tool ? '#ff8a2a' : '#8a7ad8', on: it.tool });
+  const off = hot && UI.pressed ? 1 : 0;
+  icon(id, x + w / 2, y + 10 + off);
+  const label = PX.textWidth(it.n, 1) <= w - 2 ? it.n : it.n.slice(0, Math.floor((w - 2) / 4));
+  T(label, x + w / 2, y + h - 8 + off, hot ? '#111' : it.tool ? '#ffd0a0' : '#efe9ff', 1, 'center');
+  if (hintId === id && next && Math.floor(t * 4) % 2) { ctx.strokeStyle = '#ffe23a'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h); }
+  if (hit) addItem(id);
+}
+function highlight(x, y, w, h, t) { if (Math.floor(t * 4) % 2) { ctx.strokeStyle = '#ffe23a'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h); } }
+function drawPlay(t) {
+  const W = S.W, rest = REST[G.rest], O = G.O, x0 = tableX(), w = tableW();
+  const sh = G.shake > 0 ? Math.round(Math.sin(t * 60) * 2) : 0;
+  ctx.save(); ctx.translate(sh, 0);
+  drawRoom(rest, t);
+  drawStation(rest, G.cook, t);
+  if (O) {
+    const cxm = x0 + 26;
+    let cxp = cxm, mood = '';
+    if (G.phase === 'enter') cxp = cxm - (1 - clamp(G.phaseT / 0.6, 0, 1)) * 80;
+    if (G.phase === 'served') mood = 'happy';
+    if (G.phase === 'left') { mood = 'angry'; cxp = cxm - clamp((G.phaseT - 0.7) / 0.8, 0, 1) * 120; }
+    ctx.save(); ctx.beginPath(); ctx.rect(x0 - 4, 0, W, 92); ctx.clip();
+    drawCustomer(O, cxp, t, mood);
+    ctx.restore();
+    if (G.phase === 'cook' && G.phaseT < 3) bubble(O.dish.name + ', PLEASE!', cxm + 18, 26);
+    else if (G.phase === 'cook' && O.time < 30) bubble('HURRY UP!', cxm + 18, 26, '#e01e1e');
+    else if (G.phase === 'served' || (G.phase === 'left' && G.phaseT < 0.9)) bubble(O.say, cxm + 18, 26, G.phase === 'left' ? '#e01e1e' : '#2a8a2a');
+    if (G.phase !== 'left' || G.phaseT < 0.5) drawDish(rest.id, dishX(), 132, G.D, !!G.cook);
+  }
+  ctx.restore();
+  // the top bar
+  R(0, 0, W, 20, '#0d0b13'); R(0, 19, W, 1, rest.color);
+  T('$' + save.money, 6, 5, '#ffd23f', 2, 'left', '#000');
+  T(rest.name, W / 2, 7, '#efe9ff', 1, 'center');
+  for (let i = 0; i < HEARTS; i++) T('♥', W - 74 + i * 9, 7, i < G.hearts ? '#ff4a6a' : '#3a2f5c');
+  if (UI.button('pause', W - 26, 2, 22, 16, 'II', { size: 1 })) setPause(true);
+  if (O) drawTicket(t);
+  if (G.cook) drawCookMeter(t);
+  // the tray
+  R(0, 176, W, 64, '#16121f'); R(0, 176, W, 1, '#3a2f5c');
+  const tray = rest.tray, cols = Math.ceil(tray.length / 2), tw = W - 84, bw = Math.floor(tw / cols);
+  tray.forEach((id, i) => trayButton(id, 4 + (i % cols) * bw, 179 + Math.floor(i / cols) * 30, bw - 2, 28, t));
+  const ax = W - 76;
+  if (G.cook) {
+    const ok = G.cook.t >= G.cook.wait;
+    if (UI.button('takeout', ax, 179, 72, 34, 'TAKE OUT', { size: 1, accent: ok ? '#5ad43f' : '#7ac8ff', on: ok })) takeOut();
+    if (hintId === 'takeout' && ok) highlight(ax, 179, 72, 34, t);
+  } else {
+    const ready = O && G.phase === 'cook' && dishReady();
+    if (UI.button('serve', ax, 179, 72, 34, 'SERVE', { accent: '#5ad43f', disabled: !ready, on: true })) serve();
+    if (ready && (hintId === 'serve' || Math.floor(t * 2) % 2)) highlight(ax, 179, 72, 34, t * (hintId === 'serve' ? 1 : 0.5));
+  }
+  if (UI.button('trash', ax, 217, 72, 20, 'BIN: START OVER', { size: 1, accent: '#e0483a' })) trash();
+  for (const p of G.pops) {
+    const a = p.t > 1 ? 1 - (p.t - 1) / 0.4 : 1; ctx.globalAlpha = clamp(a, 0, 1);
+    T(p.text, p.x, p.y - p.t * 16, p.color, p.big ? 3 : 2, 'center', '#000'); ctx.globalAlpha = 1;
+  }
+}
+
+/* --- the tutorial ----------------------------------------------------------------- */
+const TUT_PAGES = [
+  ['WELCOME, CHEF!', 'THIS IS YOUR OWN PIZZA RESTAURANT.', 'HUNGRY PEOPLE WALK IN AND ORDER A MEAL.', 'YOU COOK IT, THEY PAY YOU.'],
+  ['THE ORDER', 'THE TICKET ON THE LEFT SHOWS THE MEAL', 'AND EVERY STEP TO MAKE IT.', 'YOU COOK ON THE TABLE: TAP THE THINGS BELOW.'],
+  ['3 MINUTES!', 'YOU HAVE 3 MINUTES TO COOK ONE MEAL.', 'THE FASTER YOU ARE, THE BIGGER THE TIP.', 'EARN MONEY AND OPEN NEW RESTAURANTS!'],
+];
+const REST_TIPS = [null,
+  ['BURGERS!', 'A BURGER IS A STACK: PUT THINGS ON', 'IN THE SAME ORDER AS ON THE TICKET.', 'GRILL THE PATTY, AND END WITH THE TOP BUN.'],
+  ['FINE DINING!', 'FIRST THE PLATE, THEN THE MAIN THING.', 'COOK IT, THEN ADD EVERYTHING ELSE', 'ON THE TICKET, IN ANY ORDER.']];
+function tutHint() {                          // what to do next, and which button to point at
+  if (G.phase !== 'cook') return null;
+  if (G.cook) return ['takeout', G.cook.t < G.cook.wait ? 'IT IS BAKING. WAIT FOR THE GREEN ZONE...' : 'NOW! TAP TAKE OUT BEFORE IT BURNS!'];
+  if (dishReady()) return ['serve', 'IT IS DONE! TAP SERVE TO GET PAID.'];
+  const id = needs()[0];
+  return [id, { dough: 'EVERY PIZZA STARTS WITH NEW DOUGH: TAP DOUGH.', roll: 'ROLL IT FLAT: TAP THE ROLL PIN ' + ROLLS + ' TIMES.',
+                sauce: 'NOW THE TOMATO SAUCE.', mozz: 'ADD THE MOZZARELLA.', oven: 'PUT IT IN THE OVEN: TAP OVEN.' }[id] || 'ADD ' + ITEMS[id].n + '.'];
+}
+function infoPanel(lines, btn, t) {
+  const W = S.W, { y } = panel(320, 120, 40, REST[G.rest].color);
+  T(lines[0], W / 2, y + 12, '#ffd23f', 3, 'center', '#000');
+  lines.slice(1).forEach((s, i) => T(s, W / 2, y + 42 + i * 12, '#efe9ff', 1, 'center'));
+  return UI.button('next', Math.round(W / 2 - 60), y + 88, 120, 24, btn, { accent: '#5ad43f' });
+}
+function drawTutorial(t) {
+  hintId = null;
+  if (G.tutPage >= 0) {
+    if (infoPanel(TUT_PAGES[G.tutPage], G.tutPage < TUT_PAGES.length - 1 ? 'NEXT' : 'LET\'S COOK!', t)) { sfx('click'); if (++G.tutPage >= TUT_PAGES.length) { G.tutPage = -1; nextCustomer(); } }
+    if (G.tutPage >= 0) T((G.tutPage + 1) + ' / ' + TUT_PAGES.length, S.W / 2, 170, '#9a92b8', 1, 'center');
+    return;
+  }
+  const hint = tutHint();
+  if (!hint) return;
+  hintId = hint[0];
+  const x = tableX() + 2, w = tableW() - 4;
+  R(x, 156, w, 16, '#111'); R(x + 1, 157, w - 2, 14, '#ffe23a'); T(hint[1], x + w / 2, 162, '#111', 1, 'center');
+}
+
+/* --- 6. SCREENS --------------------------------------------------------------- */
+function panel(w, h, y, color = '#ffb020') {
+  const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  R(x - 2, y - 2, w + 4, h + 4, '#111'); R(x, y, w, h, '#1d1830'); R(x, y, w, 2, color);
+  return { x, y };
+}
+function chefHat(x, y, gold) {
+  const c = gold ? '#ffd23f' : '#fff', c2 = gold ? '#c89a18' : '#c8c8d8';
+  disc(x - 7, y - 4, 6, c); disc(x + 7, y - 4, 6, c); disc(x, y - 8, 7, c); R(x - 9, y - 2, 18, 9, c); R(x - 9, y + 5, 18, 2, c2);
+}
+const DEMO = { done: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'olive', 'oven'], rolls: ROLLS };
+function header(title) {
+  const W = S.W;
+  R(0, 0, W, H, '#16121f'); for (let y = 0; y < H; y += 16) for (let x = (y / 16 % 2) * 16; x < W; x += 32) R(x, y, 16, 16, '#1a1526');
+  R(0, 0, W, 22, '#0d0b13'); R(0, 21, W, 1, '#ffb020');
+  T(title, W / 2, 6, '#fff', 2, 'center', '#000'); T('$' + save.money, W - 6, 6, '#ffd23f', 2, 'right', '#000');
+  return UI.button('back', 4, 2, 44, 17, '< BACK', { size: 1 }) || UI.back;
+}
+function drawTitle(t) {
+  const W = S.W, rest = REST[save.rest];
+  drawRoom(rest, t); drawStation(rest, null, t);
+  drawPizza(dishX(), 132, DEMO);
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 12, 2); chefHat(20, 8, save.hat); T(profile.name, 40, 20, '#fff', 2, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), W - 36, 8, '#ffd23f', 2, 'right', '#000');
+  if (UI.button('sfx', W - 30, 4, 24, 18, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('PIXEL', W / 2, 30, '#ffd23f', 3, 'center', '#000');
+  T('COOK', W / 2, 48, '#fff', 6, 'center', '#e8402a');
+  T('$' + save.money, W / 2, 86, '#ffd23f', 2, 'center', '#000');
+  const bw = 210, bx = Math.round(W / 2 - bw / 2), hw = (bw - 4) / 2;
+  if (UI.button('play', bx, 102, bw, 28, save.tut ? 'OPEN: ' + rest.name.split(' ')[0] : 'START COOKING', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(!save.tut); }
+  if (UI.button('rests', bx, 136, hw, 24, 'RESTAURANTS', { size: 1, accent: '#ffb020' })) { sfx('click'); state = 'rests'; }
+  if (UI.button('shop', bx + hw + 4, 136, hw, 24, 'UPGRADES', { size: 1, accent: '#7ac8ff' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('how', bx, 166, hw, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); newShift(true); }
+  if (UI.button('games', bx + hw + 4, 166, hw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('MEALS SERVED: ' + save.served + '   BEST SHIFT: $' + save.best, W / 2, 200, '#fff', 1, 'center', '#000');
+  T('3 MINUTES FOR ONE MEAL. BE FAST FOR A BIG TIP!', W / 2, 212, '#ffd23f', 1, 'center', '#000');
+  T('V' + VERSION, W - 4, H - 9, '#9a92b8', 1, 'right');
+}
+function drawRests(t) {
+  const W = S.W;
+  if (header('RESTAURANTS')) { state = 'title'; buyFlash = null; return; }
+  const cw = Math.floor((W - 16) / 3);
+  REST.forEach((r, i) => {
+    const x = 6 + i * (cw + 2), y = 30, h = 200, cur = save.rest === i, owned = save.owned[i];
+    R(x - 1, y - 1, cw + 2, h + 2, cur ? r.color : '#0b0912'); R(x, y, cw, h, '#251f3a'); R(x, y, cw, 3, r.color);
+    r.name.split(' ').forEach((s, k) => T(s, x + cw / 2, y + 10 + k * 12, '#fff', 2, 'center', '#000'));
+    icon(r.tray[0] === 'plate' ? 'steak' : r.id === 'burger' ? 'bun' : 'salami', x + cw / 2, y + 46);
+    T('MEALS $' + priceOf(r.dishes[0]) + ' - $' + priceOf(r.dishes[r.dishes.length - 1]), x + cw / 2, y + 60, '#ffd23f', 1, 'center');
+    r.dishes.forEach((d, k) => { const open = owned && k < dishCount(i); T(open ? d.name : owned ? '??? (PLAY TO OPEN)' : d.name, x + cw / 2, y + 74 + k * 9, open ? '#efe9ff' : '#6a6088', 1, 'center'); });
+    if (owned) T('SHIFTS DONE: ' + save.shifts[i], x + cw / 2, y + 134, '#9a92b8', 1, 'center');
+    else if (i > 0 && !save.owned[i - 1]) T('BUY THE ' + REST[i - 1].name.split(' ')[0] + ' ONE FIRST', x + cw / 2, y + 134, '#9a92b8', 1, 'center');
+    if (cur) { R(x + 8, y + h - 34, cw - 16, 24, '#3fae4a'); T('OPEN NOW', x + cw / 2, y + h - 27, '#fff', 2, 'center', '#000'); }
+    else if (owned) { if (UI.button('r' + i, x + 8, y + h - 34, cw - 16, 24, 'MOVE HERE', { size: 1, accent: r.color })) { save.rest = i; store(); sfx('click'); } }
+    else {
+      const can = save.money >= r.price && save.owned[i - 1];
+      if (UI.button('r' + i, x + 8, y + h - 34, cw - 16, 24, 'BUY $' + r.price, { size: cw > 140 ? 2 : 1, accent: '#ffd23f', disabled: !can })) {
+        save.money -= r.price; save.owned[i] = true; save.rest = i; PX.Wallet.add(3); store(); sfx('done'); buyFlash = { t: 0, text: r.name + ' IS YOURS!  ★ +3' };
+      }
+    }
+  });
+  drawFlash();
+}
+let buyFlash = null;
+function drawFlash() {
+  if (!buyFlash) return;
+  buyFlash.t += 1 / 60; if (buyFlash.t > 2.5) { buyFlash = null; return; }
+  const W = S.W, w = PX.textWidth(buyFlash.text, 2) + 20;
+  R(W / 2 - w / 2 - 2, 100, w + 4, 28, '#111'); R(W / 2 - w / 2, 102, w, 24, '#ffd23f'); T(buyFlash.text, W / 2, 109, '#111', 2, 'center');
+}
+function drawShop(t) {
+  const W = S.W;
+  if (header('UPGRADES')) { state = 'title'; buyFlash = null; return; }
+  const x = Math.round(W / 2 - 190), w = 380;
+  UPGRADES.forEach((u, i) => {
+    const y = 28 + i * 36, lv = save.up[u.id], max = lv >= u.cost.length;
+    R(x - 1, y - 1, w + 2, 34, '#0b0912'); R(x, y, w, 32, '#251f3a');
+    T(u.name, x + 8, y + 6, '#fff', 2, 'left', '#000'); T(u.text, x + 8, y + 21, '#9a92b8');
+    for (let k = 0; k < u.cost.length; k++) { R(x + 190 + k * 14, y + 8, 11, 8, '#111'); R(x + 191 + k * 14, y + 9, 9, 6, k < lv ? '#5ad43f' : '#3a2f5c'); }
+    if (max) T('MAX', x + w - 50, y + 12, '#5ad43f', 2, 'center', '#000');
+    else if (UI.button('u_' + u.id, x + w - 96, y + 5, 90, 22, '$' + u.cost[lv], { accent: '#ffd23f', disabled: save.money < u.cost[lv] })) { save.money -= u.cost[lv]; save.up[u.id]++; store(); sfx('cash'); }
+  });
+  const y = 28 + UPGRADES.length * 36;
+  R(x - 1, y - 1, w + 2, 34, '#0b0912'); R(x, y, w, 32, '#2f2610'); chefHat(x + 20, y + 20, true);
+  T('GOLDEN CHEF HAT', x + 40, y + 6, '#ffd23f', 2, 'left', '#000'); T('FOR THE RICHEST CHEF IN TOWN. ★ +10', x + 40, y + 21, '#c8b870');
+  if (save.hat) T('YOURS!', x + w - 50, y + 12, '#5ad43f', 2, 'center', '#000');
+  else if (UI.button('hat', x + w - 96, y + 5, 90, 22, '$' + HAT_PRICE, { size: 1, accent: '#ffd23f', disabled: save.money < HAT_PRICE })) { save.money -= HAT_PRICE; save.hat = true; PX.Wallet.add(10); store(); sfx('done'); buyFlash = { t: 0, text: 'YOU ARE THE BEST CHEF!  ★ +10' }; }
+  T('UPGRADES WORK IN ALL YOUR RESTAURANTS', W / 2, 222, '#9a92b8', 1, 'center');
+  drawFlash();
+}
+function drawPause() {
+  const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
+  T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (UI.button('quit', bx, y + 70, bw, 22, 'CLOSE FOR TODAY')) { paused = false; if (G.tut || !G.servedN) toTitle(); else endShift(); }
+}
+function drawOver(t) {
+  const W = S.W;
+  if (G.tut) {
+    if (infoPanel(['YOU ARE A CHEF NOW!', 'THAT WAS YOUR FIRST MEAL.', 'NOW THE CLOCK RUNS: 3 MINUTES FOR A MEAL.', 'WRONG THINGS AND BURNT FOOD MEAN A SMALLER TIP.'], 'OPEN UP!', t)) { sfx('click'); newShift(); }
+    return;
+  }
+  const { y } = panel(280, 178, undefined, REST[G.rest].color), all = G.servedN === G.total;
+  if (G.newBest) for (let i = 0; i < 24; i++) { const k = t + i; R((i * 47 + k * 30) % W, (k * (40 + i * 3)) % H, 3, 3, ['#ffd23f', '#ff6bd0', '#7af0ff', '#9be36b'][i % 4]); }
+  T(G.hearts <= 0 ? 'CLOSED EARLY!' : 'SHIFT DONE!', W / 2, y + 10, '#ffd23f', 3, 'center', '#000');
+  T('+$' + G.earned, W / 2, y + 36, '#fff', 4, 'center', '#000');
+  T('MEALS SERVED: ' + G.servedN + ' OF ' + G.total + '    TIPS: $' + G.tipsSum, W / 2, y + 66, '#efe9ff', 1, 'center');
+  T(G.mist ? 'MISTAKES: ' + G.mist : all ? 'NO MISTAKES: A PERFECT SHIFT!' : 'NO MISTAKES', W / 2, y + 78, G.mist ? '#ff8a7a' : '#9be36b', 1, 'center');
+  if (G.newBest) T('BEST SHIFT EVER!', W / 2, y + 90, '#9be36b', 1, 'center');
+  if (G.stars) T('★ +' + G.stars, W / 2, y + 102, '#ffd23f', 2, 'center', '#000');
+  if (G.newDish) { R(W / 2 - 126, y + 120, 252, 14, '#3fae4a'); T('NEW ON THE MENU: ' + G.newDish, W / 2, y + 124, '#fff', 1, 'center'); }
+  else { const nx = REST[G.rest + 1]; if (nx && !save.owned[G.rest + 1]) T(save.money >= nx.price ? 'YOU CAN BUY THE ' + nx.name + '!' : nx.name + ': $' + (nx.price - save.money) + ' TO GO', W / 2, y + 124, '#7ac8ff', 1, 'center'); }
+  if (UI.button('menu', Math.round(W / 2 - 124), y + 146, 120, 24, 'MENU') || UI.back) toTitle();
+  if (UI.button('again', Math.round(W / 2 + 4), y + 146, 120, 24, 'NEXT SHIFT', { accent: '#5ad43f' })) newShift();
+}
+function setPause(v) { if (state !== 'play') return; paused = v; }
+function toTitle() { G = null; state = 'title'; paused = false; hintId = null; }
+
+/* --- sound --- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.12, { vol: 0.1 });
+  else if (k === 'put') s.tone([330, 440], 0.08, { vol: 0.1, type: 'triangle' });
+  else if (k === 'roll') s.noise(0.12, { freq: 500, vol: 0.2 });
+  else if (k === 'sizzle') s.noise(0.6, { freq: 4000, vol: 0.08, filter: 'highpass' });
+  else if (k === 'wrong') s.tone([200, 130], 0.2, { vol: 0.12, type: 'sawtooth' });
+  else if (k === 'trash') s.noise(0.2, { freq: 300, vol: 0.25 });
+  else if (k === 'ready') { s.tone(784, 0.1, { vol: 0.1 }); s.tone(1047, 0.16, { vol: 0.1, delay: 0.1 }); }
+  else if (k === 'perfect') { s.tone(784, 0.08, { vol: 0.1 }); s.tone(988, 0.08, { vol: 0.1, delay: 0.08 }); s.tone(1319, 0.2, { vol: 0.1, delay: 0.16 }); }
+  else if (k === 'cash') { s.tone([988, 1319], 0.1, { vol: 0.1 }); s.tone([1319, 1976], 0.2, { vol: 0.1, delay: 0.1 }); }
+  else if (k === 'bell') { s.tone(1568, 0.25, { vol: 0.08, type: 'triangle' }); s.tone(1245, 0.3, { vol: 0.08, type: 'triangle', delay: 0.15 }); }
+  else if (k === 'angry') s.tone([300, 150, 100], 0.5, { vol: 0.14, type: 'sawtooth' });
+  else if (k === 'tick') s.tone(880, 0.06, { vol: 0.1 });
+  else if (k === 'done') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.18, { vol: 0.1, delay: i * 0.11 }));
+}
+
+/* --- 7. INPUT AND THE MAIN LOOP ---------------------------------------------------- */
+UI.onDown = () => PX.Sound.unlock();
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (state === 'play' && !paused && G.tutPage < 0 && G.tip === null && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); if (G.cook) takeOut(); else serve(); }
+  else if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play') setPause(!paused);
+  else if (e.code === 'Escape') UI.back = true;
+});
+window.addEventListener('blur', () => setPause(true));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'title') drawTitle(t);
+  else if (state === 'rests') drawRests(t);
+  else if (state === 'shop') drawShop(t);
+  else {
+    const overlay = paused || state === 'over' || G.tutPage >= 0 || G.tip !== null;
+    if (state === 'play' && !paused) step(dt);
+    if (overlay) { const mx = UI.mx, my = UI.my; UI.mx = UI.my = -99; drawPlay(t); UI.list = []; UI.mx = mx; UI.my = my; } else drawPlay(t);   // the kitchen is only a picture under a panel
+    if (paused) drawPause();
+    else if (state === 'over') drawOver(t);
+    else if (G.tip !== null) { if (infoPanel(REST_TIPS[G.tip], 'GOT IT!', t)) { save.tips[G.tip] = true; store(); G.tip = null; sfx('click'); } }
+    else if (G.tut) drawTutorial(t);
+  }
+  UI.end();
+  S.blit('#1a1030');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Cook: controller', ui: UI, menu: () => true,      // everything is a button: the stick picks one, A presses it
+  help: [['STICK|D-PAD', 'PICK A BUTTON'], ['A', 'PRESS IT'], ['B', 'BACK']],
+});
+</script>
+</body>
+</html>
