@@ -23,7 +23,8 @@
   .hidden { display: none !important; }
 
   /* --- typing the code ------------------------------------------------------------------ */
-  #join { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; box-sizing: border-box; overflow-y: auto; touch-action: auto; }
+  #join { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px; padding: 16px; box-sizing: border-box; overflow-y: auto; touch-action: auto; }
+  #join::before, #join::after { content: ''; margin: auto 0; }   /* in the middle when it fits; on a low screen it starts at the top, so the title is never cut off */
   #join h1 { margin: 0; font-size: 26px; color: #fff; text-shadow: 3px 3px 0 #e01e1e; letter-spacing: 0.05em; text-align: center; }
   #me { display: flex; align-items: center; gap: 10px; color: #fff; }
   #me img { width: 42px; height: 42px; image-rendering: pixelated; }
