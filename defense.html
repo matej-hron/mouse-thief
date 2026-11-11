@@ -77,11 +77,11 @@ const TOWERS = {
     lv: [{ slow: 0.3, dmg: 2, range: 40 }, { slow: 0.4, dmg: 4, range: 46 }, { slow: 0.5, dmg: 7, range: 52 }],
     spec: { a: { name: 'BLIZZARD', desc: 'FREEZES THEM SOLID NOW AND THEN', slow: 0.5, dmg: 10, range: 58, freeze: 1.2 },
             b: { name: 'BRITTLE', desc: 'SLOWED ENEMIES TAKE 30% MORE DAMAGE', slow: 0.55, dmg: 10, range: 56, vuln: 0.3 } } },
-  sniper: { name: 'SNIPER', color: '#3fae4a', cost: 120, up: [90, 135], specCost: 230, air: true, unlock: 1, pierce: true,
+  sniper: { name: 'SNIPER', color: '#3fae4a', cost: 150, up: [105, 150], specCost: 250, air: true, unlock: 1, pierce: true,
     desc: 'SLOW, STRONG, FAR. GOES THROUGH ARMOR.',
-    lv: [{ dmg: 38, rate: 0.42, range: 96 }, { dmg: 65, rate: 0.44, range: 108 }, { dmg: 105, rate: 0.46, range: 120 }],
-    spec: { a: { name: 'HUNTER', desc: 'GIANT DAMAGE, EVEN MORE TO BOSSES', dmg: 290, rate: 0.45, range: 130, boss: 1.5 },
-            b: { name: 'RADAR', desc: 'SEES THE WHOLE MAP, SHOOTS FASTER', dmg: 120, rate: 0.9, range: 999 } } },
+    lv: [{ dmg: 38, rate: 0.36, range: 96 }, { dmg: 65, rate: 0.38, range: 108 }, { dmg: 105, rate: 0.4, range: 120 }],
+    spec: { a: { name: 'HUNTER', desc: 'GIANT DAMAGE, EVEN MORE TO BOSSES', dmg: 290, rate: 0.4, range: 130, boss: 1.5 },
+            b: { name: 'RADAR', desc: 'SEES THE WHOLE MAP, SHOOTS FASTER', dmg: 120, rate: 0.8, range: 999 } } },
   venom: { name: 'VENOM', color: '#8af03f', cost: 80, up: [60, 95], specCost: 180, air: false, unlock: 2,
     desc: 'POISON KEEPS HURTING, RIGHT THROUGH ARMOR. GROUND ONLY.',
     lv: [{ dps: 9, dur: 4, dmg: 2, rate: 1.2, range: 48 }, { dps: 15, dur: 4, dmg: 3, rate: 1.3, range: 52 }, { dps: 24, dur: 5, dmg: 4, rate: 1.4, range: 56 }],
@@ -228,7 +228,7 @@ const MAPS = [
   { id: 'meadow', name: 'GREEN MEADOW', level: 'EASY', theme: 'meadow', waves: 20, hp: 1, gold: 1, seed: 11, block: 0.07,
     paths: [[[-1, 2], [5, 2], [5, 8], [11, 8], [11, 3], [17, 3], [17, 9], [24, 9]]],
     intro: { blob: 1, dash: 4, mite: 7, split: 14 } },
-  { id: 'dunes', name: 'DRY DUNES', level: 'EASY', theme: 'dunes', waves: 20, hp: 1.25, gold: 1, seed: 23, block: 0.1,
+  { id: 'dunes', name: 'DRY DUNES', level: 'EASY', theme: 'dunes', waves: 20, hp: 1.2, gold: 1, seed: 23, block: 0.1,
     paths: [[[-1, 9], [3, 9], [3, 2], [8, 2], [8, 6], [13, 6], [13, 10], [19, 10], [19, 2], [22, 2], [22, 6], [24, 6]]],
     intro: { blob: 1, dash: 2, shell: 5, mite: 8, wasp: 12, split: 16 } },
   { id: 'frost', name: 'FROZEN FORK', level: 'NORMAL', theme: 'frost', waves: 20, hp: 1.8, gold: 1, seed: 37, block: 0.1,
@@ -237,16 +237,16 @@ const MAPS = [
   { id: 'swamp', name: 'CROSSROAD SWAMP', level: 'NORMAL', theme: 'swamp', waves: 25, hp: 2, gold: 1, seed: 41, block: 0.12,
     paths: [[[-1, 2], [14, 2], [14, 8], [6, 8], [6, 5], [20, 5], [20, 10], [24, 10]]],
     intro: { blob: 1, dash: 2, mite: 3, shell: 5, ward: 7, wasp: 9, mender: 12, split: 15 } },
-  { id: 'lava', name: 'LAVA CAVE', level: 'HARD', theme: 'lava', waves: 25, hp: 2.5, gold: 1, seed: 53, block: 0.2,
+  { id: 'lava', name: 'LAVA CAVE', level: 'HARD', theme: 'lava', waves: 25, hp: 2.3, gold: 1, seed: 53, block: 0.2,
     paths: [[[-1, 6], [5, 6], [5, 2], [12, 2], [12, 9], [18, 9], [18, 5], [24, 5]]],
     intro: { blob: 1, dash: 1, mite: 2, shell: 3, wasp: 4, ward: 5, mender: 6, split: 7 } },
-  { id: 'crystal', name: 'CRYSTAL MINE', level: 'HARD', theme: 'crystal', waves: 30, hp: 3, gold: 1, seed: 67, block: 0.14,
+  { id: 'crystal', name: 'CRYSTAL MINE', level: 'HARD', theme: 'crystal', waves: 30, hp: 2.6, gold: 1, seed: 67, block: 0.14,
     paths: [[[-1, 6], [4, 6], [4, 2], [13, 2], [13, 6], [17, 6], [17, 3], [22, 3], [22, 9], [24, 9]], [[-1, 6], [4, 6], [4, 10], [13, 10], [13, 6], [17, 6], [17, 3], [22, 3], [22, 9], [24, 9]]],
     intro: { blob: 1, mite: 1, dash: 2, shell: 3, ward: 4, wasp: 5, split: 6, mender: 7 } },
-  { id: 'sky', name: 'CLOUD BRIDGES', level: 'EXPERT', theme: 'sky', waves: 30, hp: 2.7, speed: 1.1, gold: 1, seed: 71, block: 0.12,
+  { id: 'sky', name: 'CLOUD BRIDGES', level: 'EXPERT', theme: 'sky', waves: 30, hp: 2.5, speed: 1.1, gold: 1, seed: 71, block: 0.12,
     paths: [[[-1, 1], [10, 1], [10, 7], [15, 7], [15, 10], [24, 10]], [[-1, 10], [6, 10], [6, 4], [18, 4], [18, 1], [24, 1]]],
     intro: { blob: 1, dash: 1, wasp: 2, mite: 3, shell: 4, ward: 5, mender: 6, split: 7 } },
-  { id: 'core', name: 'THE CORE', level: 'EXPERT', theme: 'core', waves: 30, hp: 3.4, speed: 1.2, gold: 1, seed: 89, block: 0.1,
+  { id: 'core', name: 'THE CORE', level: 'EXPERT', theme: 'core', waves: 30, hp: 2.75, speed: 1.2, gold: 1, seed: 89, block: 0.1,
     paths: [[[-1, 1], [21, 1], [21, 6], [12, 6]], [[25, 10], [8, 10], [8, 3], [17, 3], [17, 6], [12, 6]]], airHp: 0.75,
     intro: { blob: 1, dash: 1, mite: 1, shell: 2, wasp: 3, ward: 4, split: 5, mender: 6 } },
 ];
@@ -363,7 +363,7 @@ function makeWave(mi, w, endless) {
   const boss = w % 10 === 0 || last;
   let hpB = HPB(w) * (1 + (D.hp - 1) * Math.min(1, (w + 1) / 9));   // every map starts gently and is at full strength from wave 8
   const goldB = GOLDB(w) * D.gold * (boss ? 1.5 : 1);
-  if (endless) hpB *= 1.1 * Math.pow(1.07, Math.max(0, w - 20));         // endless: after wave 20 it grows faster and faster
+  if (endless) hpB *= 1.2 * Math.pow(1.09, Math.max(0, w - 10));         // endless: after wave 10 it grows faster and faster
   const avail = Object.keys(D.intro).filter(k => D.intro[k] <= w), groups = [];
   const add = (type, share, at, many = 1) => {
     const E = ENEMIES[type], n = clamp(Math.round(E.n * (0.75 + Math.min(w, 40) * 0.045) * many), 1, E.max || 26);
@@ -743,7 +743,7 @@ function endBattle(won) {
   if (B.demo) return;
   const rec = mapRec(B.def.id), had = towersAvail(), res = { won, stars: 0, fresh: 0, pay: 0, towers: [], map: '', wave: B.cleared, best: 0 };
   if (B.endless) {
-    const medals = B.cleared >= 30 ? 2 : B.cleared >= 15 ? 1 : 0;
+    const medals = B.cleared >= 25 ? 2 : B.cleared >= 15 ? 1 : 0;
     res.fresh = Math.max(0, medals - (rec.medals | 0)); res.medals = medals; res.record = B.cleared > (rec.endless | 0);
     rec.endless = Math.max(rec.endless | 0, B.cleared); rec.medals = Math.max(rec.medals | 0, medals); res.best = rec.endless;
   } else if (won) {
@@ -1163,7 +1163,7 @@ function drawMaps() {
   ctx.fillStyle = 'rgba(13,11,19,0.8)'; ctx.fillRect(0, y - 3, W, H - y + 3);
   T(m.name, 10, y, '#fff', 2, 'left', '#000');
   T(m.level + '   ' + m.waves + ' WAVES' + (beaten ? '   BEST: ♥' + rec.lives : ''), 14 + PX.textWidth(m.name, 2), y + 3, '#ffd23f', 1);
-  T(beaten ? (rec.endless ? 'ENDLESS BEST: WAVE ' + rec.endless + '.  ' : 'ENDLESS IS OPEN.  ') + 'A BLUE STAR AT WAVE 15 AND AT WAVE 30' : '3 STARS: KEEP 18 LIVES.  2 STARS: 10 LIVES.  WIN IT TO OPEN ENDLESS', 10, y + 15, '#9a92b8', 1);
+  T(beaten ? (rec.endless ? 'ENDLESS BEST: WAVE ' + rec.endless + '.  ' : 'ENDLESS IS OPEN.  ') + 'A BLUE STAR AT WAVE 15 AND AT WAVE 25' : '3 STARS: KEEP 18 LIVES.  2 STARS: 10 LIVES.  WIN IT TO OPEN ENDLESS', 10, y + 15, '#9a92b8', 1);
   if (UI.button('go', 10, 208, 104, 26, 'PLAY', { accent: '#5ad43f' })) startBattle(save.pick, false);
   if (UI.button('endless', 120, 208, 104, 26, 'ENDLESS', { accent: '#2ad4c4', disabled: !beaten })) startBattle(save.pick, true);
   if (UI.button('shop', 230, 208, 98, 26, 'WORKSHOP', { accent: '#ffd23f', size: 1 })) { shopFrom = 'maps'; toMenu('shop'); }
@@ -1210,7 +1210,7 @@ function drawResult() {
     T('ENDLESS: WAVE ' + r.wave, cx, y + 12, '#2ad4c4', 3, 'center');
     drawStars(Math.round(cx - 11), y + 38, 0, 0, r.medals); line = y + 58;
     row(r.record ? 'A NEW RECORD!' : 'YOUR BEST: WAVE ' + r.best, r.record ? '#ffd23f' : '#efe9ff', 2);
-    if (r.medals < 2) row('A BLUE STAR AT WAVE ' + (r.medals ? 30 : 15));
+    if (r.medals < 2) row('A BLUE STAR AT WAVE ' + (r.medals ? 25 : 15));
   } else if (r.won) {
     T('VICTORY!', cx, y + 10, '#ffd23f', 3, 'center');
     for (let i = 0; i < 3; i++) { const on = i < r.stars && b.overT > 1.2 + i * 0.35; ctx.drawImage(on ? SPR_STAR : SPR_STAR_OFF, Math.round(cx - 54 + i * 38), y + 30, 33, 27); }

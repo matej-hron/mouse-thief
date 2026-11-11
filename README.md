@@ -34,6 +34,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Runs** (`runs.html`) | Parkour over the rooftops: jump, slide, run up walls, ride zip lines and bounce through five city districts. Combos, missions, ranks, upgrades and runners to unlock. |
 | **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
+| **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 
 ## Pixel Wings
 
@@ -263,6 +264,41 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Defense
+
+A tower defense. Enemies walk the road to your castle in waves; you build towers on the free tiles next to it, upgrade
+them, and lose lives for every enemy that gets through. One finger is enough: tap a tile, tap a tower.
+
+- **8 maps**, opened one after the other: GREEN MEADOW and DRY DUNES (easy, 20 waves), FROZEN FORK (two roads that
+  merge), CROSSROAD SWAMP (the road crosses itself, 25 waves), LAVA CAVE (little room to build), CRYSTAL MINE (the road
+  splits, 30 waves), CLOUD BRIDGES (two roads, two castles) and THE CORE (from both sides to the middle). A boss comes
+  every 10 waves and at the end.
+- **8 towers:** DART (cheap and fast), CANNON (bombs hit everyone close by, ground only), FROST (slows), SNIPER (far,
+  slow, goes through armor), VENOM (poison, ground only), TESLA (lightning jumps from enemy to enemy), and from the
+  workshop MINT (pays gold every wave) and BEACON (makes the towers near it stronger). Every tower has 3 levels and
+  then a choice of **two specializations** (RAPID or TRIPLE, BIG BOMB or STUNNER, ...). New towers open as you beat maps.
+- **9 enemies:** blobs, fast DASHERS, swarms of MITES, armored SHELLS, flying WASPS (they fly straight to the castle; a
+  dotted line shows their way), MENDERS that heal, WARDS with a bubble that blocks hits, SPLITTERS and the BOSS. The
+  bar below the map shows what the next wave brings.
+- **Controls:** tap a free tile and pick a tower; tap a tower to see its range and UPGRADE it, change its TARGET
+  (FIRST / STRONG / LAST) or SELL it (a tower you just put down gives all its gold back). Hold a tower's button to
+  read what it does. START / NEXT WAVE sends the next wave: call it **early** for extra gold. X1 / X2 / X3 is the
+  speed, AUTO starts the waves by itself. Keyboard: arrows and Enter, 1-8 build, U upgrade, T target, X sell, Space
+  next wave, F speed, Q meteor, W freeze, P pause. Controller: the stick moves a tile cursor, A picks, X next wave,
+  Y meteor, LB freeze, RB speed.
+- **METEOR and FREEZE:** two abilities that recharge. Tap METEOR, then tap where it should land; FREEZE stops every
+  enemy for a few seconds.
+- **Stars:** win a map for 1 star, keep 10 lives for 2, 18 lives for 3. A beaten map opens **ENDLESS** (how far can
+  you get?), with a blue star at wave 15 and at wave 25. 40 stars in all; each new star also pays ★2 into the arcade's
+  wallet.
+- **WORKSHOP:** spend your stars on upgrades that stay: more starting gold, stronger towers, extra lives, cheaper
+  upgrades, more gold from enemies, faster and stronger abilities, and the MINT and BEACON towers. You can't afford
+  everything, and GET ALL STARS BACK lets you choose again.
+- **The first map teaches the game** with a few yellow hints. Losing costs a few minutes: RETRY is one tap.
+- **Sound:** its own two chiptunes; the speaker button switches the sounds off, the note button the music.
+- **How long:** one pass through the 8 maps is about an hour and a half at normal speed (about half that at X2), more
+  with the later maps' retries, the 3-star runs and ENDLESS.
 
 ## Pixel Moto
 
@@ -694,4 +730,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html`; online play checks it).
