@@ -32,7 +32,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.30.0';
+const VERSION = '2.31.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -928,8 +928,10 @@ const starGiftDue = () => Inbox.list[0] || STAR_GIFTS.find(g => g.left && (!g.na
                                                (!g.until || Date.now() < new Date(g.until[0], g.until[1] - 1, g.until[2] + 1).getTime()));
 function claimStars(take = true) {                 // THANKS! takes the gift; NO THANKS turns it down for good
   const g = starGiftDue();
-  if (g && g.relay) {                               // from a friend: THANKS! takes the stars, NO THANKS lets them go
-    if (Inbox.done(g) && take) { PX.Wallet.add(g.stars); PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 }); }
+  if (g && g.relay) {                               // from a friend: THANKS! takes the stars, NO THANKS sends them back
+    if (g.sending) return;
+    if (!take && !g.back) { Inbox.giveBack(g); return; }
+    if (Inbox.done(g)) { PX.Wallet.add(g.stars); PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 }); }
     screen = 'home'; return;
   }
   if (g && !take) { try { localStorage.setItem(g.key, 'NO'); } catch (e) { /* private mode */ } g.left = false; PX.Sound.unlock(); PX.Sound.tone(300, 0.12, { vol: 0.08 }); }
@@ -953,8 +955,8 @@ function drawStars(t) {
   T(profile.name, W / 2 + 16, y + 36, '#fff', 3, 'center', '#000');
   T('★ ' + g.stars, W / 2, y + 68, '#ffd23f', 6, 'center', '#3a2f5c');
   if (g.note) T(g.note, W / 2, y + 104, '#efe9ff', 1, 'center', '#000');
-  if (UI.button('okay', Math.round(W / 2 - 124), y + 116, 120, 24, pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f' })) claimStars();
-  if (UI.button('nogift', Math.round(W / 2 + 4), y + 116, 120, 24, 'NO THANKS', { size: 1 })) claimStars(false);   // (only the button: Escape can't throw a gift away by accident)
+  if (UI.button('okay', Math.round(W / 2 - (g.back ? 60 : 124)), y + 116, 120, 24, g.back ? 'OKAY' : pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f', disabled: !!g.sending })) claimStars();
+  if (!g.back && UI.button('nogift', Math.round(W / 2 + 4), y + 116, 120, 24, g.sending ? 'SENDING BACK...' : 'NO THANKS', { size: 1, disabled: !!g.sending })) claimStars(false);   // (only the button: Escape can't throw a gift away by accident)
 }
 
 // --- GIVE STARS: send some of your own stars to a friend, by their ID -----------------------------------------
@@ -1017,9 +1019,22 @@ const Inbox = {
         try { const ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { /* not a gift */ }
         if (!m || m.v !== 1 || !Number.isInteger(m.n) || m.n < 1 || m.n > 1000 || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40) continue;
         if (seen.includes(m.tx) || this.list.some(x => x.tx === m.tx)) continue;
-        this.list.push({ relay: true, tx: m.tx, stars: m.n, note: 'FROM ' + (PX.cleanName(m.from) || 'A FRIEND') });
+        const who = PX.cleanName(m.from) || 'A FRIEND';
+        this.list.push({ relay: true, tx: m.tx, stars: m.n, fid: /^[1-9][0-9]{5}$/.test(m.fid) ? m.fid : '', back: m.back === true,
+                         note: m.back === true ? who + ' SAID NO THANKS: YOUR STARS ARE BACK' : 'FROM ' + who });
       }
     } catch (e) { /* offline: next time */ }
+  },
+  // NO THANKS to a friend's gift: the stars go back to the friend, as a gift the same way (so it waits 12 hours too)
+  async giveBack(g) {
+    if (g.sending) return;
+    if (!g.fid || g.fid === profile.id) { this.done(g); screen = 'home'; return; }       // nobody to send them back to
+    g.sending = true;
+    try {
+      const res = await fetch(RELAY + relayTopic(g.fid), { method: 'POST', body: JSON.stringify({ v: 1, tx: 'b' + g.tx.slice(0, 38), n: g.stars, from: profile.name, fid: profile.id, back: true }) });
+      if (!res.ok) throw new Error('relay ' + res.status);
+      this.done(g); PX.Sound.tone(300, 0.12, { vol: 0.08 }); if (screen === 'stars') screen = 'home';
+    } catch (e) { g.sending = false; g.note = "COULDN'T SEND THEM BACK. CHECK YOUR INTERNET."; PX.Sound.tone(150, 0.2); }
   },
 };
 function drawGive(t) {
