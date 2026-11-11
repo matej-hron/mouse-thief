@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook and Pixel Runs. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs and Pixel Sky GP. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.22.3';
+const VERSION = '2.23.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -82,6 +82,7 @@ const GAMES = [
   { id: 'bike', name: 'PIXEL BIKE RUN', sub: 'RIDE AND FLIP!', url: 'bike.html', color: '#f0a07a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'BIKE BICYCLE MOUNTAIN MTB BMX FLIP BACKFLIP WHEELIE TRICK TRICKS HILLS SUNSET MONEY' },
   { id: 'cook', name: 'PIXEL COOK', sub: 'COOK MEALS TO ORDER!', url: 'cook.html', color: '#e8402a', cats: ['ACTION'], tags: 'COOK COOKING CHEF KITCHEN FOOD MEAL CAFE COFFEE ICE CREAM SUSHI PIZZA MOZZARELLA BURGER RESTAURANT LUXURY MONEY TIP' },
   { id: 'runs', name: 'PIXEL RUNS', sub: 'PARKOUR OVER THE ROOFS!', url: 'runs.html', color: '#ff7a3a', cats: ['RUNNING', 'ACTION'], tags: 'PARKOUR RUN RUNNER ROOF ROOFTOP JUMP SLIDE WALL ZIP LINE CITY ENDLESS MISSIONS COINS' },
+  { id: 'skygp', name: 'PIXEL SKY GP', sub: 'RACE FLYING CARS!', url: 'skygp.html', color: '#9a6aff', cats: ['RACING', 'ONLINE'], tags: 'FLYING CAR CARS FLY SKY HOVER RACE GRAND PRIX GP FUTURE RINGS LASER CLOUD CITY NEON' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -159,6 +160,29 @@ function previewRacer(x, y, w, h, t) {
   ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(carX + 9, carY + 6, 16, 8);
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(carX + 15, carY + 3, 4, 3);
   ctx.fillStyle = '#16161c'; ctx.fillRect(carX + 3, carY, 28, 3); ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(carX + 3, carY, 28, 1);
+}
+function previewSkyGP(x, y, w, h, t) {            // a flying car over the skyway at dusk, a boost ring comes closer
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ['#2b1a5e', '#5a2a78', '#a8487a', '#ff9a6a'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + i * 7, w, 8); });
+  const hz = y + 26, cx = x + w / 2;
+  ctx.fillStyle = '#fff0c0'; ctx.fillRect(x + w - 30, hz - 12, 8, 8);
+  for (let i = 0; i < 9; i++) { const bh = 6 + (i * 37) % 14; ctx.fillStyle = i % 2 ? '#4a2a68' : '#6a3a80'; ctx.fillRect(x + i * 14 - 3, hz - bh, 10, bh); }
+  for (let r = 0; r < h - 26; r++) {                             // the sea of clouds and the skyway, with moving stripes
+    const k = r / (h - 26), half = 3 + k * w * 0.42, yy = hz + r, stripe = Math.floor((1 / (k + 0.05)) * 3 - t * 12) % 2;
+    ctx.fillStyle = stripe ? '#f2bcc6' : '#e8acbc'; ctx.fillRect(x, yy, w, 1);
+    ctx.fillStyle = stripe ? '#2ad4c4' : '#f4f4f4'; ctx.fillRect(Math.round(cx - half - 2 - k * 3), yy, Math.round(half * 2 + 4 + k * 6), 1);
+    ctx.fillStyle = stripe ? '#2c315e' : '#272b54'; ctx.fillRect(Math.round(cx - half), yy, Math.round(half * 2), 1);
+  }
+  const rk = (t * 0.7) % 1, rw = 6 + rk * 40, rh = rw * 0.66, rx = cx + 14 - rk * 6, ry = hz + 2 + rk * 14;     // the ring
+  if (rk < 0.85) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(rx - rw / 2), Math.round(ry - rh / 2), Math.round(rw), 2); ctx.fillRect(Math.round(rx - rw / 2), Math.round(ry + rh / 2) - 2, Math.round(rw), 2); ctx.fillRect(Math.round(rx - rw / 2), Math.round(ry - rh / 2), 2, Math.round(rh)); ctx.fillRect(Math.round(rx + rw / 2) - 2, Math.round(ry - rh / 2), 2, Math.round(rh)); }
+  const cw = 34, bob = Math.sin(t * 2) * 6, carX = Math.round(cx - cw / 2 + Math.sin(t * 1.5) * 8), carY = Math.round(y + h - 28 + bob), col = PX.AVATAR_COLORS[profile.avatar.color];
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(carX + 5, y + h - 4, cw - 10, 2);                          // its shadow, then the car
+  ctx.fillStyle = '#16161c'; ctx.fillRect(carX, carY + 8, 8, 5); ctx.fillRect(carX + cw - 8, carY + 8, 8, 5); ctx.fillRect(carX + 8, carY, 2, 8); ctx.fillRect(carX + cw - 10, carY, 2, 8);
+  ctx.fillStyle = '#b8f8ff'; ctx.fillRect(carX + 1, carY + 13, 6, 2 + Math.floor(t * 12) % 2); ctx.fillRect(carX + cw - 7, carY + 13, 6, 2 + Math.floor(t * 12) % 2);
+  ctx.fillStyle = col; ctx.fillRect(carX + 9, carY + 6, 16, 8); ctx.fillRect(carX + 7, carY + 9, 20, 3);
+  ctx.fillStyle = '#7ad8ff'; ctx.fillRect(carX + 12, carY + 2, 10, 5); ctx.fillStyle = '#ffd23f'; ctx.fillRect(carX + 15, carY + 3, 4, 3);
+  ctx.fillStyle = '#ff8a1f'; ctx.fillRect(carX + 11, carY + 10, 3, 2); ctx.fillRect(carX + 20, carY + 10, 3, 2);
+  ctx.restore();
 }
 function previewHeist(x, y, w, h, t) {
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
@@ -448,7 +472,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['runs', 'cook', 'bike'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['skygp', 'runs', 'cook'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -460,7 +484,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;

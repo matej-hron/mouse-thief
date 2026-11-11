@@ -29,6 +29,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
 | **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
 | **Pixel Runs** (`runs.html`) | Parkour over the rooftops: jump, slide, run up walls, ride zip lines and bounce through five city districts. Combos, missions, ranks, upgrades and runners to unlock. |
+| **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
 
 ## Pixel Wings
 
@@ -482,6 +483,29 @@ you (their yellow light) do too. An angry person or a police car that catches yo
 
 Every heist pays ★ into the shared arcade wallet. The 3D drawing uses [three.js](https://threejs.org) (MIT licence), kept in `vendor/`.
 
+## Pixel Sky GP
+
+Pixel GP with flying cars. The same pseudo-3D racer, but every car also has a height: you steer left and right **and**
+climb and dive. The skyway floats above a sea of clouds, with city towers poking through.
+
+- **RACE:** you vs 5 rivals, 3 laps. You start at the back of the grid. **FREE FLIGHT:** no rivals, chase your best lap.
+  **RACE A FRIEND:** CREATE GAME gives a 4-letter code, your friend joins with it; the host's track is raced.
+- **3 tracks** (the TRACK button on the title screen): CLOUD CITY at dusk, NEON NIGHT (the twisty one), SUNRISE BAY
+  (long and fast, with big hills). Each has its own best lap.
+- **The car flies by itself.** Steer with ← / → (A / D), climb with ↑ (W), dive with ↓ (S), brake with Space. Let go
+  and the car keeps its height. On a phone: the < > buttons on the left, BRAKE, DIVE and CLIMB on the right, or drag a
+  finger anywhere to pull the car left / right / up / down. Controller: stick or D-pad to fly, B brakes, A NITRO, Y SHIELD.
+- **Three heights:** LOW, MID and HIGH (the bar on the left shows yours; your **shadow** on the skyway shows it too).
+- **In the air:** red **LASER GATES** close one height (sometimes two) across the whole skyway: fly over or under them
+  (a blinking CLIMB! / DIVE! tells you which way is open). **MINES** cost a heart. **STORM CLOUDS** shake you around
+  but don't hurt. Fly through a golden **RING** for a BOOST (and ★2 the first time). Stars come in rows and in arcs
+  from one height to another; a wrench repairs a heart.
+- **Out of the skyway** the wind slows you down, and the towers, masts and signs there cost a heart at speed. The
+  tightest corners push you out unless you brake (SHARP TURN!). You can overtake rivals over or under them.
+- **Damage, stars and the GARAGE** work like in Pixel GP (1 heart, ARMOR adds more; NITRO, SHIELD, FINS = less drift in
+  curves, MAGNET; 6 car designs, 12 paints), but the garage is this game's own. The ★ wallet is the arcade's.
+- **Sound:** its own two chiptunes; the note button switches the music off, the little car button the engine hum on.
+
 ## Pixel GP
 
 - **RACE:** you vs 5 rivals, 3 laps of the Pixel Ring. You start at the back of the grid.
@@ -593,4 +617,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html`; online play checks it).
