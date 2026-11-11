@@ -381,10 +381,12 @@ you, and the run is over.
 
 ## Gifts of stars
 
-The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup, THANKS!, and the stars
-are yours. Each gift comes once on each phone. They are `STAR_GIFTS` in `index.html`.
+The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup with THANKS! (the stars
+are yours) and NO THANKS (you turn the gift down, and it doesn't come back). Each gift comes once on each phone. They
+are `STAR_GIFTS` in `index.html`.
 
-- **★300 for everyone, for one week:** anyone who opens the arcade up to and including **November 18, 2026**.
+- **★1000 for everyone, for two days:** anyone who opens the arcade up to and including **November 13, 2026**. (It
+  replaces an earlier gift of ★300: whoever took that one gets the other ★700.)
 - **★1000 for VOJTA7, STEPAK and LEVKO:** the first time the arcade is opened with that name (or right after the name
   is typed in EDIT). No end date.
 
