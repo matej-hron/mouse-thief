@@ -393,6 +393,19 @@ you, and the run is over.
   First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
   whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
 
+## Bets
+
+In an online game for two players you can play for stars. In the lobby the host presses the bet button: NO BET, ★10,
+50, 100 or 500 (never more than either player has); the friend sees the bet before the match starts. When the match
+starts the bet leaves both wallets. The winner gets both back (and so wins the bet), the loser gets nothing (and so
+loses it), a draw gives each their own back. Leaving in the middle doesn't save your bet: the player who stayed wins it.
+
+Bets are in: Pixel Pong, Pixel Box Fight, Pixel Football, Pixel GP, Pixel Sky GP, Pixel Bike Run, Pixel Moto, Pixel
+Skate, Pixel Ski and Pixel Wings (only with exactly two pilots, on opposite sides). Mouse Thief has its own bets (both
+players press I AGREE). Not when two play on one phone (that is
+one wallet). The shared part is `PX.Bet` in `common.js`. The two phones each decide who won, as they always did, so a
+bet is for friends: a lost connection, or a finish in the same instant, can pay both.
+
 ## Give stars
 
 **GIVE ★** (next to EDIT) sends some of your own stars to a friend, by their ID. Type your friend's 6-digit ID, pick

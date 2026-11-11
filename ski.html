@@ -42,7 +42,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const SAVE_KEY = 'pixelSki.save';
 const save = { best: {}, done: {}, sfx: true, seenHelp: false, coins: 0, up: {}, skis: 'green', helmet: 'yellow', owned: { green: 1, yellow: 1 }, runStars: {}, daily: '' };
 try {
@@ -375,6 +375,7 @@ function startRun(m, l, mp) {
         dbl: false, trick: null, flips: 0, tricks: 0, shake: 0, confetti: [], runStars: 0, newStars: 0, daily: false };
   flakes = []; for (let i = 0; i < 70; i++) flakes.push({ x: Math.random() * 560, y: Math.random() * H, s: 0.5 + Math.random() });
   state = 'play'; paused = false; pickMap = m;
+  if (mp) PX.Bet.start();                              // online: both put the bet in (stars, not coins)
   sfx('click');
 }
 const progress = () => clamp((P.z + PLAYER_Z) / R.finishZ, 0, 1);
@@ -400,14 +401,14 @@ function bankCoins() { save.coins += P.coins + P.bonus; store(); }
 function crash(cause) {
   if (P.done) return;
   P.done = true; P.crashT = 0.001; P.cause = cause; state = 'crashed'; sfx('crash'); bankCoins(); P.shake = 0.6;
-  if (R.mp) Net.send({ t: 'out', pr: progress() });
+  if (R.mp) { Net.send({ t: 'out', pr: progress() }); if (FR.out) PX.Bet.settle(!(FR.prog > progress())); }   // (the bet: we both crashed, so it's decided now)
   for (let i = 0; i < 30; i++) P.spray.push({ x: 0, y: 0, vx: (Math.random() - 0.5) * 140, vy: -40 - Math.random() * 90, t: 0.8 + Math.random() * 0.6 });
 }
 function finish() {
   P.done = true; state = 'finished'; sfx('finish');
   for (let i = 0; i < 80; i++) P.confetti.push({ x: Math.random() * S.W, y: -Math.random() * 120, vy: 30 + Math.random() * 50, vx: (Math.random() - 0.5) * 30, c: ['#ffd23f', '#e8303a', '#5ad43f', '#4aa8ff', '#ff6bd0'][i % 5] });
   if (R.mp) {                                          // online: first to the bottom wins
-    P.win = !FR.fin; Net.send({ t: 'fin', tm: P.t });
+    P.win = !FR.fin; PX.Bet.settle(P.win); Net.send({ t: 'fin', tm: P.t });
     P.bonus = P.win ? 60 : 25; if (P.win) { P.stars = 2; PX.Wallet.add(2); }
     bankCoins(); return;
   }
@@ -1119,7 +1120,8 @@ function drawEndOnline(t) {
   else if (res === 'lose') T(f.name + ' WINS!', W / 2, y + 44, '#ff8a8a', 3, 'center', '#000');
   else T('WAITING FOR ' + f.name + '.'.repeat(1 + Math.floor(t * 3) % 3), W / 2, y + 50, '#fff', 1, 'center');
   T('COINS +' + (P.coins + P.bonus) + (P.stars ? '   ★ +' + P.stars : ''), W / 2, y + 80, '#ffd23f', 1, 'center');
-  if (!Net.live) T('YOUR FRIEND LEFT', W / 2, y + 96, '#ff8a8a', 1, 'center');
+  if (PX.Bet.resultLabel()) T(PX.Bet.resultLabel(), W / 2, y + 92, res === 'lose' ? '#ff8a8a' : '#ffd23f', 1, 'center', '#000');
+  if (!Net.live) T('YOUR FRIEND LEFT', W / 2, y + 108, '#ff8a8a', 1, 'center');
   const hw = Math.floor((pw - 34) / 2);
   if (Net.live && Net.isHost) {
     if (UI.button('rematch', x + 14, y + 104, hw, 20, 'REMATCH', { size: 1, accent: '#5ad43f' })) Net.start(R.m, R.l);
@@ -1186,7 +1188,7 @@ const codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'pick', msg: '', friend: null, sendT: 0, pm: 0, pl: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -1213,11 +1215,12 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
-  lost() { if (!this.live) return; this.live = false; this.conn = null; if (state === 'online') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
+  // (a bet: if my friend leaves in the middle of a race, I win it)
+  lost() { if (!this.live) return; this.live = false; this.conn = null; PX.Bet.settle(true); if (state === 'online') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
   leave() { this.send({ t: 'bye' }); this.live = false; const p = this.peer; this.peer = null; this.conn = null; setTimeout(() => { try { if (p) p.destroy(); } catch (e) { /* gone */ } }, 150); },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
   sendPos() {                                        // 20 times a second: where you are on the slope
@@ -1227,6 +1230,7 @@ const Net = {
   start(m, l) { this.pm = m; this.pl = l; this.send({ t: 'go', m, l }); startRun(m, l, true); },
   onData(m) {
     if (!m || typeof m !== 'object') return;
+    if (PX.Bet.onData(m)) return;
     switch (m.t) {
       case 'me':
         if (m.v !== VERSION) { this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
@@ -1239,8 +1243,9 @@ const Net = {
         FR.tz = +m.z || 0; FR.tx = clamp(+m.x || 0, -4, 4); FR.th = clamp(+m.h || 0, 0, 20); FR.v = clamp(+m.v || 0, 0, 80);
         if (!FR.seen) { FR.z = FR.tz; FR.x = FR.tx; FR.seen = true; }
         break;
-      case 'fin': FR.fin = +m.tm || 1; if (R) FR.z = FR.tz = R.finishZ; FR.v = 0; break;
-      case 'out': FR.out = true; FR.prog = clamp(+m.pr || 0, 0, 1); FR.v = 0; break;
+      // the bet is decided as soon as we know who won (the same rules as the end screen), even if I never get to the end
+      case 'fin': FR.fin = +m.tm || 1; if (R) FR.z = FR.tz = R.finishZ; FR.v = 0; PX.Bet.settle(false); break;
+      case 'out': FR.out = true; FR.prog = clamp(+m.pr || 0, 0, 1); FR.v = 0; if (R && R.mp && P && P.done) PX.Bet.settle(!(FR.prog > progress())); break;
       case 'bye': this.lost(); break;
     }
   },
@@ -1249,7 +1254,7 @@ function drawOnline(t) {
   const W = S.W, bw = 200, bx = Math.round(W / 2 - bw / 2), dots = '.'.repeat(1 + Math.floor(performance.now() / 333) % 3);
   const pw = Math.min(W - 16, 340), y = 30, cx = W / 2;
   ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
-  panel(Math.round(cx - pw / 2), y, pw, 188, '#4aa8ff');
+  panel(Math.round(cx - pw / 2), y, pw, Net.screen === 'lobby' ? 200 : 188, '#4aa8ff');   // (the lobby is taller: the bet)
   const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label, { size: 1 }) || UI.back) { if (Net.live || Net.peer) Net.leave(); Net.reset(); toTitle(); } };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
   switch (Net.screen) {
@@ -1294,8 +1299,9 @@ function drawOnline(t) {
           if (UI.button('mp' + l, lx, y + 110, 66, 26, '', { size: 1, accent: lev.color === '#22222a' ? '#9a92b8' : lev.color, disabled: !f })) Net.start(Net.pm, l);
           levelIcon(l, lx + 14, y + 123, 2); T(lev.name, lx + 26, y + 120, f ? '#fff' : '#5b5275', 1);
         });
-      } else T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO PICK A RUN' + dots, cx, y + 104, '#efe9ff', 1, 'center');
-      back(y + 156, 'LEAVE');
+        if (UI.button('mpbet', cx - 60, y + 141, 120, 18, PX.Bet.label(), { size: 1, accent: '#ffd23f', disabled: !f })) PX.Bet.next();
+      } else { T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO PICK A RUN' + dots, cx, y + 104, '#efe9ff', 1, 'center'); T(PX.Bet.label(), cx, y + 124, '#ffd23f', 1, 'center', '#000'); }
+      back(y + 164, 'LEAVE');
       break;
     }
     case 'error':

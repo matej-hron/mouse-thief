@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -507,7 +507,7 @@ function step(dt) {
       s.finished = G.t; G.order.push(s);
       if (s === P) {
         G.place = G.order.length; sfx('finish');
-        if (G.mp) { Net.send({ t: 'fin', tm: G.t }); pop(G.place === 1 ? 'YOU WIN!' : G.friend.name + ' WINS!', G.place === 1 ? '#ffd23f' : '#ffffff', true); }
+        if (G.mp) { PX.Bet.settle(G.place === 1); Net.send({ t: 'fin', tm: G.t }); pop(G.place === 1 ? 'YOU WIN!' : G.friend.name + ' WINS!', G.place === 1 ? '#ffd23f' : '#ffffff', true); }
         else pop(ord(G.place) + ' PLACE!', G.place === 1 ? '#ffd23f' : '#ffffff', true);
       }
     }
@@ -1147,6 +1147,7 @@ function drawResults(t) {
     T('BEST COMBO ' + G.bestCombo, rx, y + 104, '#9a92b8', 1);
     if (R.stars) T('★ +' + R.stars, rx, y + 118, '#ffd23f', 2, 'left', '#000');
     if (R.newBest) T('NEW BEST!', rx, y + 138, '#9be36b', 1);
+    if (G.mp && PX.Bet.resultLabel()) T(PX.Bet.resultLabel(), rx, y + 140, R.place === 1 ? '#ffd23f' : '#ff8a8a', 1, 'left', '#000');
     if (G.mp) {                                        // online: the host picks a rematch, the friend waits
       const bw = 100, bx0 = Math.round(Wd / 2 - 155);
       if (UI.button('menu', bx0, y + 186, bw, 22, 'MENU', { size: 1 }) || UI.back) toTitle();
@@ -1175,16 +1176,16 @@ function drawResults(t) {
     if (UI.button('again', Math.round(Wd / 2 + 4), y + 136, 112, 24, 'SKATE AGAIN', { accent: '#5ad43f', size: 1 })) startGame('free');
   }
 }
-function startGame(mode, track, mp) { held.clear(); inp.touchPush = 0; inp.q.length = 0; codeInput.style.display = 'none'; newGame(mode, track, false, mp); state = 'play'; paused = false; }
+function startGame(mode, track, mp) { held.clear(); inp.touchPush = 0; inp.q.length = 0; codeInput.style.display = 'none'; newGame(mode, track, false, mp); state = 'play'; paused = false; if (mp) PX.Bet.start(); }   // online: both put the bet in (stars, not coins)
 function setPause(v) { if (state !== 'play' || (G && G.done) || (G && G.mp && v)) return; paused = v; if (v) store(); }
-function toTitle() { if (Net.live || Net.peer) { Net.leave(); } Net.screen = 'pick'; state = 'title'; paused = false; newGame('free', null, true); }
+function toTitle() { if (Net.live || Net.peer) { Net.leave(); PX.Bet.reset(); } Net.screen = 'pick'; state = 'title'; paused = false; newGame('free', null, true); }
 
 /* --- RACE A FRIEND: online, the same free PeerJS server as the other games ------------------ */
 const codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'pick', msg: '', friend: null, sendT: 0, track: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -1211,11 +1212,12 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
-  lost() { if (!this.live) return; this.live = false; this.conn = null; if (state === 'online') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
+  // (a bet: if my friend leaves in the middle of a race, I win it)
+  lost() { if (!this.live) return; this.live = false; this.conn = null; PX.Bet.settle(true); if (state === 'online') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
   leave() { this.send({ t: 'bye' }); this.live = false; const p = this.peer; this.peer = null; this.conn = null; setTimeout(() => { try { if (p) p.destroy(); } catch (e) { /* gone */ } }, 150); },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
   sendPos(P) {                                       // 20 times a second: where you are and what you're doing
@@ -1226,6 +1228,7 @@ const Net = {
   },
   start(track) { this.track = TRACKS.indexOf(track); this.send({ t: 'go', tr: this.track }); startGame('race', track, true); },
   onData(m) {
+    if (PX.Bet.onData(m)) return;
     const f = G && G.friend;
     switch (m.t) {
       case 'me':
@@ -1240,14 +1243,14 @@ const Net = {
         f.trick = m.k && TRICK[m.k] ? { d: TRICK[m.k], t: m.kt } : null; f.bail = m.b; f.pushT = m.pu ? Math.max(f.pushT, 0.15) : 0; f.tilt = m.tl; f.boostT = m.bo ? 1 : 0;
         if (Math.abs(f.tx - f.x) > 300) f.x = f.tx;
         break;
-      case 'fin': if (f && !f.finished) { f.finished = m.tm; f.x = f.tx = Math.max(f.tx, W.len); G.order.push(f); } break;
+      case 'fin': if (f && !f.finished) { f.finished = m.tm; f.x = f.tx = Math.max(f.tx, W.len); G.order.push(f); PX.Bet.settle(false); } break;   // my friend is there first: the bet is lost now, even if I never finish
       case 'bye': this.lost(); break;
     }
   },
 };
 function drawOnline(t) {
   const Wd = S.W, bw = 200, bx = Math.round(Wd / 2 - bw / 2), dots = '.'.repeat(1 + Math.floor(performance.now() / 333) % 3);
-  const { y } = panel(320, 170), cx = Wd / 2;
+  const lob = Net.screen === 'lobby', { y } = panel(320, lob ? 192 : 170), cx = Wd / 2;   // (the lobby is taller: the bet)
   const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label, { size: 1 }) || UI.back) { if (Net.live || Net.peer) Net.leave(); Net.reset(); codeInput.style.display = 'none'; state = 'title'; } };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
   switch (Net.screen) {
@@ -1286,8 +1289,9 @@ function drawOnline(t) {
         TRACKS.forEach((tr, i) => {
           if (UI.button('mp' + i, cx - 150 + i * 102, y + 96, 96, 30, tr.name, { size: 1, accent: ['#9be36b', '#ffd23f', '#ff6b6b'][i], disabled: !f })) Net.start(tr);
         });
-      } else T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO PICK A TRACK' + dots, cx, y + 104, '#efe9ff', 1, 'center');
-      back(y + 140, 'LEAVE');
+        if (UI.button('mpbet', cx - 60, y + 132, 120, 20, PX.Bet.label(), { size: 1, accent: '#ffd23f', disabled: !f })) PX.Bet.next();
+      } else { T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO PICK A TRACK' + dots, cx, y + 104, '#efe9ff', 1, 'center'); T(PX.Bet.label(), cx, y + 124, '#ffd23f', 1, 'center', '#000'); }
+      back(y + 160, 'LEAVE');
       break;
     }
     case 'error':
