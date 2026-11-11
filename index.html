@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.23.0';
+const VERSION = '2.24.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -39,7 +39,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -50,6 +50,7 @@ window.addEventListener('keydown', e => {
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
   if (screen === 'gift') { if (e.key === 'Enter' || e.key === ' ') claimGift(); return; }
+  if (screen === 'stars') { if (e.key === 'Enter' || e.key === ' ') claimStars(); return; }
   if (screen === 'home' && e.key === '/') { e.preventDefault(); openSearch(); return; }
   if (screen === 'home' || screen === 'search') {
     const step = { ArrowDown: 40, ArrowUp: -40, PageDown: 150, PageUp: -150 }[e.key];
@@ -785,6 +786,7 @@ function padPoll(dt) {
       }
     } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
+    else if (screen === 'stars' && (edge(0) || edge(1) || edge(9))) claimStars();
     else if (edge(1)) UI.back = true;
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
@@ -886,13 +888,44 @@ function drawGift(t) {
   if (UI.button('okay', Math.round(W / 2 - 60), y + 168, 120, 24, pad.used ? 'A: OKAY' : 'OKAY', { accent: '#5ad43f' }) || UI.back) claimGift();
 }
 
+// --- a gift of stars for some players: ★1000, once on each phone, when the arcade sees their name -----------
+// (The wallet lives on the phone, so the gift is given by name: the player gets it the first time they open the
+// arcade with that name, or right after they type it in EDIT.)
+const STAR_GIFT = { names: ['VOJTA7', 'STEPAK', 'LEVKO'], stars: 1000 };
+const STAR_GIFT_KEY = 'pixelArcade.starGift1';
+let starGiftLeft = false;
+try { starGiftLeft = !localStorage.getItem(STAR_GIFT_KEY); } catch (e) { /* private mode: no gift, it couldn't be remembered */ }
+const starGiftDue = () => starGiftLeft && STAR_GIFT.names.includes(PX.cleanName(profile.name));
+function claimStars() {
+  if (starGiftDue()) {
+    try { localStorage.setItem(STAR_GIFT_KEY, PX.cleanName(profile.name)); if (localStorage.getItem(STAR_GIFT_KEY)) PX.Wallet.add(STAR_GIFT.stars); } catch (e) { /* couldn't remember it: no stars, or they'd come every time */ }
+    PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 });
+  }
+  starGiftLeft = false; screen = 'home';
+}
+function drawStars(t) {
+  const W = S.W;
+  drawHome(t);
+  UI.list = [];                                     // only OKAY can be pressed while the gift is up
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  const pw = Math.min(300, W - 30), x = Math.round(W / 2 - pw / 2), y = 48, ph = 150;
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 2, y - 2, pw + 4, ph + 4); ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, pw, ph);
+  for (let i = 0; i < 14; i++) T('★', x + 10 + (i * 67) % (pw - 24), y + 6 + ((i * 41 + Math.floor(t * 30)) % (ph - 16)), i % 2 ? '#7a5a10' : '#b8901a', 1);
+  T('A GIFT FOR', W / 2, y + 12, '#efe9ff', 2, 'center', '#000');
+  PX.drawAvatar(ctx, profile.avatar, Math.round(W / 2 - PX.textWidth(profile.name, 3) / 2 - 38), y + 30, 2);
+  T(profile.name, W / 2 + 16, y + 36, '#fff', 3, 'center', '#000');
+  T('★ ' + STAR_GIFT.stars, W / 2, y + 68, '#ffd23f', 6, 'center', '#3a2f5c');
+  if (UI.button('okay', Math.round(W / 2 - 60), y + 116, 120, 24, pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f' }) || UI.back) claimStars();
+}
+
 let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'gift') drawGift(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'home' && starGiftDue()) screen = 'stars';
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();

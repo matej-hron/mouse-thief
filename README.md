@@ -358,6 +358,12 @@ you, and the run is over.
   First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
   whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
 
+## A gift of stars
+
+The players **VOJTA7**, **STEPAK** and **LEVKO** get **★1000**: once on each phone, the first time the arcade is opened
+with that name (or right after the name is typed in EDIT). The ★ wallet is kept on the phone, so the gift goes by
+name; it is `STAR_GIFT` in `index.html`.
+
 ## First of the month update
 
 Only on the **1st of every month** (January 1, February 1, ... December 1): the first time you open the arcade that
@@ -500,9 +506,10 @@ climb and dive. The skyway floats above a sea of clouds, with city towers poking
   (a blinking CLIMB! / DIVE! tells you which way is open). **MINES** cost a heart. **STORM CLOUDS** shake you around
   but don't hurt. Fly through a golden **RING** for a BOOST (and ★2 the first time). Stars come in rows and in arcs
   from one height to another; a wrench repairs a heart.
-- **Out of the skyway** the wind slows you down, and the towers, masts and signs there cost a heart at speed. The
+- **Out of the skyway** the wind slows you down, and the towers, masts and signs there cost a heart only in a really fast crash. The
   tightest corners push you out unless you brake (SHARP TURN!). You can overtake rivals over or under them.
-- **Damage, stars and the GARAGE** work like in Pixel GP (1 heart, ARMOR adds more; NITRO, SHIELD, FINS = less drift in
+- **Damage, stars and the GARAGE** work like in Pixel GP, but your car has **3 hearts** (ARMOR makes it 4 or 5) and
+  after a hit nothing can hurt it for a moment (NITRO, SHIELD, FINS = less drift in
   curves, MAGNET; 6 car designs, 12 paints), but the garage is this game's own. The ★ wallet is the arcade's.
 - **Sound:** its own two chiptunes; the note button switches the music off, the little car button the engine hum on.
 

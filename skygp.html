@@ -35,7 +35,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize or a new track) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -63,7 +63,7 @@ const ABILITIES = [
   { id: 'shield', name: 'SHIELD', color: '#58e0a0', prices: [60, 150], active: true, key: '2',
     stat: t => ({ uses: t }), desc: s => 'BLOCKS ' + s.uses + ' HIT' + (s.uses > 1 ? 'S' : '') },
   { id: 'armor', name: 'ARMOR', color: '#ff3b5a', prices: [80, 200],
-    stat: t => ({ hp: 1 + t }), desc: s => s.hp + ' HEARTS' },
+    stat: t => ({ hp: HEARTS + t }), desc: s => s.hp + ' HEARTS' },
   { id: 'grip', name: 'FINS', color: '#ffd23f', prices: [50, 110, 220],
     stat: t => ({ k: [0.8, 0.65, 0.5][t - 1] }), desc: s => Math.round((1 - s.k) * 100) + '% LESS DRIFT IN CURVES' },
   { id: 'magnet', name: 'MAGNET', color: '#9a5ae0', prices: [60, 140],
@@ -99,10 +99,12 @@ const CAM_H = 1000, FOV = 100, DRAW_DIST = 220, FOG = 5;
 const CAM_DEPTH = 1 / Math.tan((FOV / 2) * Math.PI / 180);
 const PLAYER_Z = CAM_H * CAM_DEPTH * 2.3;// how far in front of the camera your car is
 const CAM_LIFT = 0.9;                   // the camera climbs with your car, so you always see what's ahead at your height
-const MAX_SPEED = SEG * 60;
+const MAX_SPEED = SEG * 52;
 const ACCEL = MAX_SPEED / 5, BRAKE = -MAX_SPEED * 0.6, DECEL = -MAX_SPEED / 5;
-const OFFROAD_DECEL = -MAX_SPEED / 2, OFFROAD_LIMIT = MAX_SPEED / 3, CENTRIFUGAL = 0.3;
+const OFFROAD_DECEL = -MAX_SPEED / 2, OFFROAD_LIMIT = MAX_SPEED / 3, CENTRIFUGAL = 0.22;
 const LAPS = 3;
+const HEARTS = 3;                       // hits your car takes before it's wrecked (ARMOR adds more)
+const HURT_TIME = 1.5;                  // after a hit nothing can hurt you for a moment
 const CAR_W = 520, CAR_H = 300;         // a car's width and height
 // ALTITUDE: how high a car's belly is above the skyway. Things in the air sit on three levels.
 const ALT_MIN = 40, ALT_MAX = 1040, ALT_RATE = 1300;
@@ -172,26 +174,26 @@ function buildTrack(seed = 1, id = save.track) {
   // in the air: mines, storm clouds and laser gates to dodge, boost rings and stars to fly through, now and then a wrench
   const o = rng(seed * 7919 + 13), LANE = [-0.62, 0, 0.62];
   const cell = (n, kind, lane, lvl) => put(n, kind, kind === 'gate' ? 0 : LANE[lane], LEVELS[lvl] + CAR_H / 2 - SPR[kind].h / 2, lvl);
-  for (let n = 90; n < segments.length - 40; n += 34 + Math.floor(o() * 40)) {   // well under a second apart at full speed
-    const bend = [0, 10, 20].some(k => Math.abs((segments[n + k] || segments[n]).curve) > 2.4);   // in the tight corners: only stars and gates, nothing to steer around
-    const v = bend ? 0.06 + o() * 0.14 + (o() < 0.35 ? 0.5 : 0) : o(), lane = bend ? 1 : Math.floor(o() * 3), lvl = Math.floor(o() * 3);
-    if (v < 0.06) { cell(n, 'wrench', lane, lvl); continue; }
-    if (v < 0.2) {                                               // an arc of stars from one level to another
+  for (let n = 90; n < segments.length - 40; n += 52 + Math.floor(o() * 50)) {   // more than a second apart at full speed
+    const bend = [0, 10, 20].some(k => Math.abs((segments[n + k] || segments[n]).curve) > 2.4);   // in the tight corners: only stars
+    const v = bend ? 0.1 + o() * 0.16 : o(), lane = bend ? 1 : Math.floor(o() * 3), lvl = Math.floor(o() * 3);
+    if (v < 0.1) { cell(n, 'wrench', lane, lvl); continue; }
+    if (v < 0.26) {                                               // an arc of stars from one level to another
       const to = (lvl + 1 + Math.floor(o() * 2)) % 3;
       for (let k = 0; k < 10; k++) put(n + k * 3, 'star', LANE[lane], lerp(LEVELS[lvl], LEVELS[to], 0.5 - 0.5 * Math.cos(k / 9 * Math.PI)));
       continue;
     }
-    if (v < 0.42) { cell(n, 'ring', lane, lvl); for (let k = 0; k < 3; k++) put(n + 10 + k * 3, 'star', LANE[lane], LEVELS[lvl]); continue; }
-    if (v < 0.52) { cell(n, 'storm', lane, lvl); continue; }
-    if (v < 0.74) {                                               // a laser gate across the whole skyway: one level (sometimes two) is closed
-      const second = o() < 0.3 ? (lvl + 1 + Math.floor(o() * 2)) % 3 : -1;
+    if (v < 0.48) { cell(n, 'ring', lane, lvl); for (let k = 0; k < 3; k++) put(n + 10 + k * 3, 'star', LANE[lane], LEVELS[lvl]); continue; }
+    if (v < 0.56) { cell(n, 'storm', lane, lvl); continue; }
+    if (v < 0.72) {                                               // a laser gate across the whole skyway: one level (sometimes two) is closed
+      const second = o() < 0.12 ? (lvl + 1 + Math.floor(o() * 2)) % 3 : -1;
       cell(n, 'gate', 1, lvl); if (second >= 0) cell(n, 'gate', 1, second);
       const open = [0, 1, 2].filter(l => l !== lvl && l !== second), free = open[Math.floor(o() * open.length)];
       if (o() < 0.6) for (let k = 0; k < 5; k++) put(n + 6 + k * 3, 'star', LANE[lane], LEVELS[free]);
       continue;
     }
-    const used = new Set();                                       // 1 to 3 mines: 9 places, at least 6 stay free
-    for (let k = 1 + Math.floor(o() * 3); k > 0; k--) { const c = Math.floor(o() * 9); if (!used.has(c)) { used.add(c); cell(n, 'mine', c % 3, Math.floor(c / 3)); } }
+    const used = new Set();                                       // 1 or 2 mines: 9 places, at least 7 stay free
+    for (let k = 1 + Math.floor(o() * 2); k > 0; k--) { const c = Math.floor(o() * 9); if (!used.has(c)) { used.add(c); cell(n, 'mine', c % 3, Math.floor(c / 3)); } }
   }
 }
 const findSegment = z => segments[Math.floor(z / SEG) % segments.length];
@@ -311,14 +313,14 @@ const SPR = {
 for (const k in SPR) if (SPR[k].img) SPR[k].h = SPR[k].w * SPR[k].img.height / SPR[k].img.width;
 const HAZARD = { mine: 'MINE!', gate: 'LASER GATE!' };
 // does a car with its belly at altitude a touch this thing? (pct < 1 is forgiving)
-const altHit = (a, t, pct = 0.85) => Math.abs(a + CAR_H / 2 - (t.alt + SPR[t.kind].h / 2)) < (CAR_H + SPR[t.kind].h) / 2 * pct;
+const altHit = (a, t, pct = 0.7) => Math.abs(a + CAR_H / 2 - (t.alt + SPR[t.kind].h / 2)) < (CAR_H + SPR[t.kind].h) / 2 * pct;
 
 /* --- 4. RACE LOGIC ------------------------------------------------------------ */
 let state = 'title';          // title | race | result | garage
 let mode = 'race';            // race (vs rivals) | free (just fly) | mp (vs a friend)
 let race = null, attract = null, paused = false;
 const keys = {};
-const RIVAL_PACE = [0.985, 0.965, 0.945, 0.925, 0.905];
+const RIVAL_PACE = [0.95, 0.93, 0.91, 0.89, 0.87];
 const RIVAL_COLORS = ['#e01e1e', '#ffd23f', '#5ad43f', '#9a5ae0', '#2ad4c4', '#f2f2f2', '#ff8a1f', '#2a7fd4'];
 // rival colors that don't look like your car
 function rivalColors() {
@@ -329,7 +331,7 @@ function rivalColors() {
 function newDriver() {
   const armor = stat('armor');
   return { x: 0, alt: LEVELS[0], va: 0, bank: 0, speed: 0, position: 0, dist: 0, lapStart: 0, lap: 1, lapTime: 0, lastLap: 0, bestLap: 0, time: 0, turn: 0, bump: 0, offroad: false,
-           hp: armor ? armor.hp : 1, maxHp: armor ? armor.hp : 1,   // one heart: one hit and you're out (ARMOR adds more)
+           hp: armor ? armor.hp : HEARTS, maxHp: armor ? armor.hp : HEARTS,   // 3 hearts (ARMOR adds more)
            spin: 0, hurtT: 0, smokeT: 0, nitroT: 0, boostT: 0, shieldOn: false };
 }
 function startRace(m, seed, trackId = save.track) {
@@ -430,7 +432,7 @@ function updateRace(dt) {
     const def = SPR[s.kind], w = def.w / ROAD_W;
     if (def.road || def.decor) continue;
     if (overlap(p.x, CAR_W / ROAD_W, s.offset + w / 2 * (s.offset > 0 ? 1 : -1), w)) {
-      const fast = p.speed > MAX_SPEED * 0.5;              // a slow bump is free, a fast crash costs a heart
+      const fast = p.speed > MAX_SPEED * 0.75;             // a bump is free, only a really fast crash costs a heart
       p.speed = MAX_SPEED / 5; p.position = increase(seg.p1.world.z, -PLAYER_Z, trackLength); p.bump = 0.3; PX.Sound.noise(0.25, { freq: 500, vol: 0.3 });
       if (fast) damage(R, s.kind === 'board' ? 'BILLBOARD!' : s.kind === 'mast' ? 'MAST!' : s.kind.startsWith('chev') ? 'SIGN!' : 'TOWER!');
       break;
@@ -483,16 +485,16 @@ function hitThings(R, sg) {
     const def = SPR[s.kind];
     if (!def.road || s.dead) continue;
     if (s.kind === 'ring') {                                  // through the middle: a boost (and 2 stars the first time)
-      if (s.lap === p.lap || Math.abs(p.x - s.offset) > 0.25 || Math.abs(p.alt + CAR_H / 2 - (s.alt + def.h / 2)) > 240) continue;
+      if (s.lap === p.lap || Math.abs(p.x - s.offset) > 0.34 || Math.abs(p.alt + CAR_H / 2 - (s.alt + def.h / 2)) > 300) continue;
       s.lap = p.lap; p.boostT = 1.4; R.rings++; R.banner = { text: 'BOOST!', t: 0.9 };
       if (!s.got) { s.got = true; R.stars += 2; PX.Wallet.add(2); }
       PX.Sound.tone([440, 660, 990, 1320], 0.35, { type: 'square', vol: 0.09 }); sparks(R, '#ffd23f', 12);
       continue;
     }
     const reach = s.kind === 'star' && stat('magnet') ? stat('magnet').w : 1;
-    if (s.kind !== 'gate' && !overlap(p.x, CAR_W / ROAD_W * reach, s.offset, def.w / ROAD_W, 0.9)) continue;
+    if (s.kind !== 'gate' && !overlap(p.x, CAR_W / ROAD_W * reach, s.offset, def.w / ROAD_W, s.kind === 'mine' || s.kind === 'storm' ? 0.7 : 1)) continue;
     if (s.kind === 'gate' && Math.abs(p.x) > 1.12) continue;
-    if (!altHit(p.alt, s, s.kind === 'star' ? 1 + (reach - 1) * 0.5 : 0.85)) continue;
+    if (!altHit(p.alt, s, s.kind === 'star' || s.kind === 'wrench' ? 1.1 + (reach - 1) * 0.5 : 0.7)) continue;
     if (s.kind === 'star') {
       s.dead = true; R.stars++; PX.Wallet.add(1);
       PX.Sound.tone([1320, 1760], 0.08, { vol: 0.08 });
@@ -506,7 +508,7 @@ function hitThings(R, sg) {
     } else {
       if (p.hurtT > 0) continue;
       if (s.kind === 'mine') s.dead = true;
-      p.speed *= 0.45;
+      p.speed *= 0.7;
       damage(R, HAZARD[s.kind]);
     }
   }
@@ -529,11 +531,11 @@ function damage(R, what) {
   const p = R.p;
   if (R.wrecked || R.over || p.hurtT > 0) return;
   if (p.shieldOn) {                                     // the shield takes the hit
-    p.shieldOn = false; p.hurtT = 0.6; R.banner = { text: 'SHIELD!', t: 1 };
+    p.shieldOn = false; p.hurtT = HURT_TIME; R.banner = { text: 'SHIELD!', t: 1 };
     PX.Sound.tone([500, 1100], 0.25, { type: 'triangle', vol: 0.15 }); sparks(R, '#58e0a0', 14);
     return;
   }
-  p.hp--; p.hurtT = 0.6; R.shake = 6; R.flash = 0.25; p.bump = 0.4;
+  p.hp--; p.hurtT = HURT_TIME; R.shake = 6; R.flash = 0.25; p.bump = 0.4;
   PX.Sound.noise(0.35, { freq: 700, vol: 0.4 }); PX.Sound.tone([180, 60], 0.3, { vol: 0.15 });
   sparks(R, '#ffd23f', 14); sparks(R, '#ff7a1a', 8);
   R.banner = { text: p.hp > 0 ? what : 'WRECKED!', t: 1.2 };
@@ -843,7 +845,7 @@ function drawHUD(R, W) {
   if (!R.over && R.countdown <= 0) {
     const seg = findSegment(p.position + PLAYER_Z);
     // a laser gate ahead at your height: which way is open?
-    for (let k = 4; k < 90; k++) {
+    for (let k = 4; k < 110; k++) {
       const sg = segments[(seg.index + k) % segments.length], gates = sg.sprites.filter(t => t.kind === 'gate');
       if (!gates.length) continue;
       if (gates.some(g => altHit(p.alt, g, 1))) {
@@ -865,7 +867,7 @@ function drawHUD(R, W) {
     T(Ctl.show ? 'STEER < >, CLIMB ↑, DIVE ↓. OR DRAG A FINGER ANYWHERE TO FLY' : 'FLY OVER OR UNDER THE RED LASER GATES', W / 2, 74, '#efe9ff', 1, 'center', '#000');
     T('RINGS: BOOST!   MINES: OUCH!   YOUR SHADOW SHOWS HOW HIGH YOU ARE', W / 2, 86, '#efe9ff', 1, 'center', '#000');
   }
-  if (R.banner && !R.over) T(R.banner.text, W / 2, 74, R.banner.text === 'GO!' || R.banner.text === 'BOOST!' ? '#5ad43f' : R.banner.text.endsWith('!') && p.hurtT > 0 ? '#ff6b6b' : '#ffd23f', R.banner.text === 'GO!' ? 6 : 3, 'center', '#000');
+  if (R.banner && !R.over) T(R.banner.text, W / 2, 74, R.banner.text === 'GO!' || R.banner.text === 'BOOST!' ? '#5ad43f' : R.banner.text.endsWith('!') && p.hurtT > HURT_TIME - 0.6 ? '#ff6b6b' : '#ffd23f', R.banner.text === 'GO!' ? 6 : 3, 'center', '#000');
   if (R.over) T(R.wrecked ? 'WRECKED!' : mode === 'mp' ? (R.result && R.result.won ? 'YOU WIN!' : 'FINISHED!') : 'FINISH!', W / 2, 70, R.wrecked ? '#ff6b6b' : '#fff', 4, 'center', '#000');
   if (mode === 'mp' && !Net.live && !R.over) T('YOUR FRIEND LEFT', W / 2, 96, '#ff6b6b', 2, 'center', '#000');
   // touch controls
