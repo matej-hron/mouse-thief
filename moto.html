@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Moto: motocross with flips and superman tricks. Ride 8 tracks, farm money in free ride, buy new motorbikes and abilities, race a friend.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Moto</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  #code { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+          font: bold 32px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.3em; padding: 0 0 0 0.3em;
+          color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<input id="code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Room code">
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL MOTO: Pixel Bike Run with a motorbike (part of the PIXEL ARCADE).
+   Motocross seen from the side, in layered pixel silhouettes. The motorbike is a little physics
+   model: two wheels and the rider (three points held together by springs), so it rolls, bounces,
+   wheelies and flips for real. It is bigger, heavier and much faster than the bicycle, with an
+   engine you hear, and the tracks are stretched to fit its speed.
+   GAS and BRAKE ride it; LEAN BACK / LEAN FORWARD tip it, and in the air they spin it.
+   New: hold TRICK in the air for a SUPERMAN (let go before you land!).
+     TRACKS: 8 tracks with jumps, gaps, cliff drops and rollers, 3 stars each.
+     FREE RIDE: an endless track to farm money (a crash puts you back at the last checkpoint).
+     RACE A FRIEND: online with a 4-letter code, the same track, first to the finish wins.
+     GARAGE: 7 motorbikes, and abilities (engine tuning, flip spin, trick cash, nitro, second chance, magnet).
+   1. Setup  2. Tracks and terrain  3. The motorbike  4. Riding  5. Drawing  6. Screens  7. Online  8. Input  9. Loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelMoto.save';
+const save = { money: 0, bikes: { starter: 1 }, bike: 'starter', up: {}, best: {}, stars: {}, done: {}, sfx: true, seenHelp: false, freeBest: 0, helmet: 0 };
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+  if (s) { Object.assign(save, s); save.bikes = Object.assign({ starter: 1 }, s.bikes); save.up = Object.assign({}, s.up); save.best = Object.assign({}, s.best); save.stars = Object.assign({}, s.stars); save.done = Object.assign({}, s.done); save.money = s.money | 0; }
+} catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const lvl = id => save.up[id] | 0;
+const profile = PX.Profile.get();
+const MY_COLOR = PX.AVATAR_COLORS[profile.avatar.color];
+
+// motorbikes: top speed (m/s), engine power, flip spin, grip, color
+const BIKES = [
+  { id: 'starter', name: 'DIRT BIKE', desc: 'A GOOD ALL-ROUNDER', speed: 19.5, power: 10, spin: 26, grip: 1, col: '#e8303a', cost: 0 },
+  { id: 'bmx', name: 'PIT BIKE', desc: 'SMALL AND LIGHT: FLIPS FAST', speed: 18.5, power: 11, spin: 37, grip: 1, col: '#ff6bd0', cost: 900 },
+  { id: 'enduro', name: 'ENDURO', desc: 'FASTER, AND STILL FLIPS WELL', speed: 22, power: 12, spin: 31, grip: 1.1, col: '#5ad43f', cost: 1800 },
+  { id: 'fat', name: 'TRIAL BIKE', desc: 'HUGE GRIP: CLIMBS ANYTHING', speed: 21, power: 14.5, spin: 28, grip: 1.6, col: '#ff8a2a', cost: 2600 },
+  { id: 'downhill', name: 'MOTOCROSS 450', desc: 'BUILT FOR SPEED', speed: 27, power: 13, spin: 27, grip: 1.2, col: '#3a7ad4', cost: 4200 },
+  { id: 'rocket', name: 'TURBO', desc: 'VERY FAST, SPINS FAST', speed: 31, power: 16, spin: 36, grip: 1.3, col: '#2ad4c4', cost: 9000 },
+  { id: 'golden', name: 'GOLDEN MOTO', desc: 'THE BEST MOTORBIKE THERE IS', speed: 34, power: 18, spin: 41, grip: 1.4, col: '#ffd23f', cost: 20000 },
+];
+const ABILITIES = [
+  { id: 'pedal', name: 'ENGINE TUNING', desc: 'FASTER, AND MORE POWER UPHILL', col: '#5ad43f', max: 5, cost: [150, 350, 700, 1200, 2000] },
+  { id: 'spin', name: 'FLIP SPIN', desc: 'SPIN FASTER IN THE AIR: MORE FLIPS', col: '#ff6bd0', max: 5, cost: [150, 350, 700, 1200, 2000] },
+  { id: 'cash', name: 'TRICK CASH', desc: '+20% MONEY FOR EVERY TRICK', col: '#ffd23f', max: 5, cost: [200, 500, 1000, 1800, 3000] },
+  { id: 'nitro', name: 'NITRO', desc: 'A BOOST BUTTON (PER LEVEL, EACH RUN)', col: '#ff5ad0', max: 3, cost: [300, 800, 1600] },
+  { id: 'revive', name: 'SECOND CHANCE', desc: 'CRASH ON A TRACK AND KEEP GOING (PER LEVEL)', col: '#e8303a', max: 2, cost: [600, 1500] },
+  { id: 'magnet', name: 'MONEY MAGNET', desc: 'GRAB MONEY FROM FURTHER AWAY', col: '#4aa8ff', max: 3, cost: [150, 400, 900] },
+];
+const bikeOf = id => BIKES.find(b => b.id === id) || BIKES[0];
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, k) => a + (b - a) * k;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+const mixCache = new Map();
+function mix(a, b, k) {
+  k = Math.round(clamp(k, 0, 1) * 32) / 32;
+  const key = a + b + k; let c = mixCache.get(key);
+  if (!c) { const x = hex(a), y = hex(b); c = '#' + x.map((v, i) => clamp(Math.round(v + (y[i] - v) * k), 0, 255).toString(16).padStart(2, '0')).join(''); mixCache.set(key, c); }
+  return c;
+}
+function shade(c, k) { return '#' + hex(c).map(v => clamp(Math.round(v * k), 0, 255).toString(16).padStart(2, '0')).join(''); }
+const fmtTime = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + String(Math.floor(s * 100 % 100)).padStart(2, '0');
+const fmtMoney = n => '$' + Math.floor(n).toLocaleString('en-US');
+
+/* --- 2. TRAILS AND TERRAIN --------------------------------------------------- */
+// each trail: a look (sky, sun, four mountain layers far to near, the ground) and how hard it is
+const THEMES = [
+  { name: 'DESERT CANYON', sky: ['#3a6ab8', '#f0a868', '#ffd8a0'], sun: '#fff6d0', layers: ['#e0a070', '#c47a50', '#9c5438', '#70382a'], ground: '#3a1c14', grass: '#c4683a', cactus: true },
+  { name: 'FOREST TRACK', sky: ['#7a90ac', '#b8c8d8', '#e0e8ee'], sun: '#ffffff', layers: ['#b0bece', '#8a9cb2', '#647892', '#425470'], ground: '#1c2634', grass: '#2e3c50' },
+  { name: 'DUSTY FARM', sky: ['#e09a50', '#f4c878', '#fff0c0'], sun: '#fffbe0', layers: ['#d8a868', '#b48450', '#8a6040', '#5c4230'], ground: '#2e2018', grass: '#4a3626' },
+  { name: 'RED ROCKS', sky: ['#a0405a', '#e07a5a', '#f8c890'], sun: '#ffe8a0', layers: ['#c47860', '#9c5448', '#743c3a', '#4c2a2e'], ground: '#24141a', grass: '#8a3a2e', cactus: true },
+  { name: 'NIGHT QUARRY', sky: ['#05060f', '#141a3a', '#2a3060'], moon: true, stars: true, layers: ['#2a3062', '#20264e', '#181c3c', '#10132a'], ground: '#070816', grass: '#141836' },
+  { name: 'ICE PASS', sky: ['#3a6ab8', '#7aaee0', '#d0e6f8'], sun: '#ffffff', layers: ['#e8f0f8', '#bccde0', '#8ea8c4', '#5e7698'], ground: '#1e2a40', grass: '#e8f0ff', snow: true },
+  { name: 'VOLCANO', sky: ['#200608', '#6a1a14', '#d0502a'], sun: '#ffb070', layers: ['#7a2c22', '#5a1e1a', '#401416', '#28090c'], ground: '#120305', grass: '#ff6a1a', lava: true },
+  { name: 'AURORA', sky: ['#02040e', '#081830', '#0e3040'], stars: true, aurora: true, layers: ['#16324c', '#10283e', '#0c1e30', '#081422'], ground: '#03080f', grass: '#0e2a3a' },
+];
+const TRAILS = THEMES.map((th, i) => ({ id: 't' + i, theme: i, name: th.name, len: 900 + i * 160, d: i / 7, seed: 77 + i * 131 }));
+const trailOpen = i => i === 0 || !!save.done[TRAILS[i - 1].id];
+
+// the terrain: heights every half metre, built from features (slopes, kickers, gaps, drops, rollers, climbs)
+const STEP = 0.5, STRETCH = 1.5;                    // everything is 1.5x longer than in Pixel Bike Run: a motorbike is that much faster
+function makeTrack(seed, d, len, endless) {
+  const k = { h: [], rnd: mulberry(seed), d, y: 0, len, endless, coins: [], trees: [], cps: [], gaps: [], themeAt: null };
+  const push = y => { k.h.push(y); k.y = y; };
+  const xEnd = () => k.h.length * STEP;
+  const seg = (L, f) => { const y0 = k.y, n = Math.max(1, Math.round(L * STRETCH / STEP)); for (let i = 1; i <= n; i++) push(y0 + f(i / n)); };
+  const coinArc = (x0, y0, x1, y1, n, hgt) => { for (let i = 0; i < n; i++) { const u = (i + 0.5) / n; k.coins.push({ x: lerp(x0, x1, u), y: lerp(y0, y1, u) + Math.sin(u * Math.PI) * hgt, got: false }); } };
+  push(0); seg(24, u => -u * 2);                                        // the start: a gentle roll-in
+  k.feature = () => {
+    const r = k.rnd(), dd = k.d;
+    const slopeL = 14 + k.rnd() * 22, drop = slopeL * (0.14 + k.rnd() * 0.18), amp = k.rnd() < 0.5 ? 0.25 + k.rnd() * (0.4 + dd * 0.6) : 0, wl = 6 + k.rnd() * 6;
+    seg(slopeL, u => -drop * u + amp * Math.sin(u * slopeL / wl * Math.PI * 2) * Math.sin(u * Math.PI));   // a downhill to get speed, maybe with rollers
+    if (r < 0.3) {                                                    // a KICKER: a ramp that throws you up
+      const rise = 1.2 + k.rnd() * (1.2 + dd), L = 4 + k.rnd() * 2, x0 = xEnd(), y0 = k.y;
+      seg(L, u => rise * Math.pow(u, 1.7));
+      const lip = k.y; seg(2, u => -u * 2.5); seg(10, u => -u * 4);
+      coinArc(x0 + L, lip + 1.5, x0 + L + 12, lip - 1, 5, 2.5 + rise);
+    } else if (r < 0.3 + 0.2 + dd * 0.15 && xEnd() > 130) {            // a GAP: fly over the hole (or fall in it)
+      const rise = 1.6 + k.rnd() * 1.2, L = 5, G = 4 + dd * 5 + k.rnd() * 2;
+      seg(20, u => -u * 5.5);                                         // a fast run-in, so there's always the speed to make it
+      seg(L, u => rise * Math.pow(u, 1.6));
+      const lip = k.y, gx0 = xEnd();
+      for (let q = 0; q < Math.round(G * STRETCH / STEP); q++) push(lip - 24);
+      k.gaps.push([gx0, xEnd(), lip]);
+      k.y = lip - 1.5 - dd * 2; seg(0.5, () => 0); seg(12, u => -u * 4.5);
+      coinArc(gx0, lip + 2, xEnd() - 10, lip, 6, 3.5);
+    } else if (r < 0.65 + dd * 0.1) {                                 // a DROP: off a ledge onto a steep landing
+      seg(4, u => -u * 0.3);
+      const hd = 2.5 + k.rnd() * (2 + dd * 4); k.y -= hd; seg(0.5, () => 0); seg(10, u => -u * 4.5);
+    } else if (r < 0.8) {                                             // a TABLE: up, a flat top, down
+      const rise = 1.5 + k.rnd() * 1.5; seg(5, u => rise * Math.pow(u, 1.5)); seg(5 + k.rnd() * 4, () => 0); seg(6, u => -rise * 1.6 * u);
+    } else if (dd > 0.25) {                                           // a CLIMB: pedal up
+      const L = 10 + k.rnd() * 8, rise = L * (0.12 + dd * 0.08); seg(L, u => rise * (u - 0.5 * Math.sin(u * Math.PI) * 0.2)); seg(6, u => -u * 1.5);
+    } else seg(12, u => -u * 2 + 0.5 * Math.sin(u * Math.PI * 3));
+  };
+  k.extend = toX => {
+    while (xEnd() < toX) {
+      const x = xEnd();
+      if (!k.endless && x > len) { seg(60, u => -u * 1); break; }    // the finish area
+      if (k.cps.length === 0 || x - k.cps[k.cps.length - 1] > 165) k.cps.push(x);
+      k.feature();
+      // trees beside the trail, and a few on the way (only where there's ground)
+      for (let t = x; t < xEnd(); t += 3 + k.rnd() * 9) if (k.rnd() < 0.55 && !k.gaps.some(([a, b]) => t > a - 2 && t < b + 2)) k.trees.push({ x: t, s: 0.7 + k.rnd() * 0.8, f: k.rnd() < 0.22 });
+    }
+  };
+  k.extend(endless ? 500 : len + 110);
+  k.finishX = endless ? Infinity : len;
+  return k;
+}
+function ground(k, x) {
+  const f = x / STEP, i = Math.floor(f);
+  if (i < 0) return k.h[0] - i * STEP * 0.1;
+  if (i >= k.h.length - 1) return k.h[k.h.length - 1];
+  return lerp(k.h[i], k.h[i + 1], f - i);
+}
+
+/* --- 3. THE BIKE: two wheels and the rider, three points held together by springs ----------------- */
+const WR = 0.42, WB = 1.45, HEAD = 0.3, SEAT = [0.62, 1.32];   // wheel radius, wheelbase, the head's radius, where the rider's head rests
+const REST = { rh: Math.hypot(SEAT[0], SEAT[1]), fh: Math.hypot(WB - SEAT[0], SEAT[1]) };
+function makeBike(x, k, col) {
+  // the wheels just on the ground, the rider exactly where the springs want them (so nothing jumps at the start)
+  const y = ground(k, x) + WR, y2 = ground(k, x + WB) + WR, a = Math.atan2(y2 - y, WB), ax = Math.cos(a), ay = Math.sin(a);
+  const p = [{ x, y }, { x: x + ax * WB, y: y + ay * WB }, { x: x + ax * SEAT[0] - ay * SEAT[1], y: y + ay * SEAT[0] + ax * SEAT[1] }];
+  return { p, pp: p.map(q => ({ ...q })), contact: [false, false], col, crashed: false, rot: 0, air: 0, wheel: 0, crank: 0, lastA: 0, rag: null, pose: 0, trickT: 0, airRot: 0, wheelieT: 0, landT: [0, 0] };
+}
+const bAngle = b => Math.atan2(b.p[1].y - b.p[0].y, b.p[1].x - b.p[0].x);
+const bVel = (b, dt) => ({ x: ((b.p[0].x - b.pp[0].x) + (b.p[1].x - b.pp[1].x)) / 2 / dt, y: ((b.p[0].y - b.pp[0].y) + (b.p[1].y - b.pp[1].y)) / 2 / dt });
+// a circle (a wheel, the head) against the ground: the nearest point of the trail's line, the push-out and its normal
+function dig(k, q, r) {
+  const gy = ground(k, q.x);
+  if (q.y < gy) {                                                       // under the surface: straight out along the slope's normal
+    const s = (ground(k, q.x + 0.25) - ground(k, q.x - 0.25)) / 0.5, n = Math.hypot(s, 1);
+    return { pen: r + (gy - q.y) / n, nx: -s / n, ny: 1 / n };
+  }
+  let best = null;
+  const i0 = Math.max(0, Math.floor((q.x - r) / STEP) - 1), i1 = Math.min(k.h.length - 2, Math.floor((q.x + r) / STEP) + 1);
+  for (let i = i0; i <= i1; i++) {
+    const ax = i * STEP, ay = k.h[i], bx = ax + STEP, by = k.h[i + 1], dx = bx - ax, dy = by - ay;
+    const u = clamp(((q.x - ax) * dx + (q.y - ay) * dy) / (dx * dx + dy * dy), 0, 1), cx = ax + dx * u, cy = ay + dy * u;
+    const ex = q.x - cx, ey = q.y - cy, d = Math.hypot(ex, ey);
+    if (d < r + 0.03 && d > 1e-6 && (!best || d < best.d)) best = { d, pen: Math.max(0, r - d), nx: ex / d, ny: ey / d };
+  }
+  return best;
+}
+function bikeStep(b, k, dt, c, stats) {
+  const g = 9.8;
+  // move (Verlet), with a little air drag
+  for (let i = 0; i < 3; i++) {
+    const q = b.p[i], o = b.pp[i], vx = (q.x - o.x) * 0.9993, vy = (q.y - o.y) * 0.9993;
+    o.x = q.x; o.y = q.y; q.x += vx; q.y += vy - g * dt * dt;
+  }
+  const R = b.p[0], F = b.p[1], Hh = b.p[2];
+  let ax = F.x - R.x, ay = F.y - R.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  const px = -ay, py = ax;                                             // "up" for the bike
+  b.offT = b.contact[0] || b.contact[1] ? 0 : (b.offT || 0) + dt;
+  const air = b.offT > 0.2;                                           // really flying (not a little bounce)
+  if (!b.crashed && c) {
+    // lean: tips the bike (and spins it in the air), and the rider shifts their weight
+    const vRel = ((F.x - b.pp[1].x) - (R.x - b.pp[0].x)) * px + ((F.y - b.pp[1].y) - (R.y - b.pp[0].y)) * py;
+    const omega = vRel / dt / WB, maxW = air ? stats.spinMax : 3;
+    let want = -c.lean;                                                // lean back = nose up = turn counterclockwise
+    // on the ground with no lean, the bike settles level with the slope by itself (no surprise front flips)
+    if (!want && !air) {
+      const xm = (R.x + F.x) / 2, slope = Math.atan2(ground(k, xm + 0.6) - ground(k, xm - 0.6), 1.2);
+      let e = Math.atan2(ay, ax) - slope; if (e > Math.PI) e -= Math.PI * 2; if (e < -Math.PI) e += Math.PI * 2;
+      want = clamp(-e * 3 - omega * 0.6, -1, 1) * 0.8;
+    }
+    // a wheelie holds at its balance point (about 55 degrees) instead of looping out
+    if (!air && want > 0) {
+      const xm = (R.x + F.x) / 2, slope = Math.atan2(ground(k, xm + 0.6) - ground(k, xm - 0.6), 1.2);
+      let rel = Math.atan2(ay, ax) - slope; if (rel > Math.PI) rel -= Math.PI * 2; if (rel < -Math.PI) rel += Math.PI * 2;
+      if (rel > 0.85) want = clamp((0.95 - rel) * 4 - omega * 0.5, -1, 1);
+    }
+    if (want && !(Math.sign(omega) === Math.sign(want) && Math.abs(omega) > maxW)) {
+      const tq = want * (air ? stats.spin : 17) * dt * dt;
+      F.x += px * tq; F.y += py * tq; R.x -= px * tq; R.y -= py * tq;
+    }
+    if (c.lean) { const sh = c.lean * 2.2 * dt * dt; Hh.x += ax * sh; Hh.y += ay * sh; }
+  }
+  // springs: the frame is stiff, the rider is springy (that's the suspension)
+  const link = (a, b2, L, st, wa, wb) => {
+    const dx = b2.x - a.x, dy = b2.y - a.y, d = Math.hypot(dx, dy) || 1e-6, e = (d - L) / d * st;
+    a.x += dx * e * wa; a.y += dy * e * wa; b2.x -= dx * e * wb; b2.y -= dy * e * wb;
+  };
+  for (let it = 0; it < 5; it++) {
+    link(R, F, WB, 1, 0.5, 0.5);
+    if (!b.crashed) { link(R, Hh, REST.rh, 0.5, 0.3, 0.7); link(F, Hh, REST.fh, 0.5, 0.3, 0.7); }
+  }
+  // the wheels on the ground: push out, bounce a little, roll; GAS on the back wheel, BRAKE on both
+  b.contact = [false, false];
+  for (let i = 0; i < 2; i++) {
+    const q = b.p[i], o = b.pp[i], hit = dig(k, q, WR);
+    if (!hit) continue;
+    b.contact[i] = true;
+    let vx = q.x - o.x, vy = q.y - o.y;                                // the speed before the push-out
+    q.x += hit.nx * hit.pen; q.y += hit.ny * hit.pen;
+    const tx = hit.ny, ty = -hit.nx;                                   // along the slope, forwards
+    let vn = vx * hit.nx + vy * hit.ny, vt = vx * tx + vy * ty;
+    if (vn < 0) vn = -vn * 0.08;
+    vt *= 1 - 0.15 * dt;                                               // rolling
+    if (c && !b.crashed) {
+      if (c.brake) vt *= 1 - 3.5 * dt;
+      if (i === 0) b.drive = { tx, ty, vt: vt / dt };
+    }
+    o.x = q.x - (hit.nx * vn + tx * vt); o.y = q.y - (hit.ny * vn + ty * vt);
+  }
+  if (c && !b.crashed && b.contact[0] && b.drive) {
+    const d = b.drive, acc = (c.gas && d.vt < stats.top ? stats.power * stats.grip : 0) + (c.nitro ? 16 : 0);
+    if (acc) for (const q of b.p) { q.x += d.tx * acc * dt * dt; q.y += d.ty * acc * dt * dt; }
+  }
+  b.drive = null;
+  // the head on the ground (or falling into a gap): a crash
+  if (!b.crashed) {
+    const hh = dig(k, Hh, HEAD);
+    if (hh || Hh.y < ground(k, Hh.x) - 1) return 'crash';
+    if (R.y < ground(k, R.x) - 6 && F.y < ground(k, F.x) - 6) return 'fell';
+  } else {
+    const hh = dig(k, Hh, HEAD); if (hh) { Hh.x += hh.nx * hh.pen; Hh.y += hh.ny * hh.pen; }
+  }
+  // the wheels turn as you go
+  const v = (R.x - b.pp[0].x) * ax + (R.y - b.pp[0].y) * ay;
+  b.wheel += v / WR;
+  return null;
+}
+
+/* --- 4. RIDING -------------------------------------------------------------------- */
+let state = 'title';          // title | trails | shop | online | play | crashed | finished
+let paused = false, mode = 'trail', trailIdx = 0, shopTab = 'bikes';
+let G = null;                 // the ride
+const inp = { keys: {}, pad: { lean: 0, gas: 0, brake: 0, trick: 0 }, touch: new Map() };
+let touchUI = matchMedia('(pointer: coarse)').matches;
+function stats() {
+  const B = bikeOf(save.bike), pd = 1 + lvl('pedal') * 0.07;
+  return { top: B.speed * pd, power: B.power * pd, spin: B.spin * (1 + lvl('spin') * 0.1), spinMax: 7 + B.spin * 0.12 + lvl('spin') * 0.6, grip: B.grip };
+}
+function startRide(m, ti, mp) {
+  mode = m; trailIdx = ti;
+  const tr = TRAILS[ti];
+  const k = m === 'free' ? makeTrack(9000 + Math.floor(Math.random() * 1e6), 0.35, 0, true) : makeTrack(tr.seed, tr.d, tr.len, false);
+  G = { k, theme: m === 'free' ? 0 : tr.theme, mp: !!mp, t: 0, count: 2.4, b: makeBike(4, k, bikeOf(save.bike).col), money: 0, earned: 0, combo: 0, pops: [], parts: [],
+        nitros: lvl('nitro'), nitroT: 0, revives: lvl('revive'), pending: null, crashT: 0, done: false, cause: '', respawnT: 0, cp: 4, maxX: 4, stars: 0, newStars: 0, bonus: 0,
+        camX: 4, camY: 0, zoom: 22, shake: 0, flipsTotal: 0, bestTrick: 0, won: null, starsArc: 0 };
+  G.camY = ground(k, 4);
+  Object.assign(FR, { seen: false, p: null, fin: 0, out: false, x: 0 });
+  state = 'play'; paused = false;
+  sfx('click');
+}
+function pop(text, col, big) { G.pops.push({ text, col, t: 0, big }); if (G.pops.length > 4) G.pops.shift(); }
+function earn(n, why, col = '#ffd23f') {
+  const amt = Math.round(n * (1 + lvl('cash') * 0.2) * (1 + G.combo * 0.25));
+  G.money += amt; G.earned += amt; G.bestTrick = Math.max(G.bestTrick, amt);
+  pop(why + ' ' + fmtMoney(amt), col, amt >= 300); sfx('cash');
+}
+function dust(x, y, n, col = '#cbb8d8') { for (let i = 0; i < n; i++) G.parts.push({ x, y, vx: (Math.random() - 0.5) * 6, vy: Math.random() * 4, t: 0.5 + Math.random() * 0.4, col }); }
+function crash(cause) {
+  const b = G.b; if (b.crashed) return;
+  if (mode === 'trail' && !G.mp && G.revives > 0) { G.revives--; pop('SECOND CHANCE!', '#ff8a8a', true); sfx('saved'); respawn(); return; }
+  b.crashed = true; G.combo = 0; G.pending = null; sfx('crash'); G.shake = 0.5;
+  const v = bVel(b, 1 / 240);
+  b.rag = { x: b.p[2].x, y: b.p[2].y, vx: v.x * 0.8, vy: v.y + 3, a: 0, va: (Math.random() < 0.5 ? -1 : 1) * 8 };
+  dust(b.p[2].x, b.p[2].y, 14);
+  if (mode === 'free' || G.mp) { G.respawnT = 1.4; pop(cause, '#ff8a8a', true); return; }
+  G.done = true; G.cause = cause; state = 'crashed'; G.crashT = 0; bank();
+}
+function respawn() {
+  const k = G.k, x = Math.max(4, ...k.cps.filter(c => c <= G.maxX - 2));
+  G.b = makeBike(x, k, bikeOf(save.bike).col); G.cp = x; G.respawnT = 0;
+  if (G.mp) Net.send({ t: 'cp' });
+}
+function bank() { save.money += G.money; G.banked = G.money; store(); }
+function finish() {
+  G.done = true; state = 'finished'; sfx('finish'); G.endT = 0;
+  for (let i = 0; i < 70; i++) G.parts.push({ x: G.camX + (Math.random() - 0.5) * 30, y: G.camY + 10 + Math.random() * 8, vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2, t: 3, col: ['#ffd23f', '#e8303a', '#5ad43f', '#4aa8ff', '#ff6bd0'][i % 5], conf: true });
+  const tr = TRAILS[trailIdx];
+  if (G.mp) { G.won = !FR.fin; Net.send({ t: 'fin', tm: G.t }); G.bonus = G.won ? 500 : 200; G.money += G.bonus; if (G.won) PX.Wallet.add(2); bank(); return; }
+  G.bonus = Math.round(150 + tr.d * 600); G.money += G.bonus;
+  const key = tr.id, par = parTime(trailIdx), goal = cashGoal(trailIdx);
+  if (!save.best[key] || G.t < save.best[key]) { G.newBest = !!save.best[key]; save.best[key] = G.t; }
+  const st = 1 | (G.earned >= goal ? 2 : 0) | (G.t <= par ? 4 : 0), had = save.stars[key] | 0;
+  G.stars = st; G.newStars = [1, 2, 4].filter(m => (st & m) && !(had & m)).length;
+  save.stars[key] = had | st; save.done[key] = 1;
+  if (G.newStars) PX.Wallet.add(G.newStars);
+  bank();
+}
+const parTime = i => Math.round((TRAILS[i].len / (14.5 + TRAILS[i].d * 0.5)) * 10) / 10;
+const cashGoal = i => Math.round((900 + TRAILS[i].d * 2200) / 50) * 50;
+function controls() {
+  const k = inp.keys, t = [...inp.touch.values()];
+  const back = k.l || t.includes('back'), fwd = k.r || t.includes('fwd');
+  return {
+    lean: (fwd ? 1 : 0) - (back ? 1 : 0) || inp.pad.lean,
+    gas: k.u || t.includes('gas') || inp.pad.gas > 0.3,
+    brake: k.d || t.includes('brake') || inp.pad.brake > 0.3,
+    nitro: G && G.nitroT > 0,
+    trick: k.t || t.includes('trick') || inp.pad.trick > 0,
+  };
+}
+function useNitro() { if (!G || state !== 'play' || G.count > 0 || G.b.crashed || G.nitros <= 0 || G.nitroT > 0) return; G.nitros--; G.nitroT = 2.2; sfx('nitro'); pop('NITRO!', '#ff5ad0', true); }
+function step(dt) {
+  if (!G) return;
+  for (const p of G.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= (p.conf ? 2 : 9) * dt; p.t -= dt; }
+  G.parts = G.parts.filter(p => p.t > 0);
+  for (const p of G.pops) p.t += dt;
+  G.pops = G.pops.filter(p => p.t < 1.6);
+  G.shake = Math.max(0, G.shake - dt);
+  const b = G.b, k = G.k;
+  if (state === 'crashed' || state === 'finished') {
+    if (b.rag) { const r = b.rag; r.vy -= 9.8 * dt; r.x += r.vx * dt; r.y += r.vy * dt; r.a += r.va * dt; const gy = ground(k, r.x) + 0.3; if (r.y < gy) { r.y = gy; r.vy = -r.vy * 0.3; r.vx *= 0.7; r.va *= 0.6; } }
+    bikeStep(b, k, dt, null, stats()); G.crashT += dt; if (state === 'finished') G.endT += dt;
+    return;
+  }
+  if (state !== 'play' || paused) return;
+  if (G.count > 0) { const c0 = Math.ceil(G.count); G.count -= dt; if (Math.ceil(G.count) !== c0) sfx(G.count > 0 ? 'beep' : 'go'); return; }
+  G.t += dt;
+  if (k.endless) k.extend(b.p[0].x + 300);
+  if (b.crashed) {                                                    // free ride and races: back on the bike after a moment
+    if (b.rag) { const r = b.rag; r.vy -= 9.8 * dt; r.x += r.vx * dt; r.y += r.vy * dt; r.a += r.va * dt; const gy = ground(k, r.x) + 0.3; if (r.y < gy) { r.y = gy; r.vy = -r.vy * 0.3; r.vx *= 0.7; } }
+    bikeStep(b, k, dt, null, stats());
+    if ((G.respawnT -= dt) <= 0) respawn();
+    return;
+  }
+  const c = controls(), st = stats();
+  if (G.nitroT > 0) { G.nitroT -= dt; st.top += 10; }
+  const wasAir = !b.contact[0] && !b.contact[1];
+  const res = bikeStep(b, k, dt, c, st);
+  if (res) { crash(res === 'fell' ? 'YOU FELL IN THE GAP!' : 'YOU HIT YOUR HEAD!'); return; }
+  const mx0 = (b.p[0].x + b.p[1].x) / 2, my0 = (b.p[0].y + b.p[1].y) / 2;
+  for (const [a0, a1, lip] of k.gaps) if (mx0 > a0 - 1 && mx0 < a1 + 1 && my0 < lip - 5) { crash('YOU FELL IN THE GAP!'); return; }
+  const air = !b.contact[0] && !b.contact[1];
+  // tricks: count the turns in the air
+  const a = bAngle(b); let da = a - b.lastA; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2; b.lastA = a;
+  // SUPERMAN: hold TRICK in the air and the rider lets go of the seat and flies behind the bars
+  b.pose = clamp(b.pose + (c.trick && air && b.air > 0.2 ? dt * 5 : -dt * 6), 0, 1);
+  if (air) { b.air += dt; b.airRot += da; if (b.pose > 0.9) b.trickT += dt; }
+  else if (wasAir) {                                                  // touching down
+    if (b.pose > 0.45) { crash('BACK ON THE SEAT BEFORE YOU LAND!'); return; }
+    const t0 = G.t;
+    if (b.contact[0]) b.landT[0] = t0; if (b.contact[1]) b.landT[1] = t0;
+    if (b.air > 0.35) {
+      const turns = b.airRot / (Math.PI * 2), flips = Math.floor(Math.abs(turns) + 0.18);
+      G.pending = { t: 0.3, flips, back: turns > 0, air: b.air, perfect: false, trick: b.trickT };
+      dust((b.p[0].x + b.p[1].x) / 2, ground(k, b.p[0].x), 6); sfx('land'); if (b.air > 1) G.shake = 0.15;
+    }
+    b.air = 0; b.airRot = 0; b.trickT = 0;
+  }
+  if (!air && b.contact[0] && b.contact[1] && G.pending && Math.abs(b.landT[0] - b.landT[1]) < 0.12) G.pending.perfect = true;
+  if (G.pending && (G.pending.t -= dt) <= 0) {                        // the landing held: pay for it
+    const P = G.pending; G.pending = null;
+    if (P.trick > 0.25) { if (!P.flips) G.combo++; earn(60 + Math.round(P.trick * 220), (P.trick > 1 ? 'LONG ' : '') + 'SUPERMAN!', '#7ad8ff'); if (!P.flips) sfx('trick'); }
+    if (P.flips) {
+      G.combo++; G.flipsTotal += P.flips;
+      const name = (P.flips > 1 ? (P.flips === 2 ? 'DOUBLE ' : P.flips === 3 ? 'TRIPLE ' : P.flips + 'X ') : '') + (P.back ? 'BACKFLIP' : 'FRONTFLIP');
+      earn((P.back ? 100 : 130) * P.flips * P.flips * (P.perfect ? 1.5 : 1), (P.perfect ? 'PERFECT ' : '') + name + '!', P.back ? '#ffd23f' : '#ff6bd0'); sfx('trick');
+    } else if (P.air > 1.1 && !(P.trick > 0.25)) { earn(Math.round(P.air * 25), 'BIG AIR!', '#7ad8ff'); }
+  }
+  // wheelies: back wheel down, front wheel up, going
+  const vel = bVel(b, dt), speed = Math.hypot(vel.x, vel.y);
+  if (b.contact[0] && !b.contact[1] && speed > 3) { b.wheelieT += dt; if (b.wheelieT > 0.6 && Math.floor(b.wheelieT * 2) !== Math.floor((b.wheelieT - dt) * 2)) earn(15, 'WHEELIE', '#5ad43f'); }
+  else if (b.wheelieT > 0 && b.contact[1]) b.wheelieT = 0;
+  // money lying on the trail
+  const mr = 1.1 + lvl('magnet') * 0.9, cx = (b.p[0].x + b.p[1].x) / 2, cy = (b.p[0].y + b.p[1].y) / 2 + 0.6;
+  for (const m of k.coins) if (!m.got && Math.abs(m.x - cx) < mr && Math.abs(m.y - cy) < mr + 0.6) { m.got = true; G.money += 10; G.earned += 10; sfx('coin'); }
+  G.maxX = Math.max(G.maxX, cx);
+  if (mode === 'free' && cx > save.freeBest) save.freeBest = Math.floor(cx);
+  if (cx >= k.finishX) finish();
+  if (G.mp) Net.sendPos();
+  // the engine's revs (you hear them), and dirt thrown up by the back wheel
+  G.rev = lerp(G.rev || 0, air ? (c.gas ? 1 : 0.3) : clamp((c.gas ? 0.3 : 0.08) + speed / st.top * 0.7, 0, 1.15), Math.min(1, dt * 8));
+  if (c.gas && b.contact[0] && Math.random() < dt * 40) G.parts.push({ x: b.p[0].x - 0.3, y: b.p[0].y - WR + 0.1, vx: -2 - Math.random() * 5, vy: 1 + Math.random() * 4, t: 0.3 + Math.random() * 0.3, col: THEMES[G.theme].grass });
+}
+
+/* --- 5. DRAWING -------------------------------------------------------------------- */
+let Z = 15, CX = 0, CY = 0, HY = 140;                                   // camera: pixels per metre, where it looks
+const sx = x => Math.round(S.W / 2 + (x - CX) * Z - S.W * 0.12);
+const sy = y => Math.round(HY - (y - CY) * Z);
+function sky(th, t) {
+  const W = S.W, n = 18;
+  for (let i = 0; i < n; i++) {
+    const u = i / (n - 1), c = u < 0.55 ? mix(th.sky[0], th.sky[1], u / 0.55) : mix(th.sky[1], th.sky[2], (u - 0.55) / 0.45);
+    ctx.fillStyle = c; ctx.fillRect(0, Math.round(i * H / n), W, Math.ceil(H / n) + 1);
+  }
+  if (th.stars) for (let i = 0; i < 70; i++) { ctx.fillStyle = i % 9 ? '#8a90c0' : '#fff'; ctx.fillRect((i * 97 + Math.floor(CX * 0.3)) % W, (i * 41) % 120, 1, 1); }
+  if (th.aurora) for (let x = 0; x < W; x += 2) { const y = 22 + Math.sin(x * 0.02 + t * 0.5) * 9 + Math.sin(x * 0.05 + t) * 4; ctx.fillStyle = x % 6 ? 'rgba(80,255,170,0.25)' : 'rgba(150,120,255,0.25)'; ctx.fillRect(x, Math.round(y), 2, 22 + Math.round(Math.sin(x * 0.03 + t) * 8)); }
+  const sunX = Math.round(W * 0.72), sunY = 96;
+  if (th.sun) { for (let r = 30; r > 12; r -= 6) { ctx.fillStyle = 'rgba(255,240,200,' + (0.06) + ')'; disc(sunX, sunY, r); } ctx.fillStyle = th.sun; disc(sunX, sunY, 11); }
+  if (th.moon) { ctx.fillStyle = '#f3e9c8'; disc(sunX, 50, 9); ctx.fillStyle = th.sky[0]; disc(sunX + 4, 47, 7); }
+}
+function disc(cx, cy, r) { for (let dy = -r; dy <= r; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy)); ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1); } }
+// the mountain layers: far ones move slowly, each a jagged ridge with pine trees on it
+function layers(th, t) {
+  const W = S.W, L = th.layers;
+  for (let li = 0; li < 4; li++) {
+    const par = 0.08 + li * 0.1, base = 150 + li * 18 - (CY * Z * par * 0.25), amp = 46 - li * 8, col = L[li], off = CX * Z * par + li * 1000;
+    ctx.fillStyle = col;
+    for (let x = 0; x < W; x += 2) {
+      const u = (x + off) * (0.006 + li * 0.002);
+      const h = amp * (0.55 + 0.45 * Math.sin(u) * Math.sin(u * 0.37 + li)) + 8 * Math.sin(u * 3.1);
+      const y = Math.round(base - (th.cactus ? Math.round(h / 12) * 12 : h));
+      ctx.fillRect(x, y, 2, H - y);
+      // pines along the ridge
+      const tx = Math.floor((x + off) / 7);
+      if (!th.cactus && (tx * 2654435761 >>> 0) % 5 < 3 - (li === 0 ? 2 : 0)) { const th2 = 4 + ((tx * 7) % 5) + li * 2; for (let q = 0; q < th2; q++) { const w = Math.max(1, Math.round((q / th2) * (2 + li * 0.6))); ctx.fillRect(x + 1 - w, y - th2 + q, w * 2, 1); } }
+    }
+    if (th.snow && li < 2) { ctx.fillStyle = '#ffffff'; for (let x = 0; x < W; x += 2) { const u = (x + off) * (0.006 + li * 0.002), h = amp * (0.55 + 0.45 * Math.sin(u) * Math.sin(u * 0.37 + li)) + 8 * Math.sin(u * 3.1); if (h > amp * 0.75) ctx.fillRect(x, Math.round(base - h), 2, 3); } }
+    // mist between the layers
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.05 - li * 0.01) + ')'; ctx.fillRect(0, Math.round(base - amp * 0.3), W, H);
+  }
+  if (th.lava) { ctx.fillStyle = 'rgba(255,90,20,0.12)'; ctx.fillRect(0, H - 40, W, 40); }
+}
+let curTheme = THEMES[0];
+function pine(x, y, s, col) {                                         // a pine (or, in the desert, a cactus): a pixel silhouette
+  ctx.fillStyle = col;
+  if (curTheme.cactus) {
+    const h = Math.round(15 * s * Z / 15), w = Math.max(2, Math.round(2.5 * s * Z / 15));
+    ctx.fillRect(x - (w >> 1), y - h, w, h + 3);
+    ctx.fillRect(x - w * 2, y - Math.round(h * 0.6), w * 2, Math.max(1, w - 1)); ctx.fillRect(x - w * 2, y - Math.round(h * 0.85), Math.max(1, w - 1), Math.round(h * 0.25) + 1);
+    ctx.fillRect(x, y - Math.round(h * 0.45), w * 2, Math.max(1, w - 1)); ctx.fillRect(x + w * 2 - Math.max(1, w - 1), y - Math.round(h * 0.75), Math.max(1, w - 1), Math.round(h * 0.3) + 1);
+    return;
+  }
+  const h = Math.round(26 * s * Z / 15), w = Math.round(7 * s * Z / 15);
+  for (let q = 0; q < h; q++) { const ww = Math.max(1, Math.round((q / h) * w + ((q % 5) < 2 ? 1 : 0))); ctx.fillRect(x - ww, y - h + q, ww * 2, 1); }
+  ctx.fillRect(x - 1, y - 2, 2, 4);
+}
+function terrain(k, th) {
+  curTheme = th;
+  const W = S.W, x0 = CX - (S.W / 2 - S.W * 0.12) / Z - 2, x1 = x0 + W / Z + 4;
+  // trees behind the trail (a bit lighter)
+  for (const tr of k.trees) if (!tr.f && tr.x > x0 - 3 && tr.x < x1 + 3) pine(sx(tr.x), sy(ground(k, tr.x)) + 4, tr.s * 1.2, mix(th.ground, th.layers[3], 0.45));
+  ctx.fillStyle = th.ground;
+  let prev = null;
+  for (let x = 0; x < W; x++) {
+    const wx = CX + (x - W / 2 + W * 0.12) / Z, y = sy(ground(k, wx));
+    if (y < H) ctx.fillRect(x, y, 1, H - y);
+    prev = y;
+  }
+  // the edge: grass (or snow) on top, little tufts
+  ctx.fillStyle = th.grass;
+  for (let x = 0; x < W; x++) {
+    const wx = CX + (x - W / 2 + W * 0.12) / Z, y = sy(ground(k, wx));
+    if (y >= H) continue;
+    ctx.fillRect(x, y, 1, 1);
+    const n = (Math.floor(wx * 4) * 2654435761 >>> 0) % 7;
+    if (n < 2) ctx.fillRect(x, y - 1 - n, 1, 1 + n);
+  }
+  // trees on the trail side (in front)
+  for (const tr of k.trees) if (tr.f && tr.x > x0 - 3 && tr.x < x1 + 3) pine(sx(tr.x), sy(ground(k, tr.x)) + 6, tr.s, th.ground);
+  // money on the trail
+  for (const m of k.coins) if (!m.got && m.x > x0 && m.x < x1) {
+    const X = sx(m.x), Y = sy(m.y), w = Math.max(1, Math.round(3 * Math.abs(Math.cos(performance.now() / 160 + m.x))));
+    ctx.fillStyle = '#111'; ctx.fillRect(X - w - 1, Y - 5, w * 2 + 2, 10); ctx.fillStyle = '#5ad43f'; ctx.fillRect(X - w, Y - 4, w * 2, 8);
+    if (w > 1) { ctx.fillStyle = '#d8ffb0'; ctx.fillRect(X - 1, Y - 3, 2, 6); }
+  }
+  // checkpoints (free ride and races) and the finish
+  if (mode !== 'trail' || G.mp) for (const c of k.cps) if (c > x0 && c < x1 && c > 5) { const X = sx(c), Y = sy(ground(k, c)); ctx.fillStyle = '#888'; ctx.fillRect(X, Y - 26, 1, 26); ctx.fillStyle = '#4aa8ff'; ctx.fillRect(X + 1, Y - 26, 7, 5); }
+  if (k.finishX < x1 + 5) {
+    const X = sx(k.finishX), Y = sy(ground(k, k.finishX));
+    ctx.fillStyle = '#222'; ctx.fillRect(X - 1, Y - 44, 2, 44); ctx.fillRect(X + 40, Y - 44, 2, 44);
+    for (let i = 0; i < 20; i++) for (let j = 0; j < 3; j++) { ctx.fillStyle = (i + j) % 2 ? '#111' : '#fff'; ctx.fillRect(X + 1 + i * 2, Y - 44 + j * 3, 2, 3); }
+    T('FINISH', X + 21, Y - 34, '#ffd23f', 1, 'center', '#000');
+  }
+}
+// pixel lines for the bike and the rider
+function line(x0, y0, x1, y1, col, w = 1) {
+  ctx.fillStyle = col; x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sxx = x0 < x1 ? 1 : -1, syy = y0 < y1 ? 1 : -1; let e = dx + dy;
+  for (let n = 0; n < 400; n++) { ctx.fillRect(x0 - (w >> 1), y0 - (w >> 1), w, w); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sxx; } if (e2 <= dx) { e += dx; y0 += syy; } }
+}
+function wheel(x, y, r, a, col) {                                     // a fat knobby tyre, a rim, spokes
+  ctx.fillStyle = '#0a0a10';
+  for (let q = 0; q < 36; q++) { const t = q / 36 * Math.PI * 2 + a; ctx.fillRect(Math.round(x + Math.cos(t) * r) - 1, Math.round(y + Math.sin(t) * r) - 1, 3, 3); if (q % 3 === 0) ctx.fillRect(Math.round(x + Math.cos(t) * (r + 1.5)) - 1, Math.round(y + Math.sin(t) * (r + 1.5)) - 1, 2, 2); }
+  ctx.fillStyle = col;
+  for (let q = 0; q < 20; q++) { const t = q / 20 * Math.PI * 2; ctx.fillRect(Math.round(x + Math.cos(t) * (r - 2.5)), Math.round(y + Math.sin(t) * (r - 2.5)), 1, 1); }
+  for (let q = 0; q < 3; q++) { const t = a + q * Math.PI / 3; line(x - Math.cos(t) * (r - 3), y - Math.sin(t) * (r - 3), x + Math.cos(t) * (r - 3), y + Math.sin(t) * (r - 3), col); }
+  ctx.fillStyle = '#ddd'; ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3);
+}
+function drawBike(b, col, ghost, name) {
+  const R = b.p[0], F = b.p[1], Hh = b.p[2];
+  const rx = sx(R.x), ry = sy(R.y), fx = sx(F.x), fy = sy(F.y);
+  let ax = F.x - R.x, ay = F.y - R.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  const px = -ay, py = ax, at = (u, v) => [sx(R.x + ax * u + px * v), sy(R.y + ay * u + py * v)];
+  if (ghost) ctx.globalAlpha = 0.55;
+  const r = WR * Z, spokes = '#5a5a6a';
+  wheel(rx, ry, r, -b.wheel, spokes); wheel(fx, fy, r, -b.wheel, spokes);
+  // the motorbike: swingarm, engine, exhaust, tank and seat, fenders, the fork and the bars
+  const peg = at(0.6, 0.12), seat = at(0.34, 0.74), head = at(1.02, 0.86), bar = at(0.93, 1.02), dark = shade(col, 0.6);
+  const L = (a, c, color, w) => line(a[0], a[1], c[0], c[1], color, w);
+  L([rx, ry], at(0.6, 0.2), '#3a3a46', 2);                                   // swingarm
+  L(at(0.66, 0.34), at(0.02, 0.56), '#9a9aa6', 2); L(at(0.1, 0.55), at(-0.12, 0.6), '#c8c8d0', 3);   // exhaust
+  L(at(0.52, 0.24), at(0.92, 0.24), '#2a2a33', 6); L(at(0.7, 0.3), at(0.78, 0.52), '#5a5a6a', 4);     // engine and cylinder
+  L(at(0.6, 0.6), at(1.0, 0.8), dark, 3); L(at(0.62, 0.7), at(0.98, 0.84), col, 5);                  // frame and tank
+  L(at(0.24, 0.52), at(0.56, 0.5), col, 4);                                  // side panel
+  L(at(0.0, 0.76), at(0.62, 0.72), '#111', 3);                               // seat
+  L(at(-0.3, 0.86), at(0.04, 0.74), col, 2);                                 // rear fender
+  L(head, [fx, fy], '#c8c8d0', 2); L(at(1.0, 0.62), at(1.36, 0.14), '#8a8a96', 1);                    // the fork
+  L(at(1.14, 0.62), at(1.6, 0.56), col, 2);                                  // front fender
+  L(head, bar, '#c8c8d0', 2); ctx.fillStyle = '#f4f4f4'; const pl = at(1.1, 0.86); ctx.fillRect(pl[0] - 1, pl[1] - 2, 3, 5);   // bars and the number plate
+  if (!b.crashed) {
+    // the rider: boots on the pegs, body, arms to the bars, a full helmet. SUPERMAN (pose 1): the body flies out behind the bars
+    const P = b.pose || 0, hx0 = sx(Hh.x), hy0 = sy(Hh.y), fly = at(0.42, 1.3), hx = Math.round(lerp(hx0, fly[0], P)), hy = Math.round(lerp(hy0, fly[1], P));
+    const hip0 = [lerp(seat[0], hx0, 0.12), lerp(seat[1], hy0, 0.12) - 1], hipF = at(-0.3, 1.2), hip = [lerp(hip0[0], hipF[0], P), lerp(hip0[1], hipF[1], P)];
+    const sh = [lerp(hip[0], hx, 0.72), lerp(hip[1], hy, 0.72)], footF = at(-1.15, 1.16), foot = [lerp(peg[0], footF[0], P), lerp(peg[1], footF[1], P)];
+    const kn = [(hip[0] + foot[0]) / 2 + ax * 4 * (1 - P), (hip[1] + foot[1]) / 2 - 3 * (1 - P)];
+    line(hip[0], hip[1], kn[0], kn[1], '#2a2f4a', 3); line(kn[0], kn[1], foot[0], foot[1], '#2a2f4a', 3);
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(foot[0]) - 2, Math.round(foot[1]) - 1, 5, 3);
+    line(hip[0], hip[1], sh[0], sh[1], ghost ? col : MY_COLOR, 4);
+    line(sh[0], sh[1], bar[0], bar[1], shade(MY_COLOR, 0.8), 2);
+    ctx.fillStyle = '#111'; disc(hx, hy, 5); ctx.fillStyle = ghost ? col : ['#ffd23f', '#e8303a', '#f4f4f4', '#2a2a33'][save.helmet % 4]; disc(hx, hy, 4);
+    ctx.fillStyle = '#111'; ctx.fillRect(hx + Math.round(ax * 2), hy - 1, 4, 2); ctx.fillRect(hx + Math.round(ax * 3), hy + 2, 3, 2);
+  } else if (b.rag) {
+    const X = sx(b.rag.x), Y = sy(b.rag.y), c = Math.cos(b.rag.a), s = Math.sin(b.rag.a);
+    line(X - c * 6, Y - s * 6, X + c * 6, Y + s * 6, MY_COLOR, 4); line(X + c * 6, Y + s * 6, X + c * 6 + s * 6, Y + s * 6 - c * 6, '#2a2f4a', 3);
+    ctx.fillStyle = '#111'; disc(X - c * 9, Y - s * 9, 4); ctx.fillStyle = '#ffd23f'; disc(X - c * 9, Y - s * 9, 3);
+  }
+  if (name) T(name, sx(Hh.x), sy(Hh.y) - 14, '#fff', 1, 'center', '#000');
+  ctx.globalAlpha = 1;
+}
+function drawWorld(t, dt) {
+  const th = THEMES[G.theme], b = G.b, k = G.k;
+  // the camera looks ahead as you go, and zooms out a bit when you're fast or high
+  const v = bVel(b, 1 / 60), mx = (b.p[0].x + b.p[1].x) / 2, my = (b.p[0].y + b.p[1].y) / 2;
+  const tz = clamp(20 - Math.hypot(v.x, v.y) * 0.2 - Math.max(0, my - ground(k, mx) - 3) * 0.3, 11.5, 20);
+  G.zoom = lerp(G.zoom, tz, Math.min(1, dt * 2)); Z = G.zoom;
+  G.camX = lerp(G.camX, mx + clamp(v.x, -6, 20) * 0.35, Math.min(1, dt * 4)); G.camY = lerp(G.camY, my, Math.min(1, dt * 3));
+  CX = G.camX; CY = G.camY; HY = 140;
+  sky(th, t); layers(th, t); terrain(k, th);
+  if (G.mp && FR.seen && FR.p && !FR.out) drawBike({ p: FR.p, crashed: false, wheel: FR.x * 3, crank: FR.x * 2 }, Net.friend ? Net.friend.color : '#4aa8ff', true, Net.friend ? Net.friend.name : '');
+  drawBike(b, b.col);
+  for (const p of G.parts) { if (p.conf) { ctx.fillStyle = p.col; ctx.fillRect(sx(p.x), sy(p.y), 3, 2); } else { ctx.fillStyle = p.col; ctx.fillRect(sx(p.x), sy(p.y), 2, 2); } }
+  if (G.nitroT > 0) for (let q = 0; q < 6; q++) { ctx.fillStyle = q % 2 ? '#ffd23f' : '#ff5ad0'; ctx.fillRect(sx(b.p[0].x) - 6 - q * 3 - Math.random() * 3, sy(b.p[0].y) - 3 + Math.random() * 4, 3, 2); }
+  // speed lines when you're really going
+  const sp = Math.hypot(v.x, v.y);
+  if (sp > 21 && state === 'play') { ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let q = 0; q < Math.min(14, (sp - 21) * 1.5); q++) { const y = (q * 37 + Math.floor(t * 600)) % H, x = (q * 113 + Math.floor(t * 1500)) % S.W; ctx.fillRect(S.W - x, y, 12 + sp, 1); } }
+}
+
+/* --- 6. SCREENS ------------------------------------------------------------------- */
+function glass(x, y, w, h, top) {
+  x = Math.round(x); y = Math.round(y);
+  ctx.fillStyle = '#111'; ctx.fillRect(x + 1, y, w - 2, h); ctx.fillRect(x, y + 1, w, h - 2);
+  ctx.fillStyle = 'rgba(22,18,40,0.86)'; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.fillStyle = top || 'rgba(255,255,255,0.12)'; ctx.fillRect(x + 2, y + 1, w - 4, 1);
+}
+function roundBtn(cx, cy, r, col, on, dim) {
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; disc(cx + 1, cy + 2, r);
+  ctx.fillStyle = '#111'; disc(cx, cy, r); ctx.fillStyle = dim ? '#3a3450' : col; disc(cx, cy, r - 1); ctx.fillStyle = on ? col : 'rgba(22,18,40,0.82)'; disc(cx, cy, r - 3);
+  if (!on) { ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(Math.round(cx - r * 0.5), Math.round(cy - r + 4), Math.round(r), 2); }
+}
+const ICONS = {
+  back: ['..###..', '.#...#.', '#.....#', '#...#..', '#..###.', '.#.....', '..##...'], fwd: ['..###..', '.#...#.', '#.....#', '..#...#', '.###..#', '.....#.', '...##..'],
+  gas: ['#....', '##...', '###..', '####.', '###..', '##...', '#....'], brake: ['#####', '#####', '#####', '#####', '#####'],
+  nitro: ['..#..', '.###.', '.#w#.', '.###.', '#####', '#.o.#', '..o..'], cash: ['.###.', '#.#..', '.###.', '..#.#', '.###.'],
+  trick: ['..#..', '.###.', '#####', '.###.', '#.#.#'],
+  pedal: ['#....', '##...', '###..', '##...', '#....'], spin: ['.###.', '#...#', '#.#.#', '#...#', '.##.#'], revive: ['.#.#.', '#####', '#####', '.###.', '..#..'], magnet: ['#...#', '#...#', '#...#', '#...#', '.###.'],
+};
+function icon(n, cx, cy, col, s = 2) { PX.drawIcon(ctx, ICONS[n], { '#': col, w: '#7ad8ff', o: '#ff8a2a' }, cx, cy, s, null); }
+// the buttons on a touch screen: lean back / forward on the left, brake and gas on the right, trick above brake, nitro above gas
+function buttons() {
+  const W = S.W;
+  return { back: { x: 30, y: H - 36, r: 22 }, fwd: { x: 82, y: H - 36, r: 22 }, brake: { x: W - 92, y: H - 32, r: 19 }, gas: { x: W - 38, y: H - 38, r: 25 }, nitro: { x: W - 38, y: H - 92, r: 15 }, trick: { x: W - 94, y: H - 78, r: 16 } };
+}
+function hud(t) {
+  const W = S.W, th = THEMES[G.theme], k = G.k, b = G.b;
+  // top left: pause and the trail
+  const name = mode === 'free' ? 'FREE RIDE' : TRAILS[trailIdx].name, lw = Math.max(100, PX.textWidth(name, 1) + (G.mp ? 18 : 44));
+  glass(6, 6, lw, 28, '#ffd23f');
+  let lx = 12;
+  if (!G.mp) { ctx.fillStyle = '#fbf9f3'; ctx.fillRect(11, 11, 18, 18); ctx.fillStyle = '#111'; ctx.fillRect(16, 15, 3, 10); ctx.fillRect(21, 15, 3, 10); lx = 36; }
+  T(name, lx, 11, '#fff', 1);
+  T(mode === 'free' ? Math.floor(G.maxX) + ' M  (BEST ' + save.freeBest + ')' : G.mp ? 'RACE' : 'TRACK ' + (trailIdx + 1), lx, 22, '#9a92b8', 1);
+  // top right: money of this ride, and the time
+  glass(W - 96, 6, 90, 40, '#5ad43f');
+  T(fmtMoney(G.money), W - 12, 11, '#5ad43f', 2, 'right');
+  T(fmtTime(G.t), W - 12, 27, '#fff', 1, 'right');
+  if (mode === 'trail' && !G.mp) T('PAR ' + fmtTime(parTime(trailIdx)).slice(0, 5), W - 90, 37, G.t <= parTime(trailIdx) ? '#5ad43f' : '#ff8a8a', 1);
+  if (G.combo > 1) T('COMBO X' + G.combo, W - 12, 52, '#ff6bd0', 1, 'right', '#000');
+  // top middle: the way to the finish
+  if (k.finishX !== Infinity) {
+    const bw = Math.min(160, W - lw - 130), bx = Math.round(W / 2 - bw / 2), pr = clamp(((b.p[0].x + b.p[1].x) / 2) / k.finishX, 0, 1);
+    ctx.fillStyle = '#111'; ctx.fillRect(bx - 1, 9, bw + 2, 7); ctx.fillStyle = '#2a2440'; ctx.fillRect(bx, 10, bw, 5);
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(bx, 10, Math.round(bw * pr), 5);
+    for (let q = 0; q < 6; q++) { ctx.fillStyle = q % 2 ? '#111' : '#fff'; ctx.fillRect(bx + bw + 2 + (q % 2) * 3, 6 + Math.floor(q / 2) * 3, 3, 3); }
+    if (G.mp && FR.seen) { const fp = FR.fin ? 1 : clamp(FR.x / k.finishX, 0, 1); ctx.fillStyle = '#111'; disc(bx + bw * fp, 12, 3); ctx.fillStyle = Net.friend ? Net.friend.color : '#4aa8ff'; disc(bx + bw * fp, 12, 2); }
+    ctx.fillStyle = '#111'; disc(bx + bw * pr, 12, 4); ctx.fillStyle = MY_COLOR; disc(bx + bw * pr, 12, 3);
+    if (G.mp && Net.friend) { const gap = Math.round(FR.x - (b.p[0].x + b.p[1].x) / 2); T(!Net.live ? 'YOUR FRIEND LEFT' : FR.fin ? Net.friend.name + ' FINISHED!' : Net.friend.name + (gap >= 0 ? ' +' : ' ') + gap + ' M', W / 2, 20, '#fff', 1, 'center', '#000'); }
+    else if (save.best[TRAILS[trailIdx].id] && mode === 'trail') T('BEST ' + fmtTime(save.best[TRAILS[trailIdx].id]), W / 2, 20, '#fff', 1, 'center', '#000');
+  }
+  // tricks: pop up in the middle, bigger at first
+  let py0 = 42;
+  G.pops.forEach((p, i) => { const sz = p.big ? (p.t < 0.15 ? 3 : 2) : (p.t < 0.12 ? 2 : 1), y = py0 - Math.round(p.t * 6); py0 += sz * 5 + 6; if (p.t < 1.2 || Math.floor(p.t * 10) % 2) T(p.text, W / 2, y, p.col, sz, 'center', '#000'); });
+  const air = !b.contact[0] && !b.contact[1] && !b.crashed;
+  if (air && b.air > 0.25 && state === 'play') { const turns = Math.abs(b.airRot) / (Math.PI * 2); if (turns > 0.5) T(Math.floor(turns + 0.18) + ' FLIP' + (Math.floor(turns + 0.18) === 1 ? '' : 'S') + '...', W / 2, 100, '#fff', 1, 'center', '#000'); }
+  if (G.count > 0) { const n = Math.ceil(G.count), f = G.count - Math.floor(G.count), sz = f > 0.75 ? 8 : 6; T(String(n), W / 2, 64 - (sz - 6) * 2.5, '#ffd23f', sz, 'center', '#000'); glass(W / 2 - 52, 104, 104, 18); T('GET READY!', W / 2, 108, '#fff', 2, 'center'); }
+  else if (G.t < 0.8 && state === 'play') T('GO!', W / 2, 70, '#5ad43f', G.t < 0.15 ? 8 : 6, 'center', '#000');
+  if (!save.seenHelp && G.t < 8 && G.count <= 0 && state === 'play' && !paused) {
+    glass(W / 2 - 160, 54, 320, 50);
+    T(touchUI ? 'RIGHT: GAS, BRAKE, TRICK.  LEFT: LEAN BACK / FORWARD.' : 'UP / W: GAS.  DOWN / S: BRAKE.  LEFT / RIGHT: LEAN.  X: TRICK.', W / 2, 61, '#fff', 1, 'center');
+    T('IN THE AIR: LEAN TO FLIP, HOLD TRICK FOR A SUPERMAN. LET GO BEFORE YOU LAND!', W / 2, 75, '#ffd23f', 1, 'center');
+    T('FLIPS, WHEELIES AND BIG AIR = MONEY.', W / 2, 89, '#5ad43f', 1, 'center');
+  }
+  if (state !== 'play' || b.crashed) return;
+  // the buttons
+  const B = buttons(), held = new Set(inp.touch.values()), c = controls();
+  roundBtn(B.back.x, B.back.y, B.back.r, '#4aa8ff', held.has('back') || inp.keys.l); icon('back', B.back.x, B.back.y, held.has('back') ? '#fff' : '#4aa8ff');
+  roundBtn(B.fwd.x, B.fwd.y, B.fwd.r, '#4aa8ff', held.has('fwd') || inp.keys.r); icon('fwd', B.fwd.x, B.fwd.y, held.has('fwd') ? '#fff' : '#4aa8ff');
+  roundBtn(B.brake.x, B.brake.y, B.brake.r, '#e8303a', c.brake); icon('brake', B.brake.x, B.brake.y, c.brake ? '#fff' : '#e8303a');
+  roundBtn(B.gas.x, B.gas.y, B.gas.r, '#5ad43f', c.gas); icon('gas', B.gas.x, B.gas.y, c.gas ? '#fff' : '#5ad43f');
+  roundBtn(B.trick.x, B.trick.y, B.trick.r, '#7ad8ff', c.trick); icon('trick', B.trick.x, B.trick.y, c.trick ? '#fff' : '#7ad8ff');
+  if (!touchUI) { T('LEAN', 56, H - 66, '#fff', 1, 'center', '#000'); T('BRAKE', B.brake.x, B.brake.y + 22, '#fff', 1, 'center', '#000'); T('GAS', B.gas.x, B.gas.y + 28, '#fff', 1, 'center', '#000'); T('X', B.trick.x, B.trick.y - 25, '#fff', 1, 'center', '#000'); }
+  if (lvl('nitro')) {
+    const n = B.nitro, none = G.nitros <= 0 && G.nitroT <= 0;
+    roundBtn(n.x, n.y, n.r, '#ff5ad0', G.nitroT > 0, none); icon('nitro', n.x, n.y, none ? '#5b5275' : G.nitroT > 0 ? '#fff' : '#ff5ad0');
+    ctx.fillStyle = '#111'; disc(n.x + 11, n.y - 11, 5); ctx.fillStyle = none ? '#3a3450' : '#ffd23f'; disc(n.x + 11, n.y - 11, 4); T(String(G.nitros), n.x + 11, n.y - 13, '#111', 1, 'center');
+  }
+}
+function title(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.25)'; ctx.fillRect(0, 0, W, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), W - 36, 10, '#ffd23f', 2, 'right', '#000');
+  T(fmtMoney(save.money), W - 36, 30, '#5ad43f', 1, 'right', '#000');
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('PIXEL', W / 2, 30, '#ffd23f', 3, 'center', '#000');
+  T('MOTO', W / 2 + 2, 52, '#1a0e2a', 7, 'center');
+  T('MOTO', W / 2, 50, '#fff', 7, 'center', '#e8303a');
+  T('RIDE, FLIP, TRICK, EARN, UPGRADE.', W / 2, 88, '#fff', 1, 'center', '#000');
+  const bw = 180, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('play', bx, 98, bw, 24, 'TRACKS', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'trails'; }
+  if (UI.button('free', bx, 126, bw, 20, 'FREE RIDE (FARM $)', { accent: '#ffd23f' })) startRide('free', 0);
+  if (UI.button('friend', bx, 150, bw, 20, 'RACE A FRIEND', { accent: '#4aa8ff' })) { sfx('click'); state = 'online'; Net.screen = 'pick'; }
+  if (UI.button('shop', bx, 174, bw, 20, 'GARAGE', { accent: '#ff6bd0' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('games', bx, 200, bw, 16, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#ffffff', 1, 'right', '#000');
+}
+function starIcon(cx, cy, on, s = 1) { PX.drawIcon(ctx, ['..#..', '.###.', '#####', '.###.', '##.##'], { '#': on ? '#ffd23f' : '#4a4068' }, cx, cy, s, on ? '#111' : null); }
+function trails(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  if (UI.button('back', 6, 6, 46, 20, 'BACK', { size: 1 }) || UI.back) { state = 'title'; return; }
+  T('PICK A TRACK', W / 2, 9, '#fff', 2, 'center', '#000');
+  const ns = Object.values(save.stars).reduce((a, s) => a + (s & 1) + (s >> 1 & 1) + (s >> 2 & 1), 0);
+  starIcon(W - PX.textWidth(ns + '/24', 2) - 16, 15, true); T(ns + '/24', W - 8, 10, '#ffd23f', 2, 'right', '#000');
+  const cols = 4, gap = 6, cw = Math.floor((W - 12 - gap * (cols - 1)) / cols), ch = 96;
+  TRAILS.forEach((tr, i) => {
+    const c = i % cols, r = Math.floor(i / cols), x = 6 + c * (cw + gap), y = 32 + r * (ch + 6), th = THEMES[tr.theme], open = trailOpen(i);
+    glass(x, y, cw, ch, open ? '#ffd23f' : '#4a4068');
+    // a little picture: the sky, two ridges and a rider
+    for (let k = 0; k < 6; k++) { ctx.fillStyle = mix(th.sky[0], th.sky[2], k / 5); ctx.fillRect(x + 3, y + 4 + k * 6, cw - 6, 6); }
+    ctx.fillStyle = th.layers[1]; for (let q = 0; q < cw - 6; q += 2) ctx.fillRect(x + 3 + q, y + 22 - Math.round(Math.abs(Math.sin(q * 0.09 + i)) * 8), 2, 18);
+    ctx.fillStyle = th.ground; for (let q = 0; q < cw - 6; q += 2) ctx.fillRect(x + 3 + q, y + 30 + Math.round(q * 0.08 - Math.sin(q * 0.15) * 2), 2, 10 - Math.round(q * 0.08));
+    if (!open) { ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(x + 3, y + 4, cw - 6, 36); PX.drawIcon(ctx, ['.###.', '#...#', '#####', '##.##', '#####'], { '#': '#9a92b8' }, x + cw / 2, y + 22, 2); }
+    T(String(i + 1), x + 6, y + 6, '#fff', 1, 'left', '#000');
+    T(tr.name, x + cw / 2, y + 44, open ? '#fff' : '#5b5275', 1, 'center');
+    T(tr.len + ' M', x + cw / 2, y + 54, '#9a92b8', 1, 'center');
+    const st = save.stars[tr.id] | 0;
+    for (let q = 0; q < 3; q++) starIcon(x + cw / 2 - 12 + q * 12, y + 67, !!(st & (1 << q)));
+    if (UI.button('tr' + i, x + 6, y + ch - 20, cw - 12, 16, open ? (save.done[tr.id] ? 'RIDE AGAIN' : 'RIDE') : 'LOCKED', { size: 1, accent: '#5ad43f', disabled: !open })) startRide('trail', i);
+  });
+  T('STARS: FINISH  -  EARN THE TRICK $ GOAL  -  BEAT THE PAR TIME', W / 2, H - 9, '#ffd23f', 1, 'center', '#000');
+}
+function shopScreen(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.72)'; ctx.fillRect(0, 0, W, H);
+  if (UI.button('back', 6, 6, 46, 20, 'BACK', { size: 1 }) || UI.back) { state = 'title'; return; }
+  T('GARAGE', W / 2, 9, '#ff6bd0', 2, 'center', '#000');
+  T(fmtMoney(save.money), W - 8, 10, '#5ad43f', 2, 'right', '#000');
+  const pw = Math.min(W - 12, 460), x = Math.round(W / 2 - pw / 2);
+  [['bikes', 'MOTORBIKES'], ['ab', 'ABILITIES']].forEach(([id, nm], k) => {
+    if (UI.button('tab_' + id, x + k * 106, 30, 100, 16, nm, { size: 1, on: shopTab === id, accent: '#ffd23f' })) shopTab = id;
+    if (shopTab === id) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x + k * 106, 30, 100, 16); T(nm, x + k * 106 + 50, 35, '#111', 1, 'center'); }
+  });
+  if (shopTab === 'bikes') {
+    const cols = 4, gap = 4, cw = Math.floor((pw - gap * (cols - 1)) / cols), ch = 88;
+    BIKES.forEach((bk, i) => {
+      const c = i % cols, r = Math.floor(i / cols), bx = x + c * (cw + gap), by = 52 + r * (ch + 4), owned = save.bikes[bk.id], on = save.bike === bk.id;
+      glass(bx, by, cw, ch, on ? '#5ad43f' : bk.col);
+      // the bike, drawn small
+      const fake = { p: [{ x: 0, y: 0 }, { x: WB, y: 0 }, { x: SEAT[0], y: SEAT[1] }], crashed: true, wheel: t * 3, crank: 0 };
+      const sZ = Z, sCX = CX, sCY = CY, sHY = HY; Z = 18; CX = 0.72 + (S.W / 2 - S.W * 0.12 - (bx + cw / 2)) / Z; CY = 0; HY = by + 34;
+      drawBike(fake, bk.col); Z = sZ; CX = sCX; CY = sCY; HY = sHY;
+      T(bk.name, bx + cw / 2, by + 44, bk.col, 1, 'center');
+      const bar = (lbl, v, max, yy) => { T(lbl, bx + 5, yy, '#9a92b8', 1); ctx.fillStyle = '#2a2440'; ctx.fillRect(bx + 34, yy + 1, cw - 40, 3); ctx.fillStyle = bk.col; ctx.fillRect(bx + 34, yy + 1, Math.round((cw - 40) * v / max), 3); };
+      bar('SPEED', bk.speed, 23, by + 53); bar('FLIP', bk.spin, 32, by + 61);
+      const lab = on ? 'RIDING' : owned ? 'RIDE IT' : fmtMoney(bk.cost);
+      if (UI.button('bk_' + bk.id, bx + 4, by + ch - 18, cw - 8, 14, lab, { size: 1, on, accent: '#5ad43f', disabled: !owned && save.money < bk.cost })) {
+        if (!owned) { save.money -= bk.cost; save.bikes[bk.id] = 1; sfx('buy'); } else sfx('click');
+        save.bike = bk.id; store();
+      }
+    });
+    T(BIKES.find(b => b.id === save.bike).desc, W / 2, H - 9, '#9a92b8', 1, 'center', '#000');
+  } else {
+    ABILITIES.forEach((u, i) => {
+      const y = 52 + i * 30, l = lvl(u.id), max = l >= u.max, cost = max ? 0 : u.cost[l];
+      glass(x, y, pw, 26, u.col);
+      ctx.fillStyle = '#111'; disc(x + 14, y + 13, 9); ctx.fillStyle = shade(u.col, 0.45); disc(x + 14, y + 13, 8); icon(u.id, x + 14, y + 13, u.col);
+      T(u.name, x + 28, y + 6, u.col, 1); T(u.desc, x + 28, y + 15, '#9a92b8', 1);
+      for (let q = 0; q < u.max; q++) { ctx.fillStyle = '#111'; ctx.fillRect(x + pw - 156 + q * 11, y + 9, 9, 9); ctx.fillStyle = q < l ? u.col : '#3a2f5c'; ctx.fillRect(x + pw - 155 + q * 11, y + 10, 7, 7); }
+      if (max) T('MAX', x + pw - 44, y + 10, '#5ad43f', 1, 'center');
+      else if (UI.button('ab_' + u.id, x + pw - 90, y + 5, 84, 16, fmtMoney(cost), { size: 1, accent: u.col, disabled: save.money < cost, textColor: save.money >= cost ? '#5ad43f' : null })) { save.money -= cost; save.up[u.id] = l + 1; store(); sfx('buy'); }
+    });
+    T('MONEY: FLIPS, SUPERMAN, WHEELIES, BIG AIR, $ ON THE TRACK. FREE RIDE IS GOOD FOR FARMING!', W / 2, H - 9, '#9a92b8', 1, 'center', '#000');
+  }
+}
+function pauseMenu() {
+  const W = S.W, pw = 200, x = Math.round(W / 2 - pw / 2), y = 60;
+  ctx.fillStyle = 'rgba(13,11,19,0.5)'; ctx.fillRect(0, 0, W, H);
+  glass(x, y, pw, 118, '#ffd23f');
+  T('PAUSED', W / 2, y + 10, '#fff', 3, 'center', '#000');
+  if (UI.button('resume', x + 16, y + 38, pw - 32, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) paused = false;
+  if (UI.button('restart', x + 16, y + 64, pw - 32, 20, 'START AGAIN', { size: 1, accent: '#ffd23f' })) startRide(mode, trailIdx);
+  if (UI.button('quit', x + 16, y + 88, pw - 32, 20, mode === 'free' ? 'BANK $ AND QUIT' : 'QUIT', { size: 1 })) { if (mode === 'free') bank(); toTitle(); }
+}
+function nextTrail() { return trailIdx < TRAILS.length - 1 ? trailIdx + 1 : null; }
+function endScreen(t) {
+  const W = S.W, pw = Math.min(310, W - 20), x = Math.round(W / 2 - pw / 2), y = 50, ok = state === 'finished';
+  if (!ok && G.crashT < 0.9) return;
+  ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
+  glass(x - 4, y - 4, pw + 8, 162, ok ? '#5ad43f' : '#e8303a');
+  if (G.mp) {
+    T(G.won ? 'YOU WIN!' : (Net.friend ? Net.friend.name : 'FRIEND') + ' WINS!', W / 2, y + 12, G.won ? '#ffd23f' : '#ff8a8a', 3, 'center', '#000');
+    T(fmtTime(G.t), W / 2, y + 44, '#fff', 2, 'center'); T('MONEY +' + fmtMoney(G.money) + (G.won ? '   ★ +2' : ''), W / 2, y + 66, '#5ad43f', 1, 'center');
+    if (Net.live && Net.isHost) {
+      const hw = Math.floor((pw - 34) / 2);
+      if (UI.button('rematch', x + 14, y + 100, hw, 20, 'REMATCH', { size: 1, accent: '#5ad43f' })) Net.start(trailIdx);
+      if (UI.button('other', x + 20 + hw, y + 100, hw, 20, 'OTHER TRACK', { size: 1, accent: '#ffd23f' })) { Net.send({ t: 'lobby' }); state = 'online'; Net.screen = 'lobby'; }
+    } else if (Net.live) T('THE HOST PICKS WHAT\'S NEXT', W / 2, y + 106, '#9a92b8', 1, 'center'); else T('YOUR FRIEND LEFT', W / 2, y + 106, '#ff8a8a', 1, 'center');
+    if (UI.button('leave', x + 14, y + 128, pw - 28, 18, 'LEAVE', { size: 1 }) || UI.back) { Net.leave(); Net.reset(); toTitle(); }
+    return;
+  }
+  if (ok) {
+    G.endT = G.endT || 0;
+    T('FINISHED!', W / 2, y + 6, '#5ad43f', 2, 'center', '#000');
+    const lab = ['FINISH', 'TRICKS ' + fmtMoney(cashGoal(trailIdx)), 'PAR ' + fmtTime(parTime(trailIdx)).slice(0, 5)];
+    for (let q = 0; q < 3; q++) {
+      const cx = W / 2 - 90 + q * 90, on = !!(G.stars & (1 << q)), shown = G.endT > 0.35 + q * 0.35, a = G.endT - 0.35 - q * 0.35;
+      if (on && shown && !(G.starSnd & (1 << q))) { G.starSnd = (G.starSnd | 0) | (1 << q); sfx('star'); }
+      PX.drawIcon(ctx, ['....#....', '...###...', '#########', '.#######.', '..#####..', '.###.###.', '##.....##'], { '#': on && shown ? '#ffd23f' : '#3a2f5c' }, cx, y + 32, on && shown && a < 0.12 ? 3 : 2, '#111');
+      T(lab[q], cx, y + 44, on ? '#fff' : '#9a92b8', 1, 'center');
+    }
+    T(fmtTime(G.t) + (G.newBest ? '  NEW BEST!' : ''), W / 2, y + 58, '#ffd23f', 2, 'center', '#000');
+    const cnt = Math.min(G.money, Math.floor(Math.max(0, G.endT - 1.3) * 1500));
+    T('TRICKS ' + fmtMoney(G.earned) + '  +  FINISH ' + fmtMoney(G.bonus) + '  =  ' + fmtMoney(cnt), W / 2, y + 76, '#5ad43f', 1, 'center');
+    T('FLIPS ' + G.flipsTotal + '   BEST TRICK ' + fmtMoney(G.bestTrick) + (G.newStars ? '   ★ +' + G.newStars : ''), W / 2, y + 87, '#fff', 1, 'center');
+    const nx = nextTrail();
+    if (nx !== null && UI.button('next', x + 14, y + 100, pw - 28, 22, 'NEXT TRACK', { accent: '#5ad43f' })) startRide('trail', nx);
+    if (nx === null) T('YOU RODE EVERY TRACK!', W / 2, y + 108, '#ffd23f', 1, 'center');
+  } else {
+    T('CRASH!', W / 2, y + 8, '#e8303a', 4, 'center', '#000');
+    T(G.cause, W / 2, y + 40, '#fff', 1, 'center');
+    T(Math.round(clamp(G.maxX / G.k.finishX, 0, 1) * 100) + '% OF THE TRACK', W / 2, y + 54, '#9a92b8', 1, 'center');
+    T('YOU KEEP YOUR ' + fmtMoney(G.money), W / 2, y + 68, '#5ad43f', 1, 'center');
+    T(!lvl('revive') ? 'TIP: SECOND CHANCE IN THE SHOP LETS YOU KEEP GOING' : 'TIP: LAND WITH BOTH WHEELS, LEVEL WITH THE SLOPE', W / 2, y + 82, '#9a92b8', 1, 'center');
+    if (UI.button('retry', x + 14, y + 100, pw - 28, 22, 'TRY AGAIN', { accent: '#ffd23f' })) startRide(mode, trailIdx);
+  }
+  const hw = Math.floor((pw - 34) / 2);
+  if (UI.button('shop2', x + 14, y + 128, hw, 18, 'GARAGE', { size: 1, accent: '#ff6bd0' })) { toTitle(); state = 'shop'; }
+  if (UI.button('menu', x + 20 + hw, y + 128, hw, 18, 'TRAILS', { size: 1 }) || UI.back) { toTitle(); state = 'trails'; }
+}
+function toTitle() { state = 'title'; paused = false; codeInput.style.display = 'none'; save.seenHelp = save.seenHelp || (G && G.t > 6); store(); demo = null; }
+
+// the title and the menus show a rider going down a trail by themselves
+let demo = null;
+function autopilot(b, k) {
+  const a = bAngle(b), mx = (b.p[0].x + b.p[1].x) / 2, air = !b.contact[0] && !b.contact[1];
+  const v = bVel(b, 1 / 240), look = mx + (air ? v.x * 0.5 : 2);
+  const slope = Math.atan2(ground(k, look + 1) - ground(k, look - 1), 2);
+  const err = a - slope;
+  return { lean: clamp(err * (air ? 2.5 : 1.6), -1, 1), gas: v.x < 24, brake: v.x > 28, nitro: false };
+}
+function demoWorld(t, dt) {
+  if (!demo) { const k = makeTrack(4242, 0.15, 0, true); demo = { k }; G = { k, theme: Math.floor(Date.now() / 600000) % THEMES.length, b: makeBike(4, k, '#e8303a'), parts: [], pops: [], camX: 4, camY: 0, zoom: 15, mp: false, t: 0 }; }
+  const k = demo.k, b = G.b;
+  k.extend(b.p[0].x + 200);
+  for (let s = 0; s < 4; s++) { const r = bikeStep(b, k, dt / 4, autopilot(b, k), stats()); if (r) { G.b = makeBike(Math.max(4, ...k.cps.filter(c => c < b.p[0].x - 2)), k, '#e8303a'); break; } }
+  drawWorld(t, dt);
+}
+
+/* --- sound --- */
+// the engine: two buzzing tones that follow the revs
+const Engine = {
+  o: null, o2: null, g: null,
+  set(rev, on) {
+    const c = PX.Sound.ctx; if (!c) return;
+    if (!this.o) {
+      if (!on) return;
+      this.o = c.createOscillator(); this.o.type = 'sawtooth'; this.o2 = c.createOscillator(); this.o2.type = 'square';
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; this.g = c.createGain(); this.g.gain.value = 0;
+      this.o.connect(f); this.o2.connect(f); f.connect(this.g); this.g.connect(PX.Sound.out); this.o.start(); this.o2.start();
+    }
+    const t = c.currentTime, f = 46 + rev * 150 + Math.sin(t * 60) * 3;
+    this.o.frequency.setTargetAtTime(f, t, 0.04); this.o2.frequency.setTargetAtTime(f * 0.5, t, 0.04);
+    this.g.gain.setTargetAtTime(on && save.sfx ? 0.03 + rev * 0.03 : 0, t, 0.05);
+  },
+};
+function sfx(n) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (n === 'click') s.tone([523, 784], 0.12, { vol: 0.1 });
+  else if (n === 'beep') s.tone(440, 0.15, { vol: 0.1 });
+  else if (n === 'go') s.tone(880, 0.4, { vol: 0.12 });
+  else if (n === 'land') s.noise(0.12, { freq: 380, vol: 0.18 });
+  else if (n === 'trick') s.tone([660, 880, 1320], 0.3, { vol: 0.08 });
+  else if (n === 'cash') s.tone([1200, 1600], 0.08, { vol: 0.05 });
+  else if (n === 'coin') s.tone([988, 1319], 0.07, { vol: 0.04 });
+  else if (n === 'crash') { s.noise(0.45, { freq: 350, vol: 0.3 }); s.tone([300, 80], 0.35, { vol: 0.08, type: 'sawtooth' }); }
+  else if (n === 'nitro') { s.tone([200, 800], 0.5, { vol: 0.07, type: 'sawtooth' }); s.noise(0.5, { freq: 1500, vol: 0.08, filter: 'bandpass' }); }
+  else if (n === 'saved') s.tone([1200, 600, 1200], 0.4, { vol: 0.09, type: 'triangle' });
+  else if (n === 'star') s.tone([784, 1047, 1568], 0.4, { vol: 0.1 });
+  else if (n === 'buy') s.tone([523, 659, 784, 1047], 0.35, { vol: 0.1 });
+  else if (n === 'finish') s.tone([523, 659, 784, 1047, 1319], 0.8, { vol: 0.1 });
+}
+
+/* --- 7. RACE A FRIEND: online, the same free PeerJS server as the other games --------------- */
+// You both ride the same trail (built the same on both phones). Each phone runs its own bike and sends
+// where it is 20 times a second; you see your friend as a ghost. A crash puts you back at the last checkpoint.
+const FR = { seen: false, p: null, fin: 0, out: false, x: 0 };
+const codeInput = document.getElementById('code');
+codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
+const Net = {
+  peer: null, conn: null, live: false, isHost: false, code: '', screen: 'pick', msg: '', friend: null, sendT: 0, pick: 0,
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; },
+  fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
+  opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
+  async host() {
+    this.reset(); this.isHost = true; this.screen = 'connecting'; this.msg = 'CREATING A GAME';
+    try { await PX.loadPeer(); } catch (e) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
+    const open = attempt => {
+      let code = ''; for (let i = 0; i < 4; i++) code += PX.CODE_CHARS[Math.floor(Math.random() * PX.CODE_CHARS.length)];
+      const peer = new Peer('pixel-moto-room-' + code, this.opts()); this.peer = peer;
+      peer.on('open', () => { this.code = code; this.screen = 'hosting'; this.msg = ''; });
+      peer.on('connection', c => { if (this.live) { c.close(); return; } this.bind(c); });
+      peer.on('disconnected', () => { if (this.peer === peer && !peer.destroyed) peer.reconnect(); });
+      peer.on('error', e => { if (e.type === 'unavailable-id' && attempt < 3) { peer.destroy(); open(attempt + 1); } else if (!this.live && e.type !== 'network') this.fail("CAN'T REACH THE GAME SERVER. CHECK YOUR INTERNET."); });
+    };
+    open(0);
+  },
+  async join(code) {
+    this.reset(); this.isHost = false; this.screen = 'connecting'; this.msg = 'CONNECTING TO ' + code;
+    try { await PX.loadPeer(); } catch (e) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
+    const peer = new Peer(this.opts()); this.peer = peer;
+    peer.on('open', () => this.bind(peer.connect('pixel-moto-room-' + code, { reliable: true, serialization: 'json' })));
+    peer.on('error', e => { if (!this.live) this.fail(e && e.type === 'peer-unavailable' ? 'NO GAME WITH THAT CODE.' : "COULDN'T CONNECT. TRY AGAIN."); });
+    setTimeout(() => { if (!this.live && this.screen === 'connecting') this.fail("COULDN'T REACH YOUR FRIEND'S PHONE. TRY THE SAME WI-FI."); }, 25000);
+  },
+  joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
+  bind(c) {
+    this.conn = c;
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, color: bikeOf(save.bike).col, v: VERSION }); sfx('click'); });
+    c.on('data', m => this.onData(m));
+    c.on('close', () => this.lost());
+  },
+  lost() { if (!this.live) return; this.live = false; this.conn = null; if (state === 'online') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
+  leave() { this.send({ t: 'bye' }); this.live = false; const p = this.peer; this.peer = null; this.conn = null; setTimeout(() => { try { if (p) p.destroy(); } catch (e) { /* gone */ } }, 150); },
+  send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
+  sendPos() {
+    const now = performance.now(); if (now - this.sendT < 50) return; this.sendT = now;
+    const r = v => Math.round(v * 100) / 100;
+    this.send({ t: 'p', q: G.b.p.flatMap(p => [r(p.x), r(p.y)]), c: G.b.crashed ? 1 : 0 });
+  },
+  start(i) { this.pick = i; this.send({ t: 'go', i }); startRide('trail', i, true); },
+  onData(m) {
+    if (!m || typeof m !== 'object') return;
+    switch (m.t) {
+      case 'me':
+        if (m.v !== VERSION) { this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
+        this.friend = { name: PX.cleanName(m.name) || 'FRIEND', av: m.av, color: /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : '#4aa8ff' };
+        break;
+      case 'go': if (TRAILS[m.i]) { this.pick = m.i; startRide('trail', m.i, true); } break;
+      case 'lobby': if (state !== 'play' || (G && G.done)) { state = 'online'; this.screen = 'lobby'; } break;
+      case 'p': {
+        if (!G || !G.mp || !Array.isArray(m.q) || m.q.length !== 6) break;
+        const q = m.q.map(v => +v || 0);
+        FR.p = [{ x: q[0], y: q[1] }, { x: q[2], y: q[3] }, { x: q[4], y: q[5] }]; FR.x = (q[0] + q[2]) / 2; FR.seen = true; FR.out = !!m.c;
+        break;
+      }
+      case 'fin': FR.fin = +m.tm || 1; break;
+      case 'bye': this.lost(); break;
+    }
+  },
+};
+function onlineScreen(t) {
+  const W = S.W, bw = 200, bx = Math.round(W / 2 - bw / 2), dots = '.'.repeat(1 + Math.floor(performance.now() / 333) % 3);
+  const pw = Math.min(W - 16, 340), y = 30, cx = W / 2;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  glass(Math.round(cx - pw / 2), y, pw, 188, '#4aa8ff');
+  const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label, { size: 1 }) || UI.back) { if (Net.live || Net.peer) Net.leave(); Net.reset(); toTitle(); } };
+  if (Net.screen !== 'join') codeInput.style.display = 'none';
+  switch (Net.screen) {
+    case 'pick':
+      T('RACE A FRIEND ONLINE', cx, y + 12, '#4aa8ff', 2, 'center', '#000');
+      T('THE SAME TRACK. FIRST TO THE FINISH WINS!', cx, y + 32, '#9a92b8', 1, 'center');
+      T('A CRASH PUTS YOU BACK AT THE LAST CHECKPOINT.', cx, y + 42, '#9a92b8', 1, 'center');
+      if (UI.button('create', bx, y + 60, bw, 26, 'CREATE GAME', { accent: '#4aa8ff' })) Net.host();
+      if (UI.button('join', bx, y + 94, bw, 26, 'JOIN WITH A CODE', { accent: '#5ad43f' })) { Net.screen = 'join'; codeInput.value = ''; }
+      back(y + 156);
+      break;
+    case 'hosting':
+      T('YOUR GAME CODE', cx, y + 12, '#efe9ff', 1, 'center');
+      T(Net.code, cx, y + 30, '#ffd23f', 7, 'center', '#000');
+      T('YOUR FRIEND: PIXEL MOTO > RACE A FRIEND > JOIN', cx, y + 80, '#efe9ff', 1, 'center');
+      T('WAITING' + dots, cx, y + 100, '#fff', 1, 'center');
+      back(y + 156, 'CANCEL');
+      break;
+    case 'join':
+      T("TYPE YOUR FRIEND'S CODE", cx, y + 12, '#fff', 2, 'center');
+      S.placeInput(codeInput, cx - 70, y + 38, 140, 36);
+      if (UI.button('dojoin', bx, y + 90, bw, 24, 'JOIN', { disabled: codeInput.value.length !== 4, accent: '#5ad43f' })) Net.joinTyped();
+      back(y + 156);
+      break;
+    case 'connecting':
+      T(Net.msg + dots, cx, y + 80, '#fff', 1, 'center');
+      back(y + 156, 'CANCEL');
+      break;
+    case 'lobby': {
+      T('CONNECTED!', cx, y + 8, '#5ad43f', 2, 'center');
+      PX.drawAvatar(ctx, profile.avatar, cx - 96, y + 24, 2); T(profile.name, cx - 82, y + 56, '#fff', 1, 'center');
+      T('VS', cx, y + 34, '#ff8a2a', 3, 'center');
+      const f = Net.friend;
+      if (f) { PX.drawAvatar(ctx, f.av, cx + 68, y + 24, 2); T(f.name, cx + 82, y + 56, '#fff', 1, 'center'); }
+      if (Net.isHost) {
+        T('PICK THE TRACK (ALL OPEN ONLINE):', cx, y + 72, '#efe9ff', 1, 'center');
+        if (UI.button('tprev', cx - 130, y + 86, 24, 22, '<', { size: 2 })) Net.pick = (Net.pick + TRAILS.length - 1) % TRAILS.length;
+        if (UI.button('tnext', cx + 106, y + 86, 24, 22, '>', { size: 2 })) Net.pick = (Net.pick + 1) % TRAILS.length;
+        T((Net.pick + 1) + '. ' + TRAILS[Net.pick].name, cx, y + 93, '#ffd23f', 1, 'center', '#000');
+        if (UI.button('mpgo', cx - 70, y + 116, 140, 24, 'RACE!', { accent: '#5ad43f', disabled: !f })) Net.start(Net.pick);
+      } else T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO PICK A TRACK' + dots, cx, y + 104, '#efe9ff', 1, 'center');
+      back(y + 156, 'LEAVE');
+      break;
+    }
+    case 'error':
+      T(Net.msg, cx, y + 70, '#ff6b6b', 1, 'center');
+      back(y + 156, 'OK');
+      break;
+  }
+}
+
+/* --- 8. INPUT: buttons on a touch screen, keys, a controller ------------------------------ */
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (e.pointerType === 'touch') touchUI = true;
+  if (state !== 'play' || !G || G.done) return;
+  if (!G.mp && x < 32 && y < 32) { paused = !paused; return; }
+  if (paused) return;
+  const B = buttons();
+  if (lvl('nitro') && Math.hypot(x - B.nitro.x, y - B.nitro.y) < B.nitro.r + 4) { useNitro(); return; }
+  // the nearest button within reach (generous, for thumbs)
+  let best = null, bd = 1e9;
+  for (const id of ['back', 'fwd', 'brake', 'gas', 'trick']) { const b = B[id], d = Math.hypot(x - b.x, y - b.y); if (d < b.r + (id === 'trick' ? 8 : 18) && d < bd) { bd = d; best = id; } }
+  if (!best) best = x < S.W / 2 ? (x < 56 ? 'back' : 'fwd') : 'gas';         // anywhere else: the closest side's job
+  inp.touch.set(e.pointerId, best);
+};
+UI.onMove = (e, x, y) => {
+  if (!inp.touch.has(e.pointerId) || state !== 'play') return;
+  const B = buttons(), cur = inp.touch.get(e.pointerId);
+  // slide your thumb from one button to the next
+  for (const id of ['back', 'fwd', 'brake', 'gas', 'trick']) { const b = B[id]; if (Math.hypot(x - b.x, y - b.y) < b.r + 4 && id !== cur) inp.touch.set(e.pointerId, id); }
+};
+UI.onUp = e => inp.touch.delete(e.pointerId);
+const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', KeyX: 't', KeyF: 't', KeyE: 't' };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.target === codeInput) { if (e.code === 'Enter') Net.joinTyped(); else if (e.code === 'Escape') { codeInput.blur(); UI.back = true; } return; }
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play' && G && !G.done && !G.mp) { paused = !paused; return; }
+  if (e.code === 'Escape') { UI.back = true; return; }
+  if (KEYMAP[e.code]) { inp.keys[KEYMAP[e.code]] = true; touchUI = false; }
+  if ((e.code === 'Space' || e.code === 'KeyN' || e.code === 'ShiftLeft') && state === 'play' && !e.repeat) { useNitro(); touchUI = false; }
+  if (e.code === 'Enter' && (state === 'finished' || (state === 'crashed' && G.crashT > 0.9)) && !G.mp) { const nx = state === 'finished' ? nextTrail() : null; startRide(mode, nx !== null && nx !== undefined ? nx : trailIdx); }
+});
+window.addEventListener('keyup', e => { if (KEYMAP[e.code]) inp.keys[KEYMAP[e.code]] = false; });
+window.addEventListener('blur', () => { inp.keys = {}; inp.touch.clear(); if (state === 'play' && G && !G.done && !G.mp) paused = true; });
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play' && G && !G.done && !G.mp) paused = true; });
+
+/* --- 9. MAIN LOOP ----------------------------------------------------------------- */
+let last = performance.now(), lastState = '', fadeT = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'title' || state === 'trails' || state === 'shop' || state === 'online') {
+    demoWorld(t, dt); Engine.set(0, false);
+    if (state === 'title') title(t); else if (state === 'trails') trails(t); else if (state === 'shop') shopScreen(t); else onlineScreen(t);
+  } else {
+    const sub = Math.max(2, Math.ceil(dt / (1 / 240))); for (let k = 0; k < sub; k++) step(dt / sub);
+    Engine.set(G.rev || 0, state === 'play' && !paused && !G.b.crashed);
+    const sh = G.shake > 0 ? Math.min(3, G.shake * 10) : 0;
+    if (sh) { ctx.save(); ctx.translate(Math.round((Math.random() - 0.5) * sh * 2), Math.round((Math.random() - 0.5) * sh * 2)); }
+    drawWorld(t, dt);
+    if (sh) ctx.restore();
+    hud(t);
+    if (state === 'crashed' || state === 'finished') endScreen(t);
+    else if (paused) pauseMenu();
+  }
+  if (state !== lastState) { fadeT = 0.22; lastState = state; }
+  if (fadeT > 0) { fadeT -= dt; ctx.fillStyle = 'rgba(13,11,19,' + clamp(fadeT / 0.22, 0, 1) * 0.85 + ')'; ctx.fillRect(0, 0, S.W, H); }
+  UI.end();
+  S.blit('#0d0b13');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.setIcon && PX.setIcon();
+PX.Pad.setup({
+  title: 'Pixel Moto: controller', ui: UI, menu: () => state !== 'play' || paused || (G && G.done),
+  phone: { stick: 'LEAN', dpad: true, buttons: [['RT', 'GAS'], ['LT', 'BRAKE'], ['A', 'GAS'], ['B', 'BRAKE'], ['Y', 'TRICK'], ['X', 'NITRO']] },
+  keys: () => ({ START: 'KeyP' }),
+  onPlay(h, n, dt, edge) {
+    if (edge('X') || edge('RB')) useNitro();
+    inp.pad.lean = Math.abs(h.ax) > 0.2 ? clamp(h.ax, -1, 1) : 0;
+    inp.pad.gas = h.RT || h.A || h.up ? 1 : 0; inp.pad.brake = h.LT || h.B || h.down ? 1 : 0; inp.pad.trick = h.Y || h.LB ? 1 : 0;
+  },
+  help: [['LEFT|RIGHT', 'LEAN BACK / FORWARD (FLIP IN THE AIR)'], ['RT|A', 'GAS'], ['LT|B', 'BRAKE'], ['Y|LB', 'TRICK: HOLD IN THE AIR FOR A SUPERMAN'], ['X|RB', 'NITRO (FROM THE GARAGE)'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>

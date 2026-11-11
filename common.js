@@ -137,6 +137,8 @@ window.PX = (() => {
       if (!p.name) p.name = 'PLAYER' + (10 + Math.floor(Math.random() * 90));
       if (!p.avatar || !AVATARS[p.avatar.shape]) p.avatar = { shape: 'cat', color: 0 };
       p.avatar.color = Math.max(0, Math.min(AVATAR_COLORS.length - 1, p.avatar.color | 0));
+      // your ID: 6 digits, picked at random the first time and then kept for good (it stays when you change your name)
+      if (!/^[1-9][0-9]{5}$/.test(p.id)) { p.id = String(100000 + Math.floor(Math.random() * 900000)); this.save(p); }
       return p;
     },
     save(p) { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch (e) { /* private mode */ } },

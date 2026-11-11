@@ -3,6 +3,9 @@
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
+Every player also has an **ID**: 6 digits (like 716367), picked at random the first time the arcade or a game is opened
+on a phone and then kept for good, also when the name changes. It is shown under your name and in EDIT. (The arcade has
+no server, so two players could get the same ID by chance: about 1 in a million for any two players.)
 **SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
 PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
@@ -30,6 +33,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
 | **Pixel Runs** (`runs.html`) | Parkour over the rooftops: jump, slide, run up walls, ride zip lines and bounce through five city districts. Combos, missions, ranks, upgrades and runners to unlock. |
 | **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
+| **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
 
 ## Pixel Wings
 
@@ -249,6 +253,26 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
 
+## Pixel Moto
+
+Pixel Bike Run with a motorbike: motocross seen from the side. The same little physics model (two wheels and the
+rider, held together by springs), but the motorbike is bigger, heavier and about one and a half times faster, with an
+engine you hear and dirt flying from the back wheel. The tracks are stretched to fit its speed.
+
+- **Controls:** like Pixel Bike Run: GAS and BRAKE on the right, LEAN BACK and LEAN FORWARD on the left, NITRO above
+  GAS, and a new **TRICK** button above BRAKE. Keys: ↑ / W gas, ↓ / S brake, ← → / A D lean, **X trick**, Space nitro,
+  P pause. Controller: left stick lean, RT / A gas, LT / B brake, **Y trick**, X nitro.
+- **SUPERMAN:** hold TRICK in the air and the rider lets go of the seat and flies out behind the bars. It pays $60 and
+  more the longer you hold it (a LONG SUPERMAN after a second). Let go before you land, or you crash. It adds to flips.
+- **Everything else pays as in Pixel Bike Run:** BACKFLIP $100, FRONTFLIP $130, DOUBLE 4x, TRIPLE 9x, PERFECT landing
+  x1.5, WHEELIE, BIG AIR, $10 notes, COMBO +25% each. Land on your head and you crash.
+- **TRACKS:** 8 tracks (900-2020 m), each harder: DESERT CANYON, FOREST TRACK, DUSTY FARM, RED ROCKS, NIGHT QUARRY, ICE
+  PASS, VOLCANO, AURORA. Finish one to open the next; 3 stars each (finish, trick money goal, beat par).
+- **FREE RIDE**, **RACE A FRIEND** and checkpoints work as in Pixel Bike Run.
+- **GARAGE:** MOTORBIKES: DIRT BIKE, PIT BIKE (flips fast), ENDURO, TRIAL BIKE (grip, climbs), MOTOCROSS 450 (speed),
+  TURBO, GOLDEN MOTO. ABILITIES: ENGINE TUNING, FLIP SPIN, TRICK CASH, NITRO, SECOND CHANCE, MONEY MAGNET.
+  The money and the garage are this game's own (not shared with Pixel Bike Run).
+
 ## Pixel Cook
 
 You are the chef. A customer walks in and orders (say, a pizza with mozzarella); the order ticket pops up on the left
@@ -360,10 +384,12 @@ you, and the run is over.
 
 ## Gifts of stars
 
-The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup, THANKS!, and the stars
-are yours. Each gift comes once on each phone. They are `STAR_GIFTS` in `index.html`.
+The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup with THANKS! (the stars
+are yours) and NO THANKS (you turn the gift down, and it doesn't come back). Each gift comes once on each phone. They
+are `STAR_GIFTS` in `index.html`.
 
-- **★300 for everyone, for one week:** anyone who opens the arcade up to and including **November 18, 2026**.
+- **★1000 for everyone, for two days:** anyone who opens the arcade up to and including **November 13, 2026**. (It
+  replaces an earlier gift of ★300: whoever took that one gets the other ★700.)
 - **★1000 for VOJTA7, STEPAK and LEVKO:** the first time the arcade is opened with that name (or right after the name
   is typed in EDIT). No end date.
 
@@ -627,4 +653,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html`; online play checks it).

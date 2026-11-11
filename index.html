@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs and Pixel Sky GP. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP and Pixel Moto. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.25.0';
+const VERSION = '2.28.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -84,6 +84,7 @@ const GAMES = [
   { id: 'cook', name: 'PIXEL COOK', sub: 'COOK MEALS TO ORDER!', url: 'cook.html', color: '#e8402a', cats: ['ACTION'], tags: 'COOK COOKING CHEF KITCHEN FOOD MEAL CAFE COFFEE ICE CREAM SUSHI PIZZA MOZZARELLA BURGER RESTAURANT LUXURY MONEY TIP' },
   { id: 'runs', name: 'PIXEL RUNS', sub: 'PARKOUR OVER THE ROOFS!', url: 'runs.html', color: '#ff7a3a', cats: ['RUNNING', 'ACTION'], tags: 'PARKOUR RUN RUNNER ROOF ROOFTOP JUMP SLIDE WALL ZIP LINE CITY ENDLESS MISSIONS COINS' },
   { id: 'skygp', name: 'PIXEL SKY GP', sub: 'RACE FLYING CARS!', url: 'skygp.html', color: '#9a6aff', cats: ['RACING', 'ONLINE'], tags: 'FLYING CAR CARS FLY SKY HOVER RACE GRAND PRIX GP FUTURE RINGS LASER CLOUD CITY NEON' },
+  { id: 'moto', name: 'PIXEL MOTO', sub: 'MOTOCROSS: FLIP AND TRICK!', url: 'moto.html', color: '#e8303a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'MOTO MOTORBIKE MOTORCYCLE MOTOCROSS DIRT BIKE ENGINE FLIP BACKFLIP SUPERMAN WHEELIE TRICK TRICKS DESERT MONEY' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -183,6 +184,23 @@ function previewSkyGP(x, y, w, h, t) {            // a flying car over the skywa
   ctx.fillStyle = col; ctx.fillRect(carX + 9, carY + 6, 16, 8); ctx.fillRect(carX + 7, carY + 9, 20, 3);
   ctx.fillStyle = '#7ad8ff'; ctx.fillRect(carX + 12, carY + 2, 10, 5); ctx.fillStyle = '#ffd23f'; ctx.fillRect(carX + 15, carY + 3, 4, 3);
   ctx.fillStyle = '#ff8a1f'; ctx.fillRect(carX + 11, carY + 10, 3, 2); ctx.fillRect(carX + 20, carY + 10, 3, 2);
+  ctx.restore();
+}
+function previewMoto(x, y, w, h, t) {             // a motorbike jumps over desert hills, the rider flies behind the bars
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ['#3a6ab8', '#8a8ab0', '#f0a868', '#ffd8a0'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + i * 9, w, 10); });
+  ctx.fillStyle = '#fff6d0'; ctx.fillRect(x + w - 30, y + 16, 9, 9);
+  ctx.fillStyle = '#c47a50'; for (let q = 0; q < w; q += 22) ctx.fillRect(x + q - Math.floor(t * 4) % 22, y + 30 - ((q / 22) % 3) * 4, 16, h);
+  const gy = q => y + h - 12 - Math.sin((q + t * 60) * 0.045) * 6;
+  ctx.fillStyle = '#3a1c14'; for (let q = 0; q < w; q++) ctx.fillRect(x + q, Math.round(gy(q)), 1, h);
+  ctx.fillStyle = '#c4683a'; for (let q = 0; q < w; q++) ctx.fillRect(x + q, Math.round(gy(q)), 1, 1);
+  const ph = (t * 0.6) % 1, air = Math.sin(ph * Math.PI) * 26, bx = Math.round(x + w * 0.42), by = Math.round(gy(w * 0.42) - 6 - air), fly = ph > 0.25 && ph < 0.75;
+  ctx.translate(bx, by); ctx.rotate(-0.25 + ph * 0.5);
+  ctx.fillStyle = '#0a0a10'; ctx.fillRect(-13, 0, 8, 8); ctx.fillRect(7, 0, 8, 8); ctx.fillStyle = '#5a5a6a'; ctx.fillRect(-10, 3, 2, 2); ctx.fillRect(10, 3, 2, 2);
+  ctx.fillStyle = '#2a2a33'; ctx.fillRect(-5, 0, 9, 5); ctx.fillStyle = '#e8303a'; ctx.fillRect(-9, -4, 16, 4); ctx.fillRect(-14, -5, 6, 2); ctx.fillStyle = '#c8c8d0'; ctx.fillRect(6, -9, 2, 10);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color];
+  if (fly) { ctx.fillRect(-18, -13, 22, 4); ctx.fillStyle = '#2a2f4a'; ctx.fillRect(-28, -13, 10, 3); ctx.fillStyle = '#ffd23f'; ctx.fillRect(3, -16, 6, 6); }
+  else { ctx.fillRect(-3, -13, 4, 9); ctx.fillRect(0, -11, 7, 2); ctx.fillStyle = '#2a2f4a'; ctx.fillRect(-3, -5, 5, 6); ctx.fillStyle = '#ffd23f'; ctx.fillRect(-3, -19, 6, 6); }
   ctx.restore();
 }
 function previewHeist(x, y, w, h, t) {
@@ -473,7 +491,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['skygp', 'runs', 'cook'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['moto', 'skygp', 'runs'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -485,7 +503,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
@@ -520,7 +538,8 @@ function drawHome(t) {
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46, rx = Math.round(W / 2 - rowW / 2);
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
-  T(profile.name, rx + 36, 44, '#fff', 2, 'left', '#000');
+  T(profile.name, rx + 36, 40, '#fff', 2, 'left', '#000');
+  T('ID ' + profile.id, rx + 36, 53, '#9a92b8', 1, 'left', '#000');
   if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) editProfile();
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
@@ -786,7 +805,7 @@ function padPoll(dt) {
       }
     } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
-    else if (screen === 'stars' && (edge(0) || edge(1) || edge(9))) claimStars();
+    else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
     else if (edge(1)) UI.back = true;
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
@@ -813,6 +832,7 @@ function drawProfile(t) {
   const W = S.W;
   background(t);
   T('YOU', W / 2, 8, '#fff', 3, 'center', '#000');
+  T('YOUR ID: ' + profile.id, W - 8, 8, '#ffd23f', 1, 'right', '#000');
   PX.drawAvatar(ctx, draft.avatar, 18, 40, 5);
   S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26);
   T('NICKNAME ONLY!', 108, 64, '#ff8a8a', 2);
@@ -894,14 +914,19 @@ function drawGift(t) {
 //   until: only up to the end of that day (year, month, day); after it the gift is gone
 const STAR_GIFTS = [
   { key: 'pixelArcade.starGift1', stars: 1000, names: ['VOJTA7', 'STEPAK', 'LEVKO'] },
-  { key: 'pixelArcade.starGift2', stars: 300, until: [2026, 11, 18], note: 'FOR EVERYONE, UNTIL NOVEMBER 18' },   // one week for everyone
+  // for everyone, for two days. (It replaces a gift of ★300: whoever took that one already gets the other ★700.)
+  { key: 'pixelArcade.starGift3', stars: 1000, until: [2026, 11, 13], note: 'FOR EVERYONE, UNTIL NOVEMBER 13', less: ['pixelArcade.starGift2', 300] },
 ];
-for (const g of STAR_GIFTS) { g.left = false; try { g.left = !localStorage.getItem(g.key); } catch (e) { /* private mode: no gift, it couldn't be remembered */ } }
+for (const g of STAR_GIFTS) {
+  g.left = false;
+  try { g.left = !localStorage.getItem(g.key); if (g.less && localStorage.getItem(g.less[0])) g.stars -= g.less[1]; } catch (e) { /* private mode: no gift, it couldn't be remembered */ }
+}
 const starGiftDue = () => STAR_GIFTS.find(g => g.left && (!g.names || g.names.includes(PX.cleanName(profile.name))) &&
                                                (!g.until || Date.now() < new Date(g.until[0], g.until[1] - 1, g.until[2] + 1).getTime()));
-function claimStars() {
+function claimStars(take = true) {                 // THANKS! takes the gift; NO THANKS turns it down for good
   const g = starGiftDue();
-  if (g) {
+  if (g && !take) { try { localStorage.setItem(g.key, 'NO'); } catch (e) { /* private mode */ } g.left = false; PX.Sound.unlock(); PX.Sound.tone(300, 0.12, { vol: 0.08 }); }
+  else if (g) {
     try { localStorage.setItem(g.key, PX.cleanName(profile.name) || '1'); if (localStorage.getItem(g.key)) PX.Wallet.add(g.stars); } catch (e) { /* couldn't remember it: no stars, or they'd come every time */ }
     g.left = false; PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 });
   }
@@ -911,7 +936,7 @@ function drawStars(t) {
   const W = S.W, g = starGiftDue();
   drawHome(t);
   if (!g) { screen = 'home'; return; }
-  UI.list = [];                                     // only THANKS! can be pressed while the gift is up
+  UI.list = [];                                     // only THANKS! and NO THANKS can be pressed while the gift is up
   ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(300, W - 30), x = Math.round(W / 2 - pw / 2), y = 48, ph = 150;
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 2, y - 2, pw + 4, ph + 4); ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, pw, ph);
@@ -921,7 +946,8 @@ function drawStars(t) {
   T(profile.name, W / 2 + 16, y + 36, '#fff', 3, 'center', '#000');
   T('★ ' + g.stars, W / 2, y + 68, '#ffd23f', 6, 'center', '#3a2f5c');
   if (g.note) T(g.note, W / 2, y + 104, '#efe9ff', 1, 'center', '#000');
-  if (UI.button('okay', Math.round(W / 2 - 60), y + 116, 120, 24, pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f' }) || UI.back) claimStars();
+  if (UI.button('okay', Math.round(W / 2 - 124), y + 116, 120, 24, pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f' })) claimStars();
+  if (UI.button('nogift', Math.round(W / 2 + 4), y + 116, 120, 24, 'NO THANKS', { size: 1 })) claimStars(false);   // (only the button: Escape can't throw a gift away by accident)
 }
 
 let t0 = performance.now(), tPrev = t0;
