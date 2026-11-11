@@ -388,9 +388,13 @@ you, and the run is over.
 ★10, 50, 100, 500 or 1000, and press GIVE: the stars leave your wallet. The next time your friend opens the arcade
 (or within a minute, if it is open), a popup says A GIFT ... FROM you, with THANKS! and NO THANKS.
 
+**NO THANKS** sends the stars back to you: they come as a gift the same way ("... SAID NO THANKS: YOUR STARS ARE
+BACK"), the next time you open the arcade. If they can't be sent back right then (no internet), the popup stays.
+
 The arcade has no server of its own, so the gift waits on **ntfy.sh**, a free public message service. That has limits:
 
 - A gift waits about **12 hours**. If your friend doesn't open the arcade in that time, it is lost (your stars too).
+  The same goes for stars on their way back to you.
 - The two IDs, your name and the amount go through ntfy.sh, an outside service.
 - Anyone who knows how can post there, so somebody technical could send themselves stars. It is for friends, not a bank.
 - If the gift can't be sent (no internet), the stars go back into your wallet.
