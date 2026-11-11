@@ -336,6 +336,55 @@ window.PX = (() => {
     spend(n) { if (this.get() < n) return false; this.add(-n); return true; },
   };
 
+  // --- BETS: play an online match for stars ---------------------------------------------------
+  // The host of an online game for TWO players picks a bet (or NO BET); both players see it in the lobby before the
+  // match starts. When the match starts each player puts the bet in: it leaves their wallet. The winner gets both
+  // bets back (so wins the bet), the loser gets nothing (so loses it), a draw gives each their own back. Leaving a
+  // match never saves your bet: it is already in.
+  // A game uses it like this (send = the game's own function that sends one JSON message to the friend):
+  //   PX.Bet.connect(send, isHost)   once, when the two players are connected (both sides)
+  //   if (PX.Bet.onData(m)) return;  first thing when a message arrives (the bet's own messages: t 'bet', 'betmax')
+  //   PX.Bet.next()                  the host's lobby button (PX.Bet.label() is its text; the guest just shows the label)
+  //   PX.Bet.start()                 when the match starts (both sides, every match and rematch)
+  //   PX.Bet.settle(won)             when the match is decided: true = I won, false = I lost, null = a draw. Once per match
+  //                                  (more calls do nothing). Also call it with true when the friend leaves mid-match.
+  //   PX.Bet.resultLabel()           '' or 'BET WON: +★10' / 'BET LOST: -★10' / 'BET BACK: ★10', for the result screen
+  //   PX.Bet.reset()                 when the connection is closed or the player leaves the lobby
+  //                                  (a bet still in play is lost then: if it was the FRIEND who left, call settle(true) first)
+  const Bet = {
+    STEPS: [0, 10, 50, 100, 500], amount: 0, peerMax: 0, live: 0, result: null, isHost: false, send: null,
+    reset() { this.amount = 0; this.peerMax = 0; this.live = 0; this.result = null; this.send = null; },
+    connect(send, isHost) { this.reset(); this.send = send; this.isHost = !!isHost; this.tell(); },
+    tell() { if (this.send) { this.send({ t: 'betmax', max: Wallet.get() }); if (this.isHost) this.send({ t: 'bet', n: this.amount }); } },
+    limit() { return Math.min(Wallet.get(), this.peerMax); },                 // nobody can bet more than either player has
+    fit() { if (this.amount > this.limit()) this.amount = this.STEPS.filter(n => n <= this.limit()).pop() || 0; },
+    onData(m) {
+      if (!m || (m.t !== 'bet' && m.t !== 'betmax')) return false;
+      if (m.t === 'betmax') { this.peerMax = Math.max(0, m.max | 0); if (this.isHost) { const was = this.amount; this.fit(); if (was !== this.amount) this.tell(); } }
+      else if (!this.isHost) this.amount = this.STEPS.includes(m.n) && m.n <= Wallet.get() ? m.n : 0;
+      return true;
+    },
+    next() {                                                                     // the host: NO BET, 10, 50, 100, 500, and round again
+      if (!this.isHost || this.live) return;
+      const ok = this.STEPS.filter(n => n <= this.limit());
+      this.amount = ok[(ok.indexOf(this.amount) + 1) % ok.length] || 0; this.tell();
+    },
+    label() { return this.amount ? 'BET: ★' + this.amount : 'NO BET'; },
+    start() {
+      if (this.live) this.settle(null);
+      this.result = null; this.live = this.amount && Wallet.spend(this.amount) ? this.amount : 0;
+    },
+    settle(won) {
+      const n = this.live; if (!n) return 0;
+      this.live = 0;
+      if (won === true) Wallet.add(n * 2); else if (won !== false) { const d = Wallet.read(); d.points = (d.points | 0) + n; Wallet.write(d); }   // (a bet that comes back isn't "earned")
+      this.result = won === true ? n : won === false ? -n : 0; this.backed = won !== true && won !== false ? n : 0;
+      setTimeout(() => this.tell(), 50);                                         // the wallets changed: say what I can bet now
+      return this.result;
+    },
+    resultLabel() { return this.result === null ? '' : this.result > 0 ? 'BET WON: +★' + this.result : this.result < 0 ? 'BET LOST: -★' + (-this.result) : this.backed ? 'BET BACK: ★' + this.backed : ''; },
+  };
+
   // --- game controllers (Xbox and others): one layer for all the games ---------------------------
   // A game calls PX.Pad.setup({...}) once:
   //   menu()        true when the controller should move between the menu buttons
@@ -661,6 +710,6 @@ window.PX = (() => {
   window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
   if (!window.PX_NO_REMOTE) Remote.resume();
 
-  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();
