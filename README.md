@@ -3,6 +3,9 @@
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
+Every player also has an **ID**: 6 digits (like 716367), picked at random the first time the arcade or a game is opened
+on a phone and then kept for good, also when the name changes. It is shown under your name and in EDIT. (The arcade has
+no server, so two players could get the same ID by chance: about 1 in a million for any two players.)
 **SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
 PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
