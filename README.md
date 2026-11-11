@@ -382,6 +382,16 @@ you, and the run is over.
   First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
   whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
 
+## Give stars
+
+**GIVE ★** (next to EDIT) sends some of your own stars to a friend, by their ID. You both open GIVE STARS at the same
+time; you type your friend's 6-digit ID, pick ★10, 50, 100, 500 or 1000, and press GIVE. The stars leave your wallet
+and arrive in theirs within a few seconds, and both phones say so.
+
+The arcade has no server that keeps the stars: they go straight from one phone to the other (the free PeerJS server
+that the online games use only finds the phone). That is why both screens must be open, and why nobody gets stars sent
+while they were away. If nobody with that ID has the screen open, nothing is taken from your wallet.
+
 ## Gifts of stars
 
 The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup with THANKS! (the stars

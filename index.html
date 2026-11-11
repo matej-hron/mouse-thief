@@ -17,7 +17,7 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
-  #name, #search { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+  #name, #search, #giveid { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
   #search { text-align: left; letter-spacing: 0.1em; padding: 0 0.4em; }
@@ -26,12 +26,13 @@
 <body>
 <canvas id="screen"></canvas>
 <input id="search" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search" enterkeyhint="search" placeholder="TYPE A GAME..." aria-label="Search games">
+<input id="giveid" maxlength="6" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="numeric" aria-label="Your friend's ID">
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.28.0';
+const VERSION = '2.29.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -39,13 +40,14 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
 searchInput.addEventListener('input', () => { searchInput.value = searchInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 20); search.q = searchInput.value; scrollTo(0); pad.focus = 0; });
 nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
 window.addEventListener('keydown', e => {
+  if (e.target === giveInput) { if (e.key === 'Enter') Give.send(); else if (e.key === 'Escape') Give.leave(); return; }
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
@@ -536,11 +538,12 @@ function drawHome(t) {
   gearIcon(gx + 15 + (UI.mx >= gx && UI.mx < gx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
-  const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46, rx = Math.round(W / 2 - rowW / 2);
+  const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46 + 4 + 50, rx = Math.round(W / 2 - rowW / 2);
   PX.drawAvatar(ctx, profile.avatar, rx, 34, 2);
   T(profile.name, rx + 36, 40, '#fff', 2, 'left', '#000');
   T('ID ' + profile.id, rx + 36, 53, '#9a92b8', 1, 'left', '#000');
   if (UI.button('edit', rx + 36 + nw + 8, 40, 46, 16, 'EDIT', { size: 1, accent: '#e0a820' })) editProfile();
+  if (UI.button('give', rx + 36 + nw + 8 + 50, 40, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open();
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
   drawGrid(t);
@@ -950,6 +953,95 @@ function drawStars(t) {
   if (UI.button('nogift', Math.round(W / 2 + 4), y + 116, 120, 24, 'NO THANKS', { size: 1 })) claimStars(false);   // (only the button: Escape can't throw a gift away by accident)
 }
 
+// --- GIVE STARS: send some of your own stars to a friend, by their ID -----------------------------------------
+// There is no server that keeps the stars: they live on each phone. So the stars go straight from your phone to your
+// friend's (the same free PeerJS server as the online games finds the phone), and BOTH of you must have this screen
+// open at that moment. The stars leave your wallet when they are sent and are added to your friend's when they arrive.
+const giveInput = document.getElementById('giveid');
+giveInput.addEventListener('input', () => { giveInput.value = giveInput.value.replace(/[^0-9]/g, '').slice(0, 6); });
+const GIVE_AMOUNTS = [10, 50, 100, 500, 1000];
+const Give = {
+  peer: null, ready: false, msg: '', col: '#9a92b8', amount: 50, busy: null, seen: new Set(),
+  room: id => 'pixel-arcade-player-' + id,
+  say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
+  fail(m) { this.busy = null; this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  async open() {
+    screen = 'give'; giveInput.value = ''; PX.Sound.unlock();
+    if (this.peer) return;
+    this.say('CONNECTING...');
+    try { await PX.loadPeer(); } catch (e) { return this.say("CAN'T LOAD THE ONLINE PART. CHECK YOUR INTERNET.", '#ff8a8a'); }
+    if (this.peer || screen !== 'give') return;
+    const peer = new Peer(this.room(profile.id), { debug: 0, config: { iceServers: PX.ICE_SERVERS } }); this.peer = peer;
+    peer.on('open', () => { this.ready = true; this.say('READY. STARS FOR YOUR ID ARRIVE WHILE THIS SCREEN IS OPEN.'); });
+    peer.on('connection', c => c.on('data', m => this.receive(c, m)));
+    peer.on('disconnected', () => { if (this.peer === peer && !peer.destroyed) peer.reconnect(); });
+    peer.on('error', e => {
+      if (this.peer !== peer) return;
+      if (e.type === 'peer-unavailable') { if (this.busy && !this.busy.sent) this.fail('NOBODY WITH THAT ID HAS GIVE STARS OPEN NOW.'); }
+      else if (e.type === 'unavailable-id') { this.close(); this.say('YOUR ID IS OPEN SOMEWHERE ELSE (ANOTHER TAB?).', '#ff8a8a'); }
+      else if (!this.ready) { this.close(); this.say("CAN'T REACH THE SERVER. CHECK YOUR INTERNET.", '#ff8a8a'); }
+    });
+  },
+  close() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.ready = false; this.busy = null; },
+  leave() { if (this.busy && this.busy.sent) return; this.close(); giveInput.blur(); screen = 'home'; },   // (not while stars are on their way)
+  check() {                                          // what is wrong with what you typed, if anything
+    const id = giveInput.value;
+    if (!/^[1-9][0-9]{5}$/.test(id)) return "TYPE THE 6 DIGITS OF YOUR FRIEND'S ID.";
+    if (id === profile.id) return "THAT'S YOUR OWN ID!";
+    if (PX.Wallet.get() < this.amount) return "YOU DON'T HAVE ★" + this.amount + '.';
+    return '';
+  },
+  send() {
+    if (!this.ready || this.busy) return;
+    const bad = this.check(); if (bad) return this.fail(bad);
+    const id = giveInput.value, n = this.amount, b = this.busy = { id, n, sent: false, tx: Math.random().toString(36).slice(2, 12) };
+    giveInput.blur(); this.say('LOOKING FOR ' + id + '...');
+    const c = this.peer.connect(this.room(id), { reliable: true, serialization: 'json' });
+    c.on('open', () => {
+      if (this.busy !== b) { c.close(); return; }
+      if (!PX.Wallet.spend(n)) return this.fail("YOU DON'T HAVE ★" + n + '.');      // the stars leave your wallet as they are sent
+      b.sent = true; c.send({ t: 'give', n, tx: b.tx, name: profile.name, id: profile.id }); this.say('SENDING ★' + n + '...');
+    });
+    c.on('data', m => {
+      if (this.busy !== b || !m || m.t !== 'ok' || m.tx !== b.tx) return;
+      this.busy = null; this.say('★' + n + ' GIVEN TO ' + (PX.cleanName(m.name) || id) + '!', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+      setTimeout(() => { try { c.close(); } catch (e) { /* gone */ } }, 400);
+    });
+    setTimeout(() => {
+      if (this.busy !== b) return;
+      if (b.sent) { this.busy = null; this.say('★' + n + ' SENT, BUT ' + id + ' DID NOT ANSWER. ASK THEM!', '#ffd23f'); }
+      else this.fail('NOBODY WITH THAT ID HAS GIVE STARS OPEN NOW.');
+    }, 12000);
+  },
+  receive(c, m) {
+    if (!m || m.t !== 'give' || screen !== 'give') return;
+    const n = m.n, tx = String(m.tx || '');
+    if (!Number.isInteger(n) || n < 1 || n > 1000 || !tx) return;
+    if (!this.seen.has(tx)) {                         // (a message that comes twice counts once)
+      this.seen.add(tx); PX.Wallet.add(n);
+      this.say('★' + n + ' FROM ' + (PX.cleanName(m.name) || 'A FRIEND') + '!', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 });
+    }
+    try { c.send({ t: 'ok', tx, name: profile.name }); } catch (e) { /* closing */ }
+  },
+};
+function drawGive(t) {
+  const W = S.W, cx = Math.round(W / 2);
+  background(t);
+  T('GIVE STARS', cx, 8, '#fff', 3, 'center', '#000');
+  T('★ ' + PX.Wallet.get(), W - 8, 10, '#ffd23f', 2, 'right', '#000');
+  T('YOUR ID', cx, 32, '#9a92b8', 1, 'center', '#000');
+  T(profile.id, cx, 42, '#ffd23f', 4, 'center', '#000');
+  T('YOUR FRIEND OPENS GIVE STARS TOO. TYPE THEIR ID:', cx, 72, '#efe9ff', 1, 'center', '#000');
+  S.placeInput(giveInput, cx - 70, 84, 140, 28);
+  const cw = 54, x0 = Math.round(cx - (GIVE_AMOUNTS.length * (cw + 6) - 6) / 2);
+  GIVE_AMOUNTS.forEach((n, i) => { if (UI.button('amt' + n, x0 + i * (cw + 6), 120, cw, 20, '★' + n, { size: 1, on: Give.amount === n, accent: '#ffd23f', disabled: PX.Wallet.get() < n })) Give.amount = n; });
+  const bad = Give.check(), busy = !!Give.busy;
+  if (UI.button('send', cx - 100, 148, 200, 24, busy ? 'SENDING...' : 'GIVE ★' + Give.amount + (bad ? '' : ' TO ' + giveInput.value), { accent: '#5ad43f', disabled: !Give.ready || busy || !!bad })) Give.send();
+  T(Give.msg, cx, 180, Give.col, 1, 'center', '#000');
+  T('THE STARS COME OUT OF YOUR WALLET.', cx, 192, '#5b5275', 1, 'center', '#000');
+  if (UI.button('gback', cx - 50, 208, 100, 22, 'BACK', { disabled: busy && Give.busy.sent }) || UI.back) Give.leave();
+}
+
 let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
@@ -957,8 +1049,9 @@ function frame(now) {
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'give') drawGive(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
+  if (screen !== 'give') giveInput.style.display = 'none';
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
