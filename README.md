@@ -384,13 +384,16 @@ you, and the run is over.
 
 ## Give stars
 
-**GIVE ★** (next to EDIT) sends some of your own stars to a friend, by their ID. You both open GIVE STARS at the same
-time; you type your friend's 6-digit ID, pick ★10, 50, 100, 500 or 1000, and press GIVE. The stars leave your wallet
-and arrive in theirs within a few seconds, and both phones say so.
+**GIVE ★** (next to EDIT) sends some of your own stars to a friend, by their ID. Type your friend's 6-digit ID, pick
+★10, 50, 100, 500 or 1000, and press GIVE: the stars leave your wallet. The next time your friend opens the arcade
+(or within a minute, if it is open), a popup says A GIFT ... FROM you, with THANKS! and NO THANKS.
 
-The arcade has no server that keeps the stars: they go straight from one phone to the other (the free PeerJS server
-that the online games use only finds the phone). That is why both screens must be open, and why nobody gets stars sent
-while they were away. If nobody with that ID has the screen open, nothing is taken from your wallet.
+The arcade has no server of its own, so the gift waits on **ntfy.sh**, a free public message service. That has limits:
+
+- A gift waits about **12 hours**. If your friend doesn't open the arcade in that time, it is lost (your stars too).
+- The two IDs, your name and the amount go through ntfy.sh, an outside service.
+- Anyone who knows how can post there, so somebody technical could send themselves stars. It is for friends, not a bank.
+- If the gift can't be sent (no internet), the stars go back into your wallet.
 
 ## Gifts of stars
 
