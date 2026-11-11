@@ -619,8 +619,8 @@ function drawOver(now) {
     else startMatch(M.mode, { bot: M.bot });
   }
   const bet = M.mode === 'online' ? PX.Bet.resultLabel() : '';
-  if (bet) T(bet, W / 2, y + 105, PX.Bet.result < 0 ? '#ff6b6b' : '#ffd23f', 1, 'center');
-  if (M.waitAgain) T('ASKED FOR A REMATCH...', W / 2, y + 141, '#9a92b8', 1, 'center');
+  if (bet) T(bet, W / 2, y + (M.left ? 105 : 78), PX.Bet.result < 0 ? '#ff6b6b' : '#ffd23f', 1, 'center');   // (the friend left: that line is taken, and there is no rematch)
+  if (M.waitAgain) T('ASKED FOR A REMATCH...', W / 2, y + 104, '#9a92b8', 1, 'center');
   if (UI.button('menu', Math.round(W / 2 - 124), y + 116, 120, 24, 'MENU') || UI.back) toTitle();
 }
 function setPause(v) { if (state !== 'play' || !M || M.mode === 'online') return; paused = v; Ctl.clear(); Music.play(v ? null : 'game'); }

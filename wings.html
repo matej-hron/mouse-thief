@@ -2173,7 +2173,7 @@ const Net = {
       const c = peer.connect('pixel-wings-room-' + code, { reliable: true, serialization: 'json' }); this.conn = c;
       c.on('open', () => { this.code = code; c.send({ t: 'hi', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION, side: save.side, plane: save.plane, crew: save.crew || null }); });
       c.on('data', m => this.clientData(m));
-      c.on('close', () => { if (this.mode === 'client') betSettle(betWinner(), true); if (this.mode === 'client') this.fail(state === 'over' ? 'THE HOST LEFT.' : 'THE HOST LEFT THE GAME.'); });
+      c.on('close', () => { if (this.mode === 'client') { betSettle(betWinner(), true); this.fail(state === 'over' ? 'THE HOST LEFT.' : 'THE HOST LEFT THE GAME.'); } });   // (the host left a battle with a bet on it: I win it)
     });
     peer.on('error', e => { if (this.screen === 'connecting') this.fail(e && e.type === 'peer-unavailable' ? 'NO GAME WITH THAT CODE.' : "COULDN'T CONNECT. TRY AGAIN."); });
     setTimeout(() => { if (this.mode === 'client' && this.screen === 'connecting') this.fail("COULDN'T REACH THE HOST. TRY AGAIN."); }, 25000);
