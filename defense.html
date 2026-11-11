@@ -117,15 +117,15 @@ function statLine(id, st) {
 // speed: pixels a second; n: how many come in a group; threat: how much harder than its hit points say
 // (fast or flying = less time under fire), so a group of them gets fewer hit points.
 const ENEMIES = {
-  blob:   { name: 'BLOB', speed: 24, n: 9, gap: 0.8, threat: 1, r: 4, color: '#5ad43f', w: 3, tip: '' },
-  dash:   { name: 'DASHER', speed: 44, n: 7, gap: 0.55, threat: 1.35, r: 4, color: '#ff8a1f', w: 2, tip: 'FAST! FROST TOWERS SLOW IT DOWN' },
-  mite:   { name: 'MITES', speed: 31, n: 18, gap: 0.22, threat: 0.95, r: 2, color: '#ff5a8a', w: 2, max: 44, tip: 'A SWARM! A CANNON HITS MANY AT ONCE' },
-  shell:  { name: 'SHELL', speed: 15, n: 4, gap: 1.6, threat: 1.5, r: 5, color: '#8a9ab8', w: 2, armor: true, tip: 'ARMOR! SNIPERS AND CANNONS BREAK IT' },
-  wasp:   { name: 'WASP', speed: 28, n: 6, gap: 0.8, threat: 1.7, r: 4, color: '#ffd23f', w: 1.6, fly: true, frames: 2, tip: 'IT FLIES STRAIGHT TO YOUR CASTLE! CANNONS CAN\'T HIT IT' },
-  mender: { name: 'MENDER', speed: 20, n: 2, gap: 2.4, threat: 1.15, r: 4, color: '#f4f4f4', w: 1, heal: true, max: 6, tip: 'IT HEALS ITS FRIENDS. GET IT FIRST!' },
-  ward:   { name: 'WARD', speed: 21, n: 5, gap: 1.1, threat: 1.2, r: 4, color: '#9a5ae0', w: 1.6, shield: true, tip: 'ITS BUBBLE BLOCKS HITS. FAST TOWERS POP IT' },
-  split:  { name: 'SPLITTER', speed: 18, n: 3, gap: 1.8, threat: 1.7, r: 6, color: '#2ad4c4', w: 1.5, split: true, tip: 'IT BREAKS INTO 3 BLOBS!' },
-  boss:   { name: 'BOSS', speed: 10, n: 1, gap: 1, threat: 1, r: 9, color: '#c4283c', w: 0, boss: true, leak: 5, tip: 'A BOSS! HIT IT WITH EVERYTHING YOU HAVE' },
+  blob:   { name: 'BLOB', speed: 27, n: 9, gap: 0.8, threat: 1, r: 4, color: '#5ad43f', w: 3, tip: '' },
+  dash:   { name: 'DASHER', speed: 48, n: 7, gap: 0.55, threat: 1.35, r: 4, color: '#ff8a1f', w: 2, tip: 'FAST! FROST TOWERS SLOW IT DOWN' },
+  mite:   { name: 'MITES', speed: 35, n: 18, gap: 0.22, threat: 0.95, r: 2, color: '#ff5a8a', w: 2, max: 44, tip: 'A SWARM! A CANNON HITS MANY AT ONCE' },
+  shell:  { name: 'SHELL', speed: 21, n: 4, gap: 1.6, threat: 1.5, r: 5, color: '#8a9ab8', w: 2, armor: true, tip: 'ARMOR! SNIPERS AND CANNONS BREAK IT' },
+  wasp:   { name: 'WASP', speed: 31, n: 6, gap: 0.8, threat: 1.7, r: 4, color: '#ffd23f', w: 1.6, fly: true, frames: 2, tip: 'IT FLIES STRAIGHT TO YOUR CASTLE! CANNONS CAN\'T HIT IT' },
+  mender: { name: 'MENDER', speed: 23, n: 2, gap: 2.4, threat: 1.15, r: 4, color: '#f4f4f4', w: 1, heal: true, max: 6, tip: 'IT HEALS ITS FRIENDS. GET IT FIRST!' },
+  ward:   { name: 'WARD', speed: 24, n: 5, gap: 1.1, threat: 1.2, r: 4, color: '#9a5ae0', w: 1.6, shield: true, tip: 'ITS BUBBLE BLOCKS HITS. FAST TOWERS POP IT' },
+  split:  { name: 'SPLITTER', speed: 21, n: 3, gap: 1.8, threat: 1.7, r: 6, color: '#2ad4c4', w: 1.5, split: true, tip: 'IT BREAKS INTO 3 BLOBS!' },
+  boss:   { name: 'BOSS', speed: 12, n: 1, gap: 1, threat: 1, r: 9, color: '#c4283c', w: 0, boss: true, leak: 5, tip: 'A BOSS! HIT IT WITH EVERYTHING YOU HAVE' },
 };
 
 // THE WORKSHOP: the stars you win on the maps buy upgrades that stay. RESET gives all the stars back.
@@ -228,26 +228,26 @@ const MAPS = [
   { id: 'meadow', name: 'GREEN MEADOW', level: 'EASY', theme: 'meadow', waves: 20, hp: 1, gold: 1, seed: 11, block: 0.07,
     paths: [[[-1, 2], [5, 2], [5, 8], [11, 8], [11, 3], [17, 3], [17, 9], [24, 9]]],
     intro: { blob: 1, dash: 4, mite: 7, split: 14 } },
-  { id: 'dunes', name: 'DRY DUNES', level: 'EASY', theme: 'dunes', waves: 20, hp: 1.2, gold: 1, seed: 23, block: 0.1,
+  { id: 'dunes', name: 'DRY DUNES', level: 'EASY', theme: 'dunes', waves: 20, hp: 1.25, gold: 1, seed: 23, block: 0.1,
     paths: [[[-1, 9], [3, 9], [3, 2], [8, 2], [8, 6], [13, 6], [13, 10], [19, 10], [19, 2], [22, 2], [22, 6], [24, 6]]],
     intro: { blob: 1, dash: 2, shell: 5, mite: 8, wasp: 12, split: 16 } },
-  { id: 'frost', name: 'FROZEN FORK', level: 'NORMAL', theme: 'frost', waves: 20, hp: 1.4, gold: 1, seed: 37, block: 0.1,
+  { id: 'frost', name: 'FROZEN FORK', level: 'NORMAL', theme: 'frost', waves: 20, hp: 1.8, gold: 1, seed: 37, block: 0.1,
     paths: [[[-1, 1], [6, 1], [6, 5], [12, 5], [12, 9], [20, 9], [20, 4], [24, 4]], [[-1, 10], [9, 10], [9, 5], [12, 5], [12, 9], [20, 9], [20, 4], [24, 4]]],
     intro: { blob: 1, mite: 2, dash: 3, wasp: 5, shell: 7, mender: 11, split: 14 } },
-  { id: 'swamp', name: 'CROSSROAD SWAMP', level: 'NORMAL', theme: 'swamp', waves: 25, hp: 1.6, gold: 1, seed: 41, block: 0.12,
+  { id: 'swamp', name: 'CROSSROAD SWAMP', level: 'NORMAL', theme: 'swamp', waves: 25, hp: 2, gold: 1, seed: 41, block: 0.12,
     paths: [[[-1, 2], [14, 2], [14, 8], [6, 8], [6, 5], [20, 5], [20, 10], [24, 10]]],
     intro: { blob: 1, dash: 2, mite: 3, shell: 5, ward: 7, wasp: 9, mender: 12, split: 15 } },
-  { id: 'lava', name: 'LAVA CAVE', level: 'HARD', theme: 'lava', waves: 25, hp: 1.8, gold: 1, seed: 53, block: 0.2,
+  { id: 'lava', name: 'LAVA CAVE', level: 'HARD', theme: 'lava', waves: 25, hp: 2.5, gold: 1, seed: 53, block: 0.2,
     paths: [[[-1, 6], [5, 6], [5, 2], [12, 2], [12, 9], [18, 9], [18, 5], [24, 5]]],
     intro: { blob: 1, dash: 1, mite: 2, shell: 3, wasp: 4, ward: 5, mender: 6, split: 7 } },
-  { id: 'crystal', name: 'CRYSTAL MINE', level: 'HARD', theme: 'crystal', waves: 30, hp: 2, gold: 1, seed: 67, block: 0.14,
+  { id: 'crystal', name: 'CRYSTAL MINE', level: 'HARD', theme: 'crystal', waves: 30, hp: 3, gold: 1, seed: 67, block: 0.14,
     paths: [[[-1, 6], [4, 6], [4, 2], [13, 2], [13, 6], [17, 6], [17, 3], [22, 3], [22, 9], [24, 9]], [[-1, 6], [4, 6], [4, 10], [13, 10], [13, 6], [17, 6], [17, 3], [22, 3], [22, 9], [24, 9]]],
     intro: { blob: 1, mite: 1, dash: 2, shell: 3, ward: 4, wasp: 5, split: 6, mender: 7 } },
-  { id: 'sky', name: 'CLOUD BRIDGES', level: 'EXPERT', theme: 'sky', waves: 30, hp: 2.1, gold: 1, seed: 71, block: 0.12,
+  { id: 'sky', name: 'CLOUD BRIDGES', level: 'EXPERT', theme: 'sky', waves: 30, hp: 2.7, speed: 1.1, gold: 1, seed: 71, block: 0.12,
     paths: [[[-1, 1], [10, 1], [10, 7], [15, 7], [15, 10], [24, 10]], [[-1, 10], [6, 10], [6, 4], [18, 4], [18, 1], [24, 1]]],
     intro: { blob: 1, dash: 1, wasp: 2, mite: 3, shell: 4, ward: 5, mender: 6, split: 7 } },
-  { id: 'core', name: 'THE CORE', level: 'EXPERT', theme: 'core', waves: 30, hp: 2.6, gold: 1, seed: 89, block: 0.1,
-    paths: [[[-1, 1], [23, 1], [23, 10], [2, 10], [2, 4], [19, 4], [19, 7], [7, 7]], [[12, 12], [12, 10], [2, 10], [2, 4], [19, 4], [19, 7], [7, 7]]],
+  { id: 'core', name: 'THE CORE', level: 'EXPERT', theme: 'core', waves: 30, hp: 3.4, speed: 1.2, gold: 1, seed: 89, block: 0.1,
+    paths: [[[-1, 1], [21, 1], [21, 6], [12, 6]], [[25, 10], [8, 10], [8, 3], [17, 3], [17, 6], [12, 6]]], airHp: 0.75,
     intro: { blob: 1, dash: 1, mite: 1, shell: 2, wasp: 3, ward: 4, split: 5, mender: 6 } },
 ];
 const mapCache = {};
@@ -258,7 +258,7 @@ function getMap(mi) {
   const routes = [], air = [];
   for (const path of def.paths) {
     const cells = path.map(p => p.slice());
-    if (cells[0][0] < 0) cells[0][0] = -12;               // the road runs on to the edge of a wide screen
+    if (cells[0][0] < 0) cells[0][0] = -12; else if (cells[0][0] >= COLS) cells[0][0] = COLS + 12;   // the road runs on to the edge of a wide screen
     for (let i = 0; i + 1 < cells.length; i++) {
       let [x, y] = cells[i]; const [x1, y1] = cells[i + 1];
       for (;;) { road.add(key(x, y)); if (x === x1 && y === y1) break; x += Math.sign(x1 - x); y += Math.sign(y1 - y); }
@@ -355,13 +355,14 @@ function renderBg(M) {
 /* --- 5. WAVES ----------------------------------------------------------------- */
 // Every wave has a budget of hit points and of gold that grows with the wave number; the groups of enemies share it.
 // So a swarm is many weak ones and a boss is one giant, and the numbers stay easy to balance.
-const HPB = w => 70 + 30 * w + 8 * w * w;
+const HPB = w => 70 + 30 * w + 8 * w * w + 0.1 * w * w * w;
 const GOLDB = w => 36 + 5 * w;
 const CLEAR_BONUS = w => 8 + 2 * w;
 function makeWave(mi, w, endless) {
   const D = MAPS[mi], r = rng(D.seed * 977 + w * 131 + (endless ? 7 : 0)), last = !endless && w === D.waves;
   const boss = w % 10 === 0 || last;
-  let hpB = HPB(w) * D.hp; const goldB = GOLDB(w) * D.gold * (boss ? 1.5 : 1);
+  let hpB = HPB(w) * (1 + (D.hp - 1) * Math.min(1, (w + 1) / 9));   // every map starts gently and is at full strength from wave 8
+  const goldB = GOLDB(w) * D.gold * (boss ? 1.5 : 1);
   if (endless) hpB *= 1.1 * Math.pow(1.07, Math.max(0, w - 20));         // endless: after wave 20 it grows faster and faster
   const avail = Object.keys(D.intro).filter(k => D.intro[k] <= w), groups = [];
   const add = (type, share, at, many = 1) => {
@@ -371,7 +372,7 @@ function makeWave(mi, w, endless) {
   const pick = not => { const list = avail.filter(k => !not.includes(k)); let sum = 0; for (const k of list) sum += ENEMIES[k].w; let v = r() * sum; for (const k of list) if ((v -= ENEMIES[k].w) <= 0) return k; return list[0] || 'blob'; };
   const fresh = avail.filter(k => D.intro[k] === w && w > 1);
   if (boss) {
-    groups.push({ type: 'boss', n: 1, share: last ? 1.15 : 0.9, at: 3, gap: 1 });
+    groups.push({ type: 'boss', n: 1, share: last ? 0.8 : 0.6, at: 3, gap: 1 });
     const a = pick(['mender']); add(a, 0.4, 0, 0.7); if (w >= 20) add(pick([a]), 0.3, 7, 0.6);
   } else if (fresh.length) {                               // a new enemy gets a wave (almost) of its own
     add(fresh[0], 0.65, 0, 0.8); add(fresh[0] === 'blob' ? 'dash' : 'blob', 0.35, 4, 0.6);
@@ -381,11 +382,11 @@ function makeWave(mi, w, endless) {
     if (used.length === 1 && used[0] === 'mender') add('blob', 1, 0);
     const sum = groups.reduce((s, g) => s + g.share, 0); for (const g of groups) g.share /= sum;
   }
-  const gsum = groups.reduce((s, g) => s + g.share, 0), list = [];
+  const gsum = groups.reduce((s, g) => s + g.share, 0), list = [], R = getMap(mi).routes, long = R.length > 1 && R[1].total > R[0].total ? 1 : 0;   // a boss takes the long way
   groups.forEach((g, gi) => {
-    const E = ENEMIES[g.type], hp = Math.max(4, hpB * g.share / (g.n * E.threat)), gold = goldB * g.share / gsum / g.n;
+    const E = ENEMIES[g.type], hp = Math.max(4, hpB * g.share / (g.n * E.threat) * (E.fly ? D.airHp || 1 : 1)), gold = goldB * g.share / gsum / g.n;
     const armor = E.armor ? 2 + Math.floor(w / 3) + (mi >> 1) : 0, shield = E.shield ? 3 + Math.floor(w / 6) : 0;
-    for (let i = 0; i < g.n; i++) list.push({ t: g.at + i * g.gap, type: g.type, hp, gold, armor, shield, path: E.boss ? 0 : (i + gi) % D.paths.length });
+    for (let i = 0; i < g.n; i++) list.push({ t: g.at + i * g.gap, type: g.type, hp, gold, armor, shield, path: E.boss ? long : (i + gi) % D.paths.length });
   });
   list.sort((a, b) => a.t - b.t);
   return { n: w, boss, list, summary: groups.map(g => [g.type, g.n]) };
@@ -419,7 +420,7 @@ function callWave() {
   if (bonus) { B.gold += bonus; floatText(GW / 2, GH - 20, 'EARLY! +' + bonus, '#ffd23f'); }
   const W = waveOf(++B.wave);
   B.q = W.list.map(s => Object.assign({}, s, { t: s.t + B.t + 0.5 })); B.qi = 0;
-  B.pending[B.wave] = W.list.length; B.left += W.list.length; B.autoT = 0;
+  B.pending[B.wave] = W.list.length; B.left += W.list.length; B.autoT = 0; airCheck();
   let tip = '';
   if (!B.demo) for (const [type] of W.summary) if ((save.seen[type] | 0) < 2 && ENEMIES[type].tip && !tip) { save.seen[type] = (save.seen[type] | 0) + 1; tip = 'NEW: ' + ENEMIES[type].name + '. ' + ENEMIES[type].tip; }
   say(W.boss ? 'BOSS WAVE!' : 'WAVE ' + B.wave, tip, tip ? 5 : 1.6);
@@ -427,6 +428,11 @@ function callWave() {
   if (B.tut === 2) B.tut = 3;
   if (B.tut >= 0 && B.wave >= 6) tutDone();
   return true;
+}
+// are flyers on their way (in this wave or the next)? Then the map shows the line they fly along.
+function airCheck() {
+  const has = W => W.summary.some(([type]) => ENEMIES[type].fly);
+  B.airShow = (B.wave > 0 && has(waveOf(B.wave))) || ((B.endless || B.wave < B.def.waves) && has(waveOf(B.wave + 1)));
 }
 function tutDone() { B.tut = -1; if (!save.tut) { save.tut = true; store(); } }
 function waveDone(w) {
@@ -443,7 +449,7 @@ function waveDone(w) {
 }
 function spawnEnemy(type, pi, hp, gold, wave, from, armor = 0, shield = 0) {
   const E = ENEMIES[type], route = (E.fly ? M.air : M.routes)[pi];
-  const e = { type, E, route, pi, seg: 0, sd: 0, dist: 0, x: 0, y: 0, hp, max: hp, gold, wave, speed: E.speed * (0.93 + B.rnd() * 0.14),
+  const e = { type, E, route, pi, seg: 0, sd: 0, dist: 0, x: 0, y: 0, hp, max: hp, gold, wave, speed: E.speed * (B.def.speed || 1) * (0.93 + B.rnd() * 0.14),
               ox: (B.rnd() - 0.5) * (E.fly ? 12 : 6), oy: (B.rnd() - 0.5) * (E.fly ? 12 : 6), armor, shield, slowT: 0, slowK: 0, frzT: 0, ice: false,
               poiT: 0, poiD: 0, plague: false, vulnT: 0, vulnK: 0, t: B.rnd() * 10, dir: 1, dead: false, mark: 0, healT: 1, spawnT: 5, hitT: 0 };
   if (from) { e.seg = from.seg; e.sd = Math.max(0, from.sd - B.rnd() * 10); e.dist = from.dist - (from.sd - e.sd); B.pending[wave] = (B.pending[wave] || 0) + 1; B.left++; }
@@ -487,7 +493,7 @@ function updateEnemy(e, dt) {
   }
   if (E.boss && (e.spawnT -= dt) <= 0) {                  // a boss drops mites as it goes
     e.spawnT = 6;
-    for (let i = 0; i < 3; i++) spawnEnemy('mite', e.pi, e.max * 0.012, 0, e.wave, e);
+    if (e.dist < e.route.total * 0.7) for (let i = 0; i < 2; i++) spawnEnemy('mite', e.pi, e.max * 0.004, 0, e.wave, e);
   }
 }
 // One hit. Bubbles (ward) block a whole hit; armor (shell) takes a bite out of every hit unless it pierces.
@@ -512,7 +518,7 @@ function killEnemy(e) {
   waveDone(e.wave);
 }
 // mode: 0 the one closest to the castle, 1 the strongest, 2 the last one
-function findTarget(x, y, range, air, mode, skipId = 0, fresh = false) {
+function findTarget(x, y, range, air, mode, skipId = -1, fresh = false) {
   let best = null, bs = -1e12; const es = B.enemies;
   for (let i = 0; i < es.length; i++) {
     const e = es[i];
@@ -579,7 +585,7 @@ function sellTower(t) {
 }
 function deny(text) { if (text) { B.tip = { text, t: 1.4 }; } sfx('deny'); }
 function fireTower(t) {
-  const st = t.st, e = findTarget(t.x, t.y, st.range, st.air, t.mode, 0, t.type === 'venom');
+  const st = t.st, e = findTarget(t.x, t.y, st.range, st.air, t.mode, -1, t.type === 'venom');
   if (!e) return false;
   t.ang = Math.atan2(e.y - t.y, e.x - t.x); t.kick = 0.1;
   switch (t.type) {
@@ -900,6 +906,10 @@ function drawWorld() {
     const cx = ox + b.sel.tx * TILE + 8, cy = oy + b.sel.ty * TILE + 8;
     if (st) { if (st.st.range) rangeCircle(cx, cy, st.st.range, TOWERS[st.type].color); }
     else if (hoverId && hoverId.startsWith('b_')) { const D = TOWERS[hoverId.slice(2)]; if (D.lv[0].range) rangeCircle(cx, cy, D.lv[0].range, D.color); }
+  }
+  if (b.airShow && !b.demo) {                                // flyers are coming: little dots show their way
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (const A of M.air) { const a = A.pts[0], c = A.pts[1], n = Math.floor(A.total / 8), ph = (b.t * 1.5) % 1; for (let i = 0; i < n; i++) { const k = (i + ph) / n; ctx.fillRect(Math.round(ox + a.x + (c.x - a.x) * k), Math.round(oy + a.y + (c.y - a.y) * k), 1, 1); } }
   }
   for (let i = 0; i < b.towers.length; i++) drawTower(b.towers[i], ox, oy);
   const es = b.enemies;
