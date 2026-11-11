@@ -390,7 +390,8 @@ starts the bet leaves both wallets. The winner gets both back (and so wins the b
 loses it), a draw gives each their own back. Leaving in the middle doesn't save your bet: the player who stayed wins it.
 
 Bets are in: Pixel Pong, Pixel Box Fight, Pixel Football, Pixel GP, Pixel Sky GP, Pixel Bike Run, Pixel Moto, Pixel
-Skate and Pixel Ski. Mouse Thief has its own bets (both players press I AGREE). Not when two play on one phone (that is
+Skate, Pixel Ski and Pixel Wings (only with exactly two pilots, on opposite sides). Mouse Thief has its own bets (both
+players press I AGREE). Not when two play on one phone (that is
 one wallet). The shared part is `PX.Bet` in `common.js`. The two phones each decide who won, as they always did, so a
 bet is for friends: a lost connection, or a finish in the same instant, can pay both.
 
