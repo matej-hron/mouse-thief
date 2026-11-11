@@ -31,7 +31,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.24.0';
+const VERSION = '2.25.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -888,25 +888,30 @@ function drawGift(t) {
   if (UI.button('okay', Math.round(W / 2 - 60), y + 168, 120, 24, pad.used ? 'A: OKAY' : 'OKAY', { accent: '#5ad43f' }) || UI.back) claimGift();
 }
 
-// --- a gift of stars for some players: ★1000, once on each phone, when the arcade sees their name -----------
-// (The wallet lives on the phone, so the gift is given by name: the player gets it the first time they open the
-// arcade with that name, or right after they type it in EDIT.)
-const STAR_GIFT = { names: ['VOJTA7', 'STEPAK', 'LEVKO'], stars: 1000 };
-const STAR_GIFT_KEY = 'pixelArcade.starGift1';
-let starGiftLeft = false;
-try { starGiftLeft = !localStorage.getItem(STAR_GIFT_KEY); } catch (e) { /* private mode: no gift, it couldn't be remembered */ }
-const starGiftDue = () => starGiftLeft && STAR_GIFT.names.includes(PX.cleanName(profile.name));
+// --- gifts of stars: each is given once on each phone ------------------------------------------------------
+// (The wallet lives on the phone, so the arcade can only give a gift when it is opened there.)
+//   names: only for players with one of these names (the first time the arcade sees the name, or right after it is typed in EDIT)
+//   until: only up to the end of that day (year, month, day); after it the gift is gone
+const STAR_GIFTS = [
+  { key: 'pixelArcade.starGift1', stars: 1000, names: ['VOJTA7', 'STEPAK', 'LEVKO'] },
+  { key: 'pixelArcade.starGift2', stars: 300, until: [2026, 11, 18], note: 'FOR EVERYONE, UNTIL NOVEMBER 18' },   // one week for everyone
+];
+for (const g of STAR_GIFTS) { g.left = false; try { g.left = !localStorage.getItem(g.key); } catch (e) { /* private mode: no gift, it couldn't be remembered */ } }
+const starGiftDue = () => STAR_GIFTS.find(g => g.left && (!g.names || g.names.includes(PX.cleanName(profile.name))) &&
+                                               (!g.until || Date.now() < new Date(g.until[0], g.until[1] - 1, g.until[2] + 1).getTime()));
 function claimStars() {
-  if (starGiftDue()) {
-    try { localStorage.setItem(STAR_GIFT_KEY, PX.cleanName(profile.name)); if (localStorage.getItem(STAR_GIFT_KEY)) PX.Wallet.add(STAR_GIFT.stars); } catch (e) { /* couldn't remember it: no stars, or they'd come every time */ }
-    PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 });
+  const g = starGiftDue();
+  if (g) {
+    try { localStorage.setItem(g.key, PX.cleanName(profile.name) || '1'); if (localStorage.getItem(g.key)) PX.Wallet.add(g.stars); } catch (e) { /* couldn't remember it: no stars, or they'd come every time */ }
+    g.left = false; PX.Sound.unlock(); PX.Sound.tone([523, 659, 784, 1047, 1319], 0.5, { vol: 0.12 });
   }
-  starGiftLeft = false; screen = 'home';
+  screen = 'home';                                  // (the next gift, if there is one, pops up right after)
 }
 function drawStars(t) {
-  const W = S.W;
+  const W = S.W, g = starGiftDue();
   drawHome(t);
-  UI.list = [];                                     // only OKAY can be pressed while the gift is up
+  if (!g) { screen = 'home'; return; }
+  UI.list = [];                                     // only THANKS! can be pressed while the gift is up
   ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(300, W - 30), x = Math.round(W / 2 - pw / 2), y = 48, ph = 150;
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 2, y - 2, pw + 4, ph + 4); ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, pw, ph);
@@ -914,7 +919,8 @@ function drawStars(t) {
   T('A GIFT FOR', W / 2, y + 12, '#efe9ff', 2, 'center', '#000');
   PX.drawAvatar(ctx, profile.avatar, Math.round(W / 2 - PX.textWidth(profile.name, 3) / 2 - 38), y + 30, 2);
   T(profile.name, W / 2 + 16, y + 36, '#fff', 3, 'center', '#000');
-  T('★ ' + STAR_GIFT.stars, W / 2, y + 68, '#ffd23f', 6, 'center', '#3a2f5c');
+  T('★ ' + g.stars, W / 2, y + 68, '#ffd23f', 6, 'center', '#3a2f5c');
+  if (g.note) T(g.note, W / 2, y + 104, '#efe9ff', 1, 'center', '#000');
   if (UI.button('okay', Math.round(W / 2 - 60), y + 116, 120, 24, pad.used ? 'A: THANKS!' : 'THANKS!', { accent: '#ffd23f' }) || UI.back) claimStars();
 }
 

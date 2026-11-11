@@ -358,11 +358,14 @@ you, and the run is over.
   First to the bottom wins (★2 and 60 coins; the loser gets 25 coins); crash and you're out, and if you both crash,
   whoever got further wins. The host can start a REMATCH or pick ANOTHER RUN. No pausing online.
 
-## A gift of stars
+## Gifts of stars
 
-The players **VOJTA7**, **STEPAK** and **LEVKO** get **★1000**: once on each phone, the first time the arcade is opened
-with that name (or right after the name is typed in EDIT). The ★ wallet is kept on the phone, so the gift goes by
-name; it is `STAR_GIFT` in `index.html`.
+The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup, THANKS!, and the stars
+are yours. Each gift comes once on each phone. They are `STAR_GIFTS` in `index.html`.
+
+- **★300 for everyone, for one week:** anyone who opens the arcade up to and including **November 18, 2026**.
+- **★1000 for VOJTA7, STEPAK and LEVKO:** the first time the arcade is opened with that name (or right after the name
+  is typed in EDIT). No end date.
 
 ## First of the month update
 
