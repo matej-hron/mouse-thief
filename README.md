@@ -51,6 +51,17 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   a hurt carrier gets its planes up more slowly. Every ship has AA guns. **Torpedo planes** carry one torpedo (a new one
   every 6 s) that run straight through the water: aim ahead of the ship. Bombers can hit ships too (good against the
   destroyers). Half of each side's fighter bots guard their carrier, the other half escort their torpedo planes and bombers.
+- **CAMPAIGN** (title screen; alone, with bots): 12 missions, one after another, each with a different job, and they
+  get harder (the enemy pilots go from EASY to HARD, and there are more of them). A mission opens when you win the one
+  before it. 1. FIRST PATROL (fighter: shoot down 4), 2. SCRAMBLE! (defense fighter: stop 2 bombers), 3. FIRST STRIKE
+  (bomber), 4. TIN CANS (take off from the carrier and sink both destroyers with bombs), 5. TAIL GUNNER (the turret, in 3D),
+  6. LITTLE FRIENDS (escort the bombers), 7. TORPEDO RUN (sink the carrier), 8. FLEET DEFENSE (keep your carrier afloat
+  for 3 minutes against waves of torpedo planes), 9. FLYING BLIND (defend the base with the radar already gone),
+  10. THE BARON (an enemy ace in a tough plane with yellow markings: get him 3 times), 11. FLYING FORTRESS (gunner
+  against the best pilots), 12. OPERATION THUNDER (lead the big raid). Every mission shows who you are and what to do
+  before take-off, and the job stays under the score during the battle. A win gives 1 to 3 **wings** (3: never shot
+  down, 2: at most twice), ★10 extra the first time, and every 2 missions a new rank (CADET up to ACE OF THE
+  ARCHIPELAGO). The missions are the `MISSIONS` list in `wings.html`: each is a normal battle with its own numbers.
 - **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
   kill target (10 / 15 / 25 by size), or most kills after 3 minutes, wins.
 - **Planes:** fighters are fast and turn tightly (2 machine guns with 40 rounds: they come back slowly when you stop
