@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelBoxFight.save';
 const save = { wins: 0, played: 0, kos: 0, music: true, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -101,7 +101,7 @@ function makeMatch(mode, opts = {}) {
            phase: 'count', t: 2.2, msg: '', msgT: 0, winner: -1, overT: 0, koSide: -1, fx: null, sparks: [], shake: 0,
            me: mode === 'online' ? (Net.isHost ? 0 : 1) : 0 };
 }
-function startMatch(mode, opts = {}) { M = makeMatch(mode, opts); state = 'play'; paused = false; Ctl.clear(); Music.play('game'); }
+function startMatch(mode, opts = {}) { M = makeMatch(mode, opts); if (mode === 'online') PX.Bet.start(); state = 'play'; paused = false; Ctl.clear(); Music.play('game'); }
 function resetRound() {
   for (const f of M.p) {
     Object.assign(f, { x: f.side === 0 ? RW / 2 - 70 : RW / 2 + 70, hp: MAX_HP, act: 'idle', at: 0, pending: null, shield: 0, stun: 0, flash: 0, kb: 0, koT: 0, q: 0, energy: Math.min(f.energy, 2), blockT: 0 });
@@ -172,6 +172,7 @@ function endMatch(winner) {
   M.stars = 0;
   const iWon = M.mode === 'local' ? null : winner === M.me;
   if (iWon && M.mode !== 'local') { M.stars = REWARD; PX.Wallet.add(REWARD); save.wins++; }
+  if (M.mode === 'online') PX.Bet.settle(iWon);                           // the bet (the friend left: I win it)
   save.played++; store();
   sfx(iWon === false ? 'lose' : 'win'); Music.play(null);
   if (M.mode === 'online' && Net.isHost) Net.send({ t: 'end', w: winner, wn: M.wins });
@@ -503,7 +504,7 @@ function drawGame(now) {
 // The host runs the fight; the friend sends what they press and gets the fight back.
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '' }); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '' }); PX.Bet.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async load() { try { await PX.loadPeer(); return true; } catch (e) { this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); return false; } },
@@ -531,7 +532,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); sfx('bell'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); sfx('bell'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -549,6 +550,7 @@ const Net = {
     } else { const i = M.p[1].in; this.send({ t: 'in', l: i.l ? 1 : 0, r: i.r ? 1 : 0, b: i.blk ? 1 : 0 }); }
   },
   onData(m) {
+    if (PX.Bet.onData(m)) return;                                       // the bet's own messages
     switch (m.t) {
       case 'me':
         if (m.v !== VERSION) { this.fail('THE OTHER PLAYER HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
@@ -741,8 +743,10 @@ function drawNet() {
     PX.drawAvatar(ctx, profile.avatar, cx - 90, y + 36, 2); T(profile.name, cx - 76, y + 70, '#fff', 1, 'center');
     T('VS', cx, y + 46, '#ffd23f', 2, 'center');
     if (f) { PX.drawAvatar(ctx, f.av, cx + 62, y + 36, 2); T(f.name, cx + 76, y + 70, '#fff', 1, 'center'); }
-    if (Net.isHost) { if (UI.button('st', bx, y + 96, bw, 26, 'START!', { disabled: !f, accent: '#5ad43f' })) Net.start(); }
-    else T('WAITING FOR YOUR FRIEND TO START', cx, y + 104, '#9a92b8', 1, 'center');
+    if (Net.isHost) {                                                    // the host picks the bet
+      if (UI.button('bet', bx, y + 96, 98, 26, PX.Bet.label(), { disabled: !f, accent: '#ffd23f' })) { sfx('click'); PX.Bet.next(); }
+      if (UI.button('st', bx + 102, y + 96, 98, 26, 'START!', { disabled: !f, accent: '#5ad43f' })) Net.start();
+    } else { T('WAITING FOR YOUR FRIEND TO START', cx, y + 100, '#9a92b8', 1, 'center'); T(PX.Bet.label(), cx, y + 114, '#ffd23f', 1, 'center'); }
     if (UI.button('nb', bx, y + 136, bw, 22, 'LEAVE') || UI.back) { Net.leave(); state = 'title'; }
   } else {
     T('OOPS', cx, y + 12, '#ff6b6b', 2, 'center');
@@ -775,7 +779,9 @@ function drawOver(now) {
     if (M.mode === 'online') { if (Net.isHost) Net.start(); else { Net.send({ t: 'again' }); M.waitAgain = true; } }
     else startMatch(M.mode, { bot: M.bot });
   }
-  if (M.waitAgain) T('ASKED FOR A REMATCH...', W / 2, y + 104, '#9a92b8', 1, 'center');
+  const bet = M.mode === 'online' ? PX.Bet.resultLabel() : '';
+  if (bet) T(bet, W / 2, y + 105, PX.Bet.result < 0 ? '#ff6b6b' : '#ffd23f', 1, 'center');
+  if (M.waitAgain) T('ASKED FOR A REMATCH...', W / 2, y + 141, '#9a92b8', 1, 'center');
   if (UI.button('menu', Math.round(W / 2 - 124), y + 116, 120, 24, 'MENU') || UI.back) toTitle();
 }
 function setPause(v) { if (state !== 'play' || !M || M.mode === 'online') return; paused = v; Ctl.clear(); Music.play(v ? null : 'game'); }

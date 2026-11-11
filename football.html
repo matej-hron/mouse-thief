@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelFootball.save.v1';
 const profile = PX.Profile.get();
 const canvas = document.getElementById('screen');
@@ -715,6 +715,7 @@ function endMatch() {
   const me = M.me, sc = M.score;
   M.res = M.mode === 'local' ? null : sc[me] > sc[1 - me] ? 'W' : sc[me] < sc[1 - me] ? 'L' : 'D';
   if (M.mode === 'online' && Net.isHost) Net.send({ t: 'end', sc });
+  if (M.mode === 'online') PX.Bet.settle(M.res === 'W' ? true : M.res === 'L' ? false : null);   // the bet (the friend left: I win it)
   if (M.res) reward(M.res);
   Music.play('menu');
 }
@@ -926,7 +927,7 @@ function drawGame(now) {
 // Trades: one side sends an offer, the other accepts (both phones check it), then both swap.
 const LOBBY_SLOTS = 6, PREFIX = 'pixel-football-';
 function clubPacket() { const c = save.club; return { name: c.name, kit: c.kit, shorts: c.shorts, money: c.money, players: c.players }; }
-function startOnline(len) { const me = save.club, fr = Net.friend.club; startMatch('online', Net.isHost ? me : fr, Net.isHost ? fr : me, { len }); }
+function startOnline(len) { const me = save.club, fr = Net.friend.club; PX.Bet.start(); startMatch('online', Net.isHost ? me : fr, Net.isHost ? fr : me, { len }); }
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0, random: false, search: 0,
   meReady: false, friendReady: false, offer: null, pending: null, tradeMsg: '', sel: { mine: [], theirs: [], pay: 0 }, snap: null,
@@ -934,6 +935,7 @@ const Net = {
     try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ }
     Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '', random: false, search: this.search + 1,
       meReady: false, friendReady: false, offer: null, pending: null, tradeMsg: '', sel: { mine: [], theirs: [], pay: 0 }, snap: null });
+    PX.Bet.reset();
   },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
@@ -995,7 +997,7 @@ const Net = {
   },
   bind(c, opened) {
     this.conn = c;
-    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, v: VERSION, club: clubPacket() }); sfx('click'); };
+    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, v: VERSION, club: clubPacket() }); PX.Bet.connect(m => this.send(m), this.isHost); sfx('click'); };
     if (opened) go(); else c.on('open', go);
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
@@ -1009,7 +1011,7 @@ const Net = {
   leave() { this.send({ t: 'bye' }); this.live = false; setTimeout(() => this.reset(), 150); },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
   sendClub() { this.send({ t: 'club', club: clubPacket() }); },
-  ready() { this.meReady = true; this.send({ t: 'ready' }); if (this.isHost && this.friendReady) this.start(); },
+  ready() { this.meReady = true; this.send({ t: 'ready', b: PX.Bet.amount }); if (this.isHost && this.friendReady) this.start(); },
   start() { this.meReady = this.friendReady = false; this.send({ t: 'go', len: save.len }); startOnline(save.len); },
   sendOffer() {
     const s = this.sel, me = save.club, fc = this.friend.club;
@@ -1052,6 +1054,8 @@ const Net = {
   },
   onData(m) {
     if (!m || typeof m !== 'object') return;
+    const bet = PX.Bet.amount;
+    if (PX.Bet.onData(m)) { if (bet !== PX.Bet.amount) this.meReady = this.friendReady = false; return; }   // a new bet: both say PLAY again
     switch (m.t) {
       case 'me': {
         if (m.v !== VERSION) { this.fail('THE OTHER PLAYER HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
@@ -1061,7 +1065,8 @@ const Net = {
         break;
       }
       case 'club': if (this.friend) { const c = sanClub(m.club); if (c) { this.friend.club = c; this.sel.theirs = this.sel.theirs.filter(id => c.players.some(p => p.id === id)); } } break;
-      case 'ready': this.friendReady = true; if (this.isHost && this.meReady) this.start(); else sfx('click'); break;
+      case 'ready': if (m.b !== PX.Bet.amount) break;                      // they said yes to an older bet
+        this.friendReady = true; if (this.isHost && this.meReady) this.start(); else sfx('click'); break;
       case 'go': if (this.friend) startOnline(clamp(m.len | 0, 2, 8)); break;
       case 'in': if (M && this.isHost) { const i = Inp[1]; i.mx = clamp(+m.mx || 0, -1, 1); i.my = clamp(+m.my || 0, -1, 1); i.a = m.a | 0; i.bp = m.bp | 0; i.br = m.br | 0; i.tp = m.tp | 0; i.gx = +m.gx || 1; i.gy = +m.gy || 0; i.gp = clamp(+m.gp || 0, 0, 1); i.g = m.g | 0; } break;
       case 's': if (M && !this.isHost) this.snap = m; break;
@@ -1463,7 +1468,9 @@ function drawOver(now) {
   ly = y + 98;
   if (M.left) { T('THE OTHER PLAYER LEFT', W / 2, ly, '#ff6b6b', 1, 'center'); ly += 10; }
   if (res) { T(money(M.money) + '   ★ +' + M.stars, W / 2, ly, '#9be36b', 1, 'center'); ly += 11; }
-  M.report.slice(0, 3).forEach(r => { T(r, W / 2, ly, '#7af0ff', 1, 'center'); ly += 9; });
+  const bet = M.mode === 'online' ? PX.Bet.resultLabel() : '';
+  if (bet) { T(bet, W / 2, ly, PX.Bet.result < 0 ? '#ff6b6b' : '#ffd23f', 1, 'center'); ly += 10; }
+  M.report.slice(0, bet ? 2 : 3).forEach(r => { T(r, W / 2, ly, '#7af0ff', 1, 'center'); ly += 9; });
   const bw = 130, by = y + 148;
   if (M.mode === 'local') {
     if (UI.button('again', Math.round(W / 2 + 4), by, bw, 22, 'PLAY AGAIN', { accent: '#5ad43f' })) startMatch('local', save.club, M.c1);
@@ -1543,7 +1550,10 @@ function drawLobby(now) {
   if (UI.button('trade', Math.round(cx + 4), 152, bw, 24, 'TRADE PLAYERS', { accent: '#ff8a2a' })) { Net.screen = 'trade'; Net.tradeMsg = ''; sfx('click'); }
   if (Net.friendReady && !Net.meReady) T(f.name + ' WANTS TO PLAY! (' + save.len + ' MIN MATCH ON THE HOST)', cx, 182, '#ffd23f', 1, 'center');
   else if (Net.tradeMsg) T(Net.tradeMsg, cx, 182, '#ffd23f', 1, 'center');
-  if (UI.button('nb', Math.round(cx - 60), 206, 120, 22, 'LEAVE', { size: 1 }) || UI.back) { Net.leave(); go('title'); }
+  // the bet: the host picks it, the friend sees it (a new bet takes back both players' PLAY A MATCH)
+  if (!Net.isHost) T(PX.Bet.label(), cx + 4 + bw / 2, 213, '#ffd23f', 1, 'center', '#000');
+  else if (UI.button('bet', Math.round(cx + 4), 206, bw, 22, PX.Bet.label(), { size: 1, accent: '#ffd23f' })) { const was = PX.Bet.amount; PX.Bet.next(); if (was !== PX.Bet.amount) { Net.meReady = Net.friendReady = false; sfx('click'); } }
+  if (UI.button('nb', Math.round(cx - bw - 4), 206, bw, 22, 'LEAVE', { size: 1 }) || UI.back) { Net.leave(); go('title'); }
   drawOffer(now);
 }
 function drawTrade(now) {

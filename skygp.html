@@ -35,7 +35,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize or a new track) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -552,7 +552,7 @@ function wreck(R) {
   save.races++; store();
   Engine.off();
   Music.stop();
-  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); } }, 2000);
+  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); settleBet(R); } }, 2000);
 }
 function updateFx(R, dt) {
   const p = R.p;
@@ -565,6 +565,9 @@ function updateFx(R, dt) {
   for (const f of R.fx) { f.vy += f.g * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.life -= dt; }
   R.fx = R.fx.filter(f => f.life > 0);
 }
+// The bet (an online race for stars, PX.Bet) is settled when the result screen comes up, not the moment the race ends:
+// a 'fin' or 'wreck' from the friend that crossed ours on the way can still change who won (see Net.onData).
+function settleBet(R) { if (mode === 'mp' && R.result) PX.Bet.settle(R.result.draw ? null : !!R.result.won); }
 function finishRace(won) {
   const R = race, p = R.p;
   if (R.over) return;
@@ -582,7 +585,7 @@ function finishRace(won) {
   }
   save.races++; store();
   PX.Sound.tone([523, 659, 784, 1047], 0.6, { vol: 0.12 });
-  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); } }, 1600);
+  setTimeout(() => { if (race === R) { state = 'result'; Music.play('menu'); settleBet(R); } }, 1600);
 }
 
 /* --- MUSIC: a little chiptune player (the same one as Pixel GP), with its own tunes --- */
@@ -947,7 +950,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
 /* --- 6. ONLINE: race a friend (the same free PeerJS server as the other games) ---------- */
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0, wait: false,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'home'; this.msg = ''; },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'home'; this.msg = ''; PX.Bet.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -974,26 +977,29 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, car: { c: myColor(), d: myCar() }, v: VERSION }); PX.Sound.tone([523, 784], 0.2); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, car: { c: myColor(), d: myCar() }, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Sound.tone([523, 784], 0.2); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
-  lost() { if (!this.live) return; this.live = false; this.conn = null; if (state !== 'race') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
+  // (the friend left in the middle of a race for a bet: I win it. A race that is already over is settled by its own result.)
+  lost() { if (!this.live) return; this.live = false; this.conn = null; if (state === 'race' && mode === 'mp' && race && !race.over) PX.Bet.settle(true); if (state !== 'race') { this.screen = 'error'; this.msg = 'YOUR FRIEND LEFT.'; } },
   leave() { this.send({ t: 'bye' }); this.live = false; setTimeout(() => this.reset(), 150); },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
   sendPos(p) { const now = performance.now(); if (now - this.sendT < 50) return; this.sendT = now; this.send({ t: 'p', d: Math.round(p.dist), x: Math.round(p.x * 100) / 100, a: Math.round(p.alt), s: Math.round(p.speed) }); },
-  start() { const seed = 1 + Math.floor(Math.random() * 100000); this.send({ t: 'go', seed, tr: save.track }); startRace('mp', seed); },   // the host's track
+  start() { const seed = 1 + Math.floor(Math.random() * 100000); this.send({ t: 'go', seed, tr: save.track }); PX.Bet.start(); startRace('mp', seed); },   // the host's track
   onData(m) {
     if (!m || typeof m !== 'object') return;
+    if (PX.Bet.onData(m)) return;                            // the bet's own messages
     switch (m.t) {
       case 'me':
         if (m.v !== VERSION) { this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break; }
         this.friend = { name: PX.cleanName(m.name) || 'FRIEND', av: m.av, car: m.car && /^#[0-9a-f]{6}$/i.test(m.car.c) && CARS.some(k => k.id === m.car.d) ? m.car : null };
         break;
-      case 'go': startRace('mp', +m.seed || 1, circuitOf(m.tr).id); break;
-      case 'wreck': if (race && race.ghost) race.ghost.wrecked = true; break;
+      case 'go': PX.Bet.start(); startRace('mp', +m.seed || 1, circuitOf(m.tr).id); break;
+      // (two messages that crossed: we both wrecked at the same moment = nobody wins; we both finished = the faster time wins)
+      case 'wreck': if (race && race.ghost) { race.ghost.wrecked = true; if (state === 'race' && race.result && race.result.wrecked) race.result.draw = true; } break;
       case 'p': if (race && race.ghost) { race.ghost.dist = +m.d || 0; race.ghost.x = clamp(+m.x || 0, -3, 3); race.ghost.alt = clamp(+m.a || 0, 0, ALT_MAX); race.ghost.speed = +m.s || 0; } break;
-      case 'fin': if (race && race.ghost) race.ghost.fin = m.tm; break;
+      case 'fin': if (race && race.ghost) { race.ghost.fin = m.tm; const r = race.result; if (state === 'race' && r && r.won) { if (m.tm < r.time) r.won = false; else if (m.tm === r.time) r.draw = true; } } break;
       case 'bye': this.lost(); break;
     }
   },
@@ -1046,7 +1052,7 @@ function drawTitle() {
 }
 function drawOnline() {
   const W = S.W, bw = 200, bx = Math.round(W / 2 - bw / 2), dots = '.'.repeat(1 + Math.floor(performance.now() / 333) % 3);
-  const { x, y } = drawPanel(300, 150), cx = W / 2;
+  const { x, y } = drawPanel(300, Net.screen === 'lobby' ? 176 : 150), cx = W / 2;   // (the lobby is taller: a row for the bet)
   const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label) || UI.back) { if (Net.live) Net.leave(); Net.reset(); } };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
   switch (Net.screen) {
@@ -1079,9 +1085,15 @@ function drawOnline() {
       T('VS', cx, y + 46, '#e01e1e', 3, 'center');
       const f = Net.friend;
       if (f) { PX.drawAvatar(ctx, f.av, cx + 58, y + 30, 3); T(f.name, cx + 79, y + 76, '#fff', 1, 'center'); }
-      if (Net.isHost) { if (UI.button('go', bx, y + 92, bw, 22, 'START: ' + circuit.name, { accent: '#e01e1e', disabled: !f })) Net.start(); }
-      else T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO START' + dots, cx, y + 98, '#efe9ff', 1, 'center');
-      back(y + 122, 'LEAVE');
+      // the bet: the host picks it (tap to change), the friend sees it. The winner of the race wins it from the loser.
+      if (Net.isHost) {
+        if (UI.button('bet', bx, y + 92, bw, 20, PX.Bet.label(), { accent: '#ffd23f', disabled: !f })) PX.Bet.next();
+        if (UI.button('go', bx, y + 118, bw, 22, 'START: ' + circuit.name, { accent: '#e01e1e', disabled: !f })) Net.start();
+      } else {
+        T(PX.Bet.label(), cx, y + 96, PX.Bet.amount ? '#ffd23f' : '#efe9ff', 2, 'center');
+        T('WAITING FOR ' + (f ? f.name : 'THE HOST') + ' TO START' + dots, cx, y + 124, '#efe9ff', 1, 'center');
+      }
+      back(y + 148, 'LEAVE');
       break;
     }
     case 'error':
@@ -1091,23 +1103,24 @@ function drawOnline() {
   }
 }
 function drawResult() {
-  const W = S.W, R = race, r = R.result || {};
+  const W = S.W, R = race, r = R.result || {}, bet = mode === 'mp' ? PX.Bet.resultLabel() : '';
   drawWorld(R, W);
-  const { x, y } = drawPanel(280, 150), cx = W / 2;
+  const { x, y } = drawPanel(280, bet ? 170 : 150), cx = W / 2, by = y + (bet ? 132 : 112);   // (a bet: one more line, the buttons move down)
   if (r.wrecked) T('WRECKED!', cx, y + 12, '#ff6b6b', 3, 'center');
   else if (mode === 'mp') T(r.won ? 'YOU WIN!' : (Net.friend ? Net.friend.name : 'FRIEND') + ' WINS!', cx, y + 12, r.won ? '#5ad43f' : '#ff6b6b', 3, 'center');
   else T(r.place === 1 ? 'YOU WIN!' : r.place === 2 ? '2ND PLACE!' : r.place === 3 ? '3RD PLACE!' : r.place + 'TH PLACE', cx, y + 12, r.place === 1 ? '#ffd23f' : '#fff', 3, 'center');
   if (mode === 'race' && r.place === 1 && !r.wrecked) T('★ ★ ★', cx, y + 34, '#ffd23f', 2, 'center');
-  if (r.wrecked) T(mode === 'mp' ? (Net.friend ? Net.friend.name : 'FRIEND') + ' WINS' : 'OUT ON LAP ' + Math.min(r.lap, mode === 'free' ? 99 : LAPS), cx, y + 34, '#efe9ff', 2, 'center');
+  if (r.wrecked) T(mode === 'mp' ? r.draw ? 'YOU BOTH WRECKED' : (Net.friend ? Net.friend.name : 'FRIEND') + ' WINS' : 'OUT ON LAP ' + Math.min(r.lap, mode === 'free' ? 99 : LAPS), cx, y + 34, '#efe9ff', 2, 'center');
   T('TIME', x + 30, y + 52, '#efe9ff', 2); T(fmt(r.time), x + 250, y + 52, '#fff', 2, 'right');
   T('BEST LAP', x + 30, y + 72, '#efe9ff', 2); T(fmt(R.p.bestLap), x + 250, y + 72, '#efe9ff', 2, 'right');
   T('STARS', x + 30, y + 92, '#efe9ff', 2); T('★ +' + (R.stars + (r.bonus || 0)), x + 250, y + 92, '#ffd23f', 2, 'right');
+  if (bet) T(bet, cx, y + 112, PX.Bet.result > 0 ? '#5ad43f' : PX.Bet.result < 0 ? '#ff6b6b' : '#ffd23f', 2, 'center');
   const bw = 110;
   if (mode === 'mp') {
-    if (Net.live && Net.isHost) { if (UI.button('again', Math.round(cx - bw - 4), y + 112, bw, 24, 'REMATCH', { accent: '#e01e1e' })) Net.start(); }
-    else T(Net.live ? 'WAITING FOR A REMATCH...' : 'YOUR FRIEND LEFT', cx - 60, y + 120, '#efe9ff', 1, 'center');
-  } else if (UI.button('again', Math.round(cx - bw - 4), y + 112, bw, 24, mode === 'free' ? 'FLY AGAIN' : 'RACE AGAIN', { accent: '#e01e1e' })) startRace(mode);
-  if (UI.button('menu', Math.round(cx + 4), y + 112, bw, 24, 'MENU') || UI.back) toTitle();
+    if (Net.live && Net.isHost) { if (UI.button('again', Math.round(cx - bw - 4), by, bw, 24, 'REMATCH', { accent: '#e01e1e' })) Net.start(); }
+    else T(Net.live ? 'WAITING FOR A REMATCH...' : 'YOUR FRIEND LEFT', cx - 60, by + 8, '#efe9ff', 1, 'center');
+  } else if (UI.button('again', Math.round(cx - bw - 4), by, bw, 24, mode === 'free' ? 'FLY AGAIN' : 'RACE AGAIN', { accent: '#e01e1e' })) startRace(mode);
+  if (UI.button('menu', Math.round(cx + 4), by, bw, 24, 'MENU') || UI.back) toTitle();
 }
 // An engine icon: tap to switch the engine sound on / off (off at first). A note icon: the music.
 function engineButton(x, y) {

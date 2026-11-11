@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -2092,12 +2092,13 @@ const codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
 const Net = {
   mode: 'off',              // off | host | client
-  peer: null, conns: [], conn: null, code: '', screen: 'home', msg: '', myPid: 0, sendT: 0, snapT: 0, snaps: [], view: null, fxq: [],
+  peer: null, conns: [], conn: null, betConn: null, betSide: 0, code: '', screen: 'home', msg: '', myPid: 0, sendT: 0, snapT: 0, snaps: [], view: null, fxq: [],
   isClient() { return this.mode === 'client'; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   reset() {
     try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ }
-    Object.assign(this, { mode: 'off', peer: null, conns: [], conn: null, code: '', screen: 'home', msg: '', snaps: [], view: null, fxq: [] });
+    PX.Bet.reset();
+    Object.assign(this, { mode: 'off', peer: null, conns: [], conn: null, betConn: null, code: '', screen: 'home', msg: '', snaps: [], view: null, fxq: [] });
   },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; state = 'online'; },
   async load() { try { await PX.loadPeer(); return true; } catch (e) { this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); return false; } },
@@ -2124,6 +2125,7 @@ const Net = {
   },
   dropped(c) {
     this.conns = this.conns.filter(x => x !== c);
+    if (c === this.betConn) betSettle(betWinner(), true);              // the friend left a battle with a bet on it: I win it (unless it was already decided)
     const gp = G ? G.players.find(p => p.conn === c) : null;
     if (gp && !gp.gone && (state === 'play' || state === 'over')) {
       gp.gone = true; const p = planeById(gp.planeId), gi = G.players.indexOf(gp);
@@ -2136,6 +2138,7 @@ const Net = {
   },
   hostData(c, m) {
     const pi = lobby.players.findIndex(p => p.conn === c);
+    if (m && (m.t === 'bet' || m.t === 'betmax')) { if (c === this.betConn) PX.Bet.onData(m); return; }   // only the one friend I can bet with
     switch (m.t) {
       case 'hi':
         if (m.v !== VERSION) { c.send({ t: 'old', v: VERSION }); setTimeout(() => c.close(), 300); return; }
@@ -2159,7 +2162,7 @@ const Net = {
   },
   inputs: [],
   lobbyMsg() { return { t: 'lobby', cfg: lobby.cfg, players: lobby.players.map(p => ({ name: p.name, av: p.av, color: p.color, side: p.side, plane: p.plane, crew: p.crew || null })) }; },
-  lobbySync() { const m = this.lobbyMsg(); this.conns.forEach(c => { const i = lobby.players.findIndex(p => p.conn === c); try { c.send(Object.assign({ you: i }, m)); } catch (e) { /* closing */ } }); },
+  lobbySync() { const m = this.lobbyMsg(); this.conns.forEach(c => { const i = lobby.players.findIndex(p => p.conn === c); try { c.send(Object.assign({ you: i }, m)); } catch (e) { /* closing */ } }); betSync(); },   // (the bet after the lobby: the friend hears of the pilots first)
   broadcast(m) { for (const c of this.conns) if (c.open) try { c.send(m); } catch (e) { /* closing */ } },
   // client side
   async join(code) {
@@ -2170,7 +2173,7 @@ const Net = {
       const c = peer.connect('pixel-wings-room-' + code, { reliable: true, serialization: 'json' }); this.conn = c;
       c.on('open', () => { this.code = code; c.send({ t: 'hi', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION, side: save.side, plane: save.plane, crew: save.crew || null }); });
       c.on('data', m => this.clientData(m));
-      c.on('close', () => { if (this.mode === 'client') this.fail(state === 'over' ? 'THE HOST LEFT.' : 'THE HOST LEFT THE GAME.'); });
+      c.on('close', () => { if (this.mode === 'client') betSettle(betWinner(), true); if (this.mode === 'client') this.fail(state === 'over' ? 'THE HOST LEFT.' : 'THE HOST LEFT THE GAME.'); });
     });
     peer.on('error', e => { if (this.screen === 'connecting') this.fail(e && e.type === 'peer-unavailable' ? 'NO GAME WITH THAT CODE.' : "COULDN'T CONNECT. TRY AGAIN."); });
     setTimeout(() => { if (this.mode === 'client' && this.screen === 'connecting') this.fail("COULDN'T REACH THE HOST. TRY AGAIN."); }, 25000);
@@ -2178,16 +2181,17 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); codeInput.style.display = 'none'; this.join(codeInput.value); } },
   send(m) { if (this.conn && this.conn.open) try { this.conn.send(m); } catch (e) { /* closing */ } },
   clientData(m) {
+    if (PX.Bet.onData(m)) return;
     switch (m.t) {
       case 'busy': this.fail(m.full ? 'THAT GAME IS FULL (6 PLAYERS).' : 'THAT BATTLE HAS ALREADY STARTED. WAIT FOR IT TO END.'); break;
       case 'old': this.fail('THE HOST HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD BOTH.'); break;
       case 'lobby':
         if (state === 'online') { this.screen = 'room'; openLobby('client'); }
-        lobby.cfg = m.cfg; lobby.players = m.players; this.myPid = m.you;
+        lobby.cfg = m.cfg; lobby.players = m.players; this.myPid = m.you; betSync();
         break;
       case 'go': startClientBattle(m); break;
       case 's': this.snaps.push({ at: performance.now(), s: m }); if (this.snaps.length > 30) this.snaps.shift(); for (const e of m.fx || []) this.fxq.push({ at: performance.now() + INTERP_MS, e }); break;
-      case 'end': { this.result = m; const n = this.battleNo; setTimeout(() => { if (state === 'play' && this.battleNo === n) toOver(); }, 1600); break; }
+      case 'end': { betSettle(m.w, null); this.result = m; const n = this.battleNo; setTimeout(() => { if (state === 'play' && this.battleNo === n) toOver(); }, 1600); break; }
       case 'back': if (state === 'over' || state === 'play') { state = 'setup'; } break;
     }
   },
@@ -2258,6 +2262,21 @@ const Net = {
   },
 };
 const ST = ['air', 'ground', 'parked', 'fall', 'dead'];
+// --- a bet for stars (PX.Bet in common.js): only online, with exactly two pilots, on opposite sides ---
+const betSideOf = p => (lobby.cfg.mode === 'raid' && p.crew ? ATT : p.side);            // (a gunner always rides with the attack)
+function betWhyNot(pl) { return pl.length < 2 ? 'BET: NEEDS A FRIEND' : pl.length > 2 ? 'BET: 2 PILOTS ONLY' : betSideOf(pl[0]) === betSideOf(pl[1]) ? 'BET: OPPOSITE SIDES' : ''; }
+// Called on both sides whenever the pilots or their sides change, and at every take-off: both see the same pilots,
+// so both agree. The bet is tied to the one other pilot; a third pilot, or the two on one side, and it is dropped.
+function betSync(pl = lobby.players) {
+  const c = Net.mode === 'off' || betWhyNot(pl) ? null : Net.mode === 'host' ? (lobby.players.find(p => p.conn) || {}).conn || null : Net.conn;
+  if (c === Net.betConn) return;
+  Net.betConn = c;
+  if (c) PX.Bet.connect(m => { if (c.open) try { c.send(m); } catch (e) { /* closing */ } }, Net.mode === 'host'); else PX.Bet.reset();
+}
+function betStart(pl, me) { betSync(pl); if (Net.betConn) { PX.Bet.start(); Net.betSide = pl[me].side; } }   // the bets go in (no bet: nothing happens)
+// who won, if the battle is already decided (-1: not yet), and paying out: dflt is for a battle that was not decided
+function betWinner() { if (Net.isClient()) { const n = Net.snaps.length, s = n ? Net.snaps[n - 1].s : null; return s && s.ov ? s.w : -1; } return G && G.over ? G.winner : -1; }
+function betSettle(w, dflt) { PX.Bet.settle(w === ATT || w === DEF ? w === Net.betSide : w === 2 ? null : dflt); }
 
 /* --- 10. SCREENS ------------------------------------------------------------- */
 let state = 'title';        // title | setup | online | play | over | help | school | scene | intro
@@ -2293,12 +2312,14 @@ function startBattle() {
   resetEffects();
   state = 'play'; paused = false; leaveAsk = false; G.fx = [];
   if (Net.mode === 'host') Net.broadcast({ t: 'go', cfg, players: players.map(p => ({ name: p.name, av: p.av, color: p.color, side: p.side, plane: p.plane, crew: p.crew })) });
+  if (Net.mode === 'host') betStart(players, 0); else PX.Bet.reset();
 }
 function startClientBattle(m) {
   lobby.cfg = m.cfg; Net.battleNo = (Net.battleNo || 0) + 1;
   setMapKind(m.cfg.mode === 'carrier' ? 'sea' : 'island');
   Net.roster = m.players.map(p => ({ name: PX.cleanName(p.name) || 'PILOT', av: p.av, color: p.color, side: p.side, plane: p.plane, crew: p.crew === 'gun' ? 'gun' : null }));
   Net.snaps = []; Net.fxq = []; Net.view = null; Net.result = null;
+  betStart(Net.roster, Net.myPid);
   Local.gunner = !!(Net.roster[Net.myPid] && Net.roster[Net.myPid].crew); Local.reset(1); resetEffects();
   if (Local.gunner) loadGunner();
   state = 'play'; paused = false; leaveAsk = false;
@@ -2330,7 +2351,7 @@ function toOver() {
   if (won) save.wins++;
   const st = save.stats; st.battles++;
   for (const i of mine) if (players[i]) { save.kills += players[i].kills; st.deaths += players[i].deaths; st.hits += players[i].hits; }
-  overInfo = { players, winner: V.winner, mode: V.cfg.mode, stars, won, mine };
+  overInfo = { players, winner: V.winner, mode: V.cfg.mode, stars, won, mine, bet: PX.Bet.resultLabel() };
   // the scene: a medal when you won (or drew), a memorial when you lost
   const me = players[mine[0]];
   if (me && save.scenes !== false) {
@@ -2436,7 +2457,7 @@ function drawScene(t, dt) {
   if (UI.button('sceneok', W - 42, H - 16, 36, 13, 'OK', { size: 1 }) || UI.back || (sceneSkip && k > 0.8) || k > 14) { sceneSkip = false; scene = null; state = 'over'; }
 }
 function setPause(v) { if (state !== 'play' || Net.mode !== 'off') return; paused = v; if (v) unlockMouse(); }
-function toTitle() { unlockMouse(); Local.gunner = false; if (Net.mode !== 'off') { if (Net.mode === 'client') Net.send({ t: 'bye' }); setTimeout(() => Net.reset(), 150); Net.mode = 'off'; } G = null; state = 'title'; paused = false; leaveAsk = false; codeInput.style.display = 'none'; }
+function toTitle() { unlockMouse(); Local.gunner = false; if (Net.mode !== 'off') { betSettle(betWinner(), false); PX.Bet.reset(); Net.betConn = null; if (Net.mode === 'client') Net.send({ t: 'bye' }); setTimeout(() => Net.reset(), 150); Net.mode = 'off'; } G = null; state = 'title'; paused = false; leaveAsk = false; codeInput.style.display = 'none'; }
 
 function panel(w, h, y) {
   const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
@@ -2758,6 +2779,9 @@ function drawSetup(t, dt) {
   }
   T(desc[0], x + 8, y + 190, gunnerDesc ? '#ffd23f' : '#efe9ff', 1); T(desc[1], x + 8, y + 200, '#efe9ff', 1);
   if (UI.button('back', x + 8, y + 210, 90, 16, 'BACK', { size: 1 }) || UI.back) { sfx('click'); toTitle(); return; }
+  // the bet: the host picks it, the friend sees it (only with two pilots, on opposite sides)
+  if (kind === 'host') { const why = betWhyNot(lobby.players); if (UI.button('bet', x + 104, y + 210, 110, 16, why || PX.Bet.label(), { size: 1, disabled: !!why, on: PX.Bet.amount > 0, accent: '#ffd23f' })) { sfx('click'); PX.Bet.next(); } }
+  else if (kind === 'client' && Net.betConn) T(PX.Bet.label(), x + 104, y + 215, PX.Bet.amount ? '#ffd23f' : '#9a92b8', 1);
   if (host) { if (UI.button('start', x + pw - 128, y + 208, 120, 20, 'TAKE OFF!', { accent: '#5ad43f' })) { sfx('click'); startBattle(); } }
   else T('WAITING FOR THE HOST TO START', x + pw - 8, y + 215, '#9a92b8', 1, 'right');
 }
@@ -2833,6 +2857,7 @@ function drawOver(t) {
     if (o.mode !== 'dog') T(String(p.hits), x + 325, ry, '#fff', 1, 'center');
   });
   if (o.stars) T('★ +' + o.stars, W / 2, y + 140, '#ffd23f', 2, 'center', '#000');
+  if (o.bet) T(o.bet, W / 2, y + 157, o.bet.includes('LOST') ? '#ff8a6a' : '#ffd23f', 1, 'center', '#000');
   const host = Net.mode !== 'client';
   const bx = Math.round(W / 2 - 176), bw = 86;
   if (UI.button('menu', bx, y + 168, bw, 22, 'MENU', { size: 1 }) || UI.back) toTitle();
@@ -3064,7 +3089,7 @@ function frame(now) {
       }
       Net.hostTick(now);
       if (G.over && G.endT > 2.2 && state === 'play') {
-        if (Net.mode === 'host') Net.broadcast({ t: 'end' });
+        if (Net.mode === 'host') { Net.broadcast({ t: 'end', w: G.winner }); betSettle(G.winner, null); }   // (the winner goes along: the friend pays out his bet by it)
         Net.hostTick(now + SNAP_MS);
         toOver();
       }
