@@ -1,9 +1,9 @@
 // Pixel Arcade service worker: makes the arcade installable and playable offline.
-// Pages are fetched network-first, skipping the browser's HTTP cache (GitHub Pages
+// Pages and the games' own scripts are fetched network-first, skipping the browser's HTTP cache (GitHub Pages
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.72.0';
+const CACHE = 'pixel-arcade-v2.73.0';
 const ASSETS = [
   './',
   './index.html',
@@ -59,15 +59,19 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
 
-  if (req.mode === 'navigate') {
-    const key = pageKey(req.url);
+  // Pages and the games' own scripts (common.js, gunner.js) are fetched fresh, together: a new page with an old
+  // common.js from the cache would call things that are not there yet, and the game would freeze. The big
+  // libraries in vendor/ do not change with a release and stay cache-first.
+  const page = req.mode === 'navigate';
+  if (page || (req.destination === 'script' && !new URL(req.url).pathname.includes('/vendor/'))) {
+    const key = page ? pageKey(req.url) : req.url;
     e.respondWith(
       fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
         .then(res => {
           if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
           return res;
         })
-        .catch(() => caches.match(key).then(hit => hit || caches.match('./index.html')))
+        .catch(() => caches.match(key).then(hit => hit || (page ? caches.match('./index.html') : Response.error())))
     );
     return;
   }
