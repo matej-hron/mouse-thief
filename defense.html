@@ -65,8 +65,8 @@ const TOWERS = {
   dart: { name: 'DART', color: '#c8843a', cost: 50, up: [45, 85], specCost: 150, air: true, unlock: 0,
     desc: 'CHEAP AND FAST. HITS GROUND AND AIR.',
     lv: [{ dmg: 5, rate: 2.4, range: 50 }, { dmg: 8, rate: 2.7, range: 54 }, { dmg: 12, rate: 3, range: 58 }],
-    spec: { a: { name: 'RAPID', desc: 'SHOOTS TWICE AS FAST', dmg: 13, rate: 6.5, range: 60 },
-            b: { name: 'TRIPLE', desc: '3 DARTS AT 3 ENEMIES', dmg: 15, rate: 3, range: 66, multi: 3 } } },
+    spec: { a: { name: 'RAPID', desc: 'SHOOTS TWICE AS FAST', dmg: 16, rate: 6.5, range: 60 },
+            b: { name: 'TRIPLE', desc: '3 DARTS AT 3 ENEMIES', dmg: 13, rate: 3, range: 66, multi: 3 } } },
   cannon: { name: 'CANNON', color: '#5a5a6e', cost: 90, up: [70, 115], specCost: 190, air: false, unlock: 0,
     desc: 'ITS BOMBS HIT EVERYONE CLOSE BY. GROUND ONLY.',
     lv: [{ dmg: 14, rate: 0.75, range: 56, splash: 20 }, { dmg: 24, rate: 0.8, range: 60, splash: 22 }, { dmg: 38, rate: 0.85, range: 64, splash: 24 }],
@@ -77,11 +77,11 @@ const TOWERS = {
     lv: [{ slow: 0.3, dmg: 2, range: 40 }, { slow: 0.4, dmg: 4, range: 46 }, { slow: 0.5, dmg: 7, range: 52 }],
     spec: { a: { name: 'BLIZZARD', desc: 'FREEZES THEM SOLID NOW AND THEN', slow: 0.5, dmg: 10, range: 58, freeze: 1.2 },
             b: { name: 'BRITTLE', desc: 'SLOWED ENEMIES TAKE 30% MORE DAMAGE', slow: 0.55, dmg: 10, range: 56, vuln: 0.3 } } },
-  sniper: { name: 'SNIPER', color: '#3fae4a', cost: 110, up: [85, 130], specCost: 220, air: true, unlock: 1, pierce: true,
+  sniper: { name: 'SNIPER', color: '#3fae4a', cost: 120, up: [90, 135], specCost: 230, air: true, unlock: 1, pierce: true,
     desc: 'SLOW, STRONG, FAR. GOES THROUGH ARMOR.',
-    lv: [{ dmg: 38, rate: 0.5, range: 100 }, { dmg: 65, rate: 0.52, range: 115 }, { dmg: 105, rate: 0.55, range: 130 }],
-    spec: { a: { name: 'HUNTER', desc: 'GIANT DAMAGE, EVEN MORE TO BOSSES', dmg: 290, rate: 0.5, range: 140, boss: 1.5 },
-            b: { name: 'RADAR', desc: 'SEES THE WHOLE MAP, SHOOTS FASTER', dmg: 125, rate: 1.1, range: 999 } } },
+    lv: [{ dmg: 38, rate: 0.42, range: 96 }, { dmg: 65, rate: 0.44, range: 108 }, { dmg: 105, rate: 0.46, range: 120 }],
+    spec: { a: { name: 'HUNTER', desc: 'GIANT DAMAGE, EVEN MORE TO BOSSES', dmg: 290, rate: 0.45, range: 130, boss: 1.5 },
+            b: { name: 'RADAR', desc: 'SEES THE WHOLE MAP, SHOOTS FASTER', dmg: 120, rate: 0.9, range: 999 } } },
   venom: { name: 'VENOM', color: '#8af03f', cost: 80, up: [60, 95], specCost: 180, air: false, unlock: 2,
     desc: 'POISON KEEPS HURTING, RIGHT THROUGH ARMOR. GROUND ONLY.',
     lv: [{ dps: 9, dur: 4, dmg: 2, rate: 1.2, range: 48 }, { dps: 15, dur: 4, dmg: 3, rate: 1.3, range: 52 }, { dps: 24, dur: 5, dmg: 4, rate: 1.4, range: 56 }],
@@ -385,7 +385,7 @@ function makeWave(mi, w, endless) {
   const gsum = groups.reduce((s, g) => s + g.share, 0), list = [], R = getMap(mi).routes, long = R.length > 1 && R[1].total > R[0].total ? 1 : 0;   // a boss takes the long way
   groups.forEach((g, gi) => {
     const E = ENEMIES[g.type], hp = Math.max(4, hpB * g.share / (g.n * E.threat) * (E.fly ? D.airHp || 1 : 1)), gold = goldB * g.share / gsum / g.n;
-    const armor = E.armor ? 2 + Math.floor(w / 3) + (mi >> 1) : 0, shield = E.shield ? 3 + Math.floor(w / 6) : 0;
+    const armor = E.armor ? 3 + Math.floor(w / 2.5) + (mi >> 1) : 0, shield = E.shield ? 3 + Math.floor(w / 6) : 0;
     for (let i = 0; i < g.n; i++) list.push({ t: g.at + i * g.gap, type: g.type, hp, gold, armor, shield, path: E.boss ? long : (i + gi) % D.paths.length });
   });
   list.sort((a, b) => a.t - b.t);
@@ -500,7 +500,7 @@ function updateEnemy(e, dt) {
 function hurt(e, dmg, pierce) {
   if (e.dead) return;
   if (e.shield > 0) { e.shield--; e.hitT = 0.12; if (!e.shield) burst(e.x, e.y, '#c8a8ff', 6); return; }
-  if (e.armor && !pierce) dmg = Math.max(dmg * 0.2, dmg - e.armor);
+  if (e.armor && !pierce) dmg = Math.max(dmg * 0.1, dmg - e.armor);
   if (e.vulnT > 0) dmg *= 1 + e.vulnK;
   e.hp -= dmg; e.hitT = 0.08;
   if (e.hp <= 0) killEnemy(e);
@@ -999,14 +999,14 @@ function barMain(W, y, h) {
   }
 }
 function barBuild(W, y, h) {
-  const b = B, ids = towersAvail(), bw = Math.min(60, Math.floor((W - 29) / ids.length));
+  const b = B, ids = towersAvail(), bw = Math.min(60, Math.floor((W - 24) / ids.length));
   ids.forEach((id, i) => {
     const D = TOWERS[id], x = 3 + i * bw, w = bw - 2, hot = isHot(x, y, w, h), off = hot && UI.pressed ? 1 : 0;
     if (UI.button('b_' + id, x, y, w, h, '', { accent: D.color })) { if (buildTower(b.sel.tx, b.sel.ty, id)) b.sel = null; return; }
-    ctx.drawImage(towerSprite(id), x + 2, y + 6 + off);
-    T(D.name, x + 19, y + 6 + off, hot ? '#111' : '#efe9ff', 1); T(String(D.cost), x + 19, y + 15 + off, hot ? '#111' : b.gold >= D.cost ? '#ffd23f' : '#ff6b6b', 1);
+    ctx.drawImage(towerSprite(id), x + 1, y + 6 + off);
+    T(D.name, x + 18, y + 6 + off, hot ? '#111' : '#efe9ff', 1); T(String(D.cost), x + 18, y + 15 + off, hot ? '#111' : b.gold >= D.cost ? '#ffd23f' : '#ff6b6b', 1);
   });
-  if (UI.button('close', W - 25, y, 22, h, 'X')) b.sel = null;
+  if (UI.button('close', W - 21, y, 18, h, 'X')) b.sel = null;
 }
 function cycleTarget(t) { t.mode = (t.mode + 1) % TARGETS.length; sfx('tap'); }
 function askSell(t) {                                      // SELL asks once more, so a slip of the finger costs nothing
