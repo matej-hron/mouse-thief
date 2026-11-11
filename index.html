@@ -894,7 +894,7 @@ function drawGift(t) {
 //   until: only up to the end of that day (year, month, day); after it the gift is gone
 const STAR_GIFTS = [
   { key: 'pixelArcade.starGift1', stars: 1000, names: ['VOJTA7', 'STEPAK', 'LEVKO'] },
-  { key: 'pixelArcade.starGift2', stars: 450, until: [2026, 11, 18], note: 'FOR EVERYONE, UNTIL NOVEMBER 18' },   // one week for everyone
+  { key: 'pixelArcade.starGift2', stars: 300, until: [2026, 11, 18], note: 'FOR EVERYONE, UNTIL NOVEMBER 18' },   // one week for everyone
 ];
 for (const g of STAR_GIFTS) { g.left = false; try { g.left = !localStorage.getItem(g.key); } catch (e) { /* private mode: no gift, it couldn't be remembered */ } }
 const starGiftDue = () => STAR_GIFTS.find(g => g.left && (!g.names || g.names.includes(PX.cleanName(profile.name))) &&
