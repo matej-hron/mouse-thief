@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.34.0';
+const VERSION = '2.35.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -57,6 +57,7 @@ window.addEventListener('keydown', e => {
   if (e.target === giveInput && screen === 'friends') { if (e.key === 'Enter') Friends.request(); else if (e.key === 'Escape') Friends.leave(); return; }
   if (e.target === giveInput) { if (e.key === 'Enter') Give.send(); else if (e.key === 'Escape') Give.leave(); return; }
   if (e.target === pw1 || e.target === pw2 || e.target === codeInput) { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
+  if (e.target === nameInput && screen === 'account') { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
@@ -875,10 +876,10 @@ function drawProfile(t) {
   T('YOU', W / 2, 8, '#fff', 3, 'center', '#000');
   T('YOUR ID: ' + profile.id, W - 8, 8, '#ffd23f', 1, 'right', '#000');
   PX.drawAvatar(ctx, draft.avatar, 18, 40, 5);
-  S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26);
+  S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26); nameInput.placed = true;
   T('NICKNAME ONLY!', 108, 64, '#ff8a8a', 2);
   if (UI.button('account', 18, 128, 80, 18, 'ACCOUNT', { size: 1, accent: '#1ec8e0' })) { nameInput.blur(); Account.open(); }
-  T(Account.d ? 'PASSWORD: ON' : 'NO PASSWORD', 58, 150, Account.d ? '#5ad43f' : '#5b5275', 1, 'center', '#000');
+  T(Account.me() ? 'LOGGED IN' : 'NO ACCOUNT', 58, 150, Account.me() ? '#5ad43f' : '#5b5275', 1, 'center', '#000');
   PX.AVATAR_SHAPES.filter(sh => PX.Gifts.canUse(sh)).forEach((shape, i) => {
     const x = 108 + (i % 9) * 32, y = 90, on = draft.avatar.shape === shape;
     if (UI.button('shape_' + shape, x, y, 30, 30, '', { on, accent: '#e0a820' })) draft.avatar.shape = shape;
@@ -1267,28 +1268,75 @@ function drawFriends(t) {
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
 }
 
-// --- your ACCOUNT: a password on your arcade ----------------------------------------------------------------------
-// The arcade has no server, so an account lives on this phone only: it is your name, ID, stars and friends (they were
-// here already) with a password on top. LOG OUT, and the arcade asks for the password before it shows anything.
-// The password itself is never kept or sent: only a salted PBKDF2 hash of it, on this phone.
-// Nobody can mail you a new password (there is no server and no e-mail). So when the account is made you get a
-// RECOVERY CODE to write down: FORGOT PASSWORD? takes that code and lets you pick a new password. The rules are in
-// PRIVACY AND POLICY. (It guards the arcade's menu: it is a lock for brothers and sisters, not a bank vault.)
-const ACCOUNT_KEY = 'pixelArcade.account';
+// --- ACCOUNTS: each player on this phone has their own arcade, behind a password -------------------------------------
+// The arcade has no server, so accounts live on this phone only (you can't log in on another phone). But one phone
+// can hold several: LOG OUT, and somebody else logs in to theirs, or makes a new one. Each account has its own name,
+// avatar, ID, stars, friends and game saves.
+// How: everything the games save is in the browser's storage. LOG OUT packs all of it into one entry for that account
+// (pixelArcade.acct.<ID>) and empties the rest; LOG IN unpacks that account's entry again. Then the page reloads, so
+// nothing of the other player is left in memory. A few things belong to the phone, not to a player, and stay put:
+// the settings, the phone-controller pairing, and which gifts of stars were taken here (or a new account could take
+// them again and again).
+// A password is never kept or sent: only a salted PBKDF2 hash of it, on this phone. Nobody can mail you a new one
+// (no server, no e-mail), so a new account gets a RECOVERY CODE to write down: FORGOT PASSWORD? takes that code and
+// a new password. The rules are in PRIVACY AND POLICY. (It is a lock for brothers and sisters, not a bank vault:
+// while nobody is logged in, a game opened by its own address plays as a nameless guest, and that is thrown away.)
+const ACCOUNTS_KEY = 'pixelArcade.accounts', OLD_ACCOUNT_KEY = 'pixelArcade.account', stashKey = id => 'pixelArcade.acct.' + id, MAX_ACCOUNTS = 6;
+const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen'];
+const phoneKey = k => k === ACCOUNTS_KEY || k.startsWith('pixelArcade.acct.') || k.startsWith('pixelArcade.starGift') || PHONE_KEYS.includes(k);
+const playerKeys = () => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!phoneKey(k)) a.push(k); } return a; };
 const pw1 = document.getElementById('pw1'), pw2 = document.getElementById('pw2'), codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 9); });
 const hex = a => [...a].map(b => b.toString(16).padStart(2, '0')).join('');
 const unhex = h => new Uint8Array(h.match(/../g).map(b => parseInt(b, 16)));
 const Account = {
-  d: null,                                           // { salt, hash, rsalt, rhash (of the recovery code), out: logged out }
+  list: [], cur: '',                                 // the accounts on this phone: { id, name, avatar, salt, hash, rsalt, rhash (of the recovery code) }; the ID that is logged in
+  sel: null,                                         // the account you are logging in to
   mode: 'new', prev: 'new', msg: '', col: '#9a92b8', busy: false, code: '',
   can: !!(window.crypto && crypto.subtle),           // (hashing needs https)
   load() {
-    let d = null; try { d = JSON.parse(localStorage.getItem(ACCOUNT_KEY)); } catch (e) { d = null; }
-    const h = v => typeof v === 'string' && /^([0-9a-f]{2}){16,32}$/.test(v);
-    this.d = d && h(d.salt) && h(d.hash) && h(d.rsalt) && h(d.rhash) ? { salt: d.salt, hash: d.hash, rsalt: d.rsalt, rhash: d.rhash, out: d.out === true } : null;
+    const h = v => typeof v === 'string' && /^([0-9a-f]{2}){16,32}$/.test(v), good = a => a && h(a.salt) && h(a.hash) && h(a.rsalt) && h(a.rhash);
+    let d = null; try { d = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)); } catch (e) { d = null; }
+    this.list = (d && Array.isArray(d.list) ? d.list : []).filter(a => good(a) && validId(a.id)).slice(0, MAX_ACCOUNTS).map(a => ({
+      id: a.id, name: PX.cleanName(a.name) || 'PLAYER', avatar: a.avatar && PX.AVATAR_SHAPES.includes(a.avatar.shape) ? { shape: a.avatar.shape, color: a.avatar.color | 0 } : { shape: 'cat', color: 0 },
+      salt: a.salt, hash: a.hash, rsalt: a.rsalt, rhash: a.rhash }));
+    this.cur = d && this.list.some(a => a.id === d.cur) ? d.cur : '';
+    // 2.34.0 had one account, a password on the phone's only player: it becomes the first account here
+    let old = null; try { old = JSON.parse(localStorage.getItem(OLD_ACCOUNT_KEY)); } catch (e) { old = null; }
+    if (!this.list.length && good(old)) {
+      const a = { id: profile.id, name: profile.name, avatar: profile.avatar, salt: old.salt, hash: old.hash, rsalt: old.rsalt, rhash: old.rhash };
+      this.list = [a]; this.cur = a.id;
+      if (this.save()) { try { localStorage.removeItem(OLD_ACCOUNT_KEY); if (old.out === true) { this.stash(a); location.reload(); } } catch (e) { /* no room: stays logged in */ } }
+    }
   },
-  save() { try { if (this.d) localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ v: 1, ...this.d })); else localStorage.removeItem(ACCOUNT_KEY); return !this.d || !!localStorage.getItem(ACCOUNT_KEY); } catch (e) { return false; } },
+  save() {
+    try {
+      if (!this.list.length) { localStorage.removeItem(ACCOUNTS_KEY); return true; }
+      const s = JSON.stringify({ v: 2, cur: this.cur, list: this.list }); localStorage.setItem(ACCOUNTS_KEY, s); return localStorage.getItem(ACCOUNTS_KEY) === s;
+    } catch (e) { return false; }
+  },
+  me() { return this.list.find(a => a.id === this.cur) || null; },
+  locked() { return this.list.length > 0 && !this.me(); },           // there are accounts and nobody is logged in
+  // LOG OUT: pack this player's things away (the packed copy is written first, and only then is the rest emptied)
+  stash(a) {
+    const o = {}; for (const k of playerKeys()) o[k] = localStorage.getItem(k);
+    const s = JSON.stringify(o); localStorage.setItem(stashKey(a.id), s);
+    if (localStorage.getItem(stashKey(a.id)) !== s) throw new Error('no room');
+    a.name = profile.name; a.avatar = profile.avatar; this.cur = '';
+    if (!this.save()) { this.cur = a.id; throw new Error('no room'); }
+    this.wipe();
+  },
+  wipe() { for (const k of playerKeys()) localStorage.removeItem(k); },
+  // LOG IN: unpack them again (the packed copy goes last, so a phone that dies halfway can just log in again)
+  restore(a) {
+    let o = null; try { o = JSON.parse(localStorage.getItem(stashKey(a.id))); } catch (e) { o = null; }
+    this.wipe();
+    for (const k in (o || {})) if (!phoneKey(k) && typeof o[k] === 'string') localStorage.setItem(k, o[k]);
+    if (!localStorage.getItem('pixelArcade.profile')) PX.Profile.save({ name: a.name, avatar: a.avatar, id: a.id });
+    this.cur = a.id; if (!this.save()) throw new Error('no room');
+    localStorage.removeItem(stashKey(a.id));
+  },
+  reload() { this.busy = true; location.reload(); },
   async hash(text, salt) {
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(text), 'PBKDF2', false, ['deriveBits']);
     return hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unhex(salt), iterations: 150000 }, key, 256)));
@@ -1296,56 +1344,73 @@ const Account = {
   newSalt() { return hex(crypto.getRandomValues(new Uint8Array(16))); },
   say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
   fail(m) { this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
-  go(mode) { if (mode === 'policy') this.prev = this.mode; this.mode = mode; this.say(''); for (const el of [pw1, pw2, codeInput]) { el.value = ''; el.blur(); } },
-  open() { screen = 'account'; this.go(this.d ? 'menu' : 'new'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
-  unlock() { for (const el of [pw1, pw2, codeInput]) { el.value = ''; el.blur(); } screen = gift ? 'gift' : 'home'; PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 }); },
+  go(mode) { if (mode === 'policy') this.prev = this.mode; this.mode = mode; this.say(''); for (const el of [pw1, pw2, codeInput, nameInput]) { el.value = ''; el.blur(); } },
+  open() { screen = 'account'; this.go(this.me() ? 'menu' : 'new'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
+  pick(a) { this.sel = a; this.go('login'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
   back() {
     if (this.busy) return;
     const m = this.mode;
-    if (m === 'policy') this.go(this.prev); else if (m === 'change' || m === 'delete') this.go('menu'); else if (m === 'forgot') this.go('login');
-    else if (m === 'new' || m === 'menu') { this.go(m); screen = 'home'; }          // (not from LOG IN, and not past the recovery code)
+    if (m === 'policy') this.go(this.prev); else if (m === 'change' || m === 'delete') this.go('menu'); else if (m === 'forgot') this.go('login'); else if (m === 'login') this.go('pick');
+    else if (m === 'new' && this.locked()) this.go('pick');
+    else if (m === 'new' || m === 'menu') { this.go(m); screen = 'home'; }          // (not from WHO IS PLAYING?, and not past the recovery code)
   },
   enter() { const f = { new: 'create', login: 'login', change: 'change', delete: 'remove', forgot: 'reset' }[this.mode]; if (f) this[f](); },
   badPw(p) { return p.length < 4 ? 'A PASSWORD HAS AT LEAST 4 LETTERS OR NUMBERS.' : ''; },
   async run(fn) {                                    // one thing at a time (hashing takes a moment)
     if (this.busy || !this.can) return;
     this.busy = true;
-    try { await fn(); } catch (e) { this.fail("THAT DIDN'T WORK. TRY AGAIN."); }
-    this.busy = false;
+    try { if (await fn() !== 'reload') this.busy = false; }
+    catch (e) { this.busy = false; this.fail(e && e.message === 'no room' ? "THIS BROWSER'S STORAGE IS FULL (OR IN PRIVATE MODE)." : "THAT DIDN'T WORK. TRY AGAIN."); }
   },
+  // MAKE AN ACCOUNT. With no account on the phone yet, the player who is here gets the password (and keeps everything).
+  // From WHO IS PLAYING? it is a new player: a name, a new ID, no stars.
   create() { return this.run(async () => {
-    const p = pw1.value, bad = this.badPw(p);
+    const fresh = this.locked(), name = PX.cleanName(nameInput.value), p = pw1.value, bad = this.badPw(p);
+    if (this.list.length >= MAX_ACCOUNTS) return this.fail('THIS PHONE HAS ' + MAX_ACCOUNTS + ' ACCOUNTS ALREADY.');
+    if (fresh && name.length < 2) return this.fail('TYPE A NICKNAME: AT LEAST 2 LETTERS.');
     if (bad) return this.fail(bad);
     if (p !== pw2.value) return this.fail('THE TWO PASSWORDS ARE NOT THE SAME.');
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', code = [...crypto.getRandomValues(new Uint8Array(8))].map(b => chars[b % 32]).join('');
-    const salt = this.newSalt(), rsalt = this.newSalt();
-    this.d = { salt, hash: await this.hash(p, salt), rsalt, rhash: await this.hash(code, rsalt), out: false };
-    if (!this.save()) { this.d = null; return this.fail("THIS BROWSER CAN'T REMEMBER AN ACCOUNT (PRIVATE MODE?)."); }
-    this.go('code'); this.code = code; PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+    const salt = this.newSalt(), rsalt = this.newSalt(), hash = await this.hash(p, salt), rhash = await this.hash(code, rsalt);
+    let id = profile.id; if (fresh) do { id = String(100000 + Math.floor(Math.random() * 900000)); } while (this.list.some(a => a.id === id));
+    const a = { id, name: fresh ? name : profile.name, avatar: fresh ? { shape: 'cat', color: Math.floor(Math.random() * PX.AVATAR_COLORS.length) } : profile.avatar, salt, hash, rsalt, rhash };
+    this.list.push(a); this.cur = id;
+    if (!this.save()) { this.list.pop(); this.cur = ''; throw new Error('no room'); }
+    if (fresh) { this.wipe(); PX.Profile.save({ name: a.name, avatar: a.avatar, id }); this.sel = a; }
+    this.go('code'); this.code = code; this.fresh = fresh; PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
   }); },
   login() { return this.run(async () => {
-    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
-    this.d.out = false; this.save(); this.unlock();
+    if (await this.hash(pw1.value, this.sel.salt) !== this.sel.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
+    this.restore(this.sel); this.reload(); return 'reload';
   }); },
-  logout() { this.d.out = true; this.save(); this.go('login'); PX.Sound.tone(300, 0.12, { vol: 0.08 }); },
+  logout() { return this.run(async () => { this.stash(this.me()); this.reload(); return 'reload'; }); },
   change() { return this.run(async () => {
-    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) return this.fail('THE OLD PASSWORD IS WRONG.');
+    const a = this.me();
+    if (await this.hash(pw1.value, a.salt) !== a.hash) return this.fail('THE OLD PASSWORD IS WRONG.');
     const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
-    const salt = this.newSalt(); this.d.hash = await this.hash(pw2.value, salt); this.d.salt = salt; this.save();
+    const salt = this.newSalt(); a.hash = await this.hash(pw2.value, salt); a.salt = salt; this.save();
     this.go('menu'); this.say('YOUR PASSWORD IS CHANGED. (THE RECOVERY CODE STAYS THE SAME.)', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
   }); },
+  // DELETE ACCOUNT. The only account on the phone: just the password goes, the player stays as they are.
+  // One of several: the whole account goes (name, ID, stars, friends, saves), and the arcade asks who is playing.
   remove() { return this.run(async () => {
-    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) return this.fail('WRONG PASSWORD.');
-    this.d = null; this.save(); this.go('new'); this.say('THE ACCOUNT IS DELETED. THE ARCADE HAS NO PASSWORD NOW.', '#5ad43f');
+    const a = this.me();
+    if (await this.hash(pw1.value, a.salt) !== a.hash) return this.fail('WRONG PASSWORD.');
+    this.list = this.list.filter(x => x !== a); this.cur = ''; this.save();
+    if (this.list.length) { this.wipe(); this.reload(); return 'reload'; }
+    this.go('new'); this.say('THE ACCOUNT IS DELETED. THE ARCADE HAS NO PASSWORD NOW.', '#5ad43f');
   }); },
   reset() { return this.run(async () => {            // FORGOT PASSWORD: the recovery code and a new password
-    if (await this.hash(codeInput.value.replace(/[^A-Z0-9]/g, ''), this.d.rsalt) !== this.d.rhash) return this.fail('THAT IS NOT YOUR RECOVERY CODE.');
+    const a = this.sel;
+    if (await this.hash(codeInput.value.replace(/[^A-Z0-9]/g, ''), a.rsalt) !== a.rhash) return this.fail('THAT IS NOT YOUR RECOVERY CODE.');
     const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
-    const salt = this.newSalt(); this.d.hash = await this.hash(pw2.value, salt); this.d.salt = salt; this.d.out = false; this.save(); this.unlock();
+    const salt = this.newSalt(); a.hash = await this.hash(pw2.value, salt); a.salt = salt;
+    if (!this.save()) throw new Error('no room');
+    this.restore(a); this.reload(); return 'reload';
   }); },
 };
 Account.load();
-if (Account.d && Account.d.out) { screen = 'account'; Account.go('login'); }       // logged out: the password first
+if (Account.locked()) { screen = 'account'; Account.go('pick'); }                  // nobody is logged in: who is playing?
 function wrapText(str, maxW) {
   const out = []; let line = '';
   for (const w of str.split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
@@ -1353,16 +1418,16 @@ function wrapText(str, maxW) {
   return out;
 }
 const POLICY = [
-  "YOUR ACCOUNT LIVES ONLY ON THIS PHONE. THE ARCADE HAS NO SERVER, SO YOU CAN'T LOG IN ON ANOTHER PHONE.",
+  "ACCOUNTS LIVE ONLY ON THIS PHONE. THE ARCADE HAS NO SERVER, SO YOU CAN'T LOG IN ON ANOTHER PHONE. BUT ONE PHONE CAN HAVE UP TO " + MAX_ACCOUNTS + ' ACCOUNTS: LOG OUT, AND SOMEONE ELSE LOGS IN.',
   'YOUR PASSWORD IS NEVER SENT ANYWHERE. ONLY A SCRAMBLED COPY OF IT IS KEPT, ON THIS PHONE.',
   "THERE IS NO \"FORGOT PASSWORD\" BY E-MAIL: WE DON'T KNOW YOUR E-MAIL AND WE CAN'T RESET YOUR PASSWORD FOR YOU.",
   'THE ONLY WAY BACK IN IS YOUR RECOVERY CODE. WRITE IT DOWN! WITHOUT IT NOBODY CAN OPEN THE ACCOUNT, NOT EVEN US.',
   'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. THEY WAIT THERE ABOUT 12 HOURS.',
   "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
-  "CLEARING THE BROWSER'S DATA DELETES EVERYTHING: THE ACCOUNT, YOUR STARS AND YOUR FRIENDS.",
+  "CLEARING THE BROWSER'S DATA DELETES EVERYTHING: ALL THE ACCOUNTS, THEIR STARS AND THEIR FRIENDS.",
 ];
 function drawAccount(t) {
-  const W = S.W, cx = Math.round(W / 2), A = Account, m = A.mode, busy = A.busy;
+  const W = S.W, cx = Math.round(W / 2), A = Account, m = A.mode, busy = A.busy, locked = A.locked();
   const put = (el, label, y) => { T(label, cx - 78, y + 9, '#efe9ff', 1, 'right', '#000'); S.placeInput(el, cx - 70, y, 140, 24); el.placed = true; };
   const msg = y => T(busy ? 'ONE MOMENT...' : A.can ? A.msg : 'ACCOUNTS ONLY WORK ON THE REAL (HTTPS) ARCADE.', cx, y, busy ? '#9a92b8' : A.can ? A.col : '#ff8a8a', 1, 'center', '#000');
   const policy = x => { if (UI.button('policy', x, 212, 140, 22, 'PRIVACY AND POLICY', { size: 1, accent: '#1ec8e0', disabled: busy })) A.go('policy'); };
@@ -1370,25 +1435,45 @@ function drawAccount(t) {
   if (UI.back) A.back();
   if (m === 'policy') {
     T('PRIVACY AND POLICY', cx, 8, '#fff', 3, 'center', '#000');
-    let y = 32;
+    let y = 30;
     POLICY.forEach((p, i) => {
       T((i + 1) + '.', 12, y, '#ffd23f', 1);
       for (const line of wrapText(p, W - 40)) { T(line, 24, y, i === 2 || i === 3 ? '#fff' : '#cfc8e8', 1); y += 9; }
-      y += 4;
+      y += 3;
     });
-    if (UI.button('pback', cx - 50, 214, 100, 20, 'BACK')) A.back();
+    if (UI.button('pback', cx - 50, 216, 100, 20, 'BACK')) A.back();
     return;
   }
-  T({ new: 'MAKE AN ACCOUNT', code: 'YOUR RECOVERY CODE', menu: 'YOUR ACCOUNT', change: 'CHANGE PASSWORD', delete: 'DELETE ACCOUNT', login: 'LOG IN', forgot: 'FORGOT PASSWORD' }[m], cx, 8, '#fff', 3, 'center', '#000');
-  const nw = PX.textWidth(profile.name, 2), rx = Math.round(cx - (36 + nw) / 2);
-  PX.drawAvatar(ctx, profile.avatar, rx, 28, 2);
-  T(profile.name, rx + 36, 34, '#fff', 2, 'left', '#000'); T('ID ' + profile.id, rx + 36, 47, '#9a92b8', 1, 'left', '#000');
-  if (m === 'new') {
-    T('CHOOSE A PASSWORD: 4 TO 20 LETTERS OR NUMBERS. BIG AND SMALL LETTERS COUNT.', cx, 64, '#efe9ff', 1, 'center', '#000');
-    put(pw1, 'PASSWORD', 76); put(pw2, 'AGAIN', 104);
-    if (UI.button('acreate', cx - 100, 134, 200, 24, 'MAKE MY ACCOUNT', { accent: '#5ad43f', disabled: busy || !A.can })) A.create();
-    msg(166);
-    T('THE ACCOUNT PUTS A PASSWORD ON YOUR ARCADE, ON THIS PHONE.', cx, 180, '#5b5275', 1, 'center', '#000');
+  const fresh = m === 'new' && locked;               // a new player (the others' accounts are packed away)
+  T({ new: fresh ? 'NEW ACCOUNT' : 'MAKE AN ACCOUNT', code: 'YOUR RECOVERY CODE', menu: 'YOUR ACCOUNT', change: 'CHANGE PASSWORD', delete: 'DELETE ACCOUNT', pick: 'WHO IS PLAYING?', login: 'LOG IN', forgot: 'FORGOT PASSWORD' }[m], cx, 8, '#fff', 3, 'center', '#000');
+  const who = m === 'login' || m === 'forgot' || (m === 'code' && A.fresh) ? A.sel : m === 'pick' || fresh ? null : profile;
+  if (who) {
+    const nw = PX.textWidth(who.name, 2), rx = Math.round(cx - (36 + nw) / 2);
+    PX.drawAvatar(ctx, who.avatar, rx, 28, 2);
+    T(who.name, rx + 36, 34, '#fff', 2, 'left', '#000'); T('ID ' + who.id, rx + 36, 47, '#9a92b8', 1, 'left', '#000');
+  }
+  if (m === 'pick') {
+    T('PICK YOUR ACCOUNT AND TYPE YOUR PASSWORD.', cx, 28, '#efe9ff', 1, 'center', '#000');
+    A.list.forEach((a, i) => {
+      const x = cx - 184 + (i % 2) * 188, y = 40 + Math.floor(i / 2) * 40;
+      if (UI.button('acc' + a.id, x, y, 180, 36, '', { accent: PX.AVATAR_COLORS[a.avatar.color] })) A.pick(a);
+      PX.drawAvatar(ctx, a.avatar, x + 5, y + 2, 2); T(a.name, x + 42, y + 8, '#fff', 2, 'left', '#000'); T('ID ' + a.id, x + 42, y + 22, '#9a92b8', 1);
+    });
+    const full = A.list.length >= MAX_ACCOUNTS;
+    if (UI.button('anew', cx - 100, 164, 200, 22, 'NEW ACCOUNT', { accent: '#5ad43f', disabled: full })) A.go('new');
+    T(full ? 'THIS PHONE HAS ' + MAX_ACCOUNTS + ' ACCOUNTS: THAT IS ALL IT CAN HOLD.' : 'A NEW ACCOUNT STARTS WITH ITS OWN NAME, ID, STARS AND FRIENDS.', cx, 194, '#5b5275', 1, 'center', '#000');
+    policy(cx - 70);
+  } else if (m === 'new') {
+    if (fresh) {
+      T('A NICKNAME (NOT YOUR REAL NAME!) AND A PASSWORD: 4 TO 20 LETTERS OR NUMBERS.', cx, 28, '#efe9ff', 1, 'center', '#000');
+      put(nameInput, 'NICKNAME', 40); put(pw1, 'PASSWORD', 68); put(pw2, 'AGAIN', 96);
+    } else {
+      T('CHOOSE A PASSWORD: 4 TO 20 LETTERS OR NUMBERS. BIG AND SMALL LETTERS COUNT.', cx, 64, '#efe9ff', 1, 'center', '#000');
+      put(pw1, 'PASSWORD', 76); put(pw2, 'AGAIN', 104);
+    }
+    if (UI.button('acreate', cx - 100, fresh ? 126 : 134, 200, 24, 'MAKE MY ACCOUNT', { accent: '#5ad43f', disabled: busy || !A.can })) A.create();
+    msg(fresh ? 158 : 166);
+    T(fresh ? 'YOU START WITH YOUR OWN ID, STARS, FRIENDS AND GAME SAVES.' : 'YOU KEEP YOUR NAME, ID, STARS AND FRIENDS. OTHERS CAN MAKE THEIR OWN ACCOUNT.', cx, 180, '#5b5275', 1, 'center', '#000');
     T("YOU'LL GET A RECOVERY CODE, IN CASE YOU FORGET THE PASSWORD.", cx, 190, '#5b5275', 1, 'center', '#000');
     if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
     policy(cx - 16);
@@ -1397,14 +1482,18 @@ function drawAccount(t) {
     T(A.code.slice(0, 4) + '-' + A.code.slice(4), cx, 86, '#ffd23f', 5, 'center', '#3a2f5c');
     T('IF YOU FORGET YOUR PASSWORD, THIS CODE IS THE ONLY WAY BACK IN.', cx, 124, '#fff', 1, 'center', '#000');
     T("WE CAN'T RESET A PASSWORD FOR YOU, AND THE CODE IS SHOWN ONLY NOW.", cx, 134, '#ff8a8a', 1, 'center', '#000');
-    if (UI.button('acode', cx - 90, 156, 180, 24, 'I WROTE IT DOWN', { accent: '#5ad43f' })) { A.code = ''; A.go('menu'); A.say('YOUR ACCOUNT IS READY!', '#5ad43f'); }
+    if (UI.button('acode', cx - 90, 156, 180, 24, 'I WROTE IT DOWN', { accent: '#5ad43f', disabled: busy })) {
+      A.code = '';
+      if (A.fresh) A.reload(); else { A.go('menu'); A.say('YOUR ACCOUNT IS READY!', '#5ad43f'); }
+    }
   } else if (m === 'menu') {
-    T('YOU ARE LOGGED IN. AFTER LOG OUT THE ARCADE ASKS FOR YOUR PASSWORD.', cx, 66, '#efe9ff', 1, 'center', '#000');
-    if (UI.button('alogout', cx - 100, 82, 200, 24, 'LOG OUT', { accent: '#ff8a2a' })) A.logout();
-    if (UI.button('achange', cx - 100, 112, 200, 20, 'CHANGE PASSWORD', { size: 1 })) A.go('change');
-    if (UI.button('adelete', cx - 100, 136, 200, 20, 'DELETE ACCOUNT', { size: 1 })) A.go('delete');
+    T('YOU ARE LOGGED IN. LOG OUT, AND SOMEONE ELSE CAN PLAY ON THEIR OWN ACCOUNT.', cx, 66, '#efe9ff', 1, 'center', '#000');
+    if (UI.button('alogout', cx - 100, 82, 200, 24, 'LOG OUT', { accent: '#ff8a2a', disabled: busy })) A.logout();
+    if (UI.button('achange', cx - 100, 112, 200, 20, 'CHANGE PASSWORD', { size: 1, disabled: busy })) A.go('change');
+    if (UI.button('adelete', cx - 100, 136, 200, 20, 'DELETE ACCOUNT', { size: 1, disabled: busy })) A.go('delete');
     msg(168);
-    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK')) A.back();
+    T('ACCOUNTS ON THIS PHONE: ' + A.list.length + ' OF ' + MAX_ACCOUNTS, cx, 186, '#5b5275', 1, 'center', '#000');
+    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
     policy(cx - 16);
   } else if (m === 'change') {
     put(pw1, 'OLD PASSWORD', 72); put(pw2, 'NEW PASSWORD', 100);
@@ -1412,7 +1501,8 @@ function drawAccount(t) {
     msg(166);
     if (UI.button('aback', cx - 50, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
   } else if (m === 'delete') {
-    T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 66, '#efe9ff', 1, 'center', '#000');
+    if (A.list.length > 1) T('THIS DELETES THE ACCOUNT FOR GOOD: ITS NAME, ID, STARS, FRIENDS AND GAME SAVES!', cx, 66, '#ff8a8a', 1, 'center', '#000');
+    else T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 66, '#efe9ff', 1, 'center', '#000');
     put(pw1, 'PASSWORD', 82);
     if (UI.button('adel', cx - 100, 116, 200, 24, 'DELETE ACCOUNT', { accent: '#ff5a5a', disabled: busy })) A.remove();
     msg(150);
@@ -1421,8 +1511,9 @@ function drawAccount(t) {
     put(pw1, 'PASSWORD', 74);
     if (UI.button('alogin', cx - 100, 106, 200, 24, 'LOG IN', { accent: '#5ad43f', disabled: busy })) A.login();
     msg(140);
-    if (UI.button('aforgot', cx - 146, 212, 140, 22, 'FORGOT PASSWORD?', { size: 1, disabled: busy })) A.go('forgot');
-    policy(cx + 6);
+    if (UI.button('aback', cx - 171, 212, 70, 22, 'BACK', { size: 1, disabled: busy })) A.back();
+    if (UI.button('aforgot', cx - 95, 212, 120, 22, 'FORGOT PASSWORD?', { size: 1, disabled: busy })) A.go('forgot');
+    policy(cx + 31);
   } else if (m === 'forgot') {
     let y = 62;
     for (const line of wrapText("WE CAN'T SEND YOU A NEW PASSWORD: THE ARCADE HAS NO SERVER AND DOESN'T KNOW YOUR E-MAIL. TYPE THE RECOVERY CODE YOU WROTE DOWN, AND A NEW PASSWORD.", W - 24)) { T(line, cx, y, '#efe9ff', 1, 'center', '#000'); y += 9; }
@@ -1443,9 +1534,8 @@ function frame(now) {
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 60000) Inbox.check();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
-  if (screen !== 'profile') nameInput.style.display = 'none';
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
-  for (const el of [pw1, pw2, codeInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
+  for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
