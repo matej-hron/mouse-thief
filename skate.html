@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -1253,6 +1253,7 @@ function drawOnline(t) {
   const lob = Net.screen === 'lobby', { y } = panel(320, lob ? 192 : 170), cx = Wd / 2;   // (the lobby is taller: the bet)
   const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label, { size: 1 }) || UI.back) { if (Net.live || Net.peer) Net.leave(); Net.reset(); codeInput.style.display = 'none'; state = 'title'; } };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
+  if (PX.Invite.draw(S, UI, Net.screen === 'hosting' ? Net.code : '')) return;
   switch (Net.screen) {
     case 'pick':
       T('RACE A FRIEND ONLINE', cx, y + 12, '#4aa8ff', 2, 'center', '#000');
@@ -1266,6 +1267,7 @@ function drawOnline(t) {
       T(Net.code, cx, y + 30, '#ffd23f', 7, 'center', '#000');
       T('YOUR FRIEND: RACE A FRIEND > JOIN WITH A CODE', cx, y + 76, '#efe9ff', 1, 'center');
       T('WAITING' + dots, cx, y + 94, '#fff', 1, 'center');
+      PX.Invite.button(UI, bx, y + 110, bw, 22);
       back(y + 140, 'CANCEL');
       break;
     case 'join':
@@ -1401,6 +1403,8 @@ PX.Pad.setup({
   keys: () => ({ A: 'Space', up: 'Space', X: 'KeyJ', Y: 'KeyK', B: 'KeyL', right: 'ArrowRight', RT: 'ArrowRight', left: 'ArrowLeft', LT: 'KeyF', down: 'KeyR', RB: 'KeyE', LB: 'KeyQ', START: 'KeyP' }),
   help: [['RT|RIGHT', 'PUSH'], ['LEFT', 'BRAKE'], ['A', 'JUMP (AGAIN IN THE AIR: DOUBLE JUMP)'], ['X', 'FLIP TRICK'], ['Y', 'GRAB TRICK'], ['B', 'SPIN TRICK'], ['RB', 'BOOST'], ['LB', 'TIME WARP'], ['LT', 'MAGNET'], ['DOWN', 'SHIELD'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
+// an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
+PX.Invite.auto(code => { state = 'online'; Net.join(code); });
 </script>
 </body>
 </html>

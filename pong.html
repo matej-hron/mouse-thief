@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelPong.save';
 const save = { wins: 0, played: 0, music: true, sfx: true, best: {} };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -551,6 +551,7 @@ function drawNet() {
   ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
   const { y } = panel(260, 170, 36), cx = W / 2;
   const back = () => { Net.reset(); state = 'title'; codeInput.style.display = 'none'; };
+  if (PX.Invite.draw(S, UI, Net.screen === 'hosting' ? Net.code : '')) return;
   if (Net.screen === 'friend') {
     T('PLAY A FRIEND', cx, y + 12, '#fff', 2, 'center');
     T('ONE OF YOU MAKES A GAME, THE OTHER JOINS', cx, y + 30, '#9a92b8', 1, 'center');
@@ -567,6 +568,7 @@ function drawNet() {
     T(Net.code, cx, y + 26, '#ffd23f', 6, 'center');
     T('YOUR FRIEND: PLAY A FRIEND ONLINE > JOIN', cx, y + 68, '#fff', 1, 'center');
     T('WAITING' + '.'.repeat(1 + Math.floor(performance.now() / 400) % 3), cx, y + 82, '#9a92b8', 1, 'center');
+    PX.Invite.button(UI, bx, y + 102, bw, 22);
     if (UI.button('nb', bx, y + 136, bw, 22, 'CANCEL') || UI.back) back();
   } else if (Net.screen === 'connecting' || Net.screen === 'searching' || Net.screen === 'waiting') {
     T(Net.random ? 'RANDOM PLAYER' : 'ONLINE', cx, y + 12, '#fff', 2, 'center');
@@ -736,6 +738,8 @@ PX.Pad.setup({
   },
   help: [['STICK|D-PAD', 'MOVE YOUR BAT (PUSH FURTHER = FASTER; A PHONE: TOUCH WHERE IT SHOULD GO)'], ['A', 'SMASH'], ['B', 'CURVE'], ['X', 'BIG BAT'], ['Y', 'FREEZE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK'], ['2ND PAD', 'PLAYER 2 IN 2 PLAYERS (THE RIGHT BAT)']],
 });
+// an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
+PX.Invite.auto(code => { state = 'net'; Net.join(code); });
 </script>
 </body>
 </html>

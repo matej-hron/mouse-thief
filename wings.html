@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], camp: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -2822,6 +2822,7 @@ function drawHelp(t, dt) {
 }
 function drawSetup(t, dt) {
   const W = S.W, kind = lobby.kind, cfg = lobby.cfg;
+  if (PX.Invite.draw(S, UI, kind === 'host' && Net.code && lobby.players.length < MAX_PLAYERS ? Net.code : '')) return;
   drawBackdrop(t, dt);
   const pw = Math.min(W - 12, 440), { x, y } = panel(pw, 230, 5);
   const host = kind !== 'client';
@@ -2875,7 +2876,7 @@ function drawSetup(t, dt) {
       if (UI.button('r' + i + '_' + j, bx + j * (bwid + 2), ry, bwid, 15, label, { size: 1, on, disabled: !can && !on, textColor: crew ? '#ffd23f' : TEAM_COL[sd] })) if (can) pick(sd, pt, crew || null);
     });
   });
-  if (kind === 'host' && lobby.players.length < MAX_PLAYERS) T('FRIENDS JOIN WITH THE CODE ' + Net.code + ' (UP TO 6 PILOTS)', x + 8, y + 82 + lobby.players.length * 18, '#5b5275', 1);
+  if (kind === 'host' && lobby.players.length < MAX_PLAYERS) { T('FRIENDS JOIN WITH THE CODE ' + Net.code + ' (UP TO 6 PILOTS)', x + 8, y + 82 + lobby.players.length * 18, '#5b5275', 1); PX.Invite.button(UI, x + pw - 128, y + 77 + lobby.players.length * 18, 120, 15); }
   // what the battle is
   const size = SIZES[cfg.size];
   const desc = cfg.mode === 'raid'
@@ -3279,6 +3280,8 @@ PX.Pad.setup({
   help: [['STICK', 'POINT WHERE TO FLY'], ['A|RT', 'FIRE / DROP BOMBS'], ['LB|RB', 'SLOWER / FASTER'], ['START', 'PAUSE / MENU'],
          ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
+// an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
+PX.Invite.auto(code => { state = 'online'; Net.join(code); });
 </script>
 </body>
 </html>

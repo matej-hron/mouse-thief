@@ -489,6 +489,26 @@ too). A request you sent shows as REQUEST SENT: WAITING, with CANCEL.
 The requests and answers travel like a gift of stars (ntfy.sh, about **12 hours**): if your friend doesn't open the
 arcade in that time, send the request again. The list itself is kept on each phone (`Friends` in `index.html`).
 
+## Invite a friend to a game
+
+Every online game (Mouse Thief, Pixel GP, Pixel Pong, Pixel Football, Pixel Wings, Pixel Skate, Pixel Ski, Pixel Box
+Fight, Pixel Bike Run, Pixel Sky GP, Pixel Moto) works the same way: one player presses CREATE GAME (MAKE A GAME) and
+gets a 4-letter code, the other presses JOIN WITH A CODE and types it.
+
+The screen that shows your code now also has **INVITE A FRIEND**: it lists the players on your FRIENDS list; tap one
+and the invite is sent. Their arcade pops up "(your name) INVITES YOU TO PLAY (the game)" with **JOIN** and NO THANKS.
+JOIN opens the game and joins yours right away: no code to type.
+
+- The friend has to have the **arcade open** (the list of games), not a game: that is where invites are looked for,
+  every 20 seconds. If they are in a game, tell them the code instead.
+- An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
+- It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
+- The games that are for one player (Pixel Heist, Pixel Hoops, Pixel Sky Run, Deep Catch, Pixel Cook, Pixel Runs,
+  Pixel Defense) have no online play, so no code and no invite.
+
+The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
+`?join=CODE` in its address.
+
 ## Accounts
 
 One phone can hold up to **6 accounts**, each behind its own password, each with its own name, avatar, ID, stars,
