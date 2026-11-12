@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const SAVE_KEY = 'deepCatch.save';
 const save = { coins: 0, rods: ['wood'], rod: 'wood', reel: 0, line: 0, book: {}, big: {}, caught: 0, best: 0, worlds: ['bay'], world: 'bay', bossDone: -1, shiny: {}, inv: [], cooler: 0, hooks: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -75,10 +75,16 @@ const RAR = {}; RARITIES.forEach((r, i) => { r.i = i; RAR[r.id] = r; });
 
 // the chance of each rarity, checked from the rarest down (no luck at all: a bad fish)
 const RODS = [
-  { id: 'wood',  name: 'WOODEN ROD',    price: 0,     color: '#a0662a', tip: '#e0b070', ch: { legend: 0,  mythic: 5,  epic: 10, super: 40, rare: 70 } },
-  { id: 'steel', name: 'STEEL ROD',     price: 6000,   color: '#9fb4c8', tip: '#eef4fa', ch: { legend: 8,  mythic: 15, epic: 25, super: 30, rare: 40 } },
-  { id: 'iron',  name: 'IRON ROD',      price: 50000, color: '#6a6a78', tip: '#b0b0c0', ch: { legend: 15, mythic: 25, epic: 30, super: 20, rare: 30 } },
-  { id: 'lrod',  name: 'LEGENDARY ROD', price: 250000, color: '#ffd23f', tip: '#fff4b0', ch: { legend: 30, mythic: 35, epic: 40, super: 50, rare: 60 } },
+  // (from the cheapest to the dearest: the shop shows them 4 to a page)
+  { id: 'wood',    name: 'WOODEN ROD',    price: 0,       color: '#a0662a', tip: '#e0b070', ch: { legend: 0,  mythic: 5,  epic: 10, super: 40, rare: 70 } },
+  { id: 'bamboo',  name: 'BAMBOO ROD',    price: 1500,    color: '#9ec24a', tip: '#e0f09a', ch: { legend: 2,  mythic: 8,  epic: 15, super: 40, rare: 65 } },
+  { id: 'steel',   name: 'STEEL ROD',     price: 6000,    color: '#9fb4c8', tip: '#eef4fa', ch: { legend: 8,  mythic: 15, epic: 25, super: 30, rare: 40 } },
+  { id: 'carbon',  name: 'CARBON ROD',    price: 20000,   color: '#4a8a9a', tip: '#7af0ff', ch: { legend: 11, mythic: 20, epic: 28, super: 30, rare: 40 } },
+  { id: 'iron',    name: 'IRON ROD',      price: 50000,   color: '#6a6a78', tip: '#b0b0c0', ch: { legend: 15, mythic: 25, epic: 30, super: 20, rare: 30 } },
+  { id: 'gold',    name: 'GOLDEN ROD',    price: 120000,  color: '#e0a820', tip: '#fff0a0', ch: { legend: 22, mythic: 30, epic: 35, super: 35, rare: 45 } },
+  { id: 'lrod',    name: 'LEGENDARY ROD', price: 250000,  color: '#ffd23f', tip: '#fff4b0', ch: { legend: 30, mythic: 35, epic: 40, super: 50, rare: 60 } },
+  { id: 'diamond', name: 'DIAMOND ROD',   price: 600000,  color: '#7af0ff', tip: '#ffffff', ch: { legend: 36, mythic: 40, epic: 45, super: 55, rare: 65 } },
+  { id: 'rainbow', name: 'RAINBOW ROD',   price: 1500000, color: '#ff6bd0', tip: '#9be36b', ch: { legend: 42, mythic: 45, epic: 50, super: 60, rare: 70 } },
 ];
 const REELS = [{ name: 'BASIC REEL', speed: 90, price: 0 }, { name: 'FAST REEL', speed: 130, price: 1500 }, { name: 'TURBO REEL', speed: 180, price: 12000 }, { name: 'JET REEL', speed: 250, price: 80000 }];
 const LINES = [{ name: 'THIN LINE', hp: 2, price: 0 }, { name: 'STRONG LINE', hp: 3, price: 1200 }, { name: 'STEEL LINE', hp: 4, price: 10000 }, { name: 'TITAN LINE', hp: 6, price: 70000 }];
@@ -712,6 +718,7 @@ function drawPause() {
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
   if (UI.button('quit', bx, y + 70, bw, 22, 'GIVE UP THIS CAST')) { paused = false; G.hooked = null; G.extra = []; G.phase = 'ready'; G.hook.y = -8; }
 }
+let rodPage = -1;                                   // which 4 rods the shop shows (-1: the page of the rod you use)
 function drawShop(t) {
   const W = S.W;
   ctx.fillStyle = '#082036'; ctx.fillRect(0, 0, W, H);
@@ -720,7 +727,9 @@ function drawShop(t) {
   T('CHANCES IN ' + wld().name + ' (LUCK X' + luck() + ')', 52, 9, luck() < 1 ? '#ff8a8a' : luck() > 1 ? '#9be36b' : '#9ac8e0', 1, 'left');
   coinsText(W - 8, 6, 'right');
   const gap = 5, cw = Math.floor((W - 16 - gap * 3) / 4), top = 20, ch = 104;
-  RODS.forEach((r, i) => {
+  const pages = Math.ceil(RODS.length / 4);
+  if (rodPage < 0) rodPage = Math.floor(RODS.findIndex(r => r.id === save.rod) / 4);      // the shop opens on the page of your rod
+  RODS.slice(rodPage * 4, rodPage * 4 + 4).forEach((r, i) => {
     const x = 8 + i * (cw + gap), owned = save.rods.includes(r.id), on = save.rod === r.id;
     ctx.fillStyle = on ? r.color : '#111'; ctx.fillRect(x - 1, top - 1, cw + 2, ch + 2);
     ctx.fillStyle = '#14324e'; ctx.fillRect(x, top, cw, ch);
@@ -752,7 +761,8 @@ function drawShop(t) {
   gearRow(top + ch + 26, 'LINE', LINES, 'line', g => g.hp + ' HITS');
   gearRow(top + ch + 48, 'COOLER', COOLERS, 'cooler', g => 'HOLDS ' + g.cap + ' FISH');
   gearRow(top + ch + 70, 'HOOKS', HOOKS, 'hooks', g => g.n + ' FISH PER CAST');
-  if (UI.button('back', Math.round(W / 2 - 60), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) state = shopBack;
+  if (UI.button('rodpage', Math.round(W / 2 + 4), H - 22, 120, 18, 'MORE RODS ' + (rodPage + 1) + '/' + pages + ' >', { size: 1, accent: '#7af0ff' })) { rodPage = (rodPage + 1) % pages; sfx('click'); }
+  if (UI.button('back', Math.round(W / 2 - 124), H - 22, 120, 18, '< BACK', { size: 1 }) || UI.back) { state = shopBack; rodPage = -1; }
 }
 function drawBook(t) {
   const W = S.W;

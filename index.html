@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.35.0';
+const VERSION = '2.36.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -958,8 +958,7 @@ function drawGift(t) {
 //   until: only up to the end of that day (year, month, day); after it the gift is gone
 const STAR_GIFTS = [
   { key: 'pixelArcade.starGift1', stars: 1000, names: ['VOJTA7', 'STEPAK', 'LEVKO'] },
-  // for everyone, for two days. (It replaces a gift of ★300: whoever took that one already gets the other ★700.)
-  { key: 'pixelArcade.starGift3', stars: 1000, until: [2026, 11, 13], note: 'FOR EVERYONE, UNTIL NOVEMBER 13', less: ['pixelArcade.starGift2', 300] },
+  // (The ★1000 for everyone, November 2026, is over: it was taken out in 2.36.0, so a new player starts with ★0.)
 ];
 for (const g of STAR_GIFTS) {
   g.left = false;

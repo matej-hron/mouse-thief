@@ -25,7 +25,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hoops** (`hoops.html`) | Arcade basketball that looks 3D: pull back and let go to shoot. Every basket is +2 points. |
 | **Pixel Wings** (`wings.html`) | An air battle seen from above: bomb the island air base or defend it, sink the enemy carrier, or dogfight. With bots, 2 on one screen, or up to 6 online. |
 | **Pixel Sky Run** (`skyrun.html`) | Parkour on the roofs of planes flying above the clouds. Jump, slide, switch planes, and don't let the officer catch you. |
-| **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the legendary rod. |
+| **Deep Catch** (`fish.html`) | Catch rare fish, avoid obstacles and upgrade your fishing equipment. Start with a wooden rod and work up to the rainbow rod (9 rods). |
 | **Pixel Skate** (`skate.html`) | Skateboard racing through the city: race 5 rivals or a friend online, ollie, flip, grab, spin and grind. Tricks earn coins for new tricks and abilities. |
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
@@ -199,9 +199,16 @@ A fishing game seen from the side: you sit in your boat, the hook sinks into the
   | Rod | Price | Legendary | Mythic | Epic | Super rare | Rare |
   |---|---|---|---|---|---|---|
   | Wooden | (you start with it) | 0% | 5% | 10% | 40% | 70% |
+  | Bamboo | 1500 | 2% | 8% | 15% | 40% | 65% |
   | Steel | 6000 | 8% | 15% | 25% | 30% | 40% |
+  | Carbon | 20000 | 11% | 20% | 28% | 30% | 40% |
   | Iron | 50000 | 15% | 25% | 30% | 20% | 30% |
+  | Golden | 120000 | 22% | 30% | 35% | 35% | 45% |
   | Legendary | 250000 | 30% | 35% | 40% | 50% | 60% |
+  | Diamond | 600000 | 36% | 40% | 45% | 55% | 65% |
+  | Rainbow | 1500000 | 42% | 45% | 50% | 60% | 70% |
+
+  The shop shows 4 rods at a time: MORE RODS turns the page.
 
 - **★ Exchange** (on the title screen and in the market): swap the arcade's ★ stars (shared with all the games) for
   coins, ★1 = 50 coins, or buy stars with coins, 250 coins = ★1.
@@ -514,8 +521,8 @@ The ★ wallet is kept on the phone, so the arcade gives a gift when it is opene
 are yours) and NO THANKS (you turn the gift down, and it doesn't come back). Each gift comes once on each phone. They
 are `STAR_GIFTS` in `index.html`.
 
-- **★1000 for everyone, for two days:** anyone who opens the arcade up to and including **November 13, 2026**. (It
-  replaces an earlier gift of ★300: whoever took that one gets the other ★700.)
+- There is no gift for everyone now: a new player starts with ★0. (The ★1000 for everyone of November 2026 was
+  taken out in Arcade 2.36.0; whoever took it keeps it.)
 - **★1000 for VOJTA7, STEPAK and LEVKO:** the first time the arcade is opened with that name (or right after the name
   is typed in EDIT). No end date.
 
