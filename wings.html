@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 const SAVE_KEY = 'pixelWings.save';
 const save = { introSeen: false, scenes: true, stats: { battles: 0, deaths: 0, hits: 0, medals: 0, memorials: 0 }, school: [], camp: [], schoolAsked: false, sfx: true, voice: true, cam: 'north', wins: 0, kills: 0, mode: 'raid', size: 1, level: 1, side: 0, plane: 1, side2: 1, plane2: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -1244,30 +1244,32 @@ function startLesson(i) {
 /* --- 5c. CAMPAIGN: 12 missions, one after another: a new job in each, and they get harder ---------- */
 // want: planes a side [fighters, bombers, torpedo planes] for [attack, defense], you included. Everything else is
 // a normal battle with a few numbers changed, so the bots, the radio and the HUD all work as usual.
+// need: what YOU must do yourself, [what, how many]: kills (planes you shot down) or hits (your bombs and torpedoes on
+// a target or a ship). Your side winning is not enough: your wingmen can't fly the mission for you.
 const MISSIONS = [
-  { name: 'FIRST PATROL', role: 'FIGHTER', mode: 'dog', level: 0, side: ATT, plane: FIGHTER, want: [[3, 0, 0], [2, 0, 0]], goal: 4,
+  { name: 'FIRST PATROL', need: ['kills', 1], role: 'FIGHTER', mode: 'dog', level: 0, side: ATT, plane: FIGHTER, want: [[3, 0, 0], [2, 0, 0]], goal: 4,
     task: 'SHOOT DOWN 4 ENEMY FIGHTERS', brief: 'ENEMY FIGHTERS ARE SNOOPING AROUND THE ISLAND. TWO WINGMEN FLY WITH YOU. SHOOT DOWN 4 BEFORE THEY GET 4 OF YOU.' },
-  { name: 'SCRAMBLE!', role: 'DEFENSE FIGHTER', mode: 'raid', level: 0, side: DEF, plane: FIGHTER, want: [[2, 2, 0], [4, 0, 0]], time: 210,
+  { name: 'SCRAMBLE!', need: ['kills', 1], role: 'DEFENSE FIGHTER', mode: 'raid', level: 0, side: DEF, plane: FIGHTER, want: [[2, 2, 0], [4, 0, 0]], time: 210,
     task: 'STOP THE 2 BOMBERS', brief: 'A SMALL RAID IS COMING FOR THE AIR BASE. TAKE OFF FROM THE RUNWAY AND SHOOT DOWN BOTH BOMBERS, OR HOLD OUT UNTIL THE CLOCK RUNS OUT.' },
-  { name: 'FIRST STRIKE', role: 'ATTACK BOMBER', mode: 'raid', level: 0, side: ATT, plane: BOMBER, want: [[3, 2, 0], [3, 0, 0]],
+  { name: 'FIRST STRIKE', need: ['hits', 2], role: 'ATTACK BOMBER', mode: 'raid', level: 0, side: ATT, plane: BOMBER, want: [[3, 2, 0], [3, 0, 0]],
     task: 'BOMB THE 6 TARGETS', brief: 'NOW YOU FLY THE BOMBER. DESTROY ALL 6 TARGETS ON THE ISLAND. PUT THE BOMB SIGHT ON A TARGET AND DROP. YOUR FIGHTERS KEEP THE ENEMY BUSY.' },
-  { name: 'TIN CANS', role: 'DIVE BOMBER', mode: 'carrier', level: 0, side: ATT, plane: BOMBER, want: [[3, 3, 0], [3, 0, 1]], dd: 12, obj: 'escorts', objSide: ATT,
+  { name: 'TIN CANS', need: ['hits', 2], role: 'DIVE BOMBER', mode: 'carrier', level: 0, side: ATT, plane: BOMBER, want: [[3, 3, 0], [3, 0, 1]], dd: 12, obj: 'escorts', objSide: ATT,
     task: 'SINK BOTH DESTROYERS', brief: 'TWO DESTROYERS GUARD THE ENEMY CARRIER. TAKE OFF FROM OUR DECK AND SINK THEM BOTH WITH BOMBS IN 4 MINUTES. THEY MOVE: AIM A LITTLE AHEAD.' },
-  { name: 'TAIL GUNNER', role: 'GUNNER', mode: 'raid', level: 0, side: ATT, plane: BOMBER, crew: 'gun', want: [[4, 3, 0], [4, 0, 0]],
+  { name: 'TAIL GUNNER', need: ['kills', 1], role: 'GUNNER', mode: 'raid', level: 0, side: ATT, plane: BOMBER, crew: 'gun', want: [[4, 3, 0], [4, 0, 0]],
     task: 'KEEP THE FIGHTERS OFF YOUR BOMBER', brief: 'YOU MAN THE GUNS OF A BOMBER, IN 3D. SHOOT THE FIGHTERS THAT COME FOR YOU UNTIL THE RAID HAS DESTROYED ALL 6 TARGETS. SHORT BURSTS!' },
-  { name: 'LITTLE FRIENDS', role: 'ESCORT FIGHTER', mode: 'raid', level: 1, size: 1, side: ATT, plane: FIGHTER, want: [[4, 5, 0], [6, 0, 0]],
+  { name: 'LITTLE FRIENDS', need: ['kills', 2], role: 'ESCORT FIGHTER', mode: 'raid', level: 1, size: 1, side: ATT, plane: FIGHTER, want: [[4, 5, 0], [6, 0, 0]],
     task: 'PROTECT THE BOMBERS', brief: 'THE BOMBERS CALL THEIR ESCORTS LITTLE FRIENDS. STAY WITH THEM AND SHOOT DOWN THE FIGHTERS THAT ATTACK THEM. THE RAID MUST DESTROY ALL 6 TARGETS.' },
-  { name: 'TORPEDO RUN', role: 'TORPEDO PLANE', mode: 'carrier', level: 1, side: ATT, plane: TORPEDO, want: [[3, 0, 3], [3, 0, 2]], cv: [50, 40],
+  { name: 'TORPEDO RUN', need: ['hits', 1], role: 'TORPEDO PLANE', mode: 'carrier', level: 1, side: ATT, plane: TORPEDO, want: [[3, 0, 3], [3, 0, 2]], cv: [50, 40],
     task: 'SINK THE ENEMY CARRIER', brief: 'A CARRIER BATTLE. FLY LOW AT THE ENEMY CARRIER AND DROP YOUR TORPEDO AHEAD OF IT. SINK IT, OR HURT IT MORE THAN THEY HURT OURS.' },
-  { name: 'FLEET DEFENSE', role: 'CARRIER FIGHTER', mode: 'carrier', level: 1, size: 1, side: DEF, plane: FIGHTER, want: [[2, 1, 4], [4, 0, 0]], obj: 'holdcv', objSide: DEF, time: 180,
+  { name: 'FLEET DEFENSE', need: ['kills', 3], role: 'CARRIER FIGHTER', mode: 'carrier', level: 1, size: 1, side: DEF, plane: FIGHTER, want: [[2, 1, 4], [4, 0, 0]], obj: 'holdcv', objSide: DEF, time: 180,
     task: 'KEEP OUR CARRIER AFLOAT', brief: 'ENEMY TORPEDO PLANES ARE COMING, WAVE AFTER WAVE. SHOOT THEM DOWN BEFORE THEY DROP. OUR CARRIER MUST STILL FLOAT AFTER 3 MINUTES.' },
-  { name: 'FLYING BLIND', role: 'DEFENSE FIGHTER', mode: 'raid', level: 1, size: 1, side: DEF, plane: FIGHTER, want: [[5, 6, 0], [6, 0, 0]], noRadar: true,
+  { name: 'FLYING BLIND', need: ['kills', 2], role: 'DEFENSE FIGHTER', mode: 'raid', level: 1, size: 1, side: DEF, plane: FIGHTER, want: [[5, 6, 0], [6, 0, 0]], noRadar: true,
     task: 'STOP THE BOMBERS. NO RADAR!', brief: 'THE RADAR IS ALREADY WRECKED: YOUR MAP ONLY SHOWS ENEMIES CLOSE BY. A BIG RAID IS COMING FROM THE WEST. FIND THE BOMBERS AND STOP THEM.' },
-  { name: 'THE BARON', role: 'FIGHTER', mode: 'dog', level: 2, side: ATT, plane: FIGHTER, want: [[2, 0, 0], [1, 0, 0]], goal: 3, armor: 2, ace: { side: DEF, name: 'THE BARON', hp: 3 },
+  { name: 'THE BARON', need: ['kills', 1], role: 'FIGHTER', mode: 'dog', level: 2, side: ATT, plane: FIGHTER, want: [[2, 0, 0], [1, 0, 0]], goal: 3, armor: 2, ace: { side: DEF, name: 'THE BARON', hp: 3 },
     task: 'SHOOT DOWN THE BARON 3 TIMES', brief: 'THE BARON IS THE BEST PILOT THEY HAVE, AND HIS PLANE (YELLOW MARKINGS) TAKES A LOT OF HITS. YOU AND ONE WINGMAN: GET HIM 3 TIMES BEFORE HE GETS 3.' },
-  { name: 'FLYING FORTRESS', role: 'GUNNER', mode: 'raid', level: 2, size: 1, side: ATT, plane: BOMBER, crew: 'gun', armor: 2, want: [[4, 5, 0], [8, 0, 0]],
+  { name: 'FLYING FORTRESS', need: ['kills', 2], role: 'GUNNER', mode: 'raid', level: 2, size: 1, side: ATT, plane: BOMBER, crew: 'gun', armor: 2, want: [[4, 5, 0], [8, 0, 0]],
     task: 'KEEP THE FIGHTERS OFF YOUR BOMBER', brief: 'BACK IN THE TURRET, AND THIS TIME THEY SEND THEIR BEST. FIGHTERS COME FROM BEHIND AND HEAD ON: USE THE REAR AND THE NOSE GUN.' },
-  { name: 'OPERATION THUNDER', role: 'ATTACK BOMBER', mode: 'raid', level: 2, size: 2, side: ATT, plane: BOMBER, armor: 2, want: [[8, 8, 0], [12, 0, 0]],
+  { name: 'OPERATION THUNDER', need: ['hits', 3], role: 'ATTACK BOMBER', mode: 'raid', level: 2, size: 2, side: ATT, plane: BOMBER, armor: 2, want: [[8, 8, 0], [12, 0, 0]],
     task: 'BOMB THE 6 TARGETS', brief: 'THE BIG ONE: YOU LEAD THE RAID AGAINST A BASE FULL OF FIGHTERS. THE BASE IS STRONG AND ITS PILOTS ARE GOOD. DESTROY ALL 6 TARGETS. GOOD LUCK!' },
 ];
 const RANKS = ['CADET', 'PILOT OFFICER', 'LIEUTENANT', 'CAPTAIN', 'MAJOR', 'COLONEL', 'ACE OF THE ARCHIPELAGO'];
@@ -1282,6 +1284,11 @@ function startMission(i) {
   lobby = { kind: 'solo', cfg: missionCfg(i),
             players: [Object.assign(meAsPlayer(false), { side: m.side, plane: m.plane, crew: m.crew || null })] };
   startBattle();
+}
+const needText = m => m.need[0] === 'kills' ? 'SHOOT DOWN ' + m.need[1] + ' YOURSELF' : 'SCORE ' + m.need[1] + ' HIT' + (m.need[1] > 1 ? 'S' : '') + ' YOURSELF';
+function campMine(V) {                             // how much of the mission's need you have done: 'YOU: 1/2 SHOT DOWN'
+  const m = MISSIONS[V.cfg.camp], me = V.players.find(p => p.local !== undefined) || V.players[0], did = me ? me[m.need[0]] || 0 : 0;
+  return { did, ok: did >= m.need[1], text: 'YOU: ' + Math.min(did, m.need[1]) + '/' + m.need[1] + (m.need[0] === 'kills' ? ' SHOT DOWN' : m.need[1] > 1 ? ' HITS' : ' HIT') };
 }
 function campTask(V) {                             // what to do in this mission, with how far along you are
   const m = MISSIONS[V.cfg.camp];
@@ -1891,7 +1898,10 @@ function drawHUD(V, pi, vx, vw, view, time) {
     const task = campTask(V), w = PX.textWidth(task, 1) + 12;
     ctx.fillStyle = 'rgba(13,11,19,0.8)'; ctx.fillRect(Math.round(cx - w / 2), 38, w, 13);
     T(task, cx, 42, '#ffd23f', 1, 'center');
-    feedY = 56;
+    const mine = campMine(V), mw = PX.textWidth(mine.text, 1) + 12;        // and your own part of it
+    ctx.fillStyle = 'rgba(13,11,19,0.8)'; ctx.fillRect(Math.round(cx - mw / 2), 51, mw, 12);
+    T(mine.text, cx, 54, mine.ok ? '#5ad43f' : '#fff', 1, 'center');
+    feedY = 67;
   }
   }
   }
@@ -2425,16 +2435,17 @@ function toOver() {
   for (const i of mine) if (players[i]) { save.kills += players[i].kills; st.deaths += players[i].deaths; st.hits += players[i].hits; }
   overInfo = { players, winner: V.winner, mode: V.cfg.mode, stars, won, mine, bet: PX.Bet.resultLabel() };
   if (V.cfg.camp !== undefined) {                                  // a campaign mission: 1 to 3 wings, and a bonus the first time
-    const i = V.cfg.camp, me = players[mine[0]], wings = won ? (me.deaths === 0 ? 3 : me.deaths <= 2 ? 2 : 1) : 0, first = won && !save.camp[i];
+    const i = V.cfg.camp, me = players[mine[0]], need = MISSIONS[i].need, did = me[need[0]] || 0, pass = won && did >= need[1];   // your side won AND you did your part
+    const wings = pass ? (me.deaths === 0 ? 3 : me.deaths <= 2 ? 2 : 1) : 0, first = pass && !save.camp[i];
     const was = campDone();
     if (wings > (save.camp[i] || 0)) save.camp[i] = wings;
     if (first) { PX.Wallet.add(10); overInfo.stars += 10; }
     const now = campDone(), rk = n => Math.floor(n / 2);
-    overInfo.camp = { i, wings, first, deaths: me.deaths, rank: rk(now) > rk(was) ? RANKS[rk(now)] : null };
+    overInfo.camp = { i, wings, first, pass, did, deaths: me.deaths, rank: rk(now) > rk(was) ? RANKS[rk(now)] : null };
   }
   // the scene: a medal when you won (or drew), a memorial when you lost
   const me = players[mine[0]];
-  if (me && save.scenes !== false) {
+  if (me && save.scenes !== false && !(overInfo.camp && won && !overInfo.camp.pass)) {   // (no medal for a mission the wingmen flew for you)
     const kind = V.winner === me.side || V.winner === 2 ? 'medal' : 'memorial';
     const medal = me.kills >= 5 ? { name: 'ACE PILOT', why: 'FOR 5 OR MORE VICTORIES IN ONE BATTLE', col: '#ffd23f', rib: ['#e01e1e', '#f2f2f2', '#2a7fd4'] }
       : me.kills >= 2 || me.hits >= 2 ? { name: 'SILVER WINGS', why: 'FOR COURAGE IN THE AIR', col: '#d8dde8', rib: ['#2a7fd4', '#f2f2f2', '#2a7fd4'] }
@@ -2444,7 +2455,7 @@ function toOver() {
               av: (V.players[mine[0]] || {}).av, color: (V.players[mine[0]] || {}).color || MY_COLOR, played: false,
               joke: ['THE MECHANICS WILL MISS FIXING YOUR PLANE.', 'THE CANTEEN KEPT YOUR PUDDING. JUST IN CASE.', 'YOUR PARACHUTE SAYS: SEE YOU TOMORROW!', 'THE GENERAL SAYS: NEXT TIME, LESS SPINNING.'][Math.floor(Math.random() * 4)] };
     sceneSkip = false; state = 'scene';
-  } else { sfx(won ? 'win' : 'lose'); state = 'over'; }
+  } else { sfx(won && !(overInfo.camp && !overInfo.camp.pass) ? 'win' : 'lose'); state = 'over'; }
   store();
 }
 // --- after a battle: a medal ceremony or a memorial, with your stats (tap to go on) ---
@@ -2758,6 +2769,7 @@ function drawCamp(t, dt) {
   T('ENEMY PILOTS', rx, y + 90, '#9a92b8', 1); T(LEVELS[m.level].name, rx, y + 100, ['#5ad43f', '#ffd23f', '#ff8a6a'][m.level], 1);
   wrapText(m.brief, rw).forEach((ln, k) => T(ln, rx, y + 116 + k * 10, '#efe9ff', 1));
   for (let k = 0; k < 3; k++) drawWings(rx + 10 + k * 22, y + 190, k < (save.camp[campSel] || 0), 1);
+  T(needText(m), rx + rw, y + 187, '#ffd23f', 1, 'right');
   if (UI.button('cback', x + 8, y + 210, 90, 16, 'BACK', { size: 1 }) || UI.back) { sfx('click'); state = 'title'; return; }
   if (UI.button('cgo', x + pw - 128, y + 208, 120, 20, 'TAKE OFF!', { accent: '#5ad43f' })) { sfx('click'); startMission(campSel); }
 }
@@ -2961,14 +2973,15 @@ function drawOver(t) {
   if (o.camp) {
     const c = o.camp, m = MISSIONS[c.i], last = c.i === MISSIONS.length - 1, { y } = panel(300, 178), me = o.players[o.mine[0]];
     T('MISSION ' + (c.i + 1) + ': ' + m.name, W / 2, y + 9, '#9a92b8', 1, 'center');
-    T(o.won ? 'MISSION COMPLETE!' : 'MISSION FAILED', W / 2, y + 22, o.won ? '#5ad43f' : '#ff8a6a', 2, 'center', '#000');
+    const part = o.won && !c.pass;                                 // your side won, but you didn't do enough yourself
+    T(c.pass ? 'MISSION COMPLETE!' : part ? 'NOT YOUR WIN YET' : 'MISSION FAILED', W / 2, y + 22, c.pass ? '#5ad43f' : part ? '#ffd23f' : '#ff8a6a', 2, 'center', '#000');
     for (let k = 0; k < 3; k++) drawWings(W / 2 - 44 + k * 44, y + 56, k < c.wings, 2);
-    T(!o.won ? 'TRY AGAIN: YOU CAN DO IT!' : c.wings === 3 ? 'NOT SHOT DOWN ONCE: PERFECT!' : c.wings === 2 ? '3 WINGS: DO IT WITHOUT BEING SHOT DOWN' : 'MORE WINGS: GET SHOT DOWN LESS', W / 2, y + 76, '#efe9ff', 1, 'center');
+    T(part ? 'YOUR SIDE WON, BUT YOU MUST ' + needText(m) + ' (YOU: ' + c.did + ')' : !o.won ? 'TRY AGAIN: YOU CAN DO IT!' : c.wings === 3 ? 'NOT SHOT DOWN ONCE: PERFECT!' : c.wings === 2 ? '3 WINGS: DO IT WITHOUT BEING SHOT DOWN' : 'MORE WINGS: GET SHOT DOWN LESS', W / 2, y + 76, '#efe9ff', 1, 'center');
     T('KILLS ' + me.kills + '   SHOT DOWN ' + me.deaths + (o.mode !== 'dog' ? '   HITS ' + me.hits : ''), W / 2, y + 90, '#9a92b8', 1, 'center');
     if (o.stars) T('★ +' + o.stars + (c.first ? ' (WITH ★10 FOR A NEW MISSION)' : ''), W / 2, y + 104, '#ffd23f', c.first ? 1 : 2, 'center', '#000');
     if (c.rank) T('PROMOTED: ' + c.rank + '!', W / 2, y + 120, Math.floor(t * 4) % 2 ? '#ffd23f' : '#fff', 2, 'center', '#000');
-    else if (o.won && last) T('YOU FINISHED THE CAMPAIGN!', W / 2, y + 122, '#ffd23f', 1, 'center');
-    const bx = Math.round(W / 2 - 138), next = o.won && !last;
+    else if (c.pass && last) T('YOU FINISHED THE CAMPAIGN!', W / 2, y + 122, '#ffd23f', 1, 'center');
+    const bx = Math.round(W / 2 - 138), next = c.pass && !last;
     if (UI.button('cmenu', bx, y + 146, 88, 22, 'MISSIONS', { size: 1 }) || UI.back) { G = null; campSel = next ? c.i + 1 : c.i; state = 'camp'; }
     if (UI.button('cagain', bx + 94, y + 146, 88, 22, 'AGAIN', { size: 1, accent: next ? undefined : '#5ad43f' })) { sfx('click'); startMission(c.i); }
     if (UI.button('cnext', bx + 188, y + 146, 88, 22, 'NEXT', { size: 1, accent: '#5ad43f', disabled: !next })) { if (next) { sfx('click'); G = null; campSel = c.i + 1; state = 'camp'; } }

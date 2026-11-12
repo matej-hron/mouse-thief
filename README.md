@@ -60,7 +60,10 @@ follows their own plane, with a minimap in the corner and arrows pointing at wha
   for 3 minutes against waves of torpedo planes), 9. FLYING BLIND (defend the base with the radar already gone),
   10. THE BARON (an enemy ace in a tough plane with yellow markings: get him 3 times), 11. FLYING FORTRESS (gunner
   against the best pilots), 12. OPERATION THUNDER (lead the big raid). Every mission shows who you are and what to do
-  before take-off, and the job stays under the score during the battle. A win gives 1 to 3 **wings** (3: never shot
+  before take-off, and the job stays under the score during the battle. **You must do your part yourself:** every
+  mission needs a few kills or hits of your own (1 kill in the first, up to 3 kills or 3 bomb hits later; `need` in the
+  list), shown before take-off and counted under the job (YOU: 0/1 SHOT DOWN). If your side wins without that, the
+  mission says NOT YOUR WIN YET and stays open: your wingmen can't fly it for you. A win gives 1 to 3 **wings** (3: never shot
   down, 2: at most twice), ★10 extra the first time, and every 2 missions a new rank (CADET up to ACE OF THE
   ARCHIPELAGO). The missions are the `MISSIONS` list in `wings.html`: each is a normal battle with its own numbers.
 - **DOGFIGHT:** red fighters against blue fighters; everyone comes back after being shot down. First team to the
