@@ -459,6 +459,45 @@ The arcade has no server of its own, so the gift waits on **ntfy.sh**, a free pu
 - Anyone who knows how can post there, so somebody technical could send themselves stars. It is for friends, not a bank.
 - If the gift can't be sent (no internet), the stars go back into your wallet.
 
+**Is that ID a player?** As soon as you have typed the 6 digits, the arcade looks the ID up: THAT IS (their name)!, or
+NO PLAYER HAS THAT ID, and then GIVE stays off, so stars can't go to a wrong number. There is no list of players (no
+server), so every arcade says "I'm here" on ntfy.sh when it is opened (its name, on a topic of its ID, again every 6
+hours), and ntfy.sh keeps that about 12 hours. So an ID counts as a player if its arcade was opened in the **last 12
+hours**; a friend who hasn't played for longer has to open the arcade first. Players on your FRIENDS list are never
+looked up: you can always give them stars. With no internet it says it can't check.
+
+## Friends
+
+**FRIENDS** (the button with two heads, top right) is your friends list.
+
+1. Type your friend's 6-digit ID (it is under their name in the arcade) and press **SEND REQUEST**. The ID is looked
+   up first, as in GIVE STARS: you see their name, or that no player has that ID.
+2. Your friend opens the same FRIENDS menu and sees you as **PENDING: WANTS TO BE YOUR FRIEND**, with **ADD** and
+   **NO**. The FRIENDS button shows how many requests are waiting.
+3. They press ADD: now you are on each other's list. (If you both sent a request, that's a yes too.)
+
+Next to a friend: **GIVE ★** (GIVE STARS with their ID filled in) and **REMOVE** (press twice; you go off their list
+too). A request you sent shows as REQUEST SENT: WAITING, with CANCEL.
+
+The requests and answers travel like a gift of stars (ntfy.sh, about **12 hours**): if your friend doesn't open the
+arcade in that time, send the request again. The list itself is kept on each phone (`Friends` in `index.html`).
+
+## Accounts
+
+**EDIT → ACCOUNT** puts a password on your arcade: MAKE AN ACCOUNT, choose a password (4 to 20 characters, typed
+twice). After **LOG OUT** the arcade shows only LOG IN until the password is typed; it stays logged in until you log
+out. YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT (only the password goes; name, ID, stars and friends stay).
+
+- **The account lives on this phone only.** The arcade has no server, so you can't log in on another phone, and
+  nothing about the account is sent anywhere. The password is not kept: only a salted hash of it (PBKDF2), in the
+  browser's storage.
+- **Forgot password:** nobody can mail you a new one (no server, no e-mail). When the account is made you get an
+  8-letter **recovery code**, shown once: write it down. FORGOT PASSWORD? on the LOG IN screen takes that code and a
+  new password. Without the code there is no way back in.
+- **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 7 short points.
+- It locks the arcade's menu: a lock against brothers and sisters, not a vault. The games' own pages still open by
+  their address, and clearing the browser's data removes the account with everything else.
+
 ## Gifts of stars
 
 The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup with THANKS! (the stars

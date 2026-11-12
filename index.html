@@ -21,18 +21,25 @@
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
   #search { text-align: left; letter-spacing: 0.1em; padding: 0 0.4em; }
+  #pw1, #pw2, #code { position: fixed; display: none; box-sizing: border-box; text-align: center;
+          font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.1em;
+          color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+  #code { text-transform: uppercase; }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
 <input id="search" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search" enterkeyhint="search" placeholder="TYPE A GAME..." aria-label="Search games">
 <input id="giveid" maxlength="6" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="numeric" aria-label="Your friend's ID">
+<input id="pw1" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password">
+<input id="pw2" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password again">
+<input id="code" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Recovery code">
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.33.0';
+const VERSION = '2.34.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -40,14 +47,16 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
 searchInput.addEventListener('input', () => { searchInput.value = searchInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 20); search.q = searchInput.value; scrollTo(0); pad.focus = 0; });
 nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
 window.addEventListener('keydown', e => {
+  if (e.target === giveInput && screen === 'friends') { if (e.key === 'Enter') Friends.request(); else if (e.key === 'Escape') Friends.leave(); return; }
   if (e.target === giveInput) { if (e.key === 'Enter') Give.send(); else if (e.key === 'Escape') Give.leave(); return; }
+  if (e.target === pw1 || e.target === pw2 || e.target === codeInput) { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
@@ -569,6 +578,11 @@ function drawHome(t) {
   if (UI.button('give', rx + 36 + nw + 8 + 50, 40, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open();
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
+  // your friends (with how many players are waiting for your answer)
+  const fx = W - 80, asks = Friends.d.inc.length;
+  if (UI.button('friends', fx, 38, 72, 20, '', { size: 1, accent: '#ff7ab8' })) Friends.open();
+  friendsIcon(fx + 14, 48); T('FRIENDS', fx + 28, 45, '#fff', 1);
+  if (asks) { ctx.fillStyle = '#111'; ctx.fillRect(fx + 63, 33, 11, 11); ctx.fillStyle = '#ff7ab8'; ctx.fillRect(fx + 64, 34, 9, 9); T(String(Math.min(9, asks)), fx + 69, 36, '#111', 1, 'center'); }
   drawGrid(t);
   if (installPrompt && UI.button('install', 8, 8, 72, 16, 'INSTALL', { size: 1, accent: '#5ad43f' })) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; }); }
 }
@@ -832,7 +846,7 @@ function padPoll(dt) {
     } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
-    else if (edge(1)) UI.back = true;
+    else if (edge(1)) UI.back = true;                  // (the screens handle it themselves)
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
   });
@@ -852,6 +866,7 @@ function saveProfile() {
   // Mouse Thief keeps its own copy of the name: update it too
   try { const k = 'mouseThief.save.v1', d = JSON.parse(localStorage.getItem(k)); if (d) { d.name = name; localStorage.setItem(k, JSON.stringify(d)); } } catch (e) { /* no save */ }
   PX.setIcon(profile.avatar);                     // the page's icon is your avatar
+  Who.beat();                                     // (a new name: tell it to players who look up your ID)
   nameInput.blur(); screen = 'home'; PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
 }
 function drawProfile(t) {
@@ -862,6 +877,8 @@ function drawProfile(t) {
   PX.drawAvatar(ctx, draft.avatar, 18, 40, 5);
   S.placeInput(nameInput, 108, 34, Math.min(220, W - 120), 26);
   T('NICKNAME ONLY!', 108, 64, '#ff8a8a', 2);
+  if (UI.button('account', 18, 128, 80, 18, 'ACCOUNT', { size: 1, accent: '#1ec8e0' })) { nameInput.blur(); Account.open(); }
+  T(Account.d ? 'PASSWORD: ON' : 'NO PASSWORD', 58, 150, Account.d ? '#5ad43f' : '#5b5275', 1, 'center', '#000');
   PX.AVATAR_SHAPES.filter(sh => PX.Gifts.canUse(sh)).forEach((shape, i) => {
     const x = 108 + (i % 9) * 32, y = 90, on = draft.avatar.shape === shape;
     if (UI.button('shape_' + shape, x, y, 30, 30, '', { on, accent: '#e0a820' })) draft.avatar.shape = shape;
@@ -990,18 +1007,22 @@ function drawStars(t) {
 // (Anyone who knows how can post there too, so this is for friends, not a bank.)
 const RELAY = 'https://ntfy.sh/', relayTopic = id => 'pixel-arcade-stars-' + id;
 const giveInput = document.getElementById('giveid');
-giveInput.addEventListener('input', () => { giveInput.value = giveInput.value.replace(/[^0-9]/g, '').slice(0, 6); });
+giveInput.addEventListener('input', () => { giveInput.value = giveInput.value.replace(/[^0-9]/g, '').slice(0, 6); Give.told = false; Friends.told = false; });
+const validId = id => /^[1-9][0-9]{5}$/.test(id);
+const newTx = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const GIVE_AMOUNTS = [10, 50, 100, 500, 1000];
 const Give = {
-  msg: '', col: '#9a92b8', amount: 50, busy: false,
+  msg: '', col: '#9a92b8', amount: 50, busy: false, told: false, from: 'home',
   say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
-  fail(m) { this.busy = false; this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
-  open() { screen = 'give'; giveInput.value = ''; PX.Sound.unlock(); this.say('YOUR FRIEND GETS A POPUP THE NEXT TIME THEY OPEN THE ARCADE.'); },
-  leave() { giveInput.blur(); screen = 'home'; },
+  fail(m) { this.busy = false; this.told = true; this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  open(id = '') { this.from = screen === 'friends' ? 'friends' : 'home'; screen = 'give'; giveInput.value = id; this.told = false; PX.Sound.unlock(); this.say('YOUR FRIEND GETS A POPUP THE NEXT TIME THEY OPEN THE ARCADE.'); },
+  leave() { giveInput.blur(); screen = this.from; this.from = 'home'; },
   check() {                                          // what is wrong with what you typed, if anything
     const id = giveInput.value;
     if (!/^[1-9][0-9]{5}$/.test(id)) return "TYPE THE 6 DIGITS OF YOUR FRIEND'S ID.";
     if (id === profile.id) return "THAT'S YOUR OWN ID!";
+    const w = Who.ask(id);                           // is it a player at all?
+    if (w.s !== 'yes') return Who.line(w)[0];
     if (PX.Wallet.get() < this.amount) return "YOU DON'T HAVE ★" + this.amount + '.';
     return '';
   },
@@ -1012,11 +1033,11 @@ const Give = {
     if (!PX.Wallet.spend(n)) return this.fail("YOU DON'T HAVE ★" + n + '.');        // the stars leave your wallet now (and come back if sending fails)
     this.busy = true; giveInput.blur(); this.say('SENDING...');
     try {
-      const gift = { v: 1, tx: Date.now().toString(36) + Math.random().toString(36).slice(2, 10), n, from: profile.name, fid: profile.id };
+      const gift = { v: 1, tx: newTx(), n, from: profile.name, fid: profile.id };
       const res = await fetch(RELAY + relayTopic(id), { method: 'POST', body: JSON.stringify(gift) });
       if (!res.ok) throw new Error('relay ' + res.status);
-      this.busy = false; giveInput.value = '';
-      this.say('★' + n + ' SENT TO ' + id + '! IT WAITS 12 HOURS FOR THEM TO OPEN THE ARCADE.', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+      this.busy = false; giveInput.value = ''; this.told = true;
+      this.say('★' + n + ' SENT TO ' + Who.ask(id).name + ' (' + id + ')! IT WAITS 12 HOURS FOR THEM TO OPEN THE ARCADE.', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
     } catch (e) {
       const d = PX.Wallet.read(); d.points = (d.points | 0) + n; PX.Wallet.write(d);       // back in your wallet
       this.fail("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN.");
@@ -1033,6 +1054,7 @@ const Inbox = {
   },
   async check() {
     this.last = performance.now();
+    Who.beat();
     try {
       const res = await fetch(RELAY + relayTopic(profile.id) + '/json?poll=1&since=all', { cache: 'no-store' });
       if (!res.ok) return;
@@ -1040,6 +1062,10 @@ const Inbox = {
       for (const row of (await res.text()).split('\n')) {
         let m = null;
         try { const ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { /* not a gift */ }
+        if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, or an answer to yours
+          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-300))); } catch (e) { /* private mode */ } Friends.got(m); }
+          continue;
+        }
         if (!m || m.v !== 1 || !Number.isInteger(m.n) || m.n < 1 || m.n > 1000 || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40) continue;
         if (seen.includes(m.tx) || this.list.some(x => x.tx === m.tx)) continue;
         const who = PX.cleanName(m.from) || 'A FRIEND';
@@ -1072,10 +1098,340 @@ function drawGive(t) {
   const cw = 54, x0 = Math.round(cx - (GIVE_AMOUNTS.length * (cw + 6) - 6) / 2);
   GIVE_AMOUNTS.forEach((n, i) => { if (UI.button('amt' + n, x0 + i * (cw + 6), 120, cw, 20, '★' + n, { size: 1, on: Give.amount === n, accent: '#ffd23f', disabled: PX.Wallet.get() < n })) Give.amount = n; });
   const bad = Give.check(), busy = Give.busy;
-  if (UI.button('send', cx - 100, 148, 200, 24, busy ? 'SENDING...' : 'GIVE ★' + Give.amount + (bad ? '' : ' TO ' + giveInput.value), { accent: '#5ad43f', disabled: busy || !!bad })) Give.send();
-  T(Give.msg, cx, 180, Give.col, 1, 'center', '#000');
-  T('THE STARS COME OUT OF YOUR WALLET.', cx, 192, '#5b5275', 1, 'center', '#000');
+  if (UI.button('send', cx - 100, 148, 200, 24, busy ? 'SENDING...' : 'GIVE ★' + Give.amount + (bad ? '' : ' TO ' + Who.ask(giveInput.value).name), { accent: '#5ad43f', disabled: busy || !!bad })) Give.send();
+  const id = giveInput.value;
+  if (validId(id) && id !== profile.id && !busy && !Give.told) {      // is that ID a player? (looked up as soon as it is typed)
+    const w = Who.line(Who.ask(id));
+    T(w[0], cx, 180, w[2], 1, 'center', '#000'); T(w[1] || 'THE STARS COME OUT OF YOUR WALLET.', cx, 192, '#5b5275', 1, 'center', '#000');
+  } else {
+    T(Give.msg, cx, 180, Give.col, 1, 'center', '#000');
+    T('THE STARS COME OUT OF YOUR WALLET.', cx, 192, '#5b5275', 1, 'center', '#000');
+  }
   if (UI.button('gback', cx - 50, 208, 100, 22, 'BACK', { disabled: busy }) || (UI.back && !busy)) Give.leave();
+}
+
+// --- is that ID a player? --------------------------------------------------------------------------------------
+// There is no list of players anywhere (no server). So every arcade says "I'm here" on ntfy.sh when it is opened: its
+// name, on a topic of its own ID, again every 6 hours. ntfy.sh keeps that for about 12 hours. An ID is a player if it
+// said so in that time: the arcade looks it up as soon as you have typed the 6 digits (in GIVE STARS and in FRIENDS).
+// Your friends are players for sure: they are never looked up.
+const HERE_KEY = 'pixelArcade.hereAt', hereTopic = id => 'pixel-arcade-player-' + id;
+const Who = {
+  map: {},
+  async beat() {
+    let last = 0;
+    try { const h = JSON.parse(localStorage.getItem(HERE_KEY)); if (h && h.id === profile.id && h.name === profile.name) last = +h.t || 0; } catch (e) { /* never said it */ }
+    if (Math.abs(Date.now() - last) < 6 * 3600e3 || this.beating) return;
+    this.beating = true;
+    try {
+      const res = await fetch(RELAY + hereTopic(profile.id), { method: 'POST', body: JSON.stringify({ v: 1, here: 1, name: profile.name }) });
+      if (res.ok) localStorage.setItem(HERE_KEY, JSON.stringify({ id: profile.id, name: profile.name, t: Date.now() }));
+    } catch (e) { /* offline: next time */ }
+    this.beating = false;
+  },
+  ask(id) {                                          // { s: 'wait' | 'yes' | 'no' | 'err', name }, asked once and then remembered
+    const f = Friends.find(id); if (f) return { s: 'yes', name: f.name };
+    let e = this.map[id];
+    if (!e || ((e.s === 'no' || e.s === 'err') && performance.now() - e.t > 15000)) { e = this.map[id] = { s: 'wait', name: '', t: performance.now() }; this.look(id, e); }
+    return e;
+  },
+  async look(id, e) {
+    try {
+      const res = await fetch(RELAY + hereTopic(id) + '/json?poll=1&since=all', { cache: 'no-store' });
+      if (!res.ok) throw new Error('relay ' + res.status);
+      let name = '';
+      for (const row of (await res.text()).split('\n')) {
+        try { const ev = JSON.parse(row), m = ev.event === 'message' ? JSON.parse(ev.message) : null; if (m && m.v === 1 && m.here) name = PX.cleanName(m.name) || 'PLAYER'; } catch (x) { /* not a player's hello */ }
+      }
+      e.s = name ? 'yes' : 'no'; e.name = name;
+    } catch (x) { e.s = 'err'; }
+    e.t = performance.now();
+  },
+  line(w) {                                          // what to tell the player: [line, a second line, color]
+    return w.s === 'yes' ? ['THAT IS ' + w.name + '!', '', '#5ad43f'] : w.s === 'wait' ? ['LOOKING FOR THAT PLAYER...', '', '#9a92b8']
+      : w.s === 'no' ? ['NO PLAYER HAS THAT ID. CHECK THE NUMBER!', '(A PLAYER SHOWS UP ONCE THEY HAVE OPENED THE ARCADE IN THE LAST 12 HOURS.)', '#ff8a8a']
+      : ["CAN'T CHECK THAT ID. CHECK YOUR INTERNET.", '', '#ff8a8a'];
+  },
+};
+
+// --- FRIENDS: send a request to a player's ID; they see it as pending in the same menu and add you ---------------
+// The messages go the same way as a gift of stars (ntfy.sh, to the topic of the other player's ID, kept 12 hours):
+//   freq: "be my friend"   fyes: "yes" (now both have each other)   fno: "no"   fbye: "not friends any more"
+// The list itself is kept on each phone.
+const FRIENDS_KEY = 'pixelArcade.friends';
+const Friends = {
+  d: { list: [], inc: [], out: [] },                 // your friends, requests to you (pending), requests you sent
+  msg: '', col: '#9a92b8', busy: false, told: false, page: 0, sure: '',
+  load() {
+    let d = null; try { d = JSON.parse(localStorage.getItem(FRIENDS_KEY)); } catch (e) { d = null; }
+    const ok = a => (Array.isArray(a) ? a : []).filter(f => f && validId(f.id)).map(f => ({ id: f.id, name: PX.cleanName(f.name) || 'PLAYER' })).slice(-60);
+    this.d = { list: ok(d && d.list), inc: ok(d && d.inc), out: ok(d && d.out) };
+  },
+  save() { try { localStorage.setItem(FRIENDS_KEY, JSON.stringify(this.d)); } catch (e) { /* private mode */ } },
+  find(id) { return this.d.list.find(f => f.id === id); },
+  drop(k, id) { this.d[k] = this.d[k].filter(f => f.id !== id); },
+  put(k, id, name) { this.drop(k, id); this.d[k].push({ id, name }); this.d[k] = this.d[k].slice(-60); },
+  async post(id, t) {
+    const res = await fetch(RELAY + relayTopic(id), { method: 'POST', body: JSON.stringify({ v: 1, t, tx: newTx(), from: profile.name, fid: profile.id }) });
+    if (!res.ok) throw new Error('relay ' + res.status);
+  },
+  say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
+  fail(m) { this.busy = false; this.told = true; this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  open() {
+    screen = 'friends'; giveInput.value = ''; this.told = false; this.sure = ''; this.page = 0; PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
+    this.say("ASK YOUR FRIEND FOR THEIR ID: IT'S UNDER THEIR NAME IN THE ARCADE.");
+    if (performance.now() - Inbox.last > 5000) Inbox.check();
+  },
+  leave() { giveInput.blur(); screen = 'home'; },
+  check() {                                          // what is wrong with what you typed, if anything
+    const id = giveInput.value;
+    if (!validId(id)) return "TYPE THE 6 DIGITS OF YOUR FRIEND'S ID.";
+    if (id === profile.id) return "THAT'S YOUR OWN ID!";
+    const f = this.find(id); if (f) return f.name + ' IS YOUR FRIEND ALREADY.';
+    const w = Who.ask(id); if (w.s !== 'yes') return Who.line(w)[0];
+    return '';
+  },
+  async request() {
+    if (this.busy) return;
+    const bad = this.check(); if (bad) return this.fail(bad);
+    const id = giveInput.value, name = Who.ask(id).name, asked = this.d.inc.find(f => f.id === id);
+    if (asked) return this.accept(asked);            // they asked you first: that's a yes
+    this.busy = true; giveInput.blur(); this.say('SENDING...');
+    try {
+      await this.post(id, 'freq');
+      this.put('out', id, name); this.save(); this.busy = false; giveInput.value = ''; this.told = true;
+      this.say('REQUEST SENT TO ' + name + "! IT WAITS 12 HOURS IN THEIR FRIENDS MENU.", '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+    } catch (e) { this.fail("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."); }
+  },
+  async accept(f) {                                  // ADD on a pending request
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      await this.post(f.id, 'fyes');
+      this.drop('inc', f.id); this.drop('out', f.id); this.put('list', f.id, f.name); this.save();
+      if (giveInput.value === f.id) giveInput.value = '';
+      this.busy = false; this.told = true; this.say(f.name + ' IS YOUR FRIEND NOW!', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+    } catch (e) { this.fail("COULDN'T ANSWER. CHECK YOUR INTERNET AND TRY AGAIN."); }
+  },
+  refuse(f) { this.drop('inc', f.id); this.save(); this.post(f.id, 'fno').catch(() => { /* they'll keep waiting */ }); PX.Sound.tone(300, 0.12, { vol: 0.08 }); },
+  cancel(f) { this.drop('out', f.id); this.save(); this.post(f.id, 'fbye').catch(() => { /* offline */ }); PX.Sound.tone(300, 0.12, { vol: 0.08 }); },
+  remove(f) { this.sure = ''; this.drop('list', f.id); this.save(); this.post(f.id, 'fbye').catch(() => { /* offline */ }); PX.Sound.tone(300, 0.12, { vol: 0.08 }); },
+  got(m) {                                           // a message about friends came in (each one only once)
+    const id = m.fid, name = PX.cleanName(m.from) || 'PLAYER';
+    if (!validId(id) || id === profile.id) return;
+    const sent = this.d.out.some(f => f.id === id);
+    if (m.t === 'freq') {
+      if (this.find(id) || sent) { this.drop('out', id); this.put('list', id, name); this.post(id, 'fyes').catch(() => { /* offline */ }); }   // friends already, or you asked them too
+      else this.put('inc', id, name);
+    } else if (m.t === 'fyes') { if (sent || this.find(id)) { this.drop('out', id); this.drop('inc', id); this.put('list', id, name); } }       // (only an answer to your own request counts)
+    else if (m.t === 'fno') this.drop('out', id);
+    else if (m.t === 'fbye') { this.drop('list', id); this.drop('inc', id); }
+    else return;
+    this.save();
+  },
+};
+Friends.load();
+function friendsIcon(cx, cy) { PX.drawIcon(ctx, ['.##...##.', '.##...##.', '.........', '####.####', '####.####'], { '#': '#fff' }, cx, cy, 2); }
+function drawFriends(t) {
+  const W = S.W, cx = Math.round(W / 2), F = Friends, busy = F.busy;
+  background(t);
+  T('FRIENDS', cx, 8, '#fff', 3, 'center', '#000');
+  T('YOUR ID: ' + profile.id, W - 8, 8, '#ffd23f', 1, 'right', '#000');
+  T("ADD A FRIEND: TYPE THEIR ID AND SEND A REQUEST", cx, 30, '#efe9ff', 1, 'center', '#000');
+  S.placeInput(giveInput, cx - 140, 40, 120, 24);
+  const id = giveInput.value, bad = F.check();
+  if (UI.button('freq', cx - 12, 40, 152, 24, busy ? 'SENDING...' : 'SEND REQUEST', { accent: '#5ad43f', disabled: busy || !!bad })) F.request();
+  if (validId(id) && id !== profile.id && !busy && !F.told) {        // is that ID a player? (looked up as soon as it is typed)
+    const w = F.find(id) ? [bad, '', '#9a92b8'] : Who.line(Who.ask(id));
+    T(w[0], cx, 68, w[2], 1, 'center', '#000'); if (w[1]) T(w[1], cx, 77, '#5b5275', 1, 'center', '#000');
+  } else T(F.msg, cx, 68, F.col, 1, 'center', '#000');
+  // pending requests to you first, then your friends, then the requests you sent
+  const rows = [...F.d.inc.map(f => ({ f, k: 'inc' })), ...F.d.list.map(f => ({ f, k: 'fr' })), ...F.d.out.map(f => ({ f, k: 'out' }))];
+  const per = 6, pages = Math.max(1, Math.ceil(rows.length / per)); if (F.page >= pages) F.page = 0;
+  const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
+  if (!rows.length) T('NO FRIENDS YET.', cx, 130, '#5b5275', 2, 'center', '#000');
+  rows.slice(F.page * per, F.page * per + per).forEach((r, i) => {
+    const y = 88 + i * 20, f = r.f, col = { inc: '#ff7ab8', fr: '#5ad43f', out: '#9a92b8' }[r.k];
+    ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, rw, 18); ctx.fillStyle = col; ctx.fillRect(x, y, 3, 18);
+    T(f.name, x + 8, y + 3, '#fff', 1); T('ID ' + f.id, x + 8, y + 10, '#9a92b8', 1);
+    T({ inc: 'PENDING: WANTS TO BE YOUR FRIEND', fr: 'FRIEND', out: 'REQUEST SENT: WAITING' }[r.k], x + 72, y + 6, col, 1);
+    if (r.k === 'inc') {
+      if (UI.button('fadd' + f.id, x + rw - 92, y + 1, 46, 16, 'ADD', { size: 1, accent: '#5ad43f', disabled: busy })) F.accept(f);
+      if (UI.button('fno' + f.id, x + rw - 42, y + 1, 40, 16, 'NO', { size: 1, disabled: busy })) F.refuse(f);
+    } else if (r.k === 'fr') {
+      if (UI.button('fgive' + f.id, x + rw - 112, y + 1, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open(f.id);
+      if (UI.button('fdel' + f.id, x + rw - 58, y + 1, 56, 16, F.sure === f.id ? 'SURE?' : 'REMOVE', { size: 1, accent: F.sure === f.id ? '#ff5a5a' : undefined, on: F.sure === f.id })) { if (F.sure === f.id) F.remove(f); else F.sure = f.id; }
+    } else if (UI.button('fcan' + f.id, x + rw - 58, y + 1, 56, 16, 'CANCEL', { size: 1 })) F.cancel(f);
+  });
+  if (pages > 1 && UI.button('fmore', cx + 56, 214, 90, 20, 'MORE ' + (F.page + 1) + '/' + pages, { size: 1 })) F.page = (F.page + 1) % pages;
+  if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
+}
+
+// --- your ACCOUNT: a password on your arcade ----------------------------------------------------------------------
+// The arcade has no server, so an account lives on this phone only: it is your name, ID, stars and friends (they were
+// here already) with a password on top. LOG OUT, and the arcade asks for the password before it shows anything.
+// The password itself is never kept or sent: only a salted PBKDF2 hash of it, on this phone.
+// Nobody can mail you a new password (there is no server and no e-mail). So when the account is made you get a
+// RECOVERY CODE to write down: FORGOT PASSWORD? takes that code and lets you pick a new password. The rules are in
+// PRIVACY AND POLICY. (It guards the arcade's menu: it is a lock for brothers and sisters, not a bank vault.)
+const ACCOUNT_KEY = 'pixelArcade.account';
+const pw1 = document.getElementById('pw1'), pw2 = document.getElementById('pw2'), codeInput = document.getElementById('code');
+codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 9); });
+const hex = a => [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+const unhex = h => new Uint8Array(h.match(/../g).map(b => parseInt(b, 16)));
+const Account = {
+  d: null,                                           // { salt, hash, rsalt, rhash (of the recovery code), out: logged out }
+  mode: 'new', prev: 'new', msg: '', col: '#9a92b8', busy: false, code: '',
+  can: !!(window.crypto && crypto.subtle),           // (hashing needs https)
+  load() {
+    let d = null; try { d = JSON.parse(localStorage.getItem(ACCOUNT_KEY)); } catch (e) { d = null; }
+    const h = v => typeof v === 'string' && /^([0-9a-f]{2}){16,32}$/.test(v);
+    this.d = d && h(d.salt) && h(d.hash) && h(d.rsalt) && h(d.rhash) ? { salt: d.salt, hash: d.hash, rsalt: d.rsalt, rhash: d.rhash, out: d.out === true } : null;
+  },
+  save() { try { if (this.d) localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ v: 1, ...this.d })); else localStorage.removeItem(ACCOUNT_KEY); return !this.d || !!localStorage.getItem(ACCOUNT_KEY); } catch (e) { return false; } },
+  async hash(text, salt) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(text), 'PBKDF2', false, ['deriveBits']);
+    return hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unhex(salt), iterations: 150000 }, key, 256)));
+  },
+  newSalt() { return hex(crypto.getRandomValues(new Uint8Array(16))); },
+  say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
+  fail(m) { this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  go(mode) { if (mode === 'policy') this.prev = this.mode; this.mode = mode; this.say(''); for (const el of [pw1, pw2, codeInput]) { el.value = ''; el.blur(); } },
+  open() { screen = 'account'; this.go(this.d ? 'menu' : 'new'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
+  unlock() { for (const el of [pw1, pw2, codeInput]) { el.value = ''; el.blur(); } screen = gift ? 'gift' : 'home'; PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 }); },
+  back() {
+    if (this.busy) return;
+    const m = this.mode;
+    if (m === 'policy') this.go(this.prev); else if (m === 'change' || m === 'delete') this.go('menu'); else if (m === 'forgot') this.go('login');
+    else if (m === 'new' || m === 'menu') { this.go(m); screen = 'home'; }          // (not from LOG IN, and not past the recovery code)
+  },
+  enter() { const f = { new: 'create', login: 'login', change: 'change', delete: 'remove', forgot: 'reset' }[this.mode]; if (f) this[f](); },
+  badPw(p) { return p.length < 4 ? 'A PASSWORD HAS AT LEAST 4 LETTERS OR NUMBERS.' : ''; },
+  async run(fn) {                                    // one thing at a time (hashing takes a moment)
+    if (this.busy || !this.can) return;
+    this.busy = true;
+    try { await fn(); } catch (e) { this.fail("THAT DIDN'T WORK. TRY AGAIN."); }
+    this.busy = false;
+  },
+  create() { return this.run(async () => {
+    const p = pw1.value, bad = this.badPw(p);
+    if (bad) return this.fail(bad);
+    if (p !== pw2.value) return this.fail('THE TWO PASSWORDS ARE NOT THE SAME.');
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', code = [...crypto.getRandomValues(new Uint8Array(8))].map(b => chars[b % 32]).join('');
+    const salt = this.newSalt(), rsalt = this.newSalt();
+    this.d = { salt, hash: await this.hash(p, salt), rsalt, rhash: await this.hash(code, rsalt), out: false };
+    if (!this.save()) { this.d = null; return this.fail("THIS BROWSER CAN'T REMEMBER AN ACCOUNT (PRIVATE MODE?)."); }
+    this.go('code'); this.code = code; PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+  }); },
+  login() { return this.run(async () => {
+    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
+    this.d.out = false; this.save(); this.unlock();
+  }); },
+  logout() { this.d.out = true; this.save(); this.go('login'); PX.Sound.tone(300, 0.12, { vol: 0.08 }); },
+  change() { return this.run(async () => {
+    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) return this.fail('THE OLD PASSWORD IS WRONG.');
+    const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
+    const salt = this.newSalt(); this.d.hash = await this.hash(pw2.value, salt); this.d.salt = salt; this.save();
+    this.go('menu'); this.say('YOUR PASSWORD IS CHANGED. (THE RECOVERY CODE STAYS THE SAME.)', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+  }); },
+  remove() { return this.run(async () => {
+    if (await this.hash(pw1.value, this.d.salt) !== this.d.hash) return this.fail('WRONG PASSWORD.');
+    this.d = null; this.save(); this.go('new'); this.say('THE ACCOUNT IS DELETED. THE ARCADE HAS NO PASSWORD NOW.', '#5ad43f');
+  }); },
+  reset() { return this.run(async () => {            // FORGOT PASSWORD: the recovery code and a new password
+    if (await this.hash(codeInput.value.replace(/[^A-Z0-9]/g, ''), this.d.rsalt) !== this.d.rhash) return this.fail('THAT IS NOT YOUR RECOVERY CODE.');
+    const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
+    const salt = this.newSalt(); this.d.hash = await this.hash(pw2.value, salt); this.d.salt = salt; this.d.out = false; this.save(); this.unlock();
+  }); },
+};
+Account.load();
+if (Account.d && Account.d.out) { screen = 'account'; Account.go('login'); }       // logged out: the password first
+function wrapText(str, maxW) {
+  const out = []; let line = '';
+  for (const w of str.split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
+  if (line) out.push(line);
+  return out;
+}
+const POLICY = [
+  "YOUR ACCOUNT LIVES ONLY ON THIS PHONE. THE ARCADE HAS NO SERVER, SO YOU CAN'T LOG IN ON ANOTHER PHONE.",
+  'YOUR PASSWORD IS NEVER SENT ANYWHERE. ONLY A SCRAMBLED COPY OF IT IS KEPT, ON THIS PHONE.',
+  "THERE IS NO \"FORGOT PASSWORD\" BY E-MAIL: WE DON'T KNOW YOUR E-MAIL AND WE CAN'T RESET YOUR PASSWORD FOR YOU.",
+  'THE ONLY WAY BACK IN IS YOUR RECOVERY CODE. WRITE IT DOWN! WITHOUT IT NOBODY CAN OPEN THE ACCOUNT, NOT EVEN US.',
+  'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. THEY WAIT THERE ABOUT 12 HOURS.',
+  "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
+  "CLEARING THE BROWSER'S DATA DELETES EVERYTHING: THE ACCOUNT, YOUR STARS AND YOUR FRIENDS.",
+];
+function drawAccount(t) {
+  const W = S.W, cx = Math.round(W / 2), A = Account, m = A.mode, busy = A.busy;
+  const put = (el, label, y) => { T(label, cx - 78, y + 9, '#efe9ff', 1, 'right', '#000'); S.placeInput(el, cx - 70, y, 140, 24); el.placed = true; };
+  const msg = y => T(busy ? 'ONE MOMENT...' : A.can ? A.msg : 'ACCOUNTS ONLY WORK ON THE REAL (HTTPS) ARCADE.', cx, y, busy ? '#9a92b8' : A.can ? A.col : '#ff8a8a', 1, 'center', '#000');
+  const policy = x => { if (UI.button('policy', x, 212, 140, 22, 'PRIVACY AND POLICY', { size: 1, accent: '#1ec8e0', disabled: busy })) A.go('policy'); };
+  background(t);
+  if (UI.back) A.back();
+  if (m === 'policy') {
+    T('PRIVACY AND POLICY', cx, 8, '#fff', 3, 'center', '#000');
+    let y = 32;
+    POLICY.forEach((p, i) => {
+      T((i + 1) + '.', 12, y, '#ffd23f', 1);
+      for (const line of wrapText(p, W - 40)) { T(line, 24, y, i === 2 || i === 3 ? '#fff' : '#cfc8e8', 1); y += 9; }
+      y += 4;
+    });
+    if (UI.button('pback', cx - 50, 214, 100, 20, 'BACK')) A.back();
+    return;
+  }
+  T({ new: 'MAKE AN ACCOUNT', code: 'YOUR RECOVERY CODE', menu: 'YOUR ACCOUNT', change: 'CHANGE PASSWORD', delete: 'DELETE ACCOUNT', login: 'LOG IN', forgot: 'FORGOT PASSWORD' }[m], cx, 8, '#fff', 3, 'center', '#000');
+  const nw = PX.textWidth(profile.name, 2), rx = Math.round(cx - (36 + nw) / 2);
+  PX.drawAvatar(ctx, profile.avatar, rx, 28, 2);
+  T(profile.name, rx + 36, 34, '#fff', 2, 'left', '#000'); T('ID ' + profile.id, rx + 36, 47, '#9a92b8', 1, 'left', '#000');
+  if (m === 'new') {
+    T('CHOOSE A PASSWORD: 4 TO 20 LETTERS OR NUMBERS. BIG AND SMALL LETTERS COUNT.', cx, 64, '#efe9ff', 1, 'center', '#000');
+    put(pw1, 'PASSWORD', 76); put(pw2, 'AGAIN', 104);
+    if (UI.button('acreate', cx - 100, 134, 200, 24, 'MAKE MY ACCOUNT', { accent: '#5ad43f', disabled: busy || !A.can })) A.create();
+    msg(166);
+    T('THE ACCOUNT PUTS A PASSWORD ON YOUR ARCADE, ON THIS PHONE.', cx, 180, '#5b5275', 1, 'center', '#000');
+    T("YOU'LL GET A RECOVERY CODE, IN CASE YOU FORGET THE PASSWORD.", cx, 190, '#5b5275', 1, 'center', '#000');
+    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
+    policy(cx - 16);
+  } else if (m === 'code') {
+    T('WRITE THIS CODE DOWN ON PAPER AND KEEP IT SAFE:', cx, 70, '#efe9ff', 1, 'center', '#000');
+    T(A.code.slice(0, 4) + '-' + A.code.slice(4), cx, 86, '#ffd23f', 5, 'center', '#3a2f5c');
+    T('IF YOU FORGET YOUR PASSWORD, THIS CODE IS THE ONLY WAY BACK IN.', cx, 124, '#fff', 1, 'center', '#000');
+    T("WE CAN'T RESET A PASSWORD FOR YOU, AND THE CODE IS SHOWN ONLY NOW.", cx, 134, '#ff8a8a', 1, 'center', '#000');
+    if (UI.button('acode', cx - 90, 156, 180, 24, 'I WROTE IT DOWN', { accent: '#5ad43f' })) { A.code = ''; A.go('menu'); A.say('YOUR ACCOUNT IS READY!', '#5ad43f'); }
+  } else if (m === 'menu') {
+    T('YOU ARE LOGGED IN. AFTER LOG OUT THE ARCADE ASKS FOR YOUR PASSWORD.', cx, 66, '#efe9ff', 1, 'center', '#000');
+    if (UI.button('alogout', cx - 100, 82, 200, 24, 'LOG OUT', { accent: '#ff8a2a' })) A.logout();
+    if (UI.button('achange', cx - 100, 112, 200, 20, 'CHANGE PASSWORD', { size: 1 })) A.go('change');
+    if (UI.button('adelete', cx - 100, 136, 200, 20, 'DELETE ACCOUNT', { size: 1 })) A.go('delete');
+    msg(168);
+    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK')) A.back();
+    policy(cx - 16);
+  } else if (m === 'change') {
+    put(pw1, 'OLD PASSWORD', 72); put(pw2, 'NEW PASSWORD', 100);
+    if (UI.button('asave', cx - 100, 132, 200, 24, 'SAVE', { accent: '#5ad43f', disabled: busy })) A.change();
+    msg(166);
+    if (UI.button('aback', cx - 50, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
+  } else if (m === 'delete') {
+    T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 66, '#efe9ff', 1, 'center', '#000');
+    put(pw1, 'PASSWORD', 82);
+    if (UI.button('adel', cx - 100, 116, 200, 24, 'DELETE ACCOUNT', { accent: '#ff5a5a', disabled: busy })) A.remove();
+    msg(150);
+    if (UI.button('aback', cx - 50, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
+  } else if (m === 'login') {
+    put(pw1, 'PASSWORD', 74);
+    if (UI.button('alogin', cx - 100, 106, 200, 24, 'LOG IN', { accent: '#5ad43f', disabled: busy })) A.login();
+    msg(140);
+    if (UI.button('aforgot', cx - 146, 212, 140, 22, 'FORGOT PASSWORD?', { size: 1, disabled: busy })) A.go('forgot');
+    policy(cx + 6);
+  } else if (m === 'forgot') {
+    let y = 62;
+    for (const line of wrapText("WE CAN'T SEND YOU A NEW PASSWORD: THE ARCADE HAS NO SERVER AND DOESN'T KNOW YOUR E-MAIL. TYPE THE RECOVERY CODE YOU WROTE DOWN, AND A NEW PASSWORD.", W - 24)) { T(line, cx, y, '#efe9ff', 1, 'center', '#000'); y += 9; }
+    put(codeInput, 'RECOVERY CODE', 92); put(pw2, 'NEW PASSWORD', 120);
+    if (UI.button('areset', cx - 100, 150, 200, 24, 'SET NEW PASSWORD', { accent: '#5ad43f', disabled: busy })) A.reset();
+    msg(182);
+    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
+    policy(cx - 16);
+  }
 }
 
 let t0 = performance.now(), tPrev = t0;
@@ -1084,11 +1440,12 @@ function frame(now) {
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if (screen === 'home' && performance.now() - Inbox.last > 60000) Inbox.check();
+  if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 60000) Inbox.check();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'give') drawGive(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'profile') nameInput.style.display = 'none';
-  if (screen !== 'give') giveInput.style.display = 'none';
+  if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
+  for (const el of [pw1, pw2, codeInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
