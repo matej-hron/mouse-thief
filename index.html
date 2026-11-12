@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.36.0';
+const VERSION = '2.37.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -47,7 +47,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account | invite
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -847,6 +847,7 @@ function padPoll(dt) {
     } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
+    else if (screen === 'invite' && (edge(0) || edge(9))) joinInvite();
     else if (edge(1)) UI.back = true;                  // (the screens handle it themselves)
     else if (screen === 'remote' && edge(0)) { if (PX.Remote.active()) screen = 'home'; else PX.Remote.start(); }
     pad.prev[n] = now;
@@ -1060,10 +1061,10 @@ const Inbox = {
       if (!res.ok) return;
       const seen = this.seen();
       for (const row of (await res.text()).split('\n')) {
-        let m = null;
-        try { const ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { /* not a gift */ }
-        if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, or an answer to yours
-          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-300))); } catch (e) { /* private mode */ } Friends.got(m); }
+        let m = null, at = 0;
+        try { const ev = JSON.parse(row); if (ev.event === 'message') { m = JSON.parse(ev.message); at = +ev.time || 0; } } catch (e) { /* not a gift */ }
+        if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, an answer to yours, or an invite to a game
+          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-300))); } catch (e) { /* private mode */ } if (m.t === 'inv') gotInvite(m, at); else Friends.got(m); }
           continue;
         }
         if (!m || m.v !== 1 || !Number.isInteger(m.n) || m.n < 1 || m.n > 1000 || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40) continue;
@@ -1524,15 +1525,45 @@ function drawAccount(t) {
   }
 }
 
+// --- an INVITE from a friend to their online game -----------------------------------------------------------------
+// In an online game, the screen with the game's code has INVITE A FRIEND (PX.Invite in common.js). The invite comes
+// here like a gift of stars, and pops up over the list of games: JOIN opens that game with the code, and it joins.
+// Only from players on your FRIENDS list, and only for 10 minutes (then the game is most likely gone).
+const ONLINE_GAMES = ['thief', 'racer', 'pong', 'football', 'wings', 'skate', 'ski', 'boxfight', 'bike', 'skygp', 'moto'];
+let invite = null;                                  // { name, g: the game, code }
+function gotInvite(m, at) {
+  const f = Friends.find(m.fid), g = ONLINE_GAMES.includes(m.g) && GAMES.find(x => x.url === m.g + '.html');
+  if (!f || !g || typeof m.code !== 'string' || m.code.length !== 4 || ![...m.code].every(c => PX.CODE_CHARS.includes(c))) return;
+  if (at && Date.now() / 1000 - at > 600) return;
+  invite = { name: f.name, g, code: m.code }; PX.Sound.tone([784, 1047, 784, 1047], 0.4, { vol: 0.12 });
+}
+function joinInvite() { const i = invite; invite = null; PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(() => { location.href = i.g.url + '?join=' + i.code; }, 120); }
+function drawInvite(t) {
+  const W = S.W, i = invite;
+  drawHome(t);
+  if (!i) { screen = 'home'; return; }
+  UI.list = [];                                     // only JOIN and NO THANKS can be pressed while the invite is up
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  const pw = Math.min(300, W - 30), x = Math.round(W / 2 - pw / 2), y = 54, ph = 136;
+  ctx.fillStyle = i.g.color; ctx.fillRect(x - 2, y - 2, pw + 4, ph + 4); ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, pw, ph);
+  T(i.name, W / 2, y + 12, '#fff', 3, 'center', '#000');
+  T('INVITES YOU TO PLAY', W / 2, y + 36, '#efe9ff', 2, 'center', '#000');
+  T(i.g.name, W / 2, y + 56, i.g.color, 4, 'center', '#000');
+  T('GAME CODE: ' + i.code, W / 2, y + 86, '#9a92b8', 1, 'center', '#000');
+  if (UI.button('ijoin', Math.round(W / 2 - 124), y + 102, 120, 24, pad.used ? 'A: JOIN' : 'JOIN', { accent: '#5ad43f' })) joinInvite();
+  if (UI.button('ino', Math.round(W / 2 + 4), y + 102, 120, 24, 'NO THANKS', { size: 1 }) || UI.back) { invite = null; screen = 'home'; PX.Sound.tone(300, 0.12, { vol: 0.08 }); }
+}
+
 let t0 = performance.now(), tPrev = t0;
 function frame(now) {
   const t = (now - t0) / 1000;
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
-  if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 60000) Inbox.check();
+  if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'home' && invite) screen = 'invite';
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';

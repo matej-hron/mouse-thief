@@ -4185,7 +4185,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.17.0';
+const VERSION = '1.18.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -5118,6 +5118,7 @@ function drawMP() {
   };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
   if (Net.showLog) { drawNetLog(); return; }
+  if (PX.Invite.draw({ ctx, W, H }, UI, Net.screen === 'hosting' ? Net.code : '')) return;
   switch (Net.screen) {
     case 'home':
       drawText('PLAY ONLINE WITH A FRIEND: THIEF VS CAT,', W / 2, 44, PAL.inkSoft, 1, 'center');
@@ -5147,7 +5148,8 @@ function drawMP() {
       drawText('WAITING FOR YOUR FRIEND' + dots, W / 2, 160, PAL.inkSoft, 1, 'center');
       if (Net.msg) drawText(Net.msg, W / 2, 172, '#e01e1e', 1, 'center');
       back(190, 'CANCEL');
-      if (Net.msg && UI.button('details', bx, 216, bw, 18, 'DETAILS')) Net.showLog = true;
+      if (Net.msg) { if (UI.button('details', bx, 216, bw, 18, 'DETAILS')) Net.showLog = true; }
+      else PX.Invite.button(UI, bx, 216, bw, 18);
       break;
     case 'join': {
       drawText("TYPE YOUR FRIEND'S CODE", W / 2, 44, PAL.ink, 2, 'center');
@@ -5390,6 +5392,8 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+// an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
+PX.Invite.auto(code => { go('mp'); Net.join(code); });
 </script>
 </body>
 </html>

@@ -710,6 +710,66 @@ window.PX = (() => {
   window.addEventListener('pagehide', () => { if (Remote.peer) { try { Remote.peer.destroy(); } catch (e) { /* gone */ } } });
   if (!window.PX_NO_REMOTE) Remote.resume();
 
-  return { Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  // --- INVITE A FRIEND to your online game --------------------------------------------------------------------
+  // Every online game makes a room with a 4-letter code. On the screen that shows the code there is INVITE A FRIEND:
+  // it lists your friends (the arcade's FRIENDS list) and sends the one you pick a message, the same way as a gift
+  // of stars (ntfy.sh, to the topic of their ID): which game, and the code. Their arcade shows a popup with JOIN,
+  // which opens the game with ?join=CODE, and the game joins right away. An invite is good for 10 minutes, and the
+  // friend has to have the arcade (the list of games) open to see it.
+  const Invite = {
+    on: false, msg: '', col: '#9a92b8', sent: {}, page: 0,
+    game: (location.pathname.split('/').pop() || '').replace(/\.html$/, ''),
+    friends() {
+      try { const d = JSON.parse(localStorage.getItem('pixelArcade.friends')); return (d && Array.isArray(d.list) ? d.list : []).filter(f => f && /^[1-9][0-9]{5}$/.test(f.id)).map(f => ({ id: f.id, name: cleanName(f.name) || 'PLAYER' })); }
+      catch (e) { return []; }
+    },
+    // the button on the screen with your code
+    button(UI, x, y, w, h, o = {}) { if (UI.button('invite', x, y, w, h, 'INVITE A FRIEND', { size: 1, accent: '#ff7ab8', ...o })) { this.on = true; this.msg = ''; this.sent = {}; this.page = 0; } },
+    async send(f, code) {
+      this.sent[f.id] = 'wait';
+      try {
+        const p = Profile.get();
+        const res = await fetch('https://ntfy.sh/pixel-arcade-stars-' + f.id, { method: 'POST', body: JSON.stringify({ v: 1, t: 'inv', tx: Date.now().toString(36) + Math.random().toString(36).slice(2, 10), from: p.name, fid: p.id, g: this.game, code }) });
+        if (!res.ok) throw new Error('relay ' + res.status);
+        this.sent[f.id] = 'ok'; this.msg = f.name + ' IS INVITED! WAIT FOR THEM HERE.'; this.col = '#5ad43f';
+      } catch (e) { delete this.sent[f.id]; this.msg = "COULDN'T SEND IT. CHECK YOUR INTERNET."; this.col = '#ff8a8a'; }
+    },
+    // the list of friends, over the whole screen: call it first in the lobby's drawing, and draw nothing else when it
+    // returns true. code: your game's code while you wait for a friend ('' closes the list: somebody joined, or you left)
+    draw(scr, UI, code) {
+      if (!this.on) return false;
+      if (!code) { this.on = false; return false; }
+      const ctx = scr.ctx, W = scr.W, H = scr.H, cx = Math.round(W / 2), list = this.friends(), per = 8, pages = Math.max(1, Math.ceil(list.length / per));
+      if (this.page >= pages) this.page = 0;
+      ctx.fillStyle = '#0d0b13'; ctx.fillRect(0, 0, W, H);
+      drawText(ctx, 'INVITE A FRIEND', cx, 8, '#fff', 3, 'center', '#000');
+      drawText(ctx, 'YOUR CODE: ' + code, cx, 30, '#ffd23f', 2, 'center', '#000');
+      if (!list.length) {
+        drawText(ctx, 'NO FRIENDS YET.', cx, 90, '#9a92b8', 2, 'center', '#000');
+        drawText(ctx, 'ADD FRIENDS IN THE ARCADE: THE FRIENDS BUTTON, TOP RIGHT.', cx, 112, '#9a92b8', 1, 'center', '#000');
+      }
+      list.slice(this.page * per, this.page * per + per).forEach((f, i) => {
+        const x = cx - 154 + (i % 2) * 158, y = 50 + Math.floor(i / 2) * 28, st = this.sent[f.id];
+        if (UI.button('inv' + f.id, x, y, 150, 24, st === 'ok' ? f.name + ': INVITED' : st === 'wait' ? 'SENDING...' : f.name, { size: st ? 1 : 2, theme: 'dark', accent: '#ff7ab8', on: st === 'ok', disabled: !!st })) this.send(f, code);
+      });
+      drawText(ctx, this.msg || (list.length ? 'TAP A FRIEND TO INVITE THEM TO THIS GAME.' : ''), cx, 168, this.msg ? this.col : '#efe9ff', 1, 'center', '#000');
+      if (list.length) drawText(ctx, 'THEY SEE IT IF THEIR ARCADE (THE LIST OF GAMES) IS OPEN. IT WAITS 10 MINUTES.', cx, 180, '#5b5275', 1, 'center', '#000');
+      if (pages > 1 && UI.button('invmore', cx + 56, H - 30, 90, 20, 'MORE ' + (this.page + 1) + '/' + pages, { size: 1, theme: 'dark' })) this.page = (this.page + 1) % pages;
+      if (UI.button('invback', cx - 50, H - 30, 100, 20, 'BACK', { theme: 'dark' }) || UI.back) this.on = false;
+      return true;
+    },
+    // ?join=CODE in the page's address (taken out of the address, so a reload doesn't join again)
+    joinCode() {
+      try {
+        const u = new URL(location.href), c = (u.searchParams.get('join') || '').toUpperCase();
+        if (!u.searchParams.has('join')) return '';
+        u.searchParams.delete('join'); history.replaceState(null, '', u.pathname + u.search + u.hash);
+        return c.length === 4 && [...c].every(ch => CODE_CHARS.includes(ch)) ? c : '';
+      } catch (e) { return ''; }
+    },
+    auto(join) { const c = this.joinCode(); if (c) join(c); },
+  };
+
+  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

@@ -34,7 +34,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -900,6 +900,7 @@ function drawOnline() {
   const { x, y } = drawPanel(300, Net.screen === 'lobby' ? 176 : 150), cx = W / 2;   // (the lobby is taller: a row for the bet)
   const back = (yy, label = 'BACK') => { if (UI.button('nback', bx, yy, bw, 20, label) || UI.back) { if (Net.live) Net.leave(); Net.reset(); } };
   if (Net.screen !== 'join') codeInput.style.display = 'none';
+  if (PX.Invite.draw(S, UI, Net.screen === 'hosting' ? Net.code : '')) return;
   switch (Net.screen) {
     case 'pick':
       T('RACE A FRIEND ONLINE', cx, y + 10, '#fff', 2, 'center');
@@ -912,6 +913,7 @@ function drawOnline() {
       T(Net.code, cx, y + 26, '#ffd23f', 7, 'center', '#000');
       T('YOUR FRIEND: RACE A FRIEND > JOIN WITH A CODE', cx, y + 70, '#efe9ff', 1, 'center');
       T('WAITING' + dots, cx, y + 86, '#fff', 1, 'center');
+      PX.Invite.button(UI, bx, y + 97, bw, 20);
       back(y + 120, 'CANCEL');
       break;
     case 'join':
@@ -1071,6 +1073,8 @@ PX.Pad.setup({
   keys: () => ({ left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', A: 'ArrowUp', RT: 'ArrowUp', down: 'ArrowDown', B: 'ArrowDown', LT: 'ArrowDown', X: 'Digit1', RB: 'Digit1', Y: 'Digit2', LB: 'Digit2', START: 'KeyP' }),
   help: [['STICK|D-PAD', 'STEER'], ['A|RT', 'GAS (HOLD IT)'], ['B|LT', 'BRAKE'], ['X|RB', 'NITRO'], ['Y|LB', 'SHIELD'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
+// an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
+PX.Invite.auto(code => { state = 'title'; Net.join(code); });
 </script>
 </body>
 </html>
