@@ -484,19 +484,29 @@ arcade in that time, send the request again. The list itself is kept on each pho
 
 ## Accounts
 
-**EDIT → ACCOUNT** puts a password on your arcade: MAKE AN ACCOUNT, choose a password (4 to 20 characters, typed
-twice). After **LOG OUT** the arcade shows only LOG IN until the password is typed; it stays logged in until you log
-out. YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT (only the password goes; name, ID, stars and friends stay).
+One phone can hold up to **6 accounts**, each behind its own password, each with its own name, avatar, ID, stars,
+friends and game saves. So brothers and sisters can share a phone: one logs out, the other logs in.
 
-- **The account lives on this phone only.** The arcade has no server, so you can't log in on another phone, and
-  nothing about the account is sent anywhere. The password is not kept: only a salted hash of it (PBKDF2), in the
-  browser's storage.
-- **Forgot password:** nobody can mail you a new one (no server, no e-mail). When the account is made you get an
-  8-letter **recovery code**, shown once: write it down. FORGOT PASSWORD? on the LOG IN screen takes that code and a
-  new password. Without the code there is no way back in.
+- **The first account:** EDIT → ACCOUNT → MAKE AN ACCOUNT, choose a password (4 to 20 characters, typed twice). The
+  player who is on the phone gets the password and keeps everything.
+- **LOG OUT** (EDIT → ACCOUNT): the arcade now shows only **WHO IS PLAYING?**, the list of accounts on the phone.
+  Pick yours and type your password, or press **NEW ACCOUNT** (a nickname and a password) to start a new player with
+  a new ID and no stars. You stay logged in until you log out.
+- YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT. Deleting the only account takes just the password away
+  (the player stays as they are); deleting one of several deletes that whole account, with its stars and saves.
+- **Accounts live on this phone only.** The arcade has no server, so you can't log in on another phone, and nothing
+  about an account is sent anywhere. A password is not kept: only a salted hash of it (PBKDF2), in the browser's storage.
+- **Forgot password:** nobody can mail you a new one (no server, no e-mail). A new account gets an 8-letter
+  **recovery code**, shown once: write it down. FORGOT PASSWORD? on the LOG IN screen takes that code and a new
+  password. Without the code there is no way back in to that account.
 - **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 7 short points.
-- It locks the arcade's menu: a lock against brothers and sisters, not a vault. The games' own pages still open by
-  their address, and clearing the browser's data removes the account with everything else.
+
+How it works (`Account` in `index.html`): everything the games save is in the browser's storage. LOG OUT packs all of
+it into one entry for that account and empties the rest; LOG IN unpacks it; then the page reloads. A few things belong
+to the phone and stay put: the settings, the phone-controller pairing, and which gifts of stars were taken on this
+phone (so a new account can't take the same gift again). It is a lock against brothers and sisters, not a vault:
+while nobody is logged in, a game opened by its own address plays as a nameless guest whose progress is thrown away,
+and clearing the browser's data removes all the accounts with everything in them.
 
 ## Gifts of stars
 
