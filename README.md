@@ -37,6 +37,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
+| **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 
 ## Pixel Wings
 
@@ -273,6 +274,28 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Horde
+
+An arena survival game. You only walk (keys, a stick where your finger touches, or a controller); your weapons attack
+by themselves. Monsters come from every side, more and stronger every minute. Survive **10 minutes**, then beat the
+**final boss**.
+
+- **Level up:** monsters drop gems; at every level pick 1 of 3: a new weapon, a better weapon or a passive. Up to 5
+  weapons and 5 passives.
+- **7 weapons** (5 levels each): MAGIC BOLT, WHIP, ORBIT ORBS, FIRE AURA, BOOMERANG, LIGHTNING and BOMBS. **7
+  passives:** MIGHT, HASTE, GROWTH, BOOTS, HEART (heals slowly), MAGNET and ARMOR.
+- **Evolutions:** a weapon at level 5 together with its partner passive evolves: STAR STORM, DRAGON WHIP, GUARDIAN RING,
+  HOLY FIRE, TWIN TORNADO, THUNDER GOD and METEOR RAIN. The cards say which passive is the partner.
+- **Monsters:** blobs, bats, skeletons, ghosts (they fly through the others), brutes and eyes that shoot. A golden
+  ELITE every minute drops a treasure chest (pick an upgrade), rings of bats close in, a boss at 5:00 and the final
+  boss at 10:00. Drops: gold, hearts, a magnet (all the gems come to you) and a bomb (clears the screen).
+- **Between runs:** the gold you pick up (and more for every 30 s you last) stays, win or lose. It buys 10 **upgrades
+  that stay** (might, max HP, armor, speed, magnet, XP, gold, cooldown, a REVIVE, REROLLs), and heroes. **6 heroes**
+  (KNIGHT, MAGE, RANGER, MONK, STORM, BOMBER), each with its own first weapon and bonus, and **3 maps** (GREEN MEADOW,
+  HAUNTED GRAVEYARD, LAVA LANDS), each opened by winning the one before.
+- **14 trophies** (★1 each, ★3 for winning a map) go into the arcade's wallet.
+- First runs usually end after 4 to 8 minutes; with upgrades bought, a test bot lasts the whole 10.
 
 ## Pixel Miner
 
@@ -554,7 +577,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Pixel Sky Run, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook, Pixel Miner) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -860,4 +883,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html`; online play checks it).
