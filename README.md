@@ -35,6 +35,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
+| **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 
 ## Pixel Wings
 
@@ -272,6 +273,29 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
 
+## Pixel Hook
+
+A rope-swinging game. Your red pixel stick figure hangs from a hook; **hold anywhere** (or Space / Up / A) and it swings,
+**let go** and it flies. Hold again to grab the hook marked with corners. Get to the checkered FINISH.
+
+- **Swinging:** the swing speeds up by itself when it goes forward, and a long rope reels in, so a swing never drags
+  along the floor. When you grab a hook you keep your speed. Let go **on the way up** (between flat and steep) for a
+  **PERFECT**: a little extra speed and coins, and PERFECTs in a row make a COMBO. Spin in the air for **FLIPs**
+  (more coins for a double or a triple).
+- **3 worlds, 8 levels each:** TWILIGHT SKY (bounce pads where there are no hooks, walls to swing over, a saw low
+  down), NEON CITY (lasers: low ones that are always on, and blinking ones to pass while they are off, which also cut
+  your rope; boost rings; hooks that move up and down) and LAVA PEAKS (everything, and saws that move). Fall, or touch a
+  saw or a laser, and you start again at the last **flag**. A world opens when you finish the last level of the one
+  before it.
+- **Stars:** every level has 3: FINISH, NO FALLS and the PAR time. Every new star also pays ★1 into the arcade's
+  wallet (72 in all).
+- **ENDLESS:** how far can you swing? It gets harder as you go, and the world changes every 600 m. Every 250 m is ★1.
+- **SHOP:** coins (picked up on the way, and for flips and PERFECTs) buy 8 runners (RED, BLUE, LIME, NINJA, GHOST,
+  ROBOT, GOLD, RAINBOW) and 6 ropes (CLASSIC, CANDY, CHAIN, LASER, GOLD, RAINBOW).
+- **Sound:** a chiptune for each world (MUSIC on the title screen); the speaker button switches all the sounds off.
+- The levels are built from a seed, so a level is the same every time. Every level was played through by a bot to
+  check that it can be finished.
+
 ## Pixel Defense
 
 A tower defense. Enemies walk the road to your castle in waves; you build towers on the free tiles next to it, upgrade
@@ -504,7 +528,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Pixel Sky Run, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -810,4 +834,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html`; online play checks it).
