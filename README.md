@@ -37,6 +37,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
+| **Pixel Snake** (`snake.html`) | Eat apples, grow longer, don't bite yourself: 20 levels in 4 worlds (walls, mazes, portals, rolling boulders), 3 stars each, a workshop, skins and ENDLESS. |
 
 ## Pixel Wings
 
@@ -273,6 +274,23 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Snake
+
+The snake game, with levels like Pixel Defense. Steer with the arrows, WASD, a swipe or a controller; eat apples to
+grow; don't hit a wall or yourself. The snake gets faster as it grows.
+
+- **LEVELS:** 4 worlds of 5: GARDEN (walls, and gaps in the border to come out on the other side), MAZE, PORTALS (go in
+  one, come out of its twin) and BOULDERS (rocks that roll along a row). Each level asks for a number of apples.
+  **3 stars:** finishing, all 3 coins of the level, and beating the par time. A level opens when you finish the one before.
+- **On the field:** golden apples (+5, coins), and power-ups: GHOST (through walls for 5 s), SHRINK and SLOW.
+  Three apples quickly in a row is a COMBO (+2 each).
+- **WORKSHOP:** the stars buy upgrades that stay: SHIELD (survive a crash, up to 3; the snake waits a moment so you
+  can turn away), CALM (slower start), SLOW-MO (hold Space or the button), MAGNET (eat apples next to your head) and
+  LUCKY (more golden apples and power-ups). GET ALL STARS BACK lets you choose again.
+- **SKINS:** coins (from levels, golden apples and ENDLESS) buy 8 snakes, up to RAINBOW.
+- **ENDLESS:** no walls (you come out on the other side), as long as you can. Every new level star is ★1 for the
+  arcade, and in ENDLESS every 30 points.
 
 ## Pixel Horde
 
@@ -578,7 +596,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Snake) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -866,4 +884,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html` / `snake.html`; online play checks it).
