@@ -329,8 +329,10 @@ A rope-swinging game. Your red pixel stick figure hangs from a hook; **hold anyw
   along the floor. When you grab a hook you keep your speed. Let go **on the way up** (between flat and steep) for a
   **PERFECT**: a little extra speed and coins, and PERFECTs in a row make a COMBO. Spin in the air for **FLIPs**
   (more coins for a double or a triple).
-- **No tapping through:** the hooks are far apart (further than a rope reaches), so you have to fly from one to the
-  next. Right after you let go there is a moment when you can't grab, and you can't grab the hook you just let go of.
+- **No tapping through:** the hooks are far apart, so you have to fly from one to the next. Right after you let go
+  there is a moment when you can't grab, and you can't grab the hook you just let go of. Keep holding, though, and it
+  grabs the marked hook as soon as it can (up to half a second after you press).
+- **Forgiving:** wide bounce pads, a flag every 1000 px, and par times with room to spare.
 - **3 worlds, 8 levels each:** TWILIGHT SKY (bounce pads where there are no hooks, walls to swing over, a saw low
   down), NEON CITY (lasers: low ones that are always on, and blinking ones to pass while they are off, which also cut
   your rope; boost rings; hooks that move up and down) and LAVA PEAKS (everything, and saws that move). Fall, or touch a

@@ -37,7 +37,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const SAVE_KEY = 'pixelHook.save';
 const save = { sfx: true, music: true, stars: {}, times: {}, endless: 0, coins: 0, skin: 'red', rope: 'classic', owned: { red: 1, classic: 1 }, played: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -55,10 +55,10 @@ const hash = i => { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; retur
 // the world is in screen pixels: y goes down, 0 is the top of the screen, below DEATH_Y you have fallen
 const GRAV = 640;            // gravity (px/s²)
 const PR = 6;                // the runner's radius (for hitting things)
-const RANGE = 150;           // how far a hook can be grabbed
-const REGRAB = 0.35;         // after you let go, this long before you can grab again (no tapping your way through)
+const RANGE = 165;           // how far a hook can be grabbed
+const REGRAB = 0.3;          // after you let go, this long before you can grab again (no tapping your way through)
 const MAXV = 820;            // top speed
-const PUMP = 170;            // a swing gains a little speed by itself (like pumping on a playground swing)
+const PUMP = 200;            // a swing gains a little speed by itself (like pumping on a playground swing)
 const ROPE_MAX = 112;        // a longer rope reels in to this length (so a swing never drags along the floor)
 const PAD_V = 480;           // a bounce pad throws you up at least this fast
 const DEATH_Y = 262;
@@ -126,7 +126,7 @@ function makeGen(seed, cfg) {
   const raise = (h, top) => { if (!h.mv && h.y > top) { h.y = h.by = top; if (h === L.hooks[L.hooks.length - 1]) g.y = top; } };
   hook(90, 62);
   g.seg = () => {
-    const d = cfg.diff(g.x), f = cfg.feats(g.x), sp = 150 + d * 35;
+    const d = cfg.diff(g.x), f = cfg.feats(g.x), sp = 138 + d * 28;
     let a = L.hooks[L.hooks.length - 1];
     const opts = [['hooks', g.segs < 1 ? 99 : 2.6]];
     if (f.pad) opts.push(['pad', 1.1]);
@@ -144,7 +144,7 @@ function makeGen(seed, cfg) {
       for (let i = 0; i < n; i++) { const b = next(sp - 14, sp + 18); if (rng() < 0.5) coinArc(a, b); a = b; }
     } else if (type === 'pad') {                    // a gap with no hooks: fall on the pad and bounce up
       raise(a, 80);
-      const px = a.x + R(115, 135), pw = 72 - d * 12;
+      const px = a.x + R(115, 135), pw = 90 - d * 12;
       L.pads.push({ x: px - pw / 2, y: 198, w: pw, h: 12, sq: 0 });
       for (let i = 0; i < 3; i++) L.coins.push({ x: px + 20 + i * 22, y: 120 - i * 26 });
       g.x = px + R(118, 140); g.y = R(42, 70); hook(g.x, g.y);
@@ -184,11 +184,11 @@ function buildLevel(w, li) {
   while (g.segs < n) g.seg();
   const L = g.L, last = L.hooks[L.hooks.length - 1];
   L.finishX = last.x + 150;
-  for (let k = 1600; k < L.finishX - 600; k += 1600) {   // a flag every 1600 px: fall, and you start again there
+  for (let k = 1000; k < L.finishX - 500; k += 1000) {   // a flag every 1000 px: fall, and you start again there
     const h = L.hooks.find(q => q.x >= k && !q.mv);
     if (h && !L.flags.some(q => q.hook === h)) L.flags.push({ x: h.x, hook: h, hit: false });
   }
-  L.par = Math.ceil(L.finishX / 260 + 3);
+  L.par = Math.ceil(L.finishX / 230 + 4);
   return L;
 }
 
@@ -260,7 +260,7 @@ function setHold(R, v) {
   if (v && !R.hold) {
     R.hold = true;
     if (R.frozen) { R.frozen = false; R.grabT = R.clock; }
-    else if (!R.rope && R.clock - R.relT >= REGRAB) { R.pressT = R.clock; grab(R); }   // a tap right after letting go does nothing
+    else if (!R.rope) { R.pressT = R.clock; if (R.clock - R.relT >= REGRAB) grab(R); }   // right after letting go: it grabs a moment later, if you keep holding
   } else if (!v && R.hold) {
     R.hold = false;
     if (R.rope && !R.frozen) release(R);
@@ -300,7 +300,7 @@ function step(R, dt) {
     return;
   }
   R.time += dt;
-  if (R.hold && !R.rope && R.clock - R.pressT < 0.22) grab(R);   // you pressed a moment too early: grab when a hook comes
+  if (R.hold && !R.rope && R.clock - R.pressT < 0.5) grab(R);   // you pressed a moment too early: grab when a hook comes
   p.vy += GRAV * dt;
   if (R.rope) {
     const h = R.rope.h, dx = p.x - h.x, dy = p.y - h.y, d = Math.hypot(dx, dy) || 1;
