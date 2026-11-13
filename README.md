@@ -36,6 +36,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
+| **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 
 ## Pixel Wings
 
@@ -272,6 +273,29 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Miner
+
+A digging game. Your digger drives on the surface, drills left, right and down, and flies up with its thruster.
+Ores and gems fill the cargo bay; fly back up to the **BASE** to sell them, refuel and repair, then dig deeper.
+
+- **The mine is yours:** 32 m wide, 1000 m deep, built from a seed, and everything you dig stays dug (it is saved all
+  the time, also in the middle of a trip). 7 layers: TOPSOIL, CLAY, STONE, DEEP ROCK, CRYSTAL CAVES, LAVA DEPTHS and THE
+  CORE, each harder to drill. At 1000 m is the HEART OF THE EARTH.
+- **10 ores:** COAL, COPPER, IRON, SILVER, GOLD, RUBY, EMERALD, DIAMOND, MYTHRIL and STARSTONE ($8 to $4,000), the
+  rarer ones deeper down. Also treasure **chests** with cash.
+- **Danger:** the fuel runs out (it goes faster the deeper you are), falls hurt, gas pockets (green dots) explode,
+  lava burns, and below 600 m it is hot. Run out of fuel or break down and the base brings you back, but the cargo is
+  lost. GRANITE needs drill level 4, or dynamite. It is dark down there: your lights only reach so far.
+- **Upgrades** (7 levels each): DRILL, HULL, FUEL TANK, CARGO BAY, ENGINE, LIGHTS and COOLING. **Items** (keys 1-4):
+  DYNAMITE, REPAIR KIT, FUEL CAN and TELEPORTER (back to the base with the cargo).
+- **Something to aim for:** 33 GOALS one after the other (cash and ★1 each), a depth RECORD every 100 m (cash and
+  ★2), 11 lost **ARTIFACTS** in little caves (★1 each, and every one makes all ores sell for 5% more), and a DAILY GIFT.
+  The HEART OF THE EARTH is ★10; after it a **NEW MINE** starts over with ores worth 50% more for good.
+- **Controls:** arrows or WASD (Space flies too), 1-4 items, E opens the base, P pauses. On a phone, buttons for
+  left, right, down and up appear. Controller: stick or d-pad drives and digs, A flies, B opens the base, X Y LB RB use
+  the items.
+- **How long:** a bot that plays it reaches the core in about two hours; then there is the next mine.
 
 ## Pixel Hook
 
@@ -530,7 +554,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Pixel Sky Run, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook, Pixel Miner) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -836,4 +860,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html`; online play checks it).
