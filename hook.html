@@ -37,7 +37,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SAVE_KEY = 'pixelHook.save';
 const save = { sfx: true, music: true, stars: {}, times: {}, endless: 0, coins: 0, skin: 'red', rope: 'classic', owned: { red: 1, classic: 1 }, played: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -55,7 +55,8 @@ const hash = i => { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; retur
 // the world is in screen pixels: y goes down, 0 is the top of the screen, below DEATH_Y you have fallen
 const GRAV = 640;            // gravity (px/s²)
 const PR = 6;                // the runner's radius (for hitting things)
-const RANGE = 170;           // how far a hook can be grabbed
+const RANGE = 150;           // how far a hook can be grabbed
+const REGRAB = 0.35;         // after you let go, this long before you can grab again (no tapping your way through)
 const MAXV = 820;            // top speed
 const PUMP = 170;            // a swing gains a little speed by itself (like pumping on a playground swing)
 const ROPE_MAX = 112;        // a longer rope reels in to this length (so a swing never drags along the floor)
@@ -125,7 +126,7 @@ function makeGen(seed, cfg) {
   const raise = (h, top) => { if (!h.mv && h.y > top) { h.y = h.by = top; if (h === L.hooks[L.hooks.length - 1]) g.y = top; } };
   hook(90, 62);
   g.seg = () => {
-    const d = cfg.diff(g.x), f = cfg.feats(g.x), sp = 108 + d * 28;
+    const d = cfg.diff(g.x), f = cfg.feats(g.x), sp = 150 + d * 35;
     let a = L.hooks[L.hooks.length - 1];
     const opts = [['hooks', g.segs < 1 ? 99 : 2.6]];
     if (f.pad) opts.push(['pad', 1.1]);
@@ -165,7 +166,7 @@ function makeGen(seed, cfg) {
       if (d < 0.45 || rng() < 0.5) { const b = next(sp + 6, sp + 26); raise(b, 80); L.lasers.push({ x: (a.x + b.x) / 2, y0: a.y + R(100, 110), y1: 300 }); }
       else { next(sp + 62, sp + 80); L.lasers.push({ x: a.x + 128, y0: -900, y1: 300, per: R(2.3, 2.8), on: 0.9, ph: R(0, 3) }); }   // it blinks: go when it is off
     } else if (type === 'ring') {                   // a long gap with a boost ring in it
-      const b = next(sp + 52, sp + 76), k = R(0.45, 0.6);
+      const b = next(sp + 36, sp + 56), k = R(0.45, 0.6);
       L.rings.push({ x: a.x + (b.x - a.x) * k, y: Math.min(a.y, b.y) + R(4, 22), r: 13, used: false });
     } else if (type === 'mover') {
       const b = next(sp, sp + 20, { amp: R(22, 34), spd: R(1.2, 2.0), ph: R(0, 6) });
@@ -187,7 +188,7 @@ function buildLevel(w, li) {
     const h = L.hooks.find(q => q.x >= k && !q.mv);
     if (h && !L.flags.some(q => q.hook === h)) L.flags.push({ x: h.x, hook: h, hit: false });
   }
-  L.par = Math.ceil(L.finishX / 175 + 2);
+  L.par = Math.ceil(L.finishX / 260 + 3);
   return L;
 }
 
@@ -195,7 +196,7 @@ function buildLevel(w, li) {
 let G = null, demo = null;
 function newRun(mode, w = 0, li = 0) {
   const R = { mode, w, li, clock: 0, time: 0, deaths: 0, coins: 0, flips: 0, perfects: 0, combo: 0, bestCombo: 0, airFlips: 0,
-    p: { x: 0, y: 0, vx: 0, vy: 0 }, rope: null, frozen: true, hold: false, pressT: -9, grabT: 0, ang: 0, angVel: 0, spin: 0, flipAcc: 0, face: 1,
+    p: { x: 0, y: 0, vx: 0, vy: 0 }, rope: null, relT: -9, lastHook: null, frozen: true, hold: false, pressT: -9, grabT: 0, ang: 0, angVel: 0, spin: 0, flipAcc: 0, face: 1,
     cam: { x: 0, y: 0 }, parts: [], pops: [], trail: [], shake: 0, dead: 0, won: false, wonT: 0, over: false, slow: 0, acc: 0, flash: 0, maxX: 0, gen: null, L: null, theme: 0, hint: 0 };
   if (mode === 'level') { R.L = buildLevel(w, li); R.theme = w; }
   else {
@@ -213,13 +214,15 @@ function newRun(mode, w = 0, li = 0) {
 }
 function themeAt(R, x) { return R.mode === 'level' ? R.w : R.mode === 'demo' ? 0 : Math.floor(Math.max(0, x) / ENDLESS_THEME) % 3; }
 function spawn(R, h) {                          // hang from a hook, pulled back, until you hold
-  R.rope = { h, len: 74 }; R.frozen = true; R.hold = false;
+  R.rope = { h, len: 74 }; R.frozen = true; R.hold = false; R.relT = -9; R.lastHook = null;
   R.p.x = h.x - Math.sin(0.85) * 74; R.p.y = h.y + Math.cos(0.85) * 74; R.p.vx = 0; R.p.vy = 0;
   R.ang = Math.atan2(h.x - R.p.x, R.p.y - h.y); R.spin = 0; R.angVel = 0; R.combo = 0; R.trail = []; R.face = 1;
 }
 function findTarget(R) {                       // the hook you would grab now: close, and better ahead and above you
   const p = R.p; let best = null, bs = 1e9;
+  if (R.clock - R.relT < REGRAB) return null;
   for (const h of R.L.hooks) {
+    if (h === R.lastHook && R.clock - R.relT < 0.9) continue;   // not the hook you just let go of
     const dx = h.x - p.x, dy = h.y - p.y;
     if (dx < -40 || dx > RANGE) continue;
     const d = Math.hypot(dx, dy);
@@ -242,7 +245,7 @@ function grab(R) {
 }
 function release(R) {
   const p = R.p, sp = Math.hypot(p.vx, p.vy), up = Math.atan2(-p.vy, p.vx);
-  R.rope = null;
+  R.lastHook = R.rope.h; R.relT = R.clock; R.rope = null;
   R.spin = clamp(R.angVel * 1.6, -15, 15);
   if (R.clock - R.grabT > 0.2 && p.vx > 140 && sp > 250 && up > 0.42 && up < 1.18) {   // let go on the way up: PERFECT
     R.combo++; R.perfects++; R.bestCombo = Math.max(R.bestCombo, R.combo);
@@ -257,7 +260,7 @@ function setHold(R, v) {
   if (v && !R.hold) {
     R.hold = true;
     if (R.frozen) { R.frozen = false; R.grabT = R.clock; }
-    else if (!R.rope) { R.pressT = R.clock; grab(R); }
+    else if (!R.rope && R.clock - R.relT >= REGRAB) { R.pressT = R.clock; grab(R); }   // a tap right after letting go does nothing
   } else if (!v && R.hold) {
     R.hold = false;
     if (R.rope && !R.frozen) release(R);
@@ -387,27 +390,32 @@ function cull(R) {                               // ENDLESS: forget what is far 
   L.hooks = L.hooks.filter(h => keep(h) || h === R.check || (R.rope && R.rope.h === h));
   for (const k of ['pads', 'blocks', 'saws', 'lasers', 'rings', 'coins']) L[k] = L[k].filter(keep);
 }
-function safeFlight(R) {                         // the bot: would letting go now fly into a saw or a laser?
-  let x = R.p.x, y = R.p.y, vx = R.p.vx, vy = R.p.vy;
-  for (let t = 0; t < 0.9; t += 0.02) {
+function flightPlan(R) {                         // the bot: if you let go now, do you reach a hook further on (or a pad), safely?
+  let x = R.p.x, y = R.p.y, vx = R.p.vx, vy = R.p.vy, reach = false;
+  const from = R.rope ? R.rope.h.x : R.p.x;
+  for (let t = 0; t < 1.6; t += 0.02) {
     vy += GRAV * 0.02; x += vx * 0.02; y += vy * 0.02;
     const c = R.clock + t;
     for (const s of R.L.saws) { const sy = s.mv ? s.by + Math.sin(c * s.mv.spd + s.mv.ph) * s.mv.amp : s.y; if (Math.hypot(x - s.x, y - sy) < s.r + PR + 4) return false; }
     for (const l of R.L.lasers) if (Math.abs(x - l.x) < PR + 6 && y > l.y0 - 4 && (!l.per || ((c + l.ph) % l.per) < l.on + 0.08 || ((c + l.ph) % l.per) > l.per - 0.08)) return false;
+    for (const b of R.L.blocks) if (x > b.x - PR && x < b.x + b.w + PR && y > b.y - PR) return false;
+    if (y > 225) return false;
+    if (t > REGRAB && vy > 0 && y < 165) for (const h of R.L.hooks) if (h.x > from + 40 && h.x > x - 10 && h.y < y + 10 && Math.hypot(h.x - x, h.y - y) < RANGE * 0.85) reach = true;
+    for (const pd of R.L.pads) if (x > pd.x + 4 && x < pd.x + pd.w - 4 && y > pd.y - 8 && vy > 0) return true;
+    if (reach || x >= R.L.finishX) return true;
   }
-  return true;
+  return false;
 }
 function botWants(R) {                           // the title screen plays by itself
   const p = R.p;
   if (R.frozen) return R.clock > 0.6;
   if (R.rope) {
-    const h = R.rope.h, up = Math.atan2(-p.vy, p.vx);
-    if (R.clock - R.grabT > 6) return false;
-    return !(p.vx > 160 && p.x > h.x && up > 0.55 && up < 1.0 && safeFlight(R));
+    if (R.clock - R.grabT > 8) return false;
+    return !(p.vx > 100 && Math.atan2(-p.vy, p.vx) > 0.4 && flightPlan(R));
   }
-  if (R.clock - R.grabT < 0.15) return false;
-  const t = findTarget(R);
-  return !!t && (t.x > p.x + 45 || p.y > 150) && (p.vy > 0 || p.y > 160);
+  if (R.clock - R.relT < REGRAB) return false;
+  const t = findTarget(R), from = R.lastHook ? R.lastHook.x : -1e9;
+  return !!t && ((t.x > from + 40 && t.x > p.x - 20 && p.vy > -60) || p.y > 170);
 }
 
 /* --- 4. DRAWING ----------------------------------------------------------------------- */
