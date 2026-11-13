@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense and Pixel Hook. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook and Pixel Miner. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.38.0';
+const VERSION = '2.39.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -98,6 +98,7 @@ const GAMES = [
   { id: 'skygp', name: 'PIXEL SKY GP', sub: 'RACE FLYING CARS!', url: 'skygp.html', color: '#9a6aff', cats: ['RACING', 'ONLINE'], tags: 'FLYING CAR CARS FLY SKY HOVER RACE GRAND PRIX GP FUTURE RINGS LASER CLOUD CITY NEON' },
   { id: 'moto', name: 'PIXEL MOTO', sub: 'MOTOCROSS: FLIP AND TRICK!', url: 'moto.html', color: '#e8303a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'MOTO MOTORBIKE MOTORCYCLE MOTOCROSS DIRT BIKE ENGINE FLIP BACKFLIP SUPERMAN WHEELIE TRICK TRICKS DESERT MONEY' },
   { id: 'defense', name: 'PIXEL DEFENSE', sub: 'STOP THE BLOBS!', url: 'defense.html', color: '#4ad48a', cats: ['ACTION'], tags: 'TOWER DEFENSE TD STRATEGY TOWERS BUILD UPGRADE WAVES ENEMIES BLOBS BOSS CASTLE CANNON SNIPER TESLA FROST METEOR MAPS ENDLESS WORKSHOP' },
+  { id: 'miner', name: 'PIXEL MINER', sub: 'DIG DEEP, GET RICH!', url: 'miner.html', color: '#ffc81e', cats: ['ACTION'], tags: 'MINER MINING MINE DIG DIGGING DRILL ORE ORES GOLD DIAMOND GEMS UPGRADE UPGRADES CAVE LAVA CORE MONEY ARTIFACTS DEEP' },
   { id: 'hook', name: 'PIXEL HOOK', sub: 'SWING, FLY, FLIP!', url: 'hook.html', color: '#ff3a3a', cats: ['ACTION'], tags: 'HOOK GRAPPLE GRAPPLING ROPE SWING STICKMAN STICK FLY FLIP JUMP BOUNCE LEVELS ENDLESS PHYSICS LASER SAW NEON LAVA SKINS' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
@@ -237,6 +238,23 @@ function previewDefense(x, y, w, h, t) {          // blobs walk the road to the 
     const b = blobs[(i + Math.floor(t * 2)) % 4];
     if (Math.floor(t * 6 + i * 3) % 3 === 0) { ctx.fillStyle = '#fff6c0'; const k = (t * 6 + i * 3) % 1; ctx.fillRect(Math.round(tx + 5 + (b[0] + 3 - tx - 5) * k), Math.round(ty + 3 + (b[1] + 3 - ty - 3) * k), 2, 2); }
   });
+  ctx.restore();
+}
+function previewMiner(x, y, w, h, t) {            // a digger drills down through the dirt, past ores, into the dark
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#7ac0f0'; ctx.fillRect(x, y, w, 12);
+  ctx.fillStyle = '#5ab04a'; ctx.fillRect(x, y + 12, w, 3);
+  ctx.fillStyle = '#8a5a32'; ctx.fillRect(x, y + 15, w, h - 15);
+  ctx.fillStyle = '#6a4024'; for (let i = 0; i < 40; i++) ctx.fillRect(x + (i * 37) % w, y + 16 + (i * 23) % (h - 16), 2, 1);
+  const ores = [['#ffc81e', 0.2, 30], ['#d8742a', 0.75, 22], ['#7af0ff', 0.32, 50], ['#e01e4a', 0.85, 46], ['#26262c', 0.6, 38]];
+  for (const [c, fx, fy] of ores) { const ox = Math.round(x + w * fx), oy = y + fy; ctx.fillStyle = '#0b0614'; ctx.fillRect(ox - 1, oy - 1, 4, 4); ctx.fillRect(ox + 4, oy + 2, 4, 4); ctx.fillStyle = c; ctx.fillRect(ox, oy, 2, 2); ctx.fillRect(ox + 5, oy + 3, 2, 2); }
+  const cx = Math.round(x + w / 2), ph = (t * 0.25) % 1, dy = Math.round(y + 8 + ph * (h - 14));
+  ctx.fillStyle = '#3a2414'; ctx.fillRect(cx - 7, y + 15, 14, Math.max(0, dy - y - 9));   // the shaft behind it
+  ctx.fillStyle = '#0b0614'; ctx.fillRect(cx - 7, dy - 6, 15, 10); ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(cx - 6, dy - 5, 13, 8);
+  ctx.fillStyle = '#9ae8ff'; ctx.fillRect(cx, dy - 4, 5, 3); ctx.fillStyle = '#4a4a56'; ctx.fillRect(cx - 6, dy + 2, 13, 2);
+  ctx.fillStyle = Math.floor(t * 20) % 2 ? '#d8d8e4' : '#9a9aa8'; ctx.fillRect(cx - 3, dy + 4, 7, 2); ctx.fillRect(cx - 1, dy + 6, 3, 2);
+  if (Math.floor(t * 10) % 2) { ctx.fillStyle = '#9a6a3a'; ctx.fillRect(cx - 6, dy + 6, 2, 2); ctx.fillRect(cx + 5, dy + 5, 2, 2); }
+  const dark = ctx.createLinearGradient(0, y + 20, 0, y + h); dark.addColorStop(0, 'rgba(8,4,12,0)'); dark.addColorStop(1, 'rgba(8,4,12,0.7)'); ctx.fillStyle = dark; ctx.fillRect(x, y + 20, w, h - 20);
   ctx.restore();
 }
 function previewHook(x, y, w, h, t) {             // a red stick figure swings on a striped rope under purple clouds, lets go, flies
@@ -552,7 +570,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['hook', 'defense', 'moto'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['miner', 'hook', 'defense'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -564,7 +582,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, skyrun: previewSkyRun, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, miner: previewMiner })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
