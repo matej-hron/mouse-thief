@@ -706,6 +706,10 @@ climb and dive. The skyway floats above a sea of clouds, with city towers poking
 - **Gestures (phone):** drag a finger left or right anywhere on the screen (not on a button) to steer: the further you
   drag, the harder you turn. A quick swipe up fires NITRO, a swipe down raises the SHIELD.
   The tight hairpin needs a brake; going off the road or hitting things slows you down.
+- **TILT controls (phone):** tap CONTROLS on the title screen to switch from BUTTONS to TILT. The car then drives by
+  itself (always on the gas) and you steer by tilting the phone like a steering wheel: tilt left to go left, right to go
+  right (the TILT bar shows how far). Only a BRAKE button is left. iPhones ask once to allow motion sensors; with no
+  tilt sensor the < > buttons come back.
 - **Damage:** your car has 1 heart (ARMOR in the garage gives 2 or 3). Barrels, crates and cones on the road cost a heart, and so does crashing into
   trees, tire walls or billboards at speed. Oil slicks spin you around, wrenches repair a heart. No hearts left:
   **WRECKED!** (in a race with a friend, the friend wins). Obstacles change every race and come back every lap;
