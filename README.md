@@ -37,7 +37,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
-| **Pixel Snake** (`snake.html`) | Eat apples, grow longer, don't bite yourself: 20 levels in 4 worlds (walls, mazes, portals, rolling boulders), 3 stars each, a workshop, skins and ENDLESS. |
+| **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
 
 ## Pixel Wings
 
@@ -277,21 +277,20 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 
 ## Pixel Snake
 
-The snake game, with levels like Pixel Defense. Steer with the arrows, WASD, a swipe or a controller; eat apples to
-grow; don't hit a wall or yourself. The snake gets faster as it grows.
+A big round arena full of snakes, seen from above, in pixels. Your snake always moves: point where it should go (the
+mouse, a finger dragged anywhere, a stick, or the left/right keys). Eat the glowing dots to grow. Hold the mouse button,
+Space or BOOST to go twice as fast; it costs a little length (you drop dots behind you).
 
-- **LEVELS:** 4 worlds of 5: GARDEN (walls, and gaps in the border to come out on the other side), MAZE, PORTALS (go in
-  one, come out of its twin) and BOULDERS (rocks that roll along a row). Each level asks for a number of apples.
-  **3 stars:** finishing, all 3 coins of the level, and beating the par time. A level opens when you finish the one before.
-- **On the field:** golden apples (+5, coins), and power-ups: GHOST (through walls for 5 s), SHRINK and SLOW.
-  Three apples quickly in a row is a COMBO (+2 each).
-- **WORKSHOP:** the stars buy upgrades that stay: SHIELD (survive a crash, up to 3; the snake waits a moment so you
-  can turn away), CALM (slower start), SLOW-MO (hold Space or the button), MAGNET (eat apples next to your head) and
-  LUCKY (more golden apples and power-ups). GET ALL STARS BACK lets you choose again.
-- **SKINS:** coins (from levels, golden apples and ENDLESS) buy 8 snakes, up to RAINBOW.
-- **ENDLESS:** no walls (you come out on the other side), as long as you can. Every new level star is ★1 for the
-  arcade, and in ENDLESS every 30 points.
-
+- **Out:** if your head touches another snake's body, or the red wall, you're out, and your snake turns into big dots
+  that the others can eat. Cut in front of a snake so it runs into you, and its dots are yours.
+- **PLAY:** you and 15 bots. The bots eat, dodge, and the big ones hunt smaller snakes. New bots come in when some are
+  out. TOP 5 on the right, a little map of the arena bottom left.
+- **ONLINE:** PLAY WITH EVERYBODY joins a room with real players (5 public rooms; if they're all empty, you open one
+  and others drop in), or MAKE A ROOM FOR FRIENDS gives a 4-letter code (and INVITE A FRIEND in the menu). Up to 8
+  players in a room, bots fill it up. The phone that made the room runs the game; the others send where they steer and
+  see what is around them 12 times a second. If that phone leaves, the room closes.
+- **After a game:** your length, kills and place. Coins (1 for every 10 length, 5 for a kill) buy 8 skins. Every 300
+  length is ★1 for the arcade, and finishing as number 1 another ★1 (up to 6 a game).
 ## Pixel Horde
 
 An arena survival game. You only walk (keys, a stick where your finger touches, or a controller); your weapons attack
@@ -596,7 +595,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Snake) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.

@@ -97,7 +97,7 @@ const GAMES = [
   { id: 'skygp', name: 'PIXEL SKY GP', sub: 'RACE FLYING CARS!', url: 'skygp.html', color: '#9a6aff', cats: ['RACING', 'ONLINE'], tags: 'FLYING CAR CARS FLY SKY HOVER RACE GRAND PRIX GP FUTURE RINGS LASER CLOUD CITY NEON' },
   { id: 'moto', name: 'PIXEL MOTO', sub: 'MOTOCROSS: FLIP AND TRICK!', url: 'moto.html', color: '#e8303a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'MOTO MOTORBIKE MOTORCYCLE MOTOCROSS DIRT BIKE ENGINE FLIP BACKFLIP SUPERMAN WHEELIE TRICK TRICKS DESERT MONEY' },
   { id: 'defense', name: 'PIXEL DEFENSE', sub: 'STOP THE BLOBS!', url: 'defense.html', color: '#4ad48a', cats: ['ACTION'], tags: 'TOWER DEFENSE TD STRATEGY TOWERS BUILD UPGRADE WAVES ENEMIES BLOBS BOSS CASTLE CANNON SNIPER TESLA FROST METEOR MAPS ENDLESS WORKSHOP' },
-  { id: 'snake', name: 'PIXEL SNAKE', sub: 'EAT, GROW, DON\'T BITE!', url: 'snake.html', color: '#5ad43f', cats: ['ACTION'], tags: 'SNAKE APPLE APPLES EAT GROW CLASSIC LEVELS MAZE PORTALS BOULDERS WORKSHOP SKINS ENDLESS' },
+  { id: 'snake', name: 'PIXEL SNAKE', sub: 'EAT, GROW, CUT THEM OFF!', url: 'snake.html', color: '#5ad43f', cats: ['ACTION', 'ONLINE'], tags: 'SNAKE SNAKES IO ARENA BOTS DOTS EAT GROW BOOST KILLS MULTIPLAYER REAL PLAYERS ROOM SKINS' },
   { id: 'horde', name: 'PIXEL HORDE', sub: 'SURVIVE THE HORDE!', url: 'horde.html', color: '#ff4a4a', cats: ['ACTION'], tags: 'HORDE SURVIVE SURVIVOR SURVIVORS MONSTERS ARENA WAVES ROGUELITE LEVEL UP UPGRADES WEAPONS EVOLVE EVOLUTION BOSS HEROES KNIGHT MAGE MAGIC WHIP BOMBS LIGHTNING' },
   { id: 'miner', name: 'PIXEL MINER', sub: 'DIG DEEP, GET RICH!', url: 'miner.html', color: '#ffc81e', cats: ['ACTION'], tags: 'MINER MINING MINE DIG DIGGING DRILL ORE ORES GOLD DIAMOND GEMS UPGRADE UPGRADES CAVE LAVA CORE MONEY ARTIFACTS DEEP' },
   { id: 'hook', name: 'PIXEL HOOK', sub: 'SWING, FLY, FLIP!', url: 'hook.html', color: '#ff3a3a', cats: ['ACTION'], tags: 'HOOK GRAPPLE GRAPPLING ROPE SWING STICKMAN STICK FLY FLIP JUMP BOUNCE LEVELS ENDLESS PHYSICS LASER SAW NEON LAVA SKINS' },
@@ -241,20 +241,21 @@ function previewDefense(x, y, w, h, t) {          // blobs walk the road to the 
   });
   ctx.restore();
 }
-function previewSnake(x, y, w, h, t) {            // a green snake winds around the field towards an apple
+function previewSnake(x, y, w, h, t) {            // a dark arena with glowing dots and wiggly pixel snakes
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  const c = 8;
-  for (let i = 0; i < w; i += c) for (let j = 0; j < h; j += c) { ctx.fillStyle = ((i + j) / c) & 1 ? '#5aa83a' : '#52a034'; ctx.fillRect(x + i, y + j, c, c); }
-  const cols = Math.floor(w / c), rows = Math.floor(h / c), path = [];
-  for (let r = 1; r < rows - 1; r++) for (let k = 1; k < cols - 1; k++) path.push([r % 2 ? k : cols - 1 - k, r]);   // a lawnmower path
-  const head = Math.floor(t * 8) % path.length, len = 9;
-  for (let i = len - 1; i >= 0; i--) {
-    const p = path[(head - i + path.length) % path.length], px = x + p[0] * c, py = y + p[1] * c;
-    ctx.fillStyle = '#0b0614'; ctx.fillRect(px, py, c, c); ctx.fillStyle = i % 2 ? '#3aa82a' : '#5ad43f'; ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-    if (i === 0) { ctx.fillStyle = '#fff'; ctx.fillRect(px + 4, py + 2, 2, 2); }
-  }
-  const a = path[(head + 12) % path.length], ax = x + a[0] * c, ay = y + a[1] * c;
-  ctx.fillStyle = '#0b0614'; ctx.fillRect(ax, ay, c, c); ctx.fillStyle = '#e8302a'; ctx.fillRect(ax + 1, ay + 1, c - 2, c - 2); ctx.fillStyle = '#3a8a2a'; ctx.fillRect(ax + 4, ay - 1, 2, 2);
+  for (let i = 0; i < w; i += 12) for (let j = 0; j < h; j += 12) { ctx.fillStyle = ((i + j) / 12) & 1 ? '#1c1834' : '#191530'; ctx.fillRect(x + i, y + j, 12, 12); }
+  const dots = ['#ff4a4a', '#ffd23f', '#4ab0ff', '#ff7ab8', '#5ad43f', '#b48aff'];
+  for (let i = 0; i < 26; i++) { ctx.fillStyle = dots[i % 6]; const s = (Math.sin(t * 4 + i) > 0.3) ? 3 : 2; const hx = Math.sin(i * 12.9898) * 43758.5453, hy = Math.sin(i * 78.233) * 43758.5453; ctx.fillRect(x + Math.floor((hx - Math.floor(hx)) * w), y + Math.floor((hy - Math.floor(hy)) * h), s, s); }
+  const snake = (cx, cy, len, ph, c1, c2, dir) => {
+    for (let k = len; k >= 0; k--) {
+      const px = Math.round(cx + dir * (t * 22 % (w + 80)) - dir * k * 3 - (dir > 0 ? 60 : -60)), py = Math.round(cy + Math.sin(k * 0.25 - t * 4 + ph) * 6);
+      const xx = dir > 0 ? x + ((px - x) % (w + 80) + w + 80) % (w + 80) - 40 : x + w - (((x + w - px) % (w + 80) + w + 80) % (w + 80)) + 40;
+      ctx.fillStyle = '#0b0614'; ctx.fillRect(xx - 3, py - 3, 7, 7); ctx.fillStyle = Math.floor(k / 3) % 2 ? c2 : c1; ctx.fillRect(xx - 2, py - 2, 5, 5);
+      if (k === 0) { ctx.fillStyle = '#fff'; ctx.fillRect(xx + dir, py - 2, 2, 2); ctx.fillRect(xx + dir, py + 1, 2, 2); }
+    }
+  };
+  snake(x, y + 20, 22, 0, '#5ad43f', '#3aa82a', 1);
+  snake(x, y + 44, 14, 2, '#ff9a2a', '#ffd23f', -1);
   ctx.restore();
 }
 function previewHorde(x, y, w, h, t) {            // a hero in the middle of a ring of monsters, bolts flying out, gems everywhere
@@ -1585,7 +1586,7 @@ function drawAccount(t) {
 // In an online game, the screen with the game's code has INVITE A FRIEND (PX.Invite in common.js). The invite comes
 // here like a gift of stars, and pops up over the list of games: JOIN opens that game with the code, and it joins.
 // Only from players on your FRIENDS list, and only for 10 minutes (then the game is most likely gone).
-const ONLINE_GAMES = ['thief', 'racer', 'pong', 'football', 'wings', 'skate', 'ski', 'boxfight', 'bike', 'skygp', 'moto'];
+const ONLINE_GAMES = ['thief', 'racer', 'pong', 'football', 'wings', 'skate', 'ski', 'boxfight', 'bike', 'skygp', 'moto', 'snake'];
 let invite = null;                                  // { name, g: the game, code }
 function gotInvite(m, at) {
   const f = Friends.find(m.fid), g = ONLINE_GAMES.includes(m.g) && GAMES.find(x => x.url === m.g + '.html');
