@@ -37,6 +37,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
+| **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
 
 ## Pixel Wings
 
@@ -274,6 +275,22 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
 
+## Pixel Snake
+
+A big round arena full of snakes, seen from above, in pixels. Your snake always moves: point where it should go (the
+mouse, a finger dragged anywhere, a stick, or the left/right keys). Eat the glowing dots to grow. Hold the mouse button,
+Space or BOOST to go twice as fast; it costs a little length (you drop dots behind you).
+
+- **Out:** if your head touches another snake's body, or the red wall, you're out, and your snake turns into big dots
+  that the others can eat. Cut in front of a snake so it runs into you, and its dots are yours.
+- **PLAY:** you and 15 bots. The bots eat, dodge, and the big ones hunt smaller snakes. New bots come in when some are
+  out. TOP 5 on the right, a little map of the arena bottom left.
+- **ONLINE:** PLAY WITH EVERYBODY joins a room with real players (5 public rooms; if they're all empty, you open one
+  and others drop in), or MAKE A ROOM FOR FRIENDS gives a 4-letter code (and INVITE A FRIEND in the menu). Up to 8
+  players in a room, bots fill it up. The phone that made the room runs the game; the others send where they steer and
+  see what is around them 12 times a second. If that phone leaves, the room closes.
+- **After a game:** your length, kills and place. Coins (1 for every 10 length, 5 for a kill) buy 8 skins. Every 300
+  length is ★1 for the arcade, and finishing as number 1 another ★1 (up to 6 a game).
 ## Pixel Horde
 
 An arena survival game. You only walk (keys, a stick where your finger touches, or a controller); your weapons attack
@@ -866,4 +883,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html` / `snake.html`; online play checks it).
