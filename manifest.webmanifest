@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Pixel Arcade",
   "short_name": "Pixel Arcade",
-  "description": "Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner and Pixel Horde. Pixel-art games to play alone or with a friend.",
+  "description": "Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Pixel Sky Run, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde and Pixel Clash. Pixel-art games to play alone or with a friend.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

@@ -38,6 +38,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
+| **Pixel Clash** (`clash.html`) | A real-time card battle on two lanes: spend energy on troops, buildings and spells, take the enemy's towers and their king. Build a deck of 8, level cards up, climb 5 arenas. |
 
 ## Pixel Wings
 
@@ -275,6 +276,27 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
 
+## Pixel Clash
+
+A real-time card battle on two lanes, against a bot. Each side has two lane towers and a KING tower behind them.
+**Energy** fills up by itself (up to 10); every card costs some. Tap a card, then tap your half of the arena (or drag
+the card there; keys 1-4 and a click work too).
+
+- **Troops** walk down their lane, cross the river on the bridge and fight whatever is near; then they go for the tower.
+  **Buildings** stand and shoot; **spells** hit an area anywhere.
+- **13 cards:** SWORDSMAN, SLINGERS, IMPS, BRUTE, ROCKET CART (only hits buildings), CANNON, FIREBALL, ZAP (stuns),
+  and from new arenas FIRE MAGE, SPEARMEN, DRAKELING (flies), BAT SWARM (flies) and STONE GOLEM. Ground-only troops
+  can't hit flyers.
+- **Crowns:** a lane tower is 1 crown, the king is 3 and ends the battle. A hit wakes the king (and so does losing a
+  lane tower). After 3 minutes more crowns wins; a tie gives 1 minute of overtime where the first crown wins (then the
+  side with more tower health). The last minute has double energy. Once a lane tower falls, you may place troops deeper
+  in that lane.
+- **The bot** defends what crosses the river, uses spells on groups and attacks with a tank and support when it has
+  energy. Its cards level up with your trophies.
+- **Between battles:** wins give +30 trophies and gold (x3 for the first win of the day), losses -20 (never below your
+  arena). 5 arenas (GREEN VALLEY, STONE FORT, SNOW PEAK, LAVA KEEP, SKY CITADEL) open new cards. Gold levels cards up
+  (+10% per level, up to 10). DECK: tap a deck slot, then a card to swap it in. Every win is ★1, every new arena ★3.
+
 ## Pixel Horde
 
 An arena survival game. You only walk (keys, a stick where your finger touches, or a controller); your weapons attack
@@ -329,8 +351,10 @@ A rope-swinging game. Your red pixel stick figure hangs from a hook; **hold anyw
   along the floor. When you grab a hook you keep your speed. Let go **on the way up** (between flat and steep) for a
   **PERFECT**: a little extra speed and coins, and PERFECTs in a row make a COMBO. Spin in the air for **FLIPs**
   (more coins for a double or a triple).
-- **No tapping through:** the hooks are far apart (further than a rope reaches), so you have to fly from one to the
-  next. Right after you let go there is a moment when you can't grab, and you can't grab the hook you just let go of.
+- **No tapping through:** the hooks are far apart, so you have to fly from one to the next. Right after you let go
+  there is a moment when you can't grab, and you can't grab the hook you just let go of. Keep holding, though, and it
+  grabs the marked hook as soon as it can (up to half a second after you press).
+- **Forgiving:** wide bounce pads, a flag every 1000 px, and par times with room to spare.
 - **3 worlds, 8 levels each:** TWILIGHT SKY (bounce pads where there are no hooks, walls to swing over, a saw low
   down), NEON CITY (lasers: low ones that are always on, and blinking ones to pass while they are off, which also cut
   your rope; boost rings; hooks that move up and down) and LAVA PEAKS (everything, and saws that move). Fall, or touch a
@@ -577,7 +601,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Pixel Sky Run, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Clash) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -883,4 +907,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html`; online play checks it).
+When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `skyrun.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html` / `clash.html`; online play checks it).
