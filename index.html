@@ -1373,7 +1373,7 @@ function drawFriends(t) {
 // a new password. The rules are in PRIVACY AND POLICY. (It is a lock for brothers and sisters, not a bank vault:
 // while nobody is logged in, a game opened by its own address plays as a nameless guest, and that is thrown away.)
 const ACCOUNTS_KEY = 'pixelArcade.accounts', OLD_ACCOUNT_KEY = 'pixelArcade.account', stashKey = id => 'pixelArcade.acct.' + id, MAX_ACCOUNTS = 6;
-const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen', 'pixelArcade.vid', 'pixelArcade.hitLocal'];
+const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen', 'pixelArcade.vid', 'pixelArcade.hitLocal', 'pixelArcade.sentScores'];
 const phoneKey = k => k === ACCOUNTS_KEY || k.startsWith('pixelArcade.acct.') || k.startsWith('pixelArcade.starGift') || PHONE_KEYS.includes(k);
 const playerKeys = () => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!phoneKey(k)) a.push(k); } return a; };
 const pw1 = document.getElementById('pw1'), pw2 = document.getElementById('pw2'), codeInput = document.getElementById('code');
