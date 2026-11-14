@@ -208,6 +208,7 @@ accounts.delete('/v1/me', requirePlayer, async (c) => {
   const id = c.get('player').id;
   const db = c.env.DB;
   await db.batch([
+    db.prepare('DELETE FROM login_fail WHERE name_key = (SELECT name_key FROM players WHERE id = ?)').bind(id),
     db.prepare('DELETE FROM scores WHERE player = ?').bind(id),
     db.prepare('DELETE FROM sessions WHERE player = ?').bind(id),
     db.prepare('DELETE FROM players WHERE id = ?').bind(id),
