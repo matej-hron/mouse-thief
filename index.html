@@ -39,7 +39,8 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.44.0';
+const VERSION = '2.45.0';
+const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -47,7 +48,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account | invite
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account | invite | coffee
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -667,7 +668,7 @@ function drawSettings(t) {
   gearIcon(W / 2 - PX.textWidth('SETTINGS', 3) / 2 - 16, 19);
   T('SETTINGS', W / 2 + 4, 10, '#fff', 3, 'center', '#000');
   const pw = Math.min(360, W - 24), x = Math.round(W / 2 - pw / 2);
-  panel(x, 40, pw, 166, '#ff8a2a');
+  panel(x, 40, pw, COFFEE_URL ? 196 : 166, '#ff8a2a');
   // the volume of every game
   T('SOUND (ALL GAMES)', x + 12, 50, '#9a92b8', 1);
   const n = PX.Settings.VOLUMES.length, bw = Math.floor((pw - 24 - (n - 1) * 6) / n);
@@ -687,7 +688,40 @@ function drawSettings(t) {
   if (UI.button('me', x + 18 + half, 108, half, 22, 'NAME AND AVATAR', { size: 1, accent: '#e0a820' })) editProfile();
   T('PLAY ON A BIG SCREEN', x + 12, 142, '#9a92b8', 1);
   if (UI.button('phones', x + 12, 154, pw - 24, 22, PX.Remote.active() ? 'PHONE CONTROLLERS: ON (CODE ' + PX.Remote.code + ')' : 'PHONE CONTROLLERS', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
-  T('PIXEL ARCADE ' + VERSION, x + pw - 8, 192, '#4a4068', 1, 'right');
+  if (COFFEE_URL && UI.button('coffee', x + 12, 184, pw - 24, 22, 'BUY ME A COFFEE', { size: 1, accent: '#c8843a' })) openCoffee();
+  if (COFFEE_URL) cupIcon(x + 28, 195);
+  T('PIXEL ARCADE ' + VERSION, x + pw - 8, COFFEE_URL ? 220 : 192, '#4a4068', 1, 'right');
+}
+function cupIcon(cx, cy) {
+  PX.drawIcon(ctx, ['.#.#.#...', '.#.#.#...', '.........', '#######..', '#######.##', '#######.#.', '#######.##', '.#####...', '.........'].map(r => r.padEnd(10, '.')), { '#': '#efe9ff' }, cx, cy, 1);
+}
+// BUY ME A COFFEE: a question only a grown-up can answer, so a child can't send people to a page by accident
+const Coffee = {
+  a: 6, b: 6, answers: [], msg: '', col: '#9a92b8',
+  ask() {
+    this.a = 6 + Math.floor(Math.random() * 4); this.b = 6 + Math.floor(Math.random() * 4);
+    const right = this.a * this.b, set = new Set([right]);
+    while (set.size < 4) { const w = (6 + Math.floor(Math.random() * 4)) * (6 + Math.floor(Math.random() * 4)) + (Math.random() < 0.5 ? 0 : (Math.random() < 0.5 ? 1 : -1)); if (w > 0) set.add(w); }
+    this.answers = [...set].sort(() => Math.random() - 0.5);
+  },
+  pick(n) {
+    if (n === this.a * this.b) {
+      this.msg = ''; screen = 'settings'; PX.Sound.tone([523, 784], 0.15, { vol: 0.12 });
+      try { window.open(COFFEE_URL, '_blank', 'noopener'); } catch (e) { /* blocked */ }
+    } else { this.msg = 'NOT QUITE. ASK A GROWN-UP!'; this.col = '#ff6a5a'; this.ask(); PX.Sound.tone(180, 0.15, { vol: 0.1 }); }
+  },
+};
+function openCoffee() { Coffee.ask(); Coffee.msg = ''; screen = 'coffee'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+function drawCoffee(t) {
+  const W = S.W, cx = Math.round(W / 2);
+  background(t);
+  if (UI.button('cback', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { screen = 'settings'; return; }
+  T('FOR GROWN-UPS', cx, 10, '#fff', 3, 'center', '#000');
+  wrapText('THE ARCADE IS FREE. IF A GROWN-UP WANTS TO SAY THANKS, THEY CAN BUY THE MAKER A COFFEE.', Math.min(340, W - 24)).forEach((l, i) => T(l, cx, 44 + i * 11, '#efe9ff', 1, 'center', '#000'));
+  T(Coffee.a + ' X ' + Coffee.b + ' = ?', cx, 94, '#ffd23f', 4, 'center', '#000');
+  const bw = 60, x0 = Math.round(cx - (4 * (bw + 8) - 8) / 2);
+  Coffee.answers.forEach((n, i) => { if (UI.button('ans' + i, x0 + i * (bw + 8), 130, bw, 30, String(n), { accent: '#c8843a' })) Coffee.pick(n); });
+  T(Coffee.msg, cx, 176, Coffee.col, 1, 'center', '#000');
 }
 const qr = { url: null, rows: null, loading: false };
 function qrRows(url) {                            // the QR code for a phone to scan (vendor/qrcode.js, loaded when needed)
@@ -901,7 +935,7 @@ function padPoll(dt) {
         const k = edge(4) ? -1 : edge(5) ? 1 : 0;
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
-    } else if (screen === 'settings') { /* PX.Pad moves between its buttons */ }
+    } else if (screen === 'settings' || screen === 'coffee') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
     else if (screen === 'invite' && (edge(0) || edge(9))) joinInvite();
@@ -1621,7 +1655,7 @@ function frame(now) {
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
@@ -1631,7 +1665,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings', ui: UI,
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
   help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });

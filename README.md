@@ -626,6 +626,15 @@ phone (so a new account can't take the same gift again). It is a lock against br
 while nobody is logged in, a game opened by its own address plays as a nameless guest whose progress is thrown away,
 and clearing the browser's data removes all the accounts with everything in them.
 
+## Buy me a coffee
+
+SETTINGS has a **BUY ME A COFFEE** button (brown, under PHONE CONTROLLERS). It is behind a grown-ups gate: it opens
+**FOR GROWN-UPS**, which asks a times-table question (`a X b`, with a and b from 6 to 9) with four answers. The right
+answer opens the maker's page in a new tab; a wrong one says NOT QUITE. ASK A GROWN-UP! and asks a new question.
+
+The button only shows when `COFFEE_URL` in `index.html` is set to a page (a Buy Me a Coffee or Ko-fi page, for
+example). It is `''` now, so there is no button.
+
 ## Gifts of stars
 
 The ★ wallet is kept on the phone, so the arcade gives a gift when it is opened there: a popup with THANKS! (the stars
