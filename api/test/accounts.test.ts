@@ -220,3 +220,66 @@ describe('accounts', () => {
     expect(r.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('authorization');
   });
 });
+
+describe('accounts by id (a phone that knows the account logs in by its ID, so a rename elsewhere cannot lose it)', () => {
+  const byId = (pw = PW, id = '123456') => call('POST', '/v1/login', { id, pw });
+
+  it('prelogin and login by id', async () => {
+    await register();
+    expect(await (await call('POST', '/v1/prelogin', { id: '123456' })).json()).toEqual({ csalt: H('1'), rsalt: H('2') });
+    const r = await byId();
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as Record<string, unknown>;
+    expect(j).toMatchObject({ id: '123456', name: 'MIA', avatar: { shape: 'cat', color: 3 } });
+    expect(j.token).toMatch(/^[0-9a-f]{64}$/);
+    expect((await byId(H('c'))).status).toBe(401);
+    const none = await call('POST', '/v1/prelogin', { id: '999999' });
+    expect(none.status).toBe(404);
+    expect(await code(none)).toBe('NO_PLAYER');
+    expect(await code(await byId(PW, '999999'))).toBe('NO_PLAYER');
+  });
+
+  it('login by id still works after the player was renamed', async () => {
+    const t = await register();
+    expect((await call('PUT', '/v1/me', { name: 'MIA 2' }, t)).status).toBe(200);
+    expect((await login('MIA')).status).toBe(404);
+    const r = await byId();
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as { name: string }).name).toBe('MIA 2');
+  });
+
+  it('reset by id works and returns the id', async () => {
+    await register();
+    const r = await call('POST', '/v1/reset', { id: '123456', rpw: RPW, csalt: H('3'), pw: H('d') });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { token: string; id: string };
+    expect(j.id).toBe('123456');
+    expect(j.token).toMatch(/^[0-9a-f]{64}$/);
+    expect((await byId(H('d'))).status).toBe(200);
+    // and by name it gives the id too
+    const n = await call('POST', '/v1/reset', { name: 'MIA', rpw: RPW, csalt: H('5'), pw: H('e') });
+    expect(((await n.json()) as { id: string }).id).toBe('123456');
+  });
+
+  it('exactly one of name or id', async () => {
+    await register();
+    for (const path of ['/v1/prelogin', '/v1/login', '/v1/reset']) {
+      const extra = path === '/v1/prelogin' ? {} : path === '/v1/login' ? { pw: PW } : { rpw: RPW, csalt: H('3'), pw: H('d') };
+      for (const who of [{ name: 'MIA', id: '123456' }, {}, { id: '012345' }, { id: 123456 }]) {
+        const r = await call('POST', path, { ...who, ...extra });
+        expect(r.status, path + ' ' + JSON.stringify(who)).toBe(400);
+        expect(await code(r)).toBe('BAD');
+      }
+    }
+  });
+
+  it('id logins are throttled like name logins, on the same counter', async () => {
+    await register();
+    for (let i = 0; i < 10; i++) expect((await byId(H('c'))).status).toBe(401);
+    const locked = await byId();
+    expect(locked.status).toBe(429);
+    expect(await code(locked)).toBe('LOCKED');
+    expect((await login()).status).toBe(429);
+    expect((await call('POST', '/v1/prelogin', { id: '123456' })).status).toBe(429);
+  });
+});

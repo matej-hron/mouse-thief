@@ -12,10 +12,15 @@ const hex = z.string().regex(/^([0-9a-f]{32}|[0-9a-f]{64})$/);
 const name = z.string().refine((v) => v.length >= 2 && cleanName(v) === v);
 const avatar = z.object({ shape: z.string().regex(/^[a-z]{2,12}$/), color: z.number().int().min(0).max(9) });
 
-const registerBody = z.object({ id: z.string().regex(/^[1-9][0-9]{5}$/), name, avatar, csalt: hex, pw: hex, rsalt: hex, rpw: hex });
-const nameBody = z.object({ name: z.string().max(40) });
-const loginBody = z.object({ name: z.string().max(40), pw: hex });
-const resetBody = z.object({ name: z.string().max(40), rpw: hex, csalt: hex, pw: hex });
+const playerId = z.string().regex(/^[1-9][0-9]{5}$/);
+const registerBody = z.object({ id: playerId, name, avatar, csalt: hex, pw: hex, rsalt: hex, rpw: hex });
+// Who is logging in: a typed `name`, or the `id` a phone keeps for an account it knows (a rename can't lose that).
+// Exactly one of the two.
+const who = { name: z.string().max(40).optional(), id: playerId.optional() };
+const oneOf = (b: { name?: string; id?: string }) => (b.name === undefined) !== (b.id === undefined);
+const whoBody = z.object(who).refine(oneOf);
+const loginBody = z.object({ ...who, pw: hex }).refine(oneOf);
+const resetBody = z.object({ ...who, rpw: hex, csalt: hex, pw: hex }).refine(oneOf);
 const meBody = z.object({ name: name.optional(), avatar: avatar.optional() });
 const passwordBody = z.object({ csalt: hex, pw: hex });
 
@@ -39,6 +44,12 @@ async function parse<T extends z.ZodType>(c: Ctx, schema: T): Promise<z.infer<T>
 
 const findByName = (c: Ctx, key: string) =>
   c.env.DB.prepare('SELECT * FROM players WHERE name_key = ?').bind(key).first<PlayerRow>();
+
+/** The player a prelogin/login/reset is about, by id or by name. Throttling is keyed by its name_key either way. */
+const findPlayer = (c: Ctx, b: { name?: string; id?: string }) =>
+  b.id !== undefined
+    ? c.env.DB.prepare('SELECT * FROM players WHERE id = ?').bind(b.id).first<PlayerRow>()
+    : findByName(c, nameKey(cleanName(b.name!)));
 
 const publicPlayer = (p: { id: string; name: string; shape: string; color: number }) => ({
   id: p.id,
@@ -90,12 +101,11 @@ const isUnique = (e: unknown) => /UNIQUE constraint failed/i.test(String((e as E
 export const accounts = new Hono<AppEnv>();
 
 accounts.post('/v1/prelogin', async (c) => {
-  const b = await parse(c, nameBody);
+  const b = await parse(c, whoBody);
   if (!b) return bad(c);
-  const key = nameKey(cleanName(b.name));
-  const p = await findByName(c, key);
+  const p = await findPlayer(c, b);
   if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
-  if (await isLocked(c, key)) return c.json({ error: 'LOCKED' }, 429);
+  if (await isLocked(c, p.name_key)) return c.json({ error: 'LOCKED' }, 429);
   return c.json({ csalt: p.csalt, rsalt: p.rsalt });
 });
 
@@ -133,9 +143,9 @@ accounts.post('/v1/register', async (c) => {
 accounts.post('/v1/login', async (c) => {
   const b = await parse(c, loginBody);
   if (!b) return bad(c);
-  const key = nameKey(cleanName(b.name));
-  const p = await findByName(c, key);
+  const p = await findPlayer(c, b);
   if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
+  const key = p.name_key;
   if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
   if (!safeEqual(await storedSecret(p.ssalt, b.pw), p.pw)) {
     return c.json({ error: 'WRONG' }, 401);
@@ -147,9 +157,9 @@ accounts.post('/v1/login', async (c) => {
 accounts.post('/v1/reset', async (c) => {
   const b = await parse(c, resetBody);
   if (!b) return bad(c);
-  const key = nameKey(cleanName(b.name));
-  const p = await findByName(c, key);
+  const p = await findPlayer(c, b);
   if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
+  const key = p.name_key;
   if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
   if (!safeEqual(await storedSecret(p.rssalt, b.rpw), p.rpw)) {
     return c.json({ error: 'WRONG' }, 401);
@@ -160,7 +170,7 @@ accounts.post('/v1/reset', async (c) => {
     c.env.DB.prepare('DELETE FROM sessions WHERE player = ?').bind(p.id),
     c.env.DB.prepare('DELETE FROM login_fail WHERE name_key = ?').bind(key),
   ]);
-  return c.json({ token: await startSession(c, p.id) });
+  return c.json({ token: await startSession(c, p.id), id: p.id });
 });
 
 accounts.get('/v1/me', requirePlayer, async (c) => {
