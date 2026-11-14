@@ -1,0 +1,227 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { newSalt, newToken, requirePlayer, safeEqual, sha256hex, storedSecret } from './auth';
+import type { AppEnv, Ctx } from './auth';
+import { deletePlayer } from './players';
+import { badName, cleanName, nameKey } from './names';
+
+const MAX_FAILS = 10;
+const WINDOW_SECONDS = 15 * 60;
+
+const hex = z.string().regex(/^([0-9a-f]{32}|[0-9a-f]{64})$/);
+const name = z.string().refine((v) => v.length >= 2 && cleanName(v) === v);
+const avatar = z.object({ shape: z.string().regex(/^[a-z]{2,12}$/), color: z.number().int().min(0).max(9) });
+
+const playerId = z.string().regex(/^[1-9][0-9]{5}$/);
+const registerBody = z.object({ id: playerId, name, avatar, csalt: hex, pw: hex, rsalt: hex, rpw: hex });
+// Who is logging in: a typed `name`, or the `id` a phone keeps for an account it knows (a rename can't lose that).
+// Exactly one of the two.
+const who = { name: z.string().max(40).optional(), id: playerId.optional() };
+const oneOf = (b: { name?: string; id?: string }) => (b.name === undefined) !== (b.id === undefined);
+const whoBody = z.object(who).refine(oneOf);
+const loginBody = z.object({ ...who, pw: hex }).refine(oneOf);
+const resetBody = z.object({ ...who, rpw: hex, csalt: hex, pw: hex }).refine(oneOf);
+const meBody = z.object({ name: name.optional(), avatar: avatar.optional() });
+const passwordBody = z.object({ csalt: hex, pw: hex });
+
+type PlayerRow = {
+  id: string; name: string; name_key: string; shape: string; color: number;
+  csalt: string; ssalt: string; pw: string; rsalt: string; rssalt: string; rpw: string;
+};
+
+const bad = (c: Ctx) => c.json({ error: 'BAD' }, 400);
+
+async function parse<T extends z.ZodType>(c: Ctx, schema: T): Promise<z.infer<T> | null> {
+  let json: unknown;
+  try {
+    json = JSON.parse(await c.req.text());
+  } catch {
+    return null;
+  }
+  const r = schema.safeParse(json);
+  return r.success ? r.data : null;
+}
+
+const findByName = (c: Ctx, key: string) =>
+  c.env.DB.prepare('SELECT * FROM players WHERE name_key = ?').bind(key).first<PlayerRow>();
+
+/** The player a prelogin/login/reset is about, by id or by name. Throttling is keyed by its name_key either way. */
+const findPlayer = (c: Ctx, b: { name?: string; id?: string }) =>
+  b.id !== undefined
+    ? c.env.DB.prepare('SELECT * FROM players WHERE id = ?').bind(b.id).first<PlayerRow>()
+    : findByName(c, nameKey(cleanName(b.name!)));
+
+const publicPlayer = (p: { id: string; name: string; shape: string; color: number }) => ({
+  id: p.id,
+  name: p.name,
+  avatar: { shape: p.shape, color: p.color },
+});
+
+async function startSession(c: Ctx, playerId: string): Promise<string> {
+  const token = newToken();
+  await c.env.DB.prepare('INSERT INTO sessions (token_hash, player, created) VALUES (?, ?, ?)')
+    .bind(await sha256hex(token), playerId, new Date().toISOString())
+    .run();
+  return token;
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+/** Read-only: is this name locked right now? (used by prelogin, which makes no guess itself) */
+async function isLocked(c: Ctx, key: string): Promise<boolean> {
+  const row = await c.env.DB.prepare('SELECT locked_until FROM login_fail WHERE name_key = ?').bind(key).first<{ locked_until: number }>();
+  return !!row && row.locked_until > nowSeconds();
+}
+
+/**
+ * Records a password or recovery-code attempt BEFORE it is compared, in one atomic statement, so parallel guesses
+ * cannot slip past the limit. Attempts 1..10 within a 15 minute window may be compared; the 10th starts a 15 minute
+ * lock, and every attempt during the lock counts past 10 and is refused. A success clears the row.
+ */
+async function allowAttempt(c: Ctx, key: string): Promise<boolean> {
+  const fresh = '(locked_until <= ?2 AND (?2 - since >= ?3 OR locked_until > 0))';
+  const next = `CASE WHEN ${fresh} THEN 1 ELSE count + 1 END`;
+  const row = await c.env.DB.prepare(
+    `INSERT INTO login_fail (name_key, count, since, locked_until) VALUES (?1, 1, ?2, 0)
+     ON CONFLICT (name_key) DO UPDATE SET
+       count = ${next},
+       since = CASE WHEN ${fresh} THEN ?2 ELSE since END,
+       locked_until = CASE WHEN locked_until > ?2 THEN locked_until WHEN ${next} >= ?4 THEN ?2 + ?3 ELSE 0 END
+     RETURNING count`,
+  )
+    .bind(key, nowSeconds(), WINDOW_SECONDS, MAX_FAILS)
+    .first<{ count: number }>();
+  return row!.count <= MAX_FAILS;
+}
+
+const clearFailures = (c: Ctx, key: string) => c.env.DB.prepare('DELETE FROM login_fail WHERE name_key = ?').bind(key).run();
+
+const isUnique = (e: unknown) => /UNIQUE constraint failed/i.test(String((e as Error)?.message ?? e));
+
+export const accounts = new Hono<AppEnv>();
+
+accounts.post('/v1/prelogin', async (c) => {
+  const b = await parse(c, whoBody);
+  if (!b) return bad(c);
+  const p = await findPlayer(c, b);
+  if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
+  if (await isLocked(c, p.name_key)) return c.json({ error: 'LOCKED' }, 429);
+  return c.json({ csalt: p.csalt, rsalt: p.rsalt });
+});
+
+accounts.post('/v1/register', async (c) => {
+  // The client IP is only a rate-limit key, held in memory; it is never stored or logged.
+  const { success } = await c.env.REGISTER_LIMIT.limit({ key: c.req.header('cf-connecting-ip') ?? 'unknown' });
+  if (!success) return c.json({ error: 'SLOW_DOWN' }, 429);
+  const b = await parse(c, registerBody);
+  if (!b) return bad(c);
+  if (badName(b.name)) return c.json({ error: 'NAME_BAD' }, 422);
+  const key = nameKey(b.name);
+  const db = c.env.DB;
+  if (await db.prepare('SELECT 1 FROM players WHERE id = ?').bind(b.id).first()) return c.json({ error: 'ID_TAKEN' }, 409);
+  if (await findByName(c, key)) return c.json({ error: 'NAME_TAKEN' }, 409);
+
+  const ssalt = newSalt();
+  const rssalt = newSalt();
+  const now = new Date().toISOString();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO players (id, name, name_key, shape, color, csalt, ssalt, pw, rsalt, rssalt, rpw, created, seen)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(b.id, b.name, key, b.avatar.shape, b.avatar.color, b.csalt, ssalt, await storedSecret(ssalt, b.pw), b.rsalt, rssalt, await storedSecret(rssalt, b.rpw), now, now)
+      .run();
+  } catch (e) {
+    if (!isUnique(e)) throw e;
+    const idTaken = String((e as Error).message).includes('players.id');
+    return c.json({ error: idTaken ? 'ID_TAKEN' : 'NAME_TAKEN' }, 409);
+  }
+  return c.json({ token: await startSession(c, b.id) }, 201);
+});
+
+accounts.post('/v1/login', async (c) => {
+  const b = await parse(c, loginBody);
+  if (!b) return bad(c);
+  const p = await findPlayer(c, b);
+  if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
+  const key = p.name_key;
+  if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
+  if (!safeEqual(await storedSecret(p.ssalt, b.pw), p.pw)) {
+    return c.json({ error: 'WRONG' }, 401);
+  }
+  await clearFailures(c, key);
+  return c.json({ token: await startSession(c, p.id), ...publicPlayer(p) });
+});
+
+accounts.post('/v1/reset', async (c) => {
+  const b = await parse(c, resetBody);
+  if (!b) return bad(c);
+  const p = await findPlayer(c, b);
+  if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
+  const key = p.name_key;
+  if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
+  if (!safeEqual(await storedSecret(p.rssalt, b.rpw), p.rpw)) {
+    return c.json({ error: 'WRONG' }, 401);
+  }
+  const ssalt = newSalt();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE players SET csalt = ?, ssalt = ?, pw = ? WHERE id = ?').bind(b.csalt, ssalt, await storedSecret(ssalt, b.pw), p.id),
+    c.env.DB.prepare('DELETE FROM sessions WHERE player = ?').bind(p.id),
+    c.env.DB.prepare('DELETE FROM login_fail WHERE name_key = ?').bind(key),
+  ]);
+  return c.json({ token: await startSession(c, p.id), id: p.id });
+});
+
+accounts.get('/v1/me', requirePlayer, async (c) => {
+  const p = await c.env.DB.prepare('SELECT id, name, shape, color FROM players WHERE id = ?')
+    .bind(c.get('player').id)
+    .first<PlayerRow>();
+  return c.json(publicPlayer(p!));
+});
+
+accounts.put('/v1/me', requirePlayer, async (c) => {
+  const b = await parse(c, meBody);
+  if (!b) return bad(c);
+  const id = c.get('player').id;
+  if (b.name !== undefined) {
+    if (badName(b.name)) return c.json({ error: 'NAME_BAD' }, 422);
+    const other = await findByName(c, nameKey(b.name));
+    if (other && other.id !== id) return c.json({ error: 'NAME_TAKEN' }, 409);
+  }
+  try {
+    await c.env.DB.prepare(
+      'UPDATE players SET name = COALESCE(?1, name), name_key = COALESCE(?2, name_key), shape = COALESCE(?3, shape), color = COALESCE(?4, color) WHERE id = ?5',
+    )
+      .bind(b.name ?? null, b.name ? nameKey(b.name) : null, b.avatar?.shape ?? null, b.avatar?.color ?? null, id)
+      .run();
+  } catch (e) {
+    if (isUnique(e)) return c.json({ error: 'NAME_TAKEN' }, 409);
+    throw e;
+  }
+  const p = await c.env.DB.prepare('SELECT id, name, shape, color FROM players WHERE id = ?').bind(id).first<PlayerRow>();
+  return c.json(publicPlayer(p!));
+});
+
+accounts.post('/v1/password', requirePlayer, async (c) => {
+  const b = await parse(c, passwordBody);
+  if (!b) return bad(c);
+  const id = c.get('player').id;
+  const ssalt = newSalt();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE players SET csalt = ?, ssalt = ?, pw = ? WHERE id = ?').bind(b.csalt, ssalt, await storedSecret(ssalt, b.pw), id),
+    c.env.DB.prepare('DELETE FROM sessions WHERE player = ? AND token_hash != ?').bind(id, c.get('tokenHash')),
+  ]);
+  return c.body(null, 204);
+});
+
+accounts.delete('/v1/me', requirePlayer, async (c) => {
+  const id = c.get('player').id;
+  await deletePlayer(c.env.DB, id);
+  return c.body(null, 204);
+});
+
+accounts.delete('/v1/session', requirePlayer, async (c) => {
+  await c.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(c.get('tokenHash')).run();
+  return c.body(null, 204);
+});

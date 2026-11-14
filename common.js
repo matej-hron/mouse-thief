@@ -18,7 +18,7 @@ window.PX = (() => {
   ':': '0,1,0,1,0', '-': '000,000,111,000,000', '+': '000,010,111,010,000', '/': '001,001,010,100,100',
   "'": '1,1,0,0,0', '%': '101,001,010,100,101', '(': '01,10,10,10,01', ')': '10,01,01,01,10',
   '>': '100,010,001,010,100', '<': '001,010,100,010,001', '=': '000,111,000,111,000', '*': '000,101,010,101,000',
-  '"': '101,101,000,000,000', '_': '000,000,000,000,111', '$': '01111,10100,01110,00101,11110',
+  '#': '01010,11111,01010,11111,01010', '"': '101,101,000,000,000', '_': '000,000,000,000,111', '$': '01111,10100,01110,00101,11110',
   '★': '00100,01110,11111,01110,01010', '♥': '01010,11111,11111,01110,00100',
   '↓': '010,010,010,111,010', '↑': '010,111,010,010,010', '…': '00000,00000,00000,00000,10101',
 };
@@ -148,6 +148,7 @@ window.PX = (() => {
   const cleanName = v => String(v || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
 
   // --- the arcade's small backend (visit counter now; accounts and scores later) ----------------------
+  const ACCOUNTS_KEY = 'pixelArcade.accounts';
   const Api = {
     base: /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:8787' : 'https://pixel-arcade-api.matej-hron.workers.dev',
     // JSON in, JSON out. Never throws: a network error or an 8 s timeout gives { ok: false, status: 0, data: null }.
@@ -159,10 +160,31 @@ window.PX = (() => {
         if (token) headers.authorization = 'Bearer ' + token;
         const res = await fetch(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: ctl.signal, mode: 'cors' });
         let data = null;
-        try { data = await res.json(); } catch (e) { /* no body (204) or not JSON */ }
+        try { data = await res.json(); } catch (e) { if (ctl.signal.aborted) throw e; /* no body (204) or not JSON */ }   // the timer covers the body too
         return { ok: res.ok, status: res.status, data };
       } catch (e) { return { ok: false, status: 0, data: null }; }
       finally { clearTimeout(timer); }
+    },
+    // PBKDF2-SHA-256 (150 000 rounds) of a text with a hex salt, as 64 hex characters.
+    async pbkdf2(text, saltHex) {
+      const salt = Uint8Array.from(String(saltHex).match(/../g) || [], h => parseInt(h, 16));
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(text), 'PBKDF2', false, ['deriveBits']);
+      const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 150000 }, key, 256));
+      return Array.from(bits, b => b.toString(16).padStart(2, '0')).join('');
+    },
+    // The logged-in account's { id, tok }, or null (no account, not logged in, or no token yet).
+    session() {
+      try {
+        const d = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)), a = d && Array.isArray(d.list) && d.list.find(x => x && x.id === d.cur);
+        return a && typeof a.tok === 'string' && a.tok ? { id: a.id, tok: a.tok } : null;
+      } catch (e) { return null; }
+    },
+    // The server said the token is no good: forget it (the account stays; the player logs in again). index.html may replace this.
+    onAuthLost() {
+      try {
+        const d = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)), a = d && Array.isArray(d.list) && d.list.find(x => x && x.id === d.cur);
+        if (a) { delete a.tok; localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(d)); }
+      } catch (e) { /* nothing to forget */ }
     },
     // Counts this visit: which page, which version, and a random id that belongs to this browser (not to a person).
     hit() {
@@ -186,6 +208,139 @@ window.PX = (() => {
     },
   };
   window.addEventListener('load', () => Api.hit());
+
+  // --- scores: every game's personal bests, sent to the leaderboard ---------------------------
+  // Same rules as api/src/boards.ts (a recorded copy: keep the two in step). Times are seconds.
+  const BOUNDS = {
+    stars: ['hi', 0, 10e6], thief: ['hi', 0, 36000], racer: ['lo', 5, 600], skygp: ['lo', 5, 600], bike: ['lo', 3, 3600], 'bike:free': ['hi', 0, 1e6],
+    moto: ['lo', 3, 3600], 'moto:free': ['hi', 0, 1e6], ski: ['lo', 3, 3600], heist: ['lo', 5, 7200], skate: ['hi', 0, 10e6], horde: ['hi', 0, 600],
+    defense: ['hi', 0, 10000], hook: ['hi', 0, 1e6], runs: ['hi', 0, 10e6], miner: ['hi', 0, 1e6], snake: ['hi', 0, 1e6], hoops: ['hi', 0, 100000],
+    cook: ['hi', 0, 100e6], fish: ['hi', 0, 100e6], pong: ['hi', 0, 1e6], boxfight: ['hi', 0, 1e6], wings: ['hi', 0, 1e6], football: ['hi', 0, 10000],
+  };
+  const SENT_KEY = 'pixelArcade.sentScores';
+  const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  // a track key the server accepts (/^[a-z0-9_]{1,24}$/): the game's own key, lower-cased; null if it still doesn't fit
+  const trackKey = k => { const t = String(k).toLowerCase(); return /^[a-z0-9_]{1,24}$/.test(t) ? t : null; };
+  const tr = (key, label) => ({ key, label });
+  const BIKE_TRACKS = [['t0', 'SUNSET HILLS'], ['t1', 'MISTY PINES'], ['t2', 'GOLDEN MEADOW'], ['t3', 'AUTUMN RIDGE'], ['t4', 'NIGHT MOUNTAIN'], ['t5', 'SNOW PEAK'], ['t6', 'VOLCANO'], ['t7', 'AURORA']];
+  const MOTO_TRACKS = [['t0', 'DESERT CANYON'], ['t1', 'FOREST TRACK'], ['t2', 'DUSTY FARM'], ['t3', 'RED ROCKS'], ['t4', 'NIGHT QUARRY'], ['t5', 'ICE PASS'], ['t6', 'VOLCANO'], ['t7', 'AURORA']];
+  const SKI_MAPS = [['meadow', 'SNOWY MEADOW'], ['pines', 'PINE FOREST'], ['night', 'NIGHT RACE'], ['lake', 'FROZEN LAKE'], ['sunset', 'SUNSET RIDGE'], ['blizzard', 'BLIZZARD PASS'], ['canyon', 'ICE CANYON'], ['volcano', 'VOLCANO SLOPE'], ['aurora', 'AURORA PEAK'], ['summit', 'THE SUMMIT']];
+  const SKI_LEVELS = [['green', 'GREEN'], ['red', 'RED'], ['black', 'BLACK']];
+  // the save's own { trackKey: value } table -> boards; a key that doesn't fit, or a value that isn't a number, is skipped
+  function perTrack(game, table, tracks) {
+    const out = [];
+    if (!table || typeof table !== 'object') return out;
+    for (const k of Object.keys(table)) {
+      const t = trackKey(k), v = num(table[k]);
+      if (t === null || v === null) continue;
+      const known = tracks.find(x => x.key === t);
+      out.push({ b: game + ':' + t, v, label: known ? known.label : t.toUpperCase() });
+    }
+    return out;
+  }
+  const one = (b, v) => { v = num(v); return v === null ? [] : [{ b, v }]; };
+  const G = (game, name, save, unit, boards, tracks) => ({ game, name, save, unit, boards, ...(tracks ? { tracks } : {}) });
+  const bikeLike = (game, name, save, list) => {
+    const tracks = list.map(([k, l]) => tr(k, l)).concat([tr('free', 'FREE RIDE')]);
+    return G(game, name, save, 'time', s => perTrack(game, s.best, tracks).concat(one(game + ':free', s.freeBest).map(x => ({ ...x, label: 'FREE RIDE' }))), tracks);
+  };
+  const SKI_TRACKS = SKI_MAPS.flatMap(([m, mn]) => SKI_LEVELS.map(([l, ln]) => tr(m + '_' + l, mn + ' ' + ln)));
+  const SKYGP_TRACKS = [tr('cloud', 'CLOUD CITY'), tr('neon', 'NEON NIGHT'), tr('bay', 'SUNRISE BAY')];
+  const HEIST_TRACKS = ['CORNER SHOP', 'JEWELRY STORE', 'ART MUSEUM', 'GOLD SHOP', 'CITY BANK'].map((n, i) => tr(String(i + 1), n));
+  const HORDE_TRACKS = ['GREEN MEADOW', 'HAUNTED GRAVEYARD', 'LAVA LANDS'].map((n, i) => tr(String(i), n));
+  const DEFENSE_TRACKS = [['meadow', 'GREEN MEADOW'], ['dunes', 'DRY DUNES'], ['frost', 'FROZEN FORK'], ['swamp', 'CROSSROAD SWAMP'], ['lava', 'LAVA CAVE'], ['crystal', 'CRYSTAL MINE'], ['sky', 'CLOUD BRIDGES'], ['core', 'THE CORE']].map(([k, l]) => tr(k, l));
+  // in arcade order (the stars wallet first); save = the game's localStorage key
+  const GAMES = [
+    G('stars', 'STARS EARNED', 'mouseThief.save.v1', 'stars', s => one('stars', s.totalEarned)),
+    G('thief', 'MOUSE THIEF', 'mouseThief.save.v1', 'time', s => one('thief', s.bestTime)),
+    G('racer', 'PIXEL GP', 'pixelGP.save', 'time', s => one('racer', s.bestLap)),
+    G('heist', 'PIXEL HEIST', 'pixelHeist.save', 'time', s => perTrack('heist', s.best, HEIST_TRACKS), HEIST_TRACKS),
+    G('pong', 'PIXEL PONG', 'pixelPong.save', 'count', s => one('pong', s.wins)),
+    G('football', 'PIXEL FOOTBALL', 'pixelFootball.save.v1', 'count', s => one('football', s.club && s.club.trophies)),
+    G('hoops', 'PIXEL HOOPS', 'pixelHoops.save', 'pts', s => one('hoops', s.best)),
+    G('wings', 'PIXEL WINGS', 'pixelWings.save', 'count', s => one('wings', s.wins)),
+    G('fish', 'DEEP CATCH', 'deepCatch.save', 'coins', s => one('fish', s.best)),
+    G('skate', 'PIXEL SKATE', 'pixelSkate.save', 'pts', s => one('skate', s.bestCombo)),
+    G('ski', 'PIXEL SKI', 'pixelSki.save', 'time', s => perTrack('ski', s.best, SKI_TRACKS), SKI_TRACKS),
+    G('boxfight', 'PIXEL BOX FIGHT', 'pixelBoxFight.save', 'count', s => one('boxfight', s.wins)),
+    bikeLike('bike', 'PIXEL BIKE RUN', 'pixelBikeRun.save', BIKE_TRACKS),
+    G('cook', 'PIXEL COOK', 'pixelCook.save', '$', s => one('cook', s.best)),
+    G('runs', 'PIXEL RUNS', 'pixelRuns.save', 'm', s => one('runs', s.best)),
+    G('skygp', 'PIXEL SKY GP', 'pixelSkyGP.save', 'time', s => perTrack('skygp', s.best, SKYGP_TRACKS), SKYGP_TRACKS),
+    bikeLike('moto', 'PIXEL MOTO', 'pixelMoto.save', MOTO_TRACKS),
+    G('defense', 'PIXEL DEFENSE', 'pixelDefense.save', 'waves', s => perTrack('defense', Object.fromEntries(Object.entries(s.maps && typeof s.maps === 'object' ? s.maps : {}).map(([k, m]) => [k, m && m.endless])), DEFENSE_TRACKS), DEFENSE_TRACKS),
+    G('snake', 'PIXEL SNAKE', 'pixelSnake.io', 'len', s => one('snake', s.best)),
+    G('horde', 'PIXEL HORDE', 'pixelHorde.save', 'time', s => perTrack('horde', s.best, HORDE_TRACKS), HORDE_TRACKS),
+    G('miner', 'PIXEL MINER', 'pixelMiner.save', 'm', s => one('miner', s.maxDepth)),
+    G('hook', 'PIXEL HOOK', 'pixelHook.save', 'm', s => one('hook', num(s.endless) === null ? null : Math.floor(s.endless / 10))),
+  ];
+  const spaced = n => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const lowerBetter = b => BOUNDS[b] ? BOUNDS[b][0] === 'lo' : BOUNDS[b.split(':')[0]][0] === 'lo';
+  let syncing = null;
+  const Scores = {
+    GAMES, BOUNDS, trackKey,
+    // every board of every game that has a real value inside the server's bounds: [{ b, v }]
+    collect() {
+      const out = [], seen = {};
+      for (const g of GAMES) {
+        let save = null;
+        if (!seen.hasOwnProperty(g.save)) { try { seen[g.save] = JSON.parse(localStorage.getItem(g.save)); } catch (e) { seen[g.save] = null; } }
+        save = seen[g.save];
+        if (!save || typeof save !== 'object') continue;
+        let list = [];
+        try { list = g.boards(save); } catch (e) { /* a broken save: skip that game */ }
+        for (const x of list) {
+          const rule = BOUNDS[x.b] || BOUNDS[x.b.split(':')[0]];
+          if (!rule || num(x.v) === null || x.v < rule[1] || x.v > rule[2]) continue;
+          if (rule[0] === 'hi' && x.v <= 0) continue;   // nothing earned yet
+          out.push({ b: x.b, v: x.v });
+        }
+      }
+      return out;
+    },
+    // Sends the bests that beat what was sent before. Never throws; one run at a time.
+    sync() {
+      if (syncing) return syncing;
+      syncing = (async () => {
+        try {
+          const me = Api.session();
+          if (!me || navigator.onLine === false) return;
+          let sent = {};
+          try { sent = JSON.parse(localStorage.getItem(SENT_KEY)) || {}; } catch (e) { sent = {}; }
+          const mine = sent[me.id] && typeof sent[me.id] === 'object' ? sent[me.id] : {};
+          const todo = this.collect().filter(x => { const old = num(mine[x.b]); return old === null || (lowerBetter(x.b) ? x.v < old : x.v > old); });
+          for (let i = 0; i < todo.length; i += 60) {
+            const chunk = todo.slice(i, i + 60);
+            const res = await Api.call('POST', '/v1/scores', { scores: chunk }, me.tok);
+            if (res.status === 401) { Api.onAuthLost(); return; }
+            if (!res.ok) return;
+            for (const x of chunk) mine[x.b] = x.v;
+            sent[me.id] = mine;
+            try { localStorage.setItem(SENT_KEY, JSON.stringify(sent)); } catch (e) { /* private mode: it will be sent again */ }
+          }
+        } catch (e) { /* syncing must never break a page */ }
+      })().finally(() => { syncing = null; });
+      return syncing;
+    },
+    // a value as the leaderboard shows it; `game` is a game id or a board id ("bike:free" counts metres)
+    format(game, v) {
+      v = num(v); if (v === null) return '-';
+      const g = GAMES.find(x => x.game === String(game).split(':')[0]);
+      const unit = /:free$/.test(game) ? 'm' : g ? g.unit : 'count';
+      switch (unit) {
+        case 'time': { const t = Math.floor(v * 10 + 1e-6) / 10, m = Math.floor(t / 60); return m + ':' + (t - m * 60).toFixed(1).padStart(4, '0'); }
+        case 'm': return spaced(v) + ' M';
+        case '$': return '$' + spaced(v);
+        case 'coins': return spaced(v) + ' COINS';
+        case 'stars': return '★ ' + spaced(v);
+        case 'waves': return spaced(v) + ' WAVES';
+        case 'len': return spaced(v) + ' LONG';
+        case 'pts': return spaced(v) + ' PTS';
+        default: return spaced(v);
+      }
+    },
+  };
+  window.addEventListener('load', () => setTimeout(() => Scores.sync(), 3000));
 
   // --- online play (the same free PeerJS server as Mouse Thief) -------------------------------
   // our own copy first (it works offline-cached and can't be blocked by a CDN filter), then two CDNs
@@ -810,6 +965,6 @@ window.PX = (() => {
     auto(join) { const c = this.joinCode(); if (c) join(c); },
   };
 
-  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, Api,
+  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

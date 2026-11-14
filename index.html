@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.45.0';
+const VERSION = '2.46.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -48,7 +48,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account | invite | coffee
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | leaders | account | invite | coffee
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -617,8 +617,8 @@ function drawHome(t) {
   // next to it: phones as controllers (play on an Xbox, a TV or a computer with your phone)
   const px = W - 10 - PX.textWidth(stars, 2) - 38;
   // the title, smaller (and moved left) when the buttons on the right need the room
-  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 42;
-  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 42 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
+  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 78;
+  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 78 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
   T('PIXEL ARCADE', tx + 2, (small ? 12 : 10), '#e01e1e', ts, 'center');
   T('PIXEL ARCADE', tx, (small ? 10 : 8), '#fff', ts, 'center');
   if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
@@ -627,6 +627,10 @@ function drawHome(t) {
   const gx = px - 36;
   if (UI.button('settings', gx, 7, 30, 20, '', { size: 1, accent: '#ff8a2a' })) openSettings();
   gearIcon(gx + 15 + (UI.mx >= gx && UI.mx < gx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
+  // and the leaderboards
+  const lx = gx - 36;
+  if (UI.button('top', lx, 7, 30, 20, '', { size: 1, accent: '#ffd23f' })) Leaders.open();
+  trophyIcon(lx + 15 + (UI.mx >= lx && UI.mx < lx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46 + 4 + 50, rx = Math.round(W / 2 - rowW / 2);
@@ -656,7 +660,7 @@ function gearIcon(cx, cy, s = 2) {
   PX.drawIcon(ctx, ['...#.#...', '.#.###.#.', '..#####..', '.###.###.', '###...###', '.###.###.', '..#####..', '.#.###.#.', '...#.#...'], { '#': '#efe9ff' }, cx, cy, s);
 }
 function openSettings() { screen = 'settings'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
-function editProfile() { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; }
+function editProfile() { draft = JSON.parse(JSON.stringify(profile)); screen = 'profile'; nameInput.value = profile.name; edit.msg = ''; }
 const canFull = !!(document.documentElement.requestFullscreen);
 function toggleFull() {
   try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => { /* not allowed */ }); } catch (e) { /* not allowed */ }
@@ -935,6 +939,8 @@ function padPoll(dt) {
         const k = edge(4) ? -1 : edge(5) ? 1 : 0;
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
+    } else if (screen === 'leaders') {          // PX.Pad moves between the buttons and does B; LB / RB: the previous / next game
+      const k = edge(4) ? -1 : edge(5) ? 1 : 0; if (k) Leaders.game(k);
     } else if (screen === 'settings' || screen === 'coffee') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
@@ -952,15 +958,35 @@ canvas.addEventListener('wheel', e => {
   scroll.v = 0; scrollTo(scroll.y + e.deltaY * k * S.view.dpr / S.view.scale);
 }, { passive: false });
 // --- your name and avatar ------------------------------------------------------------------
-function saveProfile() {
+// Mouse Thief keeps its own copy of the name: update it too
+function setThiefName(name) {
+  try { const k = 'mouseThief.save.v1', d = JSON.parse(localStorage.getItem(k)); if (d) { d.name = name; localStorage.setItem(k, JSON.stringify(d)); } } catch (e) { /* no save */ }
+}
+const edit = { busy: false, msg: '' };            // a server account's name and avatar go to the server too (EDIT waits for it)
+async function saveProfile() {
+  if (edit.busy) return;
   const name = PX.cleanName(nameInput.value);
   if (name.length < 2) { PX.Sound.tone(150, 0.2); return; }
   draft.name = name; profile = draft; PX.Profile.save(profile);
-  // Mouse Thief keeps its own copy of the name: update it too
-  try { const k = 'mouseThief.save.v1', d = JSON.parse(localStorage.getItem(k)); if (d) { d.name = name; localStorage.setItem(k, JSON.stringify(d)); } } catch (e) { /* no save */ }
+  setThiefName(name);
   PX.setIcon(profile.avatar);                     // the page's icon is your avatar
   Who.beat();                                     // (a new name: tell it to players who look up your ID)
-  nameInput.blur(); screen = 'home'; PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+  nameInput.blur(); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+  const a = Account.me();
+  if (a) { a.name = name; a.avatar = { ...profile.avatar }; Account.save(); }
+  if (a && a.tok) {
+    edit.busy = true; edit.msg = '';
+    const res = await PX.Api.call('PUT', '/v1/me', { name, avatar: { shape: profile.avatar.shape, color: profile.avatar.color } }, a.tok);
+    edit.busy = false;
+    if (res.status === 401) PX.Api.onAuthLost();
+    else if (!res.ok && res.status !== 0 && screen === 'profile') {           // the name stays here, but not on the leaderboard
+      const e = errOf(res);
+      edit.msg = e === 'NAME_TAKEN' ? 'NAME TAKEN ON THE LEADERBOARD' : e === 'NAME_BAD' || e === 'BAD' ? 'PICK ANOTHER NAME.' : "THE SERVER DIDN'T ANSWER. TRY AGAIN LATER.";
+      draft = JSON.parse(JSON.stringify(profile)); PX.Sound.tone(150, 0.2);
+      return;
+    }
+  }
+  if (screen === 'profile') screen = 'home';
 }
 function drawProfile(t) {
   const W = S.W;
@@ -983,9 +1009,10 @@ function drawProfile(t) {
     ctx.fillStyle = c; ctx.fillRect(x + 3, y + 3, 12, 12);
     if (on) { ctx.fillStyle = '#e0a820'; ctx.fillRect(x, y + 20, 18, 2); }
   });
+  if (edit.busy || edit.msg) T(edit.busy ? 'ONE MOMENT...' : edit.msg, W / 2, 174, edit.busy ? '#9a92b8' : '#ff8a8a', 1, 'center', '#000');
   const bw = 110;
-  if (UI.button('save', Math.round(W / 2 - bw - 4), 190, bw, 22, 'SAVE', { accent: '#5ad43f' })) saveProfile();
-  if (UI.button('cancel', Math.round(W / 2 + 4), 190, bw, 22, 'BACK') || UI.back) { nameInput.blur(); screen = 'home'; }
+  if (UI.button('save', Math.round(W / 2 - bw - 4), 190, bw, 22, 'SAVE', { accent: '#5ad43f', disabled: edit.busy })) saveProfile();
+  if (UI.button('cancel', Math.round(W / 2 + 4), 190, bw, 22, 'BACK', { disabled: edit.busy }) || (UI.back && !edit.busy)) { nameInput.blur(); screen = 'home'; }
 }
 
 // --- the first of the month update: on the 1st of every month (January 1, February 1, ... December 1) -----
@@ -1359,39 +1386,142 @@ function drawFriends(t) {
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
 }
 
+// --- TOP: the global leaderboards ---------------------------------------------------------------------------------
+// One board at a time: a game (LB / RB or the < > buttons), and a track when the game has several. 10 rows per page, up to
+// 5 pages. Pages are kept for 30 seconds, so flipping back and forth doesn't ask the server again. A late answer for a
+// board or page that isn't shown any more is just kept in the cache and never drawn.
+function trophyIcon(cx, cy) { PX.drawIcon(ctx, ['#######', '#######', '.#####.', '..###..', '...#...', '..###..'], { '#': '#ffd23f' }, cx, cy, 2); }
+const LEADER_PAGES = 5, LEADER_ROWS = 10, LEADER_TTL = 30000;
+const Leaders = {
+  gi: 0, ti: 0, page: 0, cache: {}, pending: {}, opened: 0,
+  g() { return PX.Scores.GAMES[this.gi]; },
+  board() { const g = this.g(), t = g.tracks && g.tracks[this.ti]; return t ? g.game + ':' + PX.Scores.trackKey(t.key) : g.game; },
+  key() { return this.board() + '|' + this.page; },
+  async open() {
+    screen = 'leaders'; this.cache = {}; this.page = 0; this.ready = false; const mine = ++this.opened;
+    PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
+    await PX.Scores.sync();                                   // (never throws) so your newest best is on the board
+    if (mine === this.opened) this.ready = true;
+  },
+  leave() { screen = 'home'; this.opened++; },
+  go(fn) { fn(); this.page = 0; const e = this.cache[this.key()]; if (e && !e.res.ok) delete this.cache[this.key()]; PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  game(d) { const n = PX.Scores.GAMES.length; this.go(() => { this.gi = (this.gi + d + n) % n; this.ti = 0; }); },
+  track(d) { const n = this.g().tracks.length; this.go(() => { this.ti = (this.ti + d + n) % n; }); },
+  flip(p) { this.page = p; const e = this.cache[this.key()]; if (e && !e.res.ok) delete this.cache[this.key()]; PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  // the answer for what is shown: { res } when there is one, else null (and the fetch is started)
+  current() {
+    const k = this.key(), e = this.cache[k], now = performance.now();
+    if (e && (!e.res.ok || now - e.t < LEADER_TTL)) return e;
+    if (!this.pending[k] && this.ready) {
+      this.pending[k] = true;
+      const board = this.board(), page = this.page, me = PX.Api.session();
+      PX.Api.call('GET', '/v1/boards/' + board + '?page=' + page, undefined, me && me.tok).then(res => {
+        delete this.pending[k]; this.cache[board + '|' + page] = { t: performance.now(), res };
+      });
+    }
+    return null;
+  },
+};
+function fitText(str, size, maxW) { while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
+function drawLeaders(t) {
+  const W = S.W, cx = Math.round(W / 2), L = Leaders, g = L.g(), board = L.board(), e = L.current(), res = e && e.res;
+  background(t);
+  T('TOP PLAYERS', cx, 10, '#fff', 2, 'center', '#000');
+  if (UI.button('lback', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { L.leave(); return; }
+  // < GAME >, and < TRACK > when the game has several boards
+  const pw = Math.min(W - 16, 440), x = Math.round(cx - pw / 2);
+  if (UI.button('lgp', x, 34, 24, 18, '<', { size: 1 })) L.game(-1);
+  if (UI.button('lgn', x + pw - 24, 34, 24, 18, '>', { size: 1 })) L.game(1);
+  T(fitText(g.name, 2, pw - 64), cx, 38, '#ffd23f', 2, 'center', '#000');
+  if (g.tracks) {
+    if (UI.button('ltp', x, 54, 24, 16, '<', { size: 1 })) L.track(-1);
+    if (UI.button('ltn', x + pw - 24, 54, 24, 16, '>', { size: 1 })) L.track(1);
+    T(fitText(g.tracks[L.ti].label, 1, pw - 64), cx, 59, '#efe9ff', 1, 'center', '#000');
+  }
+  // the rows
+  const rows = res && res.ok && res.data && Array.isArray(res.data.rows) ? res.data.rows : null, y0 = 72, ph = 14;
+  if (rows) rows.slice(0, LEADER_ROWS).forEach((r, i) => {
+    const y = y0 + i * ph, mine = r.me === true, col = mine ? '#ffd23f' : '#fff';
+    ctx.fillStyle = mine ? '#3a3010' : '#16121f'; ctx.fillRect(x, y, pw, ph - 1);
+    ctx.fillStyle = mine ? '#ffd23f' : r.rank <= 3 ? ['#ffd23f', '#c8d0e0', '#d08a4a'][r.rank - 1] : '#3a2f5c'; ctx.fillRect(x, y, 3, ph - 1);
+    T('#' + r.rank, x + 8, y + 3, mine ? '#ffd23f' : '#9a92b8', 1);
+    PX.drawAvatar(ctx, { shape: r.shape, color: r.color }, x + 40, y, 1, null);
+    T(fitText(String(r.name), 1, 90), x + 60, y + 3, col, 1);
+    T(PX.Scores.format(board, r.value), x + pw - 6, y + 3, col, 1, 'right');
+  });
+  if (!rows && !res) T('LOADING...', cx, 130, '#9a92b8', 2, 'center', '#000');
+  else if (!rows && res.status !== 0) T("CAN'T LOAD THIS BOARD.", cx, 130, '#ff8a8a', 2, 'center', '#000');
+  // MORE: the next page (the last one goes back to the first)
+  const more = rows && rows.length >= LEADER_ROWS && L.page < LEADER_PAGES - 1;
+  if (rows && (more || L.page > 0) && UI.button('lmore', W - 8 - 76, 8, 76, 22, more ? 'MORE' : 'FIRST', { size: 1 })) L.flip(more ? L.page + 1 : 0);
+  if (rows && L.page > 0) T('PAGE ' + (L.page + 1), W - 8 - 76 - 8, 16, '#9a92b8', 1, 'right', '#000');
+  // the footer: NO INTERNET, no account, nobody yet, or you
+  const fy = 221;
+  if (!res) return;
+  if (res.status === 0) T('NO INTERNET', cx, fy, '#ff8a8a', 1, 'center', '#000');
+  else if (!PX.Api.session()) {                      // (an account that isn't on the board yet joins in YOUR ACCOUNT)
+    const a = Account.me(), label = !a ? 'MAKE AN ACCOUNT TO BE ON THE LEADERBOARD' : a.srv ? 'LOG IN TO THE LEADERBOARD IN YOUR ACCOUNT' : 'JOIN THE LEADERBOARD IN YOUR ACCOUNT';
+    if (UI.button('lacct', cx - 150, fy - 6, 300, 18, label, { size: 1, accent: '#5ad43f' })) Account.open();
+  }
+  else if (rows && !rows.length) T('NOBODY YET. BE THE FIRST!', cx, fy, '#9a92b8', 1, 'center', '#000');
+  else if (res.ok) { const me = res.data && res.data.me; T(me ? 'YOU: #' + me.rank + '  ' + PX.Scores.format(board, me.value) : 'YOU: NOT ON THIS BOARD YET', cx, fy, me ? '#ffd23f' : '#9a92b8', 1, 'center', '#000'); }
+}
+
 // --- ACCOUNTS: each player on this phone has their own arcade, behind a password -------------------------------------
-// The arcade has no server, so accounts live on this phone only (you can't log in on another phone). But one phone
-// can hold several: LOG OUT, and somebody else logs in to theirs, or makes a new one. Each account has its own name,
-// avatar, ID, stars, friends and game saves.
+// One phone can hold several accounts: LOG OUT, and somebody else logs in to theirs, or makes a new one. Each account
+// has its own name, avatar, ID, stars, friends and game saves.
 // How: everything the games save is in the browser's storage. LOG OUT packs all of it into one entry for that account
 // (pixelArcade.acct.<ID>) and empties the rest; LOG IN unpacks that account's entry again. Then the page reloads, so
 // nothing of the other player is left in memory. A few things belong to the phone, not to a player, and stay put:
 // the settings, the phone-controller pairing, and which gifts of stars were taken here (or a new account could take
 // them again and again).
-// A password is never kept or sent: only a salted PBKDF2 hash of it, on this phone. Nobody can mail you a new one
-// (no server, no e-mail), so a new account gets a RECOVERY CODE to write down: FORGOT PASSWORD? takes that code and
-// a new password. The rules are in PRIVACY AND POLICY. (It is a lock for brothers and sisters, not a bank vault:
+// A password is never kept or sent as it is. The phone keeps a salted PBKDF2 hash of it ({ salt, hash }, never sent).
+// The arcade's server (api/) knows the account too, so you can log in on any phone and be on the leaderboard: the
+// phone sends PBKDF2(password, csalt) with a salt of its own (csalt), and the server scrambles that once more. The same
+// for the RECOVERY CODE (with rsalt): there is no e-mail, so FORGOT PASSWORD? takes that code and a new password.
+// srv: the server knows this account (by its ID: a rename can't lose it). was: it was on the server once (then it is
+// never put back silently). tok: its session token, which only the account that is logged in holds (LOG OUT drops
+// it). Without internet, or for an account that never joined, it all works on this phone as before. The rules are
+// in PRIVACY AND POLICY. (It is a lock for brothers and sisters, not a bank vault:
 // while nobody is logged in, a game opened by its own address plays as a nameless guest, and that is thrown away.)
 const ACCOUNTS_KEY = 'pixelArcade.accounts', OLD_ACCOUNT_KEY = 'pixelArcade.account', stashKey = id => 'pixelArcade.acct.' + id, MAX_ACCOUNTS = 6;
-const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen', 'pixelArcade.vid', 'pixelArcade.hitLocal'];
+const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen', 'pixelArcade.vid', 'pixelArcade.hitLocal', 'pixelArcade.sentScores'];
 const phoneKey = k => k === ACCOUNTS_KEY || k.startsWith('pixelArcade.acct.') || k.startsWith('pixelArcade.starGift') || PHONE_KEYS.includes(k);
 const playerKeys = () => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!phoneKey(k)) a.push(k); } return a; };
 const pw1 = document.getElementById('pw1'), pw2 = document.getElementById('pw2'), codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 9); });
 const hex = a => [...a].map(b => b.toString(16).padStart(2, '0')).join('');
 const unhex = h => new Uint8Array(h.match(/../g).map(b => parseInt(b, 16)));
+const SALT_RE = /^([0-9a-f]{32}|[0-9a-f]{64})$/, TOKEN_RE = /^[0-9a-f]{64}$/;
+// what a server answer means for the player (status 0 = no answer at all)
+const errOf = res => res.status === 0 ? 'OFFLINE' : res.data && typeof res.data.error === 'string' ? res.data.error : 'SERVER';
+const SERVER_SAYS = {
+  OFFLINE: 'THIS NEEDS INTERNET.', LOCKED: 'TOO MANY TRIES. WAIT 15 MINUTES.', SLOW_DOWN: 'TOO MANY NEW ACCOUNTS. TRY AGAIN IN A MINUTE.',
+  WRONG: 'WRONG PASSWORD.', NAME_TAKEN: 'THAT NAME IS TAKEN. CHANGE IT IN EDIT, THEN JOIN THE LEADERBOARD.', NAME_BAD: 'PICK ANOTHER NAME.', BAD: 'PICK ANOTHER NAME.',
+  NO_PLAYER: 'NO PLAYER HAS THAT NICKNAME.', ID_TAKEN: "THAT DIDN'T WORK. TRY AGAIN.",
+};
+const JOIN_SAYS = { NAME_BAD: 'PICK ANOTHER NAME IN EDIT.', BAD: 'PICK ANOTHER NAME IN EDIT.' };     // (registering: the name is the profile's)
 const Account = {
-  list: [], cur: '',                                 // the accounts on this phone: { id, name, avatar, salt, hash, rsalt, rhash (of the recovery code) }; the ID that is logged in
+  list: [], cur: '',                                 // the accounts on this phone: { id, name, avatar, salt, hash, rsalt, rhash (of the recovery code), srv?, was?, tok?, csalt? }; the ID that is logged in
   sel: null,                                         // the account you are logging in to
   mode: 'new', prev: 'new', msg: '', col: '#9a92b8', busy: false, code: '',
   can: !!(window.crypto && crypto.subtle),           // (hashing needs https)
   load() {
     const h = v => typeof v === 'string' && /^([0-9a-f]{2}){16,32}$/.test(v), good = a => a && h(a.salt) && h(a.hash) && h(a.rsalt) && h(a.rhash);
     let d = null; try { d = JSON.parse(localStorage.getItem(ACCOUNTS_KEY)); } catch (e) { d = null; }
-    this.list = (d && Array.isArray(d.list) ? d.list : []).filter(a => good(a) && validId(a.id)).slice(0, MAX_ACCOUNTS).map(a => ({
-      id: a.id, name: PX.cleanName(a.name) || 'PLAYER', avatar: a.avatar && PX.AVATAR_SHAPES.includes(a.avatar.shape) ? { shape: a.avatar.shape, color: a.avatar.color | 0 } : { shape: 'cat', color: 0 },
-      salt: a.salt, hash: a.hash, rsalt: a.rsalt, rhash: a.rhash }));
+    this.list = (d && Array.isArray(d.list) ? d.list : []).filter(a => good(a) && validId(a.id)).slice(0, MAX_ACCOUNTS).map(a => {
+      const name = PX.cleanName(a.name) || 'PLAYER', srv = a.srv === true;
+      return {
+        id: a.id, name, avatar: a.avatar && PX.AVATAR_SHAPES.includes(a.avatar.shape) ? { shape: a.avatar.shape, color: a.avatar.color | 0 } : { shape: 'cat', color: 0 },
+        salt: a.salt, hash: a.hash, rsalt: a.rsalt, rhash: a.rhash,
+        ...(srv ? { srv } : {}),
+        ...(srv || a.was === true ? { was: true } : {}),
+        ...(srv && TOKEN_RE.test(a.tok) ? { tok: a.tok } : {}),
+        ...(srv && SALT_RE.test(a.csalt) ? { csalt: a.csalt } : {}),
+      };
+    });
     this.cur = d && this.list.some(a => a.id === d.cur) ? d.cur : '';
+    for (const a of this.list) if (a.id !== this.cur) delete a.tok;     // only the player who is logged in holds a token
     // 2.34.0 had one account, a password on the phone's only player: it becomes the first account here
     let old = null; try { old = JSON.parse(localStorage.getItem(OLD_ACCOUNT_KEY)); } catch (e) { old = null; }
     if (!this.list.length && good(old)) {
@@ -1433,75 +1563,330 @@ const Account = {
     return hex(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unhex(salt), iterations: 150000 }, key, 256)));
   },
   newSalt() { return hex(crypto.getRandomValues(new Uint8Array(16))); },
+  newCode() { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return [...crypto.getRandomValues(new Uint8Array(8))].map(b => chars[b % 32]).join(''); },
   say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
   fail(m) { this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  says(err, own = {}) { return own[err] || SERVER_SAYS[err] || "THE SERVER DIDN'T ANSWER. TRY AGAIN LATER."; },
   go(mode) { if (mode === 'policy') this.prev = this.mode; this.mode = mode; this.say(''); for (const el of [pw1, pw2, codeInput, nameInput]) { el.value = ''; el.blur(); } },
   open() { screen = 'account'; this.go(this.me() ? 'menu' : 'new'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
   pick(a) { this.sel = a; this.go('login'); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
   back() {
     if (this.busy) return;
     const m = this.mode;
-    if (m === 'policy') this.go(this.prev); else if (m === 'change' || m === 'delete') this.go('menu'); else if (m === 'forgot') this.go('login'); else if (m === 'login') this.go('pick');
+    if (m === 'policy') this.go(this.prev); else if (m === 'change' || m === 'delete' || m === 'join') this.go('menu'); else if (m === 'forgot') this.go('login'); else if (m === 'login') this.go('pick');
+    else if (m === 'remote') this.go(this.locked() ? 'pick' : 'new');
     else if (m === 'new' && this.locked()) this.go('pick');
     else if (m === 'new' || m === 'menu') { this.go(m); screen = 'home'; }          // (not from WHO IS PLAYING?, and not past the recovery code)
   },
-  enter() { const f = { new: 'create', login: 'login', change: 'change', delete: 'remove', forgot: 'reset' }[this.mode]; if (f) this[f](); },
+  enter() { const f = { new: 'create', login: 'login', change: 'change', delete: 'remove', forgot: 'reset', join: 'joinBoard', remote: 'fromAnotherPhone' }[this.mode]; if (f) this[f](); },
   badPw(p) { return p.length < 4 ? 'A PASSWORD HAS AT LEAST 4 LETTERS OR NUMBERS.' : ''; },
-  async run(fn) {                                    // one thing at a time (hashing takes a moment)
+  async run(fn) {                                    // one thing at a time (hashing and the server take a moment)
     if (this.busy || !this.can) return;
     this.busy = true;
     try { if (await fn() !== 'reload') this.busy = false; }
     catch (e) { this.busy = false; this.fail(e && e.message === 'no room' ? "THIS BROWSER'S STORAGE IS FULL (OR IN PRIVATE MODE)." : "THAT DIDN'T WORK. TRY AGAIN."); }
   },
+  // --- the server's side of an account (none of these throw for a network or server error: they give its code) ---
+  server: {
+    // Puts account `a` (the one logged in now, with its profile's name and avatar) on the server, with this password
+    // and recovery code, each scrambled with a fresh salt of its own. 'ok' (then `a` has srv, tok, csalt) or the error.
+    // Somebody has this ID on the server already: if this password logs in to it, it is this very account (an earlier
+    // answer got lost on the way, or the phone's record forgot it was on the server): 'again', and `a` is signed in, with
+    // the recovery code the server has had since. Only somebody else's ID gives an account that was never there a new
+    // ID (its old friends links break), once; if that doesn't work either, it keeps its old ID.
+    async register(a, password, code) {
+      const p = PX.Profile.load();
+      a.name = PX.cleanName(p.name) || a.name; a.avatar = { shape: p.avatar.shape, color: p.avatar.color };
+      const csalt = Account.newSalt(), rsalt = Account.newSalt();
+      const body = { name: a.name, avatar: a.avatar, csalt, pw: await PX.Api.pbkdf2(password, csalt), rsalt, rpw: await PX.Api.pbkdf2(code, rsalt) };
+      const send = () => PX.Api.call('POST', '/v1/register', { id: a.id, ...body }), made = res => res.ok && res.data && TOKEN_RE.test(res.data.token);
+      const errorOf = res => res.ok ? 'SERVER' : errOf(res);
+      let res = await send();
+      if (!made(res)) {
+        const e = errorOf(res);
+        if (e !== 'ID_TAKEN') return e;
+        const r = await Account.loginAs(a, password);
+        if (r.ok) {
+          Account.signedIn(a, r.data);
+          Account.forgetSent(a.id);                  // (what the server has of it is unknown: all the bests go up again)
+          return 'again';
+        }
+        if (r.error !== 'WRONG') return r.error === 'NO_PLAYER' ? 'SERVER' : r.error;
+        if (a.was) return e;                         // (one that was on the server keeps its ID)
+        const old = Account.renumber(a);
+        res = await send();
+        if (!made(res)) { Account.renumber(a, old); return errorOf(res); }
+      }
+      Account.signedIn(a, { token: res.data.token, csalt });
+      Account.forgetSent(a.id);                      // a new player on the server: all the bests go up again
+      return 'ok';
+    },
+    // { name } (typed) or { id } (an account this phone knows) + password → { ok, data: { token, id, name, avatar, csalt }, error }
+    async serverLogin(who, password) {
+      const no = error => ({ ok: false, data: null, error });
+      const pre = await PX.Api.call('POST', '/v1/prelogin', who);
+      if (!pre.ok) return no(errOf(pre));
+      if (!pre.data || !SALT_RE.test(pre.data.csalt)) return no('SERVER');
+      const csalt = pre.data.csalt, res = await PX.Api.call('POST', '/v1/login', { ...who, pw: await PX.Api.pbkdf2(password, csalt) });
+      if (!res.ok) return no(errOf(res));
+      if (!res.data || !TOKEN_RE.test(res.data.token) || !validId(res.data.id)) return no('SERVER');
+      return { ok: true, data: { ...res.data, csalt }, error: null };
+    },
+  },
+  // logs in to THIS account's server player, by its ID (a rename on another phone can't lose it): NO_PLAYER = deleted
+  async loginAs(a, password) {
+    const r = await this.server.serverLogin({ id: a.id }, password);
+    if (r.ok && r.data.id !== a.id) { PX.Api.call('DELETE', '/v1/session', undefined, r.data.token); return { ok: false, data: null, error: 'SERVER' }; }
+    return r;
+  },
+  // a token for account `a`; a login's answer also has the server's name and avatar, which the account takes
+  signedIn(a, d) { a.srv = true; a.was = true; a.tok = d.token; a.csalt = d.csalt; if (d.name !== undefined) this.takeLook(a, d); },
+  unjoin(a) { delete a.srv; delete a.tok; delete a.csalt; },     // the server doesn't know it (any more): a phone-only account again (was stays)
+  // the server's name and avatar into the record, and into the profile when this account is the one logged in
+  takeLook(a, d) {
+    const name = PX.cleanName(d.name), av = d.avatar;
+    if (name.length >= 2) a.name = name;
+    if (av && PX.AVATAR_SHAPES.includes(av.shape) && Number.isInteger(av.color) && av.color >= 0 && av.color < PX.AVATAR_COLORS.length) a.avatar = { shape: av.shape, color: av.color };
+    this.lookToProfile(a);
+  },
+  lookToProfile(a) {
+    if (this.cur !== a.id) return;
+    const p = PX.Profile.load();
+    if (p.id !== a.id || (p.name === a.name && p.avatar.shape === a.avatar.shape && p.avatar.color === a.avatar.color)) return;
+    p.name = a.name; p.avatar = { ...a.avatar }; PX.Profile.save(p); setThiefName(a.name);
+    if (profile.id === a.id) { profile.name = a.name; profile.avatar = { ...a.avatar }; PX.setIcon(profile.avatar); }
+  },
+  forgetSent(id) {
+    try { const k = 'pixelArcade.sentScores', s = JSON.parse(localStorage.getItem(k)); if (s && s[id]) { delete s[id]; localStorage.setItem(k, JSON.stringify(s)); } } catch (e) { /* nothing sent yet */ }
+  },
+  // a new random ID (or this one: the old ID back) for account `a` (logged in now), and for its profile. Gives the old ID.
+  renumber(a, id) {
+    const old = a.id;
+    if (!id) do { id = String(100000 + Math.floor(Math.random() * 900000)); } while (this.list.some(x => x.id === id));
+    a.id = id; if (this.cur === old) this.cur = id;
+    const p = PX.Profile.load(); if (p.id === old) { p.id = id; PX.Profile.save(p); }
+    if (profile.id === old) profile.id = id;
+    if (!this.save()) throw new Error('no room');
+    return old;
+  },
+  // Is this the account's password? The phone's hash first. A server account whose password was changed on another
+  // phone asks the server, and if it agrees, the phone's hash is updated (and the account has a token). '' = yes.
+  async check(a, password) {
+    if (await this.hash(password, a.salt) === a.hash) return '';
+    if (!a.srv) return 'WRONG';
+    const r = await this.loginAs(a, password);
+    if (r.error === 'NO_PLAYER') this.unjoin(a);
+    if (!r.ok) return r.error === 'LOCKED' ? 'LOCKED' : 'WRONG';
+    this.signedIn(a, r.data);
+    const salt = this.newSalt(); a.hash = await this.hash(password, salt); a.salt = salt;
+    return '';
+  },
+  // calls the server with this account's token (logging in with the password first if there is none, or if the server
+  // has dropped it). '' = done, or the error.
+  async authed(a, password, fn) {
+    for (let i = 0; i < 2; i++) {
+      if (!a.tok) {
+        const r = await this.loginAs(a, password);
+        if (!r.ok) { if (r.error === 'NO_PLAYER') this.unjoin(a); return r.error; }
+        this.signedIn(a, r.data);
+      }
+      const res = await fn(a.tok);
+      if (res.ok) return '';
+      if (res.status !== 401) return errOf(res);
+      delete a.tok;
+    }
+    return 'AUTH';
+  },
+  // Registers `a` (logged in now) with a NEW recovery code: an account made before the server only has a hash of its
+  // old code, so it gets a new one, for the server and this phone alike. Shows it (mode 'code'). 'ok' or the error.
+  // 'again': it was on the server already (see server.register), which keeps the code it has: no new code, nothing shown.
+  async joinNew(a, password, fresh) {
+    const code = this.newCode(), rsalt = this.newSalt(), rhash = await this.hash(code, rsalt);
+    const r = await this.server.register(a, password, code);
+    if (r === 'again') { if (!this.save()) throw new Error('no room'); PX.Scores.sync(); return r; }
+    if (r !== 'ok') { if (!this.save()) throw new Error('no room'); return r; }
+    a.rsalt = rsalt; a.rhash = rhash;
+    this.go('code'); this.code = code; this.fresh = fresh;   // the server has this code now: it is shown whatever happens next
+    if (!this.save()) throw new Error('no room');
+    PX.Scores.sync();
+    this.say("THIS IS YOUR NEW CODE: THE OLD ONE DOESN'T WORK ANY MORE.", '#5ad43f');
+    PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+    return 'ok';
+  },
+  // The player here has something to lose: stars, friends (or requests to or from them), or a game's save.
+  hasProgress() {
+    const w = PX.Wallet.read(), f = Friends.d;
+    if ((w.totalEarned | 0) > 0 || (w.points | 0) > 0) return true;
+    if (f.list.length || f.inc.length || f.out.length) return true;
+    const saves = PX.Scores.GAMES.map(g => g.save).filter(k => k !== 'mouseThief.save.v1');
+    return playerKeys().some(k => saves.includes(k));
+  },
+  // The server is the truth for a server account's name and avatar (the admin may rename it, or another phone did).
+  async refresh() {
+    const a = this.me();
+    if (!a || !a.tok || navigator.onLine === false) return;
+    const res = await PX.Api.call('GET', '/v1/me', undefined, a.tok);
+    if (this.me() !== a) return;
+    if (res.status === 401) { PX.Api.onAuthLost(); return; }
+    if (!res.ok || !res.data || res.data.id !== a.id) return;
+    this.takeLook(a, res.data);
+    this.save();
+  },
   // MAKE AN ACCOUNT. With no account on the phone yet, the player who is here gets the password (and keeps everything).
-  // From WHO IS PLAYING? it is a new player: a name, a new ID, no stars.
+  // From WHO IS PLAYING? it is a new player: a name, a new ID, no stars. Then it goes on the server (if it can).
   create() { return this.run(async () => {
     const fresh = this.locked(), name = PX.cleanName(nameInput.value), p = pw1.value, bad = this.badPw(p);
     if (this.list.length >= MAX_ACCOUNTS) return this.fail('THIS PHONE HAS ' + MAX_ACCOUNTS + ' ACCOUNTS ALREADY.');
     if (fresh && name.length < 2) return this.fail('TYPE A NICKNAME: AT LEAST 2 LETTERS.');
     if (bad) return this.fail(bad);
     if (p !== pw2.value) return this.fail('THE TWO PASSWORDS ARE NOT THE SAME.');
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', code = [...crypto.getRandomValues(new Uint8Array(8))].map(b => chars[b % 32]).join('');
+    const code = this.newCode();
     const salt = this.newSalt(), rsalt = this.newSalt(), hash = await this.hash(p, salt), rhash = await this.hash(code, rsalt);
     let id = profile.id; if (fresh) do { id = String(100000 + Math.floor(Math.random() * 900000)); } while (this.list.some(a => a.id === id));
     const a = { id, name: fresh ? name : profile.name, avatar: fresh ? { shape: 'cat', color: Math.floor(Math.random() * PX.AVATAR_COLORS.length) } : profile.avatar, salt, hash, rsalt, rhash };
     this.list.push(a); this.cur = id;
     if (!this.save()) { this.list.pop(); this.cur = ''; throw new Error('no room'); }
     if (fresh) { this.wipe(); PX.Profile.save({ name: a.name, avatar: a.avatar, id }); this.sel = a; }
+    const r = await this.server.register(a, p, code);          // the same password and code (the account here is made either way)
     this.go('code'); this.code = code; this.fresh = fresh; PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
+    if (!this.save()) throw new Error('no room');              // (the code stays on the screen, with the message)
+    if (r === 'ok' || r === 'again') PX.Scores.sync(); else this.say('NOT ON THE LEADERBOARD YET: ' + this.says(r, JOIN_SAYS), '#ff8a8a');
   }); },
+  // LOG IN. A server account gets a new token; an account that never joined the server joins it now (silently,
+  // but with a new recovery code, which is shown before the arcade reloads).
   login() { return this.run(async () => {
-    if (await this.hash(pw1.value, this.sel.salt) !== this.sel.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
-    this.restore(this.sel); this.reload(); return 'reload';
+    const a = this.sel, p = pw1.value, e = await this.check(a, p);
+    if (e) { pw1.value = ''; this.save(); return this.fail(this.says(e)); }
+    try { this.restore(a); } catch (err) { delete a.tok; throw err; }     // (only the account logged in holds a token)
+    this.lookToProfile(a);                             // (a name or avatar the server gave while checking)
+    if (a.srv && !a.tok) {
+      const r = await this.loginAs(a, p);
+      if (r.ok) this.signedIn(a, r.data); else if (r.error === 'NO_PLAYER') this.unjoin(a);
+    }
+    if (a.tok) PX.Scores.sync();
+    else if (!a.was && await this.joinNew(a, p, true) === 'ok') return;     // the code's button reloads
+    // (an account that was on the server, and is gone from it, stays a phone-only account: JOIN can put it back)
+    this.save(); this.reload(); return 'reload';
   }); },
-  logout() { return this.run(async () => { this.stash(this.me()); this.reload(); return 'reload'; }); },
+  // JOIN THE LEADERBOARD: the account that is logged in (it never typed its password since the server came).
+  // A server account without a token (the server dropped it) just logs in to the server again.
+  joinBoard() { return this.run(async () => {
+    const a = this.me(), p = pw1.value;
+    if (a.srv) {
+      const r = await this.loginAs(a, p);
+      if (r.ok) {
+        this.signedIn(a, r.data);
+        if (await this.hash(p, a.salt) !== a.hash) { const salt = this.newSalt(); a.hash = await this.hash(p, salt); a.salt = salt; }
+        if (!this.save()) throw new Error('no room');
+        PX.Scores.sync();
+        return this.onBoard();
+      }
+      if (r.error !== 'NO_PLAYER') return this.fail(this.says(r.error));
+      this.unjoin(a); this.save();                   // gone from the server: join it again, below
+    }
+    if (await this.hash(p, a.salt) !== a.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
+    const r = await this.joinNew(a, p, false);
+    if (r === 'again') return this.onBoard();       // it was on the server already: the recovery code stays the same
+    if (r !== 'ok') this.fail(this.says(r, a.was ? { ...JOIN_SAYS, ID_TAKEN: "THIS ACCOUNT CAN'T JOIN AGAIN WITH THE SAME ID. MAKE A NEW ACCOUNT." } : JOIN_SAYS));
+  }); },
+  onBoard() { this.go('menu'); this.say('YOU ARE ON THE LEADERBOARD!', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 }); },
+  // LOG IN FROM ANOTHER PHONE: an account from the server becomes a new account on this phone, with empty progress.
+  fromAnotherPhone() { return this.run(async () => {
+    const name = PX.cleanName(nameInput.value), p = pw1.value;
+    if (this.me()) return this.fail('LOG OUT FIRST.');
+    if (this.list.length >= MAX_ACCOUNTS) return this.fail('THIS PHONE HAS ' + MAX_ACCOUNTS + ' ACCOUNTS ALREADY.');
+    if (!this.list.length && this.hasProgress()) {   // the player here would lose everything: they get an account first
+      this.go('new'); return this.fail('FIRST MAKE AN ACCOUNT FOR THE PLAYER ON THIS PHONE, SO THEIR STARS AND GAMES ARE KEPT.');
+    }
+    if (name.length < 2) return this.fail('TYPE YOUR NICKNAME: AT LEAST 2 LETTERS.');
+    if (!p) return this.fail('TYPE YOUR PASSWORD.');
+    const r = await this.server.serverLogin({ name }, p);
+    if (!r.ok) { pw1.value = ''; return this.fail(this.says(r.error, { BAD: 'TYPE YOUR NICKNAME.' })); }
+    const d = r.data;
+    if (this.list.some(a => a.id === d.id)) { PX.Api.call('DELETE', '/v1/session', undefined, d.token); return this.fail('THAT ACCOUNT IS ON THIS PHONE ALREADY: PICK IT.'); }
+    const av = d.avatar, salt = this.newSalt(), rsalt = this.newSalt();
+    const a = {
+      id: d.id, name: PX.cleanName(d.name) || 'PLAYER',
+      avatar: av && PX.AVATAR_SHAPES.includes(av.shape) ? { shape: av.shape, color: Math.max(0, Math.min(PX.AVATAR_COLORS.length - 1, av.color | 0)) } : { shape: 'cat', color: 0 },
+      salt, hash: await this.hash(p, salt),
+      rsalt, rhash: await this.hash(this.newCode(), rsalt),     // a code nobody knows: FORGOT PASSWORD? asks the server
+    };
+    this.signedIn(a, d);
+    this.list.push(a);
+    try { this.restore(a); } catch (e) { this.list.pop(); this.cur = ''; this.save(); throw e; }
+    PX.Scores.sync();
+    this.reload(); return 'reload';
+  }); },
+  logout() { return this.run(async () => {
+    const a = this.me(), tok = a.tok;
+    delete a.tok;                                    // (the token stays with nobody: the next LOG IN gets a new one)
+    try { this.stash(a); } catch (e) { if (tok) a.tok = tok; throw e; }
+    if (tok) await Promise.race([PX.Api.call('DELETE', '/v1/session', undefined, tok), new Promise(ok => setTimeout(ok, 2000))]);   // best effort
+    this.reload(); return 'reload';
+  }); },
+  // CHANGE PASSWORD. A server account changes it on the server first (that needs internet).
   change() { return this.run(async () => {
-    const a = this.me();
-    if (await this.hash(pw1.value, a.salt) !== a.hash) return this.fail('THE OLD PASSWORD IS WRONG.');
+    const a = this.me(), e = await this.check(a, pw1.value);
+    if (e) { this.save(); return this.fail(e === 'WRONG' ? 'THE OLD PASSWORD IS WRONG.' : this.says(e)); }
     const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
+    if (a.srv) {
+      const csalt = this.newSalt(), pw = await PX.Api.pbkdf2(pw2.value, csalt);
+      const r = await this.authed(a, pw1.value, tok => PX.Api.call('POST', '/v1/password', { csalt, pw }, tok));
+      if (!r) a.csalt = csalt; else if (r !== 'NO_PLAYER') { this.save(); return this.fail(this.says(r)); }
+    }
     const salt = this.newSalt(); a.hash = await this.hash(pw2.value, salt); a.salt = salt; this.save();
     this.go('menu'); this.say('YOUR PASSWORD IS CHANGED. (THE RECOVERY CODE STAYS THE SAME.)', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
   }); },
-  // DELETE ACCOUNT. The only account on the phone: just the password goes, the player stays as they are.
+  // DELETE ACCOUNT. A server account goes from the server first (that needs internet), with its scores.
+  // The only account on the phone: then just the password goes, the player stays as they are.
   // One of several: the whole account goes (name, ID, stars, friends, saves), and the arcade asks who is playing.
   remove() { return this.run(async () => {
-    const a = this.me();
-    if (await this.hash(pw1.value, a.salt) !== a.hash) return this.fail('WRONG PASSWORD.');
+    const a = this.me(), e = await this.check(a, pw1.value);
+    if (e) { this.save(); return this.fail(this.says(e)); }
+    if (a.srv) {
+      const r = await this.authed(a, pw1.value, tok => PX.Api.call('DELETE', '/v1/me', undefined, tok));
+      if (r && r !== 'NO_PLAYER') { this.save(); return this.fail(this.says(r)); }
+    }
     this.list = this.list.filter(x => x !== a); this.cur = ''; this.save();
     if (this.list.length) { this.wipe(); this.reload(); return 'reload'; }
     this.go('new'); this.say('THE ACCOUNT IS DELETED. THE ARCADE HAS NO PASSWORD NOW.', '#5ad43f');
   }); },
-  reset() { return this.run(async () => {            // FORGOT PASSWORD: the recovery code and a new password
-    const a = this.sel;
-    if (await this.hash(codeInput.value.replace(/[^A-Z0-9]/g, ''), a.rsalt) !== a.rhash) return this.fail('THAT IS NOT YOUR RECOVERY CODE.');
-    const bad = this.badPw(pw2.value); if (bad) return this.fail(bad);
+  // FORGOT PASSWORD: the recovery code and a new password. A server account asks the server (it knows the code).
+  reset() { return this.run(async () => {
+    const a = this.sel, code = codeInput.value.replace(/[^A-Z0-9]/g, ''), bad = this.badPw(pw2.value);
+    if (a.srv) {
+      if (bad) return this.fail(bad);
+      const e = await this.serverReset(a, code, pw2.value);
+      if (e && e !== 'NO_PLAYER') return this.fail(this.says(e, { WRONG: 'THAT IS NOT YOUR RECOVERY CODE.' }));
+      if (e) { this.unjoin(a); this.save(); }        // gone from the server: the code this phone knows, below
+    }
+    if (!a.srv && await this.hash(code, a.rsalt) !== a.rhash) return this.fail('THAT IS NOT YOUR RECOVERY CODE.');
+    if (bad) return this.fail(bad);
     const salt = this.newSalt(); a.hash = await this.hash(pw2.value, salt); a.salt = salt;
     if (!this.save()) throw new Error('no room');
-    this.restore(a); this.reload(); return 'reload';
+    try { this.restore(a); } catch (err) { delete a.tok; throw err; }
+    if (a.tok) PX.Scores.sync();
+    this.reload(); return 'reload';
   }); },
+  // the server's recovery, by the account's ID: its rsalt (from /v1/prelogin), then the code and a new password.
+  // '' = done (a has a token).
+  async serverReset(a, code, password) {
+    const pre = await PX.Api.call('POST', '/v1/prelogin', { id: a.id });
+    if (!pre.ok) return errOf(pre);
+    if (!pre.data || !SALT_RE.test(pre.data.rsalt)) return 'SERVER';
+    const csalt = this.newSalt();
+    const res = await PX.Api.call('POST', '/v1/reset', { id: a.id, rpw: await PX.Api.pbkdf2(code, pre.data.rsalt), csalt, pw: await PX.Api.pbkdf2(password, csalt) });
+    if (!res.ok) return errOf(res);
+    if (!res.data || !TOKEN_RE.test(res.data.token)) return 'SERVER';
+    if (res.data.id !== a.id) { PX.Api.call('DELETE', '/v1/session', undefined, res.data.token); return 'SERVER'; }
+    this.signedIn(a, { token: res.data.token, csalt });
+    return '';
+  },
 };
 Account.load();
+PX.Api.onAuthLost = () => { const a = Account.me(); if (a && a.tok) { delete a.tok; Account.save(); } };   // (the server dropped the token: LOG IN or JOIN makes a new one)
 if (Account.locked()) { screen = 'account'; Account.go('pick'); }                  // nobody is logged in: who is playing?
+Account.refresh();
 function wrapText(str, maxW) {
   const out = []; let line = '';
   for (const w of str.split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
@@ -1509,20 +1894,25 @@ function wrapText(str, maxW) {
   return out;
 }
 const POLICY = [
-  "ACCOUNTS LIVE ONLY ON THIS PHONE. THE ARCADE HAS NO SERVER, SO YOU CAN'T LOG IN ON ANOTHER PHONE. BUT ONE PHONE CAN HAVE UP TO " + MAX_ACCOUNTS + ' ACCOUNTS: LOG OUT, AND SOMEONE ELSE LOGS IN.',
-  'YOUR PASSWORD IS NEVER SENT ANYWHERE. ONLY A SCRAMBLED COPY OF IT IS KEPT, ON THIS PHONE.',
-  "THERE IS NO \"FORGOT PASSWORD\" BY E-MAIL: WE DON'T KNOW YOUR E-MAIL AND WE CAN'T RESET YOUR PASSWORD FOR YOU.",
-  'THE ONLY WAY BACK IN IS YOUR RECOVERY CODE. WRITE IT DOWN! WITHOUT IT NOBODY CAN OPEN THE ACCOUNT, NOT EVEN US.',
-  'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. THEY WAIT THERE ABOUT 12 HOURS.',
-  'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME AND WHICH COUNTRY. NOTHING ABOUT YOU.',
+  'YOUR ACCOUNT IS KEPT ON THIS PHONE AND ON OUR SERVER: YOUR ID, NICKNAME, AVATAR, A SCRAMBLED PASSWORD AND YOUR BEST SCORES.',
+  'LOG IN ON ANY PHONE WITH YOUR NICKNAME AND PASSWORD. STARS AND GAME SAVES STAY ON EACH PHONE (FOR NOW).',
+  'DELETE ACCOUNT REMOVES IT FROM THE SERVER, THE LEADERBOARD AND THIS PHONE. OTHER PHONES KEEP THEIR COPY UNTIL YOU DELETE IT THERE.',
+  "WE DON'T KNOW YOUR E-MAIL. THE ONLY WAY BACK IN IS YOUR RECOVERY CODE: WRITE IT DOWN!",
+  'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS.',
+  'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME, WHICH COUNTRY AND A RANDOM CODE.',
   "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
-  "CLEARING THE BROWSER'S DATA DELETES EVERYTHING: ALL THE ACCOUNTS, THEIR STARS AND THEIR FRIENDS.",
+  "CLEARING THE BROWSER'S DATA LOGS YOU OUT AND DELETES THE STARS AND SAVES ON THIS PHONE. THE ACCOUNT STAYS ON THE SERVER.",
 ];
+function tickIcon(cx, cy) { PX.drawIcon(ctx, ['......#', '.....##', '#...##.', '##.##..', '.###...', '..#....'], { '#': '#5ad43f' }, cx, cy, 1); }
 function drawAccount(t) {
   const W = S.W, cx = Math.round(W / 2), A = Account, m = A.mode, busy = A.busy, locked = A.locked();
   const put = (el, label, y) => { T(label, cx - 78, y + 9, '#efe9ff', 1, 'right', '#000'); S.placeInput(el, cx - 70, y, 140, 24); el.placed = true; };
-  const msg = y => T(busy ? 'ONE MOMENT...' : A.can ? A.msg : 'ACCOUNTS ONLY WORK ON THE REAL (HTTPS) ARCADE.', cx, y, busy ? '#9a92b8' : A.can ? A.col : '#ff8a8a', 1, 'center', '#000');
+  const msg = y => {
+    const text = busy ? 'ONE MOMENT...' : A.can ? A.msg : 'ACCOUNTS ONLY WORK ON THE REAL (HTTPS) ARCADE.';
+    for (const line of wrapText(text, W - 24)) { T(line, cx, y, busy ? '#9a92b8' : A.can ? A.col : '#ff8a8a', 1, 'center', '#000'); y += 9; }
+  };
   const policy = x => { if (UI.button('policy', x, 212, 140, 22, 'PRIVACY AND POLICY', { size: 1, accent: '#1ec8e0', disabled: busy })) A.go('policy'); };
+  const remote = (x, y, w, h) => { if (UI.button('aremote', x, y, w, h, 'LOG IN FROM ANOTHER PHONE', { size: 1, accent: '#1ec8e0', disabled: busy || !A.can || A.list.length >= MAX_ACCOUNTS })) A.go('remote'); };
   background(t);
   if (UI.back) A.back();
   if (m === 'policy') {
@@ -1537,8 +1927,8 @@ function drawAccount(t) {
     return;
   }
   const fresh = m === 'new' && locked;               // a new player (the others' accounts are packed away)
-  T({ new: fresh ? 'NEW ACCOUNT' : 'MAKE AN ACCOUNT', code: 'YOUR RECOVERY CODE', menu: 'YOUR ACCOUNT', change: 'CHANGE PASSWORD', delete: 'DELETE ACCOUNT', pick: 'WHO IS PLAYING?', login: 'LOG IN', forgot: 'FORGOT PASSWORD' }[m], cx, 8, '#fff', 3, 'center', '#000');
-  const who = m === 'login' || m === 'forgot' || (m === 'code' && A.fresh) ? A.sel : m === 'pick' || fresh ? null : profile;
+  T({ new: fresh ? 'NEW ACCOUNT' : 'MAKE AN ACCOUNT', code: 'YOUR RECOVERY CODE', menu: 'YOUR ACCOUNT', change: 'CHANGE PASSWORD', delete: 'DELETE ACCOUNT', pick: 'WHO IS PLAYING?', login: 'LOG IN', forgot: 'FORGOT PASSWORD', join: 'THE LEADERBOARD', remote: 'FROM ANOTHER PHONE' }[m], cx, 8, '#fff', 3, 'center', '#000');
+  const who = m === 'login' || m === 'forgot' || (m === 'code' && A.fresh) ? A.sel : m === 'pick' || m === 'remote' || fresh ? null : profile;
   if (who) {
     const nw = PX.textWidth(who.name, 2), rx = Math.round(cx - (36 + nw) / 2);
     PX.drawAvatar(ctx, who.avatar, rx, 28, 2);
@@ -1552,7 +1942,8 @@ function drawAccount(t) {
       PX.drawAvatar(ctx, a.avatar, x + 5, y + 2, 2); T(a.name, x + 42, y + 8, '#fff', 2, 'left', '#000'); T('ID ' + a.id, x + 42, y + 22, '#9a92b8', 1);
     });
     const full = A.list.length >= MAX_ACCOUNTS;
-    if (UI.button('anew', cx - 100, 164, 200, 22, 'NEW ACCOUNT', { accent: '#5ad43f', disabled: full })) A.go('new');
+    if (UI.button('anew', cx - 184, 164, 180, 22, 'NEW ACCOUNT', { accent: '#5ad43f', disabled: full })) A.go('new');
+    remote(cx + 4, 164, 180, 22);
     T(full ? 'THIS PHONE HAS ' + MAX_ACCOUNTS + ' ACCOUNTS: THAT IS ALL IT CAN HOLD.' : 'A NEW ACCOUNT STARTS WITH ITS OWN NAME, ID, STARS AND FRIENDS.', cx, 194, '#5b5275', 1, 'center', '#000');
     policy(cx - 70);
   } else if (m === 'new') {
@@ -1560,13 +1951,23 @@ function drawAccount(t) {
       T('A NICKNAME (NOT YOUR REAL NAME!) AND A PASSWORD: 4 TO 20 LETTERS OR NUMBERS.', cx, 28, '#efe9ff', 1, 'center', '#000');
       put(nameInput, 'NICKNAME', 40); put(pw1, 'PASSWORD', 68); put(pw2, 'AGAIN', 96);
     } else {
-      T('CHOOSE A PASSWORD: 4 TO 20 LETTERS OR NUMBERS. BIG AND SMALL LETTERS COUNT.', cx, 64, '#efe9ff', 1, 'center', '#000');
-      put(pw1, 'PASSWORD', 76); put(pw2, 'AGAIN', 104);
+      T('CHOOSE A PASSWORD: 4 TO 20 LETTERS OR NUMBERS. BIG AND SMALL LETTERS COUNT.', cx, 62, '#efe9ff', 1, 'center', '#000');
+      put(pw1, 'PASSWORD', 74); put(pw2, 'AGAIN', 102);
     }
-    if (UI.button('acreate', cx - 100, fresh ? 126 : 134, 200, 24, 'MAKE MY ACCOUNT', { accent: '#5ad43f', disabled: busy || !A.can })) A.create();
-    msg(fresh ? 158 : 166);
-    T(fresh ? 'YOU START WITH YOUR OWN ID, STARS, FRIENDS AND GAME SAVES.' : 'YOU KEEP YOUR NAME, ID, STARS AND FRIENDS. OTHERS CAN MAKE THEIR OWN ACCOUNT.', cx, 180, '#5b5275', 1, 'center', '#000');
-    T("YOU'LL GET A RECOVERY CODE, IN CASE YOU FORGET THE PASSWORD.", cx, 190, '#5b5275', 1, 'center', '#000');
+    if (UI.button('acreate', cx - 100, fresh ? 126 : 132, 200, 24, 'MAKE MY ACCOUNT', { accent: '#5ad43f', disabled: busy || !A.can })) A.create();
+    msg(fresh ? 158 : 162);
+    T(fresh ? 'YOU START WITH YOUR OWN ID, STARS, FRIENDS AND GAME SAVES.' : 'YOU KEEP YOUR NAME, ID, STARS AND FRIENDS. OTHERS CAN MAKE THEIR OWN ACCOUNT.', cx, 182, '#5b5275', 1, 'center', '#000');
+    T("YOU'LL GET A RECOVERY CODE, IN CASE YOU FORGET THE PASSWORD.", cx, 192, '#5b5275', 1, 'center', '#000');
+    if (UI.button('aback', cx - 184, 212, 54, 22, 'BACK', { size: 1, disabled: busy })) A.back();
+    remote(cx - 124, 212, 124, 22);
+    policy(cx + 6);
+  } else if (m === 'remote') {
+    T('THE NICKNAME AND PASSWORD OF YOUR ACCOUNT ON ANOTHER PHONE.', cx, 30, '#efe9ff', 1, 'center', '#000');
+    put(nameInput, 'NICKNAME', 44); put(pw1, 'PASSWORD', 72);
+    if (UI.button('aremotego', cx - 100, 104, 200, 24, 'LOG IN', { accent: '#5ad43f', disabled: busy || !A.can })) A.fromAnotherPhone();
+    msg(136);
+    T('IT COMES HERE WITH ITS NAME, ID AND AVATAR. ITS STARS AND', cx, 166, '#5b5275', 1, 'center', '#000');
+    T('GAME SAVES STAY ON THE OTHER PHONE (FOR NOW).', cx, 176, '#5b5275', 1, 'center', '#000');
     if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
     policy(cx - 16);
   } else if (m === 'code') {
@@ -1578,13 +1979,27 @@ function drawAccount(t) {
       A.code = '';
       if (A.fresh) A.reload(); else { A.go('menu'); A.say('YOUR ACCOUNT IS READY!', '#5ad43f'); }
     }
+    msg(190);
   } else if (m === 'menu') {
-    T('YOU ARE LOGGED IN. LOG OUT, AND SOMEONE ELSE CAN PLAY ON THEIR OWN ACCOUNT.', cx, 66, '#efe9ff', 1, 'center', '#000');
-    if (UI.button('alogout', cx - 100, 82, 200, 24, 'LOG OUT', { accent: '#ff8a2a', disabled: busy })) A.logout();
-    if (UI.button('achange', cx - 100, 112, 200, 20, 'CHANGE PASSWORD', { size: 1, disabled: busy })) A.go('change');
-    if (UI.button('adelete', cx - 100, 136, 200, 20, 'DELETE ACCOUNT', { size: 1, disabled: busy })) A.go('delete');
-    msg(168);
-    T('ACCOUNTS ON THIS PHONE: ' + A.list.length + ' OF ' + MAX_ACCOUNTS, cx, 186, '#5b5275', 1, 'center', '#000');
+    const me = A.me();
+    T('YOU ARE LOGGED IN. LOG OUT, AND SOMEONE ELSE CAN PLAY ON THEIR OWN ACCOUNT.', cx, 64, '#efe9ff', 1, 'center', '#000');
+    if (UI.button('alogout', cx - 100, 76, 200, 24, 'LOG OUT', { accent: '#ff8a2a', disabled: busy })) A.logout();
+    if (UI.button('achange', cx - 100, 104, 200, 20, 'CHANGE PASSWORD', { size: 1, disabled: busy })) A.go('change');
+    if (UI.button('adelete', cx - 100, 128, 200, 20, 'DELETE ACCOUNT', { size: 1, disabled: busy })) A.go('delete');
+    if (me && me.srv && me.tok) { const tw = PX.textWidth('ON THE LEADERBOARD', 1); T('ON THE LEADERBOARD', cx - 5, 158, '#5ad43f', 1, 'center', '#000'); tickIcon(cx - 5 + Math.ceil(tw / 2) + 8, 160); }
+    else if (UI.button('ajoin', cx - 100, 152, 200, 20, me && me.srv ? 'LOG IN TO THE LEADERBOARD' : 'JOIN THE LEADERBOARD', { size: 1, accent: '#ffd23f', disabled: busy })) A.go('join');
+    msg(178);
+    T('ACCOUNTS ON THIS PHONE: ' + A.list.length + ' OF ' + MAX_ACCOUNTS, cx, 198, '#5b5275', 1, 'center', '#000');
+    if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
+    policy(cx - 16);
+  } else if (m === 'join') {
+    const again = A.me() && A.me().srv;
+    T(again ? 'THIS PHONE LOST ITS KEY TO THE LEADERBOARD. TYPE YOUR PASSWORD' : 'YOUR ACCOUNT GOES ON OUR SERVER TOO: YOU CAN LOG IN ON ANY', cx, 64, '#efe9ff', 1, 'center', '#000');
+    T(again ? 'AND YOUR BEST SCORES GO UP AGAIN.' : 'PHONE, AND YOUR BEST SCORES GO ON THE LEADERBOARD.', cx, 74, '#efe9ff', 1, 'center', '#000');
+    put(pw1, 'PASSWORD', 88);
+    if (UI.button('ajoingo', cx - 100, 120, 200, 24, again ? 'LOG IN' : 'JOIN', { accent: '#5ad43f', disabled: busy })) A.joinBoard();
+    msg(152);
+    if (!again) T("YOU'LL GET A NEW RECOVERY CODE (THE OLD ONE STOPS WORKING).", cx, 180, '#5b5275', 1, 'center', '#000');
     if (UI.button('aback', cx - 124, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
     policy(cx - 16);
   } else if (m === 'change') {
@@ -1593,9 +2008,11 @@ function drawAccount(t) {
     msg(166);
     if (UI.button('aback', cx - 50, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
   } else if (m === 'delete') {
-    if (A.list.length > 1) T('THIS DELETES THE ACCOUNT FOR GOOD: ITS NAME, ID, STARS, FRIENDS AND GAME SAVES!', cx, 66, '#ff8a8a', 1, 'center', '#000');
-    else T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 66, '#efe9ff', 1, 'center', '#000');
-    put(pw1, 'PASSWORD', 82);
+    const srv = A.me() && A.me().srv;
+    if (A.list.length > 1) T('THIS DELETES THE ACCOUNT FOR GOOD: ITS NAME, ID, STARS, FRIENDS AND GAME SAVES!', cx, 62, '#ff8a8a', 1, 'center', '#000');
+    else T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 62, '#efe9ff', 1, 'center', '#000');
+    if (srv) T('IT IS ALSO DELETED FROM THE SERVER AND THE LEADERBOARD.', cx, 72, '#ff8a8a', 1, 'center', '#000');
+    put(pw1, 'PASSWORD', 84);
     if (UI.button('adel', cx - 100, 116, 200, 24, 'DELETE ACCOUNT', { accent: '#ff5a5a', disabled: busy })) A.remove();
     msg(150);
     if (UI.button('aback', cx - 50, 212, 100, 22, 'BACK', { disabled: busy })) A.back();
@@ -1608,7 +2025,9 @@ function drawAccount(t) {
     policy(cx + 31);
   } else if (m === 'forgot') {
     let y = 62;
-    for (const line of wrapText("WE CAN'T SEND YOU A NEW PASSWORD: THE ARCADE HAS NO SERVER AND DOESN'T KNOW YOUR E-MAIL. TYPE THE RECOVERY CODE YOU WROTE DOWN, AND A NEW PASSWORD.", W - 24)) { T(line, cx, y, '#efe9ff', 1, 'center', '#000'); y += 9; }
+    const text = A.sel && A.sel.srv ? "WE CAN'T SEND YOU A NEW PASSWORD: WE DON'T KNOW YOUR E-MAIL. TYPE THE RECOVERY CODE YOU WROTE DOWN, AND A NEW PASSWORD. (THIS NEEDS INTERNET.)"
+      : "WE CAN'T SEND YOU A NEW PASSWORD: WE DON'T KNOW YOUR E-MAIL. TYPE THE RECOVERY CODE YOU WROTE DOWN, AND A NEW PASSWORD.";
+    for (const line of wrapText(text, W - 24)) { T(line, cx, y, '#efe9ff', 1, 'center', '#000'); y += 9; }
     put(codeInput, 'RECOVERY CODE', 92); put(pw2, 'NEW PASSWORD', 120);
     if (UI.button('areset', cx - 100, 150, 200, 24, 'SET NEW PASSWORD', { accent: '#5ad43f', disabled: busy })) A.reset();
     msg(182);
@@ -1655,7 +2074,7 @@ function frame(now) {
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
@@ -1665,9 +2084,9 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee', ui: UI,
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'leaders', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });
 </script>
 </body>
