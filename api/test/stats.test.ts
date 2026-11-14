@@ -140,7 +140,7 @@ describe('player moderation', () => {
     await env.DB.prepare("UPDATE players SET name_key = 'P123456' WHERE id = '234567'").run();
     const res = await post('/stats/players/123456/rename?key=test-admin');
     expect(res.status).toBe(303);
-    expect((await players())[0]).toMatchObject({ id: '123456', name: 'MIA' });
+    expect((await players())[0]).toMatchObject({ id: '123456', name: 'MIA', name_key: 'MIA' });
   });
 
   it('delete removes player, sessions, scores and login_fail only for that player', async () => {
@@ -156,6 +156,15 @@ describe('player moderation', () => {
     expect(await count("SELECT COUNT(*) AS n FROM scores WHERE player = '234567'")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM login_fail WHERE name_key = 'MIA'")).toBe(0);
     expect(await count("SELECT COUNT(*) AS n FROM login_fail WHERE name_key = 'BOB'")).toBe(1);
+  });
+
+  it('moderation responses (401, 400, 303) are no-store and noindex', async () => {
+    await seed();
+    for (const path of ['/stats/players/123456/rename', '/stats/players/123456/delete?key=nope', '/stats/players/12/delete?key=test-admin', '/stats/players/123456/rename?key=test-admin']) {
+      const res = await post(path);
+      expect(res.headers.get('cache-control'), path).toBe('no-store');
+      expect(res.headers.get('x-robots-tag'), path).toBe('noindex');
+    }
   });
 
   it('unknown id is still a 303; malformed id is a 400', async () => {

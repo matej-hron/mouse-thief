@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { newSalt, newToken, requirePlayer, safeEqual, sha256hex, storedSecret } from './auth';
 import type { AppEnv, Ctx } from './auth';
+import { deletePlayer } from './players';
 import { badName, cleanName, nameKey } from './names';
 
 const MAX_FAILS = 10;
@@ -206,13 +207,7 @@ accounts.post('/v1/password', requirePlayer, async (c) => {
 
 accounts.delete('/v1/me', requirePlayer, async (c) => {
   const id = c.get('player').id;
-  const db = c.env.DB;
-  await db.batch([
-    db.prepare('DELETE FROM login_fail WHERE name_key = (SELECT name_key FROM players WHERE id = ?)').bind(id),
-    db.prepare('DELETE FROM scores WHERE player = ?').bind(id),
-    db.prepare('DELETE FROM sessions WHERE player = ?').bind(id),
-    db.prepare('DELETE FROM players WHERE id = ?').bind(id),
-  ]);
+  await deletePlayer(c.env.DB, id);
   return c.body(null, 204);
 });
 

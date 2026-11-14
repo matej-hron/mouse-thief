@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { Env } from './index';
+import { deletePlayer } from './players';
 import { nameKey } from './names';
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -42,10 +43,16 @@ const playersTable = (rows: Record<string, string | number>[], key: string) => {
     .join('')}</table></div>`;
 };
 
+const noStore = (c: Ctx) => {
+  c.header('cache-control', 'no-store');
+  c.header('x-robots-tag', 'noindex');
+};
+
 const ID = /^[1-9][0-9]{5}$/;
 
 /** Shared guard for the moderation POSTs: 401 without the key, 400 on a malformed id, else null. */
 async function guard(c: Ctx) {
+  noStore(c);
   if (!(await adminOk(c))) return c.text('Unauthorized', 401);
   if (!ID.test(c.req.param('id')!)) return c.text('Bad id', 400);
   return null;
@@ -70,13 +77,7 @@ export async function deletePlayerRoute(c: Ctx) {
   const denied = await guard(c);
   if (denied) return denied;
   const id = c.req.param('id')!;
-  const db = c.env.DB;
-  await db.batch([
-    db.prepare('DELETE FROM login_fail WHERE name_key = (SELECT name_key FROM players WHERE id = ?)').bind(id),
-    db.prepare('DELETE FROM scores WHERE player = ?').bind(id),
-    db.prepare('DELETE FROM sessions WHERE player = ?').bind(id),
-    db.prepare('DELETE FROM players WHERE id = ?').bind(id),
-  ]);
+  await deletePlayer(c.env.DB, id);
   return back(c);
 }
 
