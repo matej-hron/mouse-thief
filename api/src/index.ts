@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
 import { statsRoute } from './stats';
 
@@ -12,10 +13,11 @@ export const checkOrigin = (origin: string): string => (ALLOWED_ORIGIN.test(orig
 
 export const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', cors({ origin: checkOrigin, allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['content-type', 'authorization'] }));
+app.use('*', cors({ origin: checkOrigin, allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 
 app.post('/v1/hit', hitRoute);
 app.get('/stats', statsRoute);
+app.route('/', accounts);
 
 export default {
   fetch: app.fetch,
