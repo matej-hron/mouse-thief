@@ -55,24 +55,31 @@ async function startSession(c: Ctx, playerId: string): Promise<string> {
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
+/** Read-only: is this name locked right now? (used by prelogin, which makes no guess itself) */
 async function isLocked(c: Ctx, key: string): Promise<boolean> {
-  const row = await c.env.DB.prepare('SELECT count, since FROM login_fail WHERE name_key = ?')
-    .bind(key)
-    .first<{ count: number; since: number }>();
-  return !!row && row.count >= MAX_FAILS && nowSeconds() - row.since < WINDOW_SECONDS;
+  const row = await c.env.DB.prepare('SELECT locked_until FROM login_fail WHERE name_key = ?').bind(key).first<{ locked_until: number }>();
+  return !!row && row.locked_until > nowSeconds();
 }
 
-/** Counts a wrong password or recovery code; the 15 minute window starts at the first failure. */
-async function recordFailure(c: Ctx, key: string): Promise<void> {
-  const now = nowSeconds();
-  await c.env.DB.prepare(
-    `INSERT INTO login_fail (name_key, count, since) VALUES (?1, 1, ?2)
+/**
+ * Records a password or recovery-code attempt BEFORE it is compared, in one atomic statement, so parallel guesses
+ * cannot slip past the limit. Attempts 1..10 within a 15 minute window may be compared; the 10th starts a 15 minute
+ * lock, and every attempt during the lock counts past 10 and is refused. A success clears the row.
+ */
+async function allowAttempt(c: Ctx, key: string): Promise<boolean> {
+  const fresh = '(locked_until <= ?2 AND (?2 - since >= ?3 OR locked_until > 0))';
+  const next = `CASE WHEN ${fresh} THEN 1 ELSE count + 1 END`;
+  const row = await c.env.DB.prepare(
+    `INSERT INTO login_fail (name_key, count, since, locked_until) VALUES (?1, 1, ?2, 0)
      ON CONFLICT (name_key) DO UPDATE SET
-       count = CASE WHEN ?2 - since >= ?3 THEN 1 ELSE count + 1 END,
-       since = CASE WHEN ?2 - since >= ?3 THEN ?2 ELSE since END`,
+       count = ${next},
+       since = CASE WHEN ${fresh} THEN ?2 ELSE since END,
+       locked_until = CASE WHEN locked_until > ?2 THEN locked_until WHEN ${next} >= ?4 THEN ?2 + ?3 ELSE 0 END
+     RETURNING count`,
   )
-    .bind(key, now, WINDOW_SECONDS)
-    .run();
+    .bind(key, nowSeconds(), WINDOW_SECONDS, MAX_FAILS)
+    .first<{ count: number }>();
+  return row!.count <= MAX_FAILS;
 }
 
 const clearFailures = (c: Ctx, key: string) => c.env.DB.prepare('DELETE FROM login_fail WHERE name_key = ?').bind(key).run();
@@ -92,6 +99,9 @@ accounts.post('/v1/prelogin', async (c) => {
 });
 
 accounts.post('/v1/register', async (c) => {
+  // The client IP is only a rate-limit key, held in memory; it is never stored or logged.
+  const { success } = await c.env.REGISTER_LIMIT.limit({ key: c.req.header('cf-connecting-ip') ?? 'unknown' });
+  if (!success) return c.json({ error: 'SLOW_DOWN' }, 429);
   const b = await parse(c, registerBody);
   if (!b) return bad(c);
   if (badName(b.name)) return c.json({ error: 'NAME_BAD' }, 422);
@@ -125,9 +135,8 @@ accounts.post('/v1/login', async (c) => {
   const key = nameKey(cleanName(b.name));
   const p = await findByName(c, key);
   if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
-  if (await isLocked(c, key)) return c.json({ error: 'LOCKED' }, 429);
+  if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
   if (!safeEqual(await storedSecret(p.ssalt, b.pw), p.pw)) {
-    await recordFailure(c, key);
     return c.json({ error: 'WRONG' }, 401);
   }
   await clearFailures(c, key);
@@ -140,9 +149,8 @@ accounts.post('/v1/reset', async (c) => {
   const key = nameKey(cleanName(b.name));
   const p = await findByName(c, key);
   if (!p) return c.json({ error: 'NO_PLAYER' }, 404);
-  if (await isLocked(c, key)) return c.json({ error: 'LOCKED' }, 429);
+  if (!(await allowAttempt(c, key))) return c.json({ error: 'LOCKED' }, 429);
   if (!safeEqual(await storedSecret(p.rssalt, b.rpw), p.rpw)) {
-    await recordFailure(c, key);
     return c.json({ error: 'WRONG' }, 401);
   }
   const ssalt = newSalt();

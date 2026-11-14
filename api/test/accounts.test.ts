@@ -2,6 +2,7 @@ import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { sha256hex } from '../src/auth';
 import { cleanName, badName } from '../src/names';
+import worker from '../src/index';
 
 const H = (c: string) => c.repeat(64);
 const PW = H('a');
@@ -102,13 +103,51 @@ describe('accounts', () => {
     const locked = await login();
     expect(locked.status).toBe(429);
     expect(await code(locked)).toBe('LOCKED');
-    // the window runs out
-    await env.DB.prepare('UPDATE login_fail SET since = since - 901').run();
+    // the lock started at the 10th failure and lasts 15 minutes
+    await env.DB.prepare('UPDATE login_fail SET since = since - 899, locked_until = locked_until - 899').run();
+    expect((await login()).status).toBe(429);
+    await env.DB.prepare('UPDATE login_fail SET since = since - 2, locked_until = locked_until - 2').run();
     expect((await login()).status).toBe(200);
     // a success reset the counter: 9 more failures do not lock
     for (let i = 0; i < 9; i++) await login('MIA', H('c'));
     expect((await login()).status).toBe(200);
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM login_fail').first('n')).toBe(0);
+  });
+
+  it('the lock starts at the 10th failure, not the first', async () => {
+    await register();
+    for (let i = 0; i < 9; i++) await login('MIA', H('c'));
+    await env.DB.prepare('UPDATE login_fail SET since = since - 890').run(); // first failure was 14m50s ago
+    expect((await login('MIA', H('c'))).status).toBe(401);
+    expect((await login()).status).toBe(429);
+  });
+
+  it('parallel wrong guesses cannot bypass the throttle', async () => {
+    await register();
+    const rs = await Promise.all(Array.from({ length: 20 }, () => login('MIA', H('c'))));
+    expect(rs.filter((r) => r.status === 401).length).toBeLessThanOrEqual(10);
+    expect((await login()).status).toBe(429);
+  });
+
+  it('register is rate limited per client (SLOW_DOWN)', async () => {
+    const keys: string[] = [];
+    let left = 5;
+    const stub = { limit: async ({ key }: { key: string }) => (keys.push(key), { success: left-- > 0 }) };
+    const send = (id: string, name: string) =>
+      worker.fetch(
+        new Request('https://api.test/v1/register', {
+          method: 'POST',
+          headers: { 'cf-connecting-ip': '203.0.113.7' },
+          body: JSON.stringify({ id, name, avatar: { shape: 'cat', color: 3 }, csalt: H('1'), pw: PW, rsalt: H('2'), rpw: RPW }),
+        }),
+        { ...env, REGISTER_LIMIT: stub } as never,
+        { waitUntil() {}, passThroughOnException() {} } as never,
+      );
+    for (let i = 0; i < 5; i++) expect((await send(`10000${i}`, `KID ${i}`)).status).toBe(201);
+    const r = await send('100009', 'KID 9');
+    expect(r.status).toBe(429);
+    expect(await code(r)).toBe('SLOW_DOWN');
+    expect(new Set(keys)).toEqual(new Set(['203.0.113.7']));
   });
 
   it('reset with recovery code drops other sessions', async () => {

@@ -4,7 +4,7 @@ import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
 import { statsRoute } from './stats';
 
-export type Env = { DB: D1Database; ADMIN_KEY: string };
+export type Env = { DB: D1Database; ADMIN_KEY: string; REGISTER_LIMIT: RateLimit };
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
 

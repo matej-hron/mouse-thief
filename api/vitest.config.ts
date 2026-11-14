@@ -14,6 +14,8 @@ export default defineConfig(async () => {
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
           bindings: { TEST_MIGRATIONS: migrations, ADMIN_KEY: 'test-admin' },
+          // the real limit (5/min) would throttle the many registers in the tests; the limit itself is tested with a stub
+          ratelimits: { REGISTER_LIMIT: { namespace_id: '1001', simple: { limit: 100000, period: 60 } } },
         },
       }),
     ],
