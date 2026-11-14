@@ -1,0 +1,20 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "pixel-arcade-api",
+	"account_id": "86857b772da63ff1d71ef98acd440f33",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-22",
+	// The API lives on pixel-arcade-api.matej-hron.workers.dev; no preview URLs.
+	"workers_dev": true,
+	"preview_urls": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "pixel-arcade",
+			"database_id": "1641e75a-9180-44a3-bae2-620017cfaa4c",
+			"migrations_dir": "migrations"
+		}
+	],
+	"triggers": { "crons": ["23 3 * * *"] },
+	"observability": { "enabled": true, "logs": { "invocation_logs": false } }
+}

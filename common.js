@@ -147,6 +147,46 @@ window.PX = (() => {
   };
   const cleanName = v => String(v || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
 
+  // --- the arcade's small backend (visit counter now; accounts and scores later) ----------------------
+  const Api = {
+    base: /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:8787' : 'https://pixel-arcade-api.matej-hron.workers.dev',
+    // JSON in, JSON out. Never throws: a network error or an 8 s timeout gives { ok: false, status: 0, data: null }.
+    async call(method, path, body, token) {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
+      try {
+        const headers = {};
+        if (body !== undefined) headers['content-type'] = 'application/json';
+        if (token) headers.authorization = 'Bearer ' + token;
+        const res = await fetch(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: ctl.signal, mode: 'cors' });
+        let data = null;
+        try { data = await res.json(); } catch (e) { /* no body (204) or not JSON */ }
+        return { ok: res.ok, status: res.status, data };
+      } catch (e) { return { ok: false, status: 0, data: null }; }
+      finally { clearTimeout(timer); }
+    },
+    // Counts this visit: which page, which version, and a random id that belongs to this browser (not to a person).
+    hit() {
+      try {
+        const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+        if (local && localStorage.getItem('pixelArcade.hitLocal') !== '1') return;
+        if (navigator.onLine === false) return;
+        let d = localStorage.getItem('pixelArcade.vid');
+        if (!/^[a-z0-9]{8,32}$/.test(d || '')) {
+          const a = crypto.getRandomValues(new Uint8Array(16));
+          d = Array.from(a, n => 'abcdefghijklmnopqrstuvwxyz0123456789'[n % 36]).join('');
+          localStorage.setItem('pixelArcade.vid', d);
+        }
+        const p = location.pathname.split('/').pop() || 'index.html';
+        const v = typeof VERSION === 'string' ? VERSION : undefined;   // the page's own top-level const, if it has one
+        const json = JSON.stringify({ p, v, d });
+        const url = this.base + '/v1/hit';
+        if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([json], { type: 'text/plain' }))) return;
+        fetch(url, { method: 'POST', body: json, keepalive: true, mode: 'cors', headers: { 'content-type': 'text/plain' } }).catch(() => {});
+      } catch (e) { /* counting must never break a game */ }
+    },
+  };
+  window.addEventListener('load', () => Api.hit());
+
   // --- online play (the same free PeerJS server as Mouse Thief) -------------------------------
   // our own copy first (it works offline-cached and can't be blocked by a CDN filter), then two CDNs
   const PEERJS_URLS = ['vendor/peerjs.min.js',
@@ -770,6 +810,6 @@ window.PX = (() => {
     auto(join) { const c = this.joinCode(); if (c) join(c); },
   };
 
-  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName,
+  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, Api,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();
