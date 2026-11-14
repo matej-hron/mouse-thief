@@ -48,7 +48,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | account | invite | coffee
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | leaders | account | invite | coffee
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -617,8 +617,8 @@ function drawHome(t) {
   // next to it: phones as controllers (play on an Xbox, a TV or a computer with your phone)
   const px = W - 10 - PX.textWidth(stars, 2) - 38;
   // the title, smaller (and moved left) when the buttons on the right need the room
-  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 42;
-  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 42 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
+  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 78;
+  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 78 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
   T('PIXEL ARCADE', tx + 2, (small ? 12 : 10), '#e01e1e', ts, 'center');
   T('PIXEL ARCADE', tx, (small ? 10 : 8), '#fff', ts, 'center');
   if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
@@ -627,6 +627,10 @@ function drawHome(t) {
   const gx = px - 36;
   if (UI.button('settings', gx, 7, 30, 20, '', { size: 1, accent: '#ff8a2a' })) openSettings();
   gearIcon(gx + 15 + (UI.mx >= gx && UI.mx < gx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
+  // and the leaderboards
+  const lx = gx - 36;
+  if (UI.button('top', lx, 7, 30, 20, '', { size: 1, accent: '#ffd23f' })) Leaders.open();
+  trophyIcon(lx + 15 + (UI.mx >= lx && UI.mx < lx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46 + 4 + 50, rx = Math.round(W / 2 - rowW / 2);
@@ -935,6 +939,8 @@ function padPoll(dt) {
         const k = edge(4) ? -1 : edge(5) ? 1 : 0;
         if (k) { search.cat = CATEGORIES[(CATEGORIES.indexOf(search.cat) + k + CATEGORIES.length) % CATEGORIES.length]; scrollTo(0); padFocus(0); }
       }
+    } else if (screen === 'leaders') {          // PX.Pad moves between the buttons and does B; LB / RB: the previous / next game
+      const k = edge(4) ? -1 : edge(5) ? 1 : 0; if (k) Leaders.game(k);
     } else if (screen === 'settings' || screen === 'coffee') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
@@ -1378,6 +1384,84 @@ function drawFriends(t) {
   });
   if (pages > 1 && UI.button('fmore', cx + 56, 214, 90, 20, 'MORE ' + (F.page + 1) + '/' + pages, { size: 1 })) F.page = (F.page + 1) % pages;
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
+}
+
+// --- TOP: the global leaderboards ---------------------------------------------------------------------------------
+// One board at a time: a game (LB / RB or the < > buttons), and a track when the game has several. 10 rows per page, up to
+// 5 pages. Pages are kept for 30 seconds, so flipping back and forth doesn't ask the server again. A late answer for a
+// board or page that isn't shown any more is just kept in the cache and never drawn.
+function trophyIcon(cx, cy) { PX.drawIcon(ctx, ['#######', '#######', '.#####.', '..###..', '...#...', '..###..'], { '#': '#ffd23f' }, cx, cy, 2); }
+const LEADER_PAGES = 5, LEADER_ROWS = 10, LEADER_TTL = 30000;
+const Leaders = {
+  gi: 0, ti: 0, page: 0, cache: {}, pending: {}, opened: 0,
+  g() { return PX.Scores.GAMES[this.gi]; },
+  board() { const g = this.g(), t = g.tracks && g.tracks[this.ti]; return t ? g.game + ':' + PX.Scores.trackKey(t.key) : g.game; },
+  key() { return this.board() + '|' + this.page; },
+  async open() {
+    screen = 'leaders'; this.cache = {}; this.page = 0; this.ready = false; const mine = ++this.opened;
+    PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
+    await PX.Scores.sync();                                   // (never throws) so your newest best is on the board
+    if (mine === this.opened) this.ready = true;
+  },
+  leave() { screen = 'home'; this.opened++; },
+  go(fn) { fn(); this.page = 0; const e = this.cache[this.key()]; if (e && !e.res.ok) delete this.cache[this.key()]; PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  game(d) { const n = PX.Scores.GAMES.length; this.go(() => { this.gi = (this.gi + d + n) % n; this.ti = 0; }); },
+  track(d) { const n = this.g().tracks.length; this.go(() => { this.ti = (this.ti + d + n) % n; }); },
+  flip(p) { this.page = p; const e = this.cache[this.key()]; if (e && !e.res.ok) delete this.cache[this.key()]; PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  // the answer for what is shown: { res } when there is one, else null (and the fetch is started)
+  current() {
+    const k = this.key(), e = this.cache[k], now = performance.now();
+    if (e && (!e.res.ok || now - e.t < LEADER_TTL)) return e;
+    if (!this.pending[k] && this.ready) {
+      this.pending[k] = true;
+      const board = this.board(), page = this.page, me = PX.Api.session();
+      PX.Api.call('GET', '/v1/boards/' + board + '?page=' + page, undefined, me && me.tok).then(res => {
+        delete this.pending[k]; this.cache[board + '|' + page] = { t: performance.now(), res };
+      });
+    }
+    return null;
+  },
+};
+function fitText(str, size, maxW) { while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
+function drawLeaders(t) {
+  const W = S.W, cx = Math.round(W / 2), L = Leaders, g = L.g(), board = L.board(), e = L.current(), res = e && e.res;
+  background(t);
+  T('TOP PLAYERS', cx, 10, '#fff', 2, 'center', '#000');
+  if (UI.button('lback', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { L.leave(); return; }
+  // < GAME >, and < TRACK > when the game has several boards
+  const pw = Math.min(W - 16, 440), x = Math.round(cx - pw / 2);
+  if (UI.button('lgp', x, 34, 24, 18, '<', { size: 1 })) L.game(-1);
+  if (UI.button('lgn', x + pw - 24, 34, 24, 18, '>', { size: 1 })) L.game(1);
+  T(fitText(g.name, 2, pw - 64), cx, 38, '#ffd23f', 2, 'center', '#000');
+  if (g.tracks) {
+    if (UI.button('ltp', x, 54, 24, 16, '<', { size: 1 })) L.track(-1);
+    if (UI.button('ltn', x + pw - 24, 54, 24, 16, '>', { size: 1 })) L.track(1);
+    T(fitText(g.tracks[L.ti].label, 1, pw - 64), cx, 59, '#efe9ff', 1, 'center', '#000');
+  }
+  // the rows
+  const rows = res && res.ok && res.data && Array.isArray(res.data.rows) ? res.data.rows : null, y0 = 72, ph = 14;
+  if (rows) rows.slice(0, LEADER_ROWS).forEach((r, i) => {
+    const y = y0 + i * ph, mine = r.me === true, col = mine ? '#ffd23f' : '#fff';
+    ctx.fillStyle = mine ? '#3a3010' : '#16121f'; ctx.fillRect(x, y, pw, ph - 1);
+    ctx.fillStyle = mine ? '#ffd23f' : r.rank <= 3 ? ['#ffd23f', '#c8d0e0', '#d08a4a'][r.rank - 1] : '#3a2f5c'; ctx.fillRect(x, y, 3, ph - 1);
+    T('#' + r.rank, x + 8, y + 3, mine ? '#ffd23f' : '#9a92b8', 1);
+    PX.drawAvatar(ctx, { shape: r.shape, color: r.color }, x + 40, y, 1, null);
+    T(fitText(String(r.name), 1, 90), x + 60, y + 3, col, 1);
+    T(PX.Scores.format(board, r.value), x + pw - 6, y + 3, col, 1, 'right');
+  });
+  if (!rows && !res) T('LOADING...', cx, 130, '#9a92b8', 2, 'center', '#000');
+  else if (!rows && res.status !== 0) T("CAN'T LOAD THIS BOARD.", cx, 130, '#ff8a8a', 2, 'center', '#000');
+  // MORE: the next page (the last one goes back to the first)
+  const more = rows && rows.length >= LEADER_ROWS && L.page < LEADER_PAGES - 1;
+  if (rows && (more || L.page > 0) && UI.button('lmore', W - 8 - 76, 8, 76, 22, more ? 'MORE' : 'FIRST', { size: 1 })) L.flip(more ? L.page + 1 : 0);
+  if (rows && L.page > 0) T('PAGE ' + (L.page + 1), W - 8 - 76 - 8, 16, '#9a92b8', 1, 'right', '#000');
+  // the footer: NO INTERNET, no account, nobody yet, or you
+  const fy = 221;
+  if (!res) return;
+  if (res.status === 0) T('NO INTERNET', cx, fy, '#ff8a8a', 1, 'center', '#000');
+  else if (!PX.Api.session()) { if (UI.button('lacct', cx - 150, fy - 6, 300, 18, 'MAKE AN ACCOUNT TO BE ON THE LEADERBOARD', { size: 1, accent: '#5ad43f' })) Account.open(); }
+  else if (rows && !rows.length) T('NOBODY YET. BE THE FIRST!', cx, fy, '#9a92b8', 1, 'center', '#000');
+  else if (res.ok) { const me = res.data && res.data.me; T(me ? 'YOU: #' + me.rank + '  ' + PX.Scores.format(board, me.value) : 'YOU: NOT ON THIS BOARD YET', cx, fy, me ? '#ffd23f' : '#9a92b8', 1, 'center', '#000'); }
 }
 
 // --- ACCOUNTS: each player on this phone has their own arcade, behind a password -------------------------------------
@@ -1970,7 +2054,7 @@ function frame(now) {
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
@@ -1980,9 +2064,9 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee', ui: UI,
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'leaders', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });
 </script>
 </body>
