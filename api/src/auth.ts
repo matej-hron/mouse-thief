@@ -25,21 +25,29 @@ export function safeEqual(a: string, b: string): boolean {
 /** What is stored for a secret the phone sent: sha256(server salt + sent value). The sent value itself is never kept. */
 export const storedSecret = (salt: string, sent: string) => sha256hex(salt + sent);
 
-export const requirePlayer: MiddlewareHandler<AppEnv> = async (c, next) => {
+/** Looks up the player behind the request's Bearer token. Null when there is no valid token. */
+export async function playerFromRequest(
+  c: Ctx,
+): Promise<{ player: Player; tokenHash: string; seen: string | null } | null> {
   const token = /^Bearer ([0-9a-f]{64})$/.exec(c.req.header('authorization') ?? '')?.[1];
-  if (!token) return c.json({ error: 'AUTH' }, 401);
+  if (!token) return null;
   const tokenHash = await sha256hex(token);
   const row = await c.env.DB.prepare(
     'SELECT p.id AS id, p.name AS name, p.seen AS seen FROM sessions s JOIN players p ON p.id = s.player WHERE s.token_hash = ?',
   )
     .bind(tokenHash)
     .first<{ id: string; name: string; seen: string | null }>();
-  if (!row) return c.json({ error: 'AUTH' }, 401);
+  return row ? { player: { id: row.id, name: row.name }, tokenHash, seen: row.seen } : null;
+}
+
+export const requirePlayer: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const found = await playerFromRequest(c);
+  if (!found) return c.json({ error: 'AUTH' }, 401);
   const now = new Date().toISOString();
-  if (!row.seen || row.seen.slice(0, 10) < now.slice(0, 10)) {
-    await c.env.DB.prepare('UPDATE players SET seen = ? WHERE id = ?').bind(now, row.id).run();
+  if (!found.seen || found.seen.slice(0, 10) < now.slice(0, 10)) {
+    await c.env.DB.prepare('UPDATE players SET seen = ? WHERE id = ?').bind(now, found.player.id).run();
   }
-  c.set('player', { id: row.id, name: row.name });
-  c.set('tokenHash', tokenHash);
+  c.set('player', found.player);
+  c.set('tokenHash', found.tokenHash);
   await next();
 };

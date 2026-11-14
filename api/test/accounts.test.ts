@@ -3,31 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { sha256hex } from '../src/auth';
 import { cleanName, badName } from '../src/names';
 import worker from '../src/index';
+import { H, PW, RPW, call, code, login, reg, register, resetTables } from './helpers';
 
-const H = (c: string) => c.repeat(64);
-const PW = H('a');
-const RPW = H('b');
-
-const call = (method: string, path: string, body?: unknown, token?: string) =>
-  SELF.fetch(`https://api.test${path}`, {
-    method,
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-
-const reg = (over: Record<string, unknown> = {}) =>
-  call('POST', '/v1/register', {
-    id: '123456', name: 'MIA', avatar: { shape: 'cat', color: 3 },
-    csalt: H('1'), pw: PW, rsalt: H('2'), rpw: RPW, ...over,
-  });
-
-const register = async (over: Record<string, unknown> = {}) => ((await (await reg(over)).json()) as { token: string }).token;
-const login = (name = 'MIA', pw = PW) => call('POST', '/v1/login', { name, pw });
-const code = async (r: Response) => ((await r.json()) as { error: string }).error;
-
-beforeEach(async () => {
-  await env.DB.batch(['players', 'sessions', 'scores', 'login_fail'].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
-});
+beforeEach(resetTables);
 
 describe('names', () => {
   it('cleanName mirrors the client', () => {

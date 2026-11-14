@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
+import { scores } from './scores';
 import { statsRoute } from './stats';
 
 export type Env = { DB: D1Database; ADMIN_KEY: string; REGISTER_LIMIT: RateLimit };
@@ -18,6 +19,7 @@ app.use('*', cors({ origin: checkOrigin, allowMethods: ['GET', 'POST', 'PUT', 'D
 app.post('/v1/hit', hitRoute);
 app.get('/stats', statsRoute);
 app.route('/', accounts);
+app.route('/', scores);
 
 export default {
   fetch: app.fetch,
