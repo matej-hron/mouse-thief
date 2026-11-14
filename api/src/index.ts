@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cleanupHits, hitRoute } from './hits';
+import { statsRoute } from './stats';
 
 export type Env = { DB: D1Database; ADMIN_KEY: string };
 
@@ -14,6 +15,7 @@ export const app = new Hono<{ Bindings: Env }>();
 app.use('*', cors({ origin: checkOrigin, allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['content-type', 'authorization'] }));
 
 app.post('/v1/hit', hitRoute);
+app.get('/stats', statsRoute);
 
 export default {
   fetch: app.fetch,
