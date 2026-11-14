@@ -876,6 +876,26 @@ runs the game, so jumping never lags; the cat's screen draws it ~0.1 s late and 
 In a race each phone runs its own thief. Online play needs an internet connection, and both phones must run the
 same version (the game checks).
 
+## Backend
+
+The arcade has a small backend in `api/`: a Cloudflare Worker (Hono) with a D1 database. For now it counts visits
+(`POST /v1/hit`) and shows them on a stats page (`GET /stats`). The games call it through `PX.Api` in `common.js`.
+
+- Tests: `cd api && npm install && npm test`
+- Local dev: create `api/.dev.vars` containing `ADMIN_KEY=dev-admin` (it is git-ignored), then
+  `cd api && npx wrangler d1 migrations apply pixel-arcade --local && npm run dev` (the API is on `http://localhost:8787`).
+  On localhost the arcade does not count visits unless you set `localStorage['pixelArcade.hitLocal'] = '1'`.
+- Deploy: `cd api && npm run deploy && npx wrangler d1 migrations apply pixel-arcade --remote`
+- Stats page: `https://pixel-arcade-api.matej-hron.workers.dev/stats?key=…` (the admin key)
+
+### Usage numbers
+
+Every time a page of the arcade or a game opens, it tells the backend three things: which page, which version, and a
+random ID that lives only in that browser (`pixelArcade.vid`; it is not your player ID). The backend keeps how many
+visits each page had per day, how many different browsers visited, and how many visits came from each country. It does
+not keep IP addresses, names, accounts or stars, and nothing is counted when you are offline. The details are in
+PRIVACY AND POLICY in the arcade.
+
 ## Install as an app (PWA)
 
 The game is an installable Progressive Web App and works offline.

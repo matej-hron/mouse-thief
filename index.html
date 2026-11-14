@@ -39,7 +39,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.43.0';
+const VERSION = '2.44.0';
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
 const ctx = S.ctx, H = S.H;
@@ -1339,7 +1339,7 @@ function drawFriends(t) {
 // a new password. The rules are in PRIVACY AND POLICY. (It is a lock for brothers and sisters, not a bank vault:
 // while nobody is logged in, a game opened by its own address plays as a nameless guest, and that is thrown away.)
 const ACCOUNTS_KEY = 'pixelArcade.accounts', OLD_ACCOUNT_KEY = 'pixelArcade.account', stashKey = id => 'pixelArcade.acct.' + id, MAX_ACCOUNTS = 6;
-const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen'];
+const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen', 'pixelArcade.vid', 'pixelArcade.hitLocal'];
 const phoneKey = k => k === ACCOUNTS_KEY || k.startsWith('pixelArcade.acct.') || k.startsWith('pixelArcade.starGift') || PHONE_KEYS.includes(k);
 const playerKeys = () => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!phoneKey(k)) a.push(k); } return a; };
 const pw1 = document.getElementById('pw1'), pw2 = document.getElementById('pw2'), codeInput = document.getElementById('code');
@@ -1480,6 +1480,7 @@ const POLICY = [
   "THERE IS NO \"FORGOT PASSWORD\" BY E-MAIL: WE DON'T KNOW YOUR E-MAIL AND WE CAN'T RESET YOUR PASSWORD FOR YOU.",
   'THE ONLY WAY BACK IN IS YOUR RECOVERY CODE. WRITE IT DOWN! WITHOUT IT NOBODY CAN OPEN THE ACCOUNT, NOT EVEN US.',
   'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. THEY WAIT THERE ABOUT 12 HOURS.',
+  'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME AND WHICH COUNTRY. NOTHING ABOUT YOU.',
   "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
   "CLEARING THE BROWSER'S DATA DELETES EVERYTHING: ALL THE ACCOUNTS, THEIR STARS AND THEIR FRIENDS.",
 ];
