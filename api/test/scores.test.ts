@@ -145,4 +145,11 @@ describe('boards', () => {
     expect((await board('stars')).r.headers.get('cache-control')).toBe('public, max-age=30');
     expect((await board('stars', t)).r.headers.get('cache-control')).toBeNull();
   });
+
+  it('board answers vary by Authorization (a cached anonymous answer is never reused with a token)', async () => {
+    const t = await player('111111', 'AAA');
+    const vary = (r: Response) => (r.headers.get('vary') ?? '').split(',').map((v) => v.trim().toLowerCase());
+    expect(vary((await board('stars')).r)).toContain('authorization');
+    expect(vary((await board('stars', t)).r)).toContain('authorization');
+  });
 });

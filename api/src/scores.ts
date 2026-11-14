@@ -82,6 +82,8 @@ scores.get('/v1/boards/:board', async (c) => {
     }
   }
 
+  // the answer depends on the token (me, the me row): a browser must not reuse an anonymous cached one with a token
+  c.header('vary', 'Authorization', { append: true });
   if (!c.req.header('authorization')) c.header('cache-control', 'public, max-age=30');
   return c.json({
     board,
