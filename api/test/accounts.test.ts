@@ -117,9 +117,10 @@ describe('accounts', () => {
   it('the lock starts at the 10th failure, not the first', async () => {
     await register();
     for (let i = 0; i < 9; i++) await login('MIA', H('c'));
-    await env.DB.prepare('UPDATE login_fail SET since = since - 890').run(); // first failure was 14m50s ago
-    expect((await login('MIA', H('c'))).status).toBe(401);
-    expect((await login()).status).toBe(429);
+    await env.DB.prepare('UPDATE login_fail SET since = since - 899').run(); // first failure was 14m59s ago
+    expect((await login('MIA', H('c'))).status).toBe(401); // the 10th starts the lock
+    await env.DB.prepare('UPDATE login_fail SET since = since - 300, locked_until = locked_until - 300').run();
+    expect((await login()).status).toBe(429); // 15m+ after the first failure, but only 5m into the lock
   });
 
   it('parallel wrong guesses cannot bypass the throttle', async () => {
