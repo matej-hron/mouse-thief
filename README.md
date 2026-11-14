@@ -4,8 +4,9 @@ Pixel-art games to play alone or with a friend, on a phone or a computer. **Play
 
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
 Every player also has an **ID**: 6 digits (like 716367), picked at random the first time the arcade or a game is opened
-on a phone and then kept for good, also when the name changes. It is shown under your name and in EDIT. (The arcade has
-no server, so two players could get the same ID by chance: about 1 in a million for any two players.)
+on a phone and then kept for good, also when the name changes. It is shown under your name and in EDIT. (The ID is picked
+on the phone, so two players could get the same ID by chance: about 1 in a million for any two players. The server
+refuses a second account with an ID it already has.)
 **SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
 PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
@@ -600,31 +601,60 @@ JOIN opens the game and joins yours right away: no code to type.
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
 
+## Leaderboards
+
+The **trophy button (TOP)** next to SETTINGS opens the global leaderboards.
+
+- **One board per game.** Pick the game with `<` `>` (or LB / RB on a controller). Games with several tracks, levels or
+  maps have one board for each: Pixel Heist (the 5 places), Pixel Ski (every map and level), Pixel Bike Run and Pixel
+  Moto (every track, and FREE RIDE), Pixel Sky GP (3 tracks), Pixel Horde (3 maps) and Pixel Defense (8 maps, endless
+  waves); `<` `>` under the game name changes the track. Pixel GP has one board (best lap).
+- **STARS** is a board too: the stars you have earned ever (not the ones in your wallet).
+- Ten players per page, MORE shows the next pages (up to 5). The best is on top: the fastest time, or the highest score.
+- **How scores get there:** you don't do anything. Whenever an arcade page opens online, the arcade reads each game's
+  BEST from the phone and sends only the ones that are new. No game had to change.
+- **Who is on it:** only players with an account that has joined the leaderboard (see Accounts). Your own row is in
+  **yellow**, and under the list it says YOU: # and your place, even when you are not on the first page.
+- **Offline:** nothing is lost. The new bests wait on the phone and go the next time an arcade page opens online. The
+  board itself says NO INTERNET when it can't load.
+- **Cheating:** the scores are reported by the phone, so the server can't see them being played. It rejects values that
+  are impossible for that game (a lap of 0.1 s, a million stars), and the owner can remove a player from the boards.
+
 ## Accounts
 
 One phone can hold up to **6 accounts**, each behind its own password, each with its own name, avatar, ID, stars,
 friends and game saves. So brothers and sisters can share a phone: one logs out, the other logs in.
 
-- **The first account:** EDIT → ACCOUNT → MAKE AN ACCOUNT, choose a password (4 to 20 characters, typed twice). The
-  player who is on the phone gets the password and keeps everything.
+- **The first account:** EDIT → ACCOUNT → MAKE AN ACCOUNT, choose a nickname and a password (4 to 20 characters, typed
+  twice). The player who is on the phone gets the password and keeps everything. The account is also made on the
+  server (it needs internet), and it gets an 8-letter **recovery code**, shown once: write it down.
+- **Nicknames are unique on the leaderboard:** if somebody has it already, you pick another one.
+- **YOUR ACCOUNT → JOIN THE LEADERBOARD** (LOG IN TO THE LEADERBOARD when it is already on the server but this phone
+  has to sign in again): type the password and the account goes on the server, with its best scores. An account
+  made before the server existed can join this way.
 - **LOG OUT** (EDIT → ACCOUNT): the arcade now shows only **WHO IS PLAYING?**, the list of accounts on the phone.
   Pick yours and type your password, or press **NEW ACCOUNT** (a nickname and a password) to start a new player with
   a new ID and no stars. You stay logged in until you log out.
-- YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT. Deleting the only account takes just the password away
-  (the player stays as they are); deleting one of several deletes that whole account, with its stars and saves.
-- **Accounts live on this phone only.** The arcade has no server, so you can't log in on another phone, and nothing
-  about an account is sent anywhere. A password is not kept: only a salted hash of it (PBKDF2), in the browser's storage.
-- **Forgot password:** nobody can mail you a new one (no server, no e-mail). A new account gets an 8-letter
-  **recovery code**, shown once: write it down. FORGOT PASSWORD? on the LOG IN screen takes that code and a new
-  password. Without the code there is no way back in to that account.
-- **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 7 short points.
+- **LOG IN FROM ANOTHER PHONE:** type your nickname and password. The phone gets your name, ID and avatar from the
+  server as a new account. Game progress (stars, saves) does **not** come along yet: it stays on the old phone.
+- **Forgot password:** nobody can mail you a new one (there is no e-mail). FORGOT PASSWORD? takes the recovery code and
+  a new password, and on an account on the server it works on **any phone** (the server knows the code). Without the
+  code there is no way back in to that account.
+- YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT. For an account on the server both **need internet**. Deleting
+  the only account takes just the password away (the player stays as they are); deleting one of several deletes that
+  whole account, with its stars and saves, and from the server (with its scores) too.
+- **What the server keeps:** your ID, nickname, avatar, a scrambled password and your best scores. No e-mail, no real
+  name. Stars and game saves stay on the phone. The password is never kept: the phone and the server only keep scrambled
+  copies (PBKDF2 on the phone, and a salted hash of that on the server).
+- **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 8 short points.
 
 How it works (`Account` in `index.html`): everything the games save is in the browser's storage. LOG OUT packs all of
 it into one entry for that account and empties the rest; LOG IN unpacks it; then the page reloads. A few things belong
 to the phone and stay put: the settings, the phone-controller pairing, and which gifts of stars were taken on this
 phone (so a new account can't take the same gift again). It is a lock against brothers and sisters, not a vault:
 while nobody is logged in, a game opened by its own address plays as a nameless guest whose progress is thrown away,
-and clearing the browser's data removes all the accounts with everything in them.
+and clearing the browser's data removes all the accounts from the phone (the ones on the server stay there, and
+LOG IN FROM ANOTHER PHONE brings them back, without the progress).
 
 ## Buy me a coffee
 
@@ -842,8 +872,8 @@ New players get an interactive tutorial after the intro (replay it any time via 
   Korobeiniki, Ode to Joy, Jingle Bells (★300–450 each). Boss fights keep their own music (Bossy Devil fights to a faster Toccata).
 - **Shields** are used up: buy them one by one (★50, up to 9); each one you raise is gone for good.
 - **Your name:** SETTINGS → NAME (a nickname, 2–10 letters). Friends see it in multiplayer and on the leaderboard.
-- **Leaderboard** (menu): you and every friend you've played online with, by most stars and by longest run. No server:
-  phones swap names, stars and best times whenever they meet in multiplayer.
+- **Leaderboard** (menu): you and every friend you've played online with, by most stars and by longest run. (The arcade's
+  global TOP is separate.) Here there is no server: phones swap names, stars and best times whenever they meet in multiplayer.
 - **Mouse skins:** SHOP → SKINS, last page: dress up the mouse you carry (white, brown, zombie, robot, ninja, rainbow, golden).
 - **Skins:** buy new looks for your thief in SHOP → SKINS, or unlock MY SKIN (★150) and design your own
   (body color, eye color, stripes or spots).
@@ -887,8 +917,21 @@ same version (the game checks).
 
 ## Backend
 
-The arcade has a small backend in `api/`: a Cloudflare Worker (Hono) with a D1 database. For now it counts visits
-(`POST /v1/hit`) and shows them on a stats page (`GET /stats`). The games call it through `PX.Api` in `common.js`.
+The arcade has a small backend in `api/`: a Cloudflare Worker (Hono) with a D1 database. It counts visits, keeps the
+accounts and the leaderboards, and shows numbers and moderation on a stats page (`GET /stats`). The arcade and the
+games call it through `PX.Api` in `common.js`.
+
+- **Endpoints (`/v1`):** `POST /hit` (visit count); `POST /prelogin`, `/register`, `/login`, `/reset` (`prelogin`,
+  `login` and `reset` take a nickname or a player id); `GET`, `PUT`, `DELETE /me` (the account); `POST /password`;
+  `POST /session` (is my token still good); `POST /scores` (new bests); `GET /boards/:board` (a page of a board).
+- **Passwords:** the phone sends a PBKDF2 of the password, and the server stores a salted SHA-256 of that. The phone's
+  own hash (the one that unlocks the account on the phone) never leaves it.
+- **Limits:** 10 wrong passwords (or recovery codes) on a nickname lock it for 15 minutes; sign-ups are rate-limited
+  too (the answer is SLOW_DOWN).
+- **Moderation:** the stats page lists the players. RENAME turns a nickname into P+ID, and DELETE removes the player
+  with their scores.
+- **Release order:** apply the migrations remotely and deploy the Worker **before** merging client changes that need
+  them, or the live arcade calls endpoints that are not there yet.
 
 - Tests: `cd api && npm install && npm test`
 - Local dev: create `api/.dev.vars` containing `ADMIN_KEY=dev-admin` (it is git-ignored), then
@@ -902,7 +945,8 @@ The arcade has a small backend in `api/`: a Cloudflare Worker (Hono) with a D1 d
 Every time a page of the arcade or a game opens, it tells the backend three things: which page, which version, and a
 random ID that lives only in that browser (`pixelArcade.vid`; it is not your player ID). The backend keeps how many
 visits each page had per day, how many different browsers visited, and how many visits came from each country. It does
-not keep IP addresses, names, accounts or stars, and nothing is counted when you are offline. The details are in
+not keep IP addresses, names, accounts or stars for this, and nothing is counted when you are offline. (Accounts and best
+scores are a separate thing: see Accounts.) The details are in
 PRIVACY AND POLICY in the arcade.
 
 ## Install as an app (PWA)

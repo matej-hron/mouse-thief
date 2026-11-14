@@ -113,11 +113,11 @@ SHA-256(server salt ‖ that output). A leaked database can't be brute-forced wi
 
 **API (v1)**
 
-- `POST /v1/prelogin {name}` → `{csalt, rsalt}` for that name (404 if none).
-- `POST /v1/register {id, name, avatar, csalt, pw, rsalt, rpw}` → `{token}`. 409 `NAME_TAKEN` / `ID_TAKEN`.
+- `POST /v1/prelogin {name}` or `{id}` (exactly one) → `{csalt, rsalt}` for that player (404 if none).
+- `POST /v1/register {id, name, avatar, csalt, pw, rsalt, rpw}` → `{token}`. 409 `NAME_TAKEN` / `ID_TAKEN`. 429 `SLOW_DOWN` when sign-ups come too fast (rate limit).
   Name filtered: `PX.cleanName` rules + a small English/Czech rude-word list → 422 `NAME_BAD`.
-- `POST /v1/login {name, pw}` → `{token, id, name, avatar}`.
-- `POST /v1/reset {name, rpw, csalt, pw}` → `{token}` (recovery code → new password; old sessions dropped).
+- `POST /v1/login {name | id, pw}` (exactly one of name or id) → `{token, id, name, avatar}`. 429 `LOCKED` for 15 minutes from the 10th failure.
+- `POST /v1/reset {name | id, rpw, csalt, pw}` (exactly one of name or id) → `{token, id}` (recovery code → new password; old sessions dropped).
 - With `Authorization: Bearer <token>`: `PUT /v1/me {name?, avatar?}`, `POST /v1/password {pw, csalt}`,
   `DELETE /v1/me` (deletes player, sessions and scores), `DELETE /v1/session`, `POST /v1/scores {scores: [{b, v}]}`.
 - `GET /v1/boards/:board?me=<id>` → top 50 `[{rank, id, name, avatar, value}]` + the player's own rank and value.
@@ -224,6 +224,7 @@ updated.
 7. **Deploying:** the owner said to work independently and wrangler is logged in to the personal account, so the
    builder creates the EU D1, sets `ADMIN_KEY`, applies migrations and deploys the Worker before merging the PR whose
    client code needs it. The ADMIN_KEY goes to the owner in the final report (not committed).
+8. Stored server accounts log in by player id (a nickname can change on another phone); only LOG IN FROM ANOTHER PHONE uses the nickname.
 
 ## Left to the builder
 
