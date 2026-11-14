@@ -120,8 +120,9 @@ SHA-256(server salt ‖ that output). A leaked database can't be brute-forced wi
 - `POST /v1/reset {name | id, rpw, csalt, pw}` (exactly one of name or id) → `{token, id}` (recovery code → new password; old sessions dropped).
 - With `Authorization: Bearer <token>`: `PUT /v1/me {name?, avatar?}`, `POST /v1/password {pw, csalt}`,
   `DELETE /v1/me` (deletes player, sessions and scores), `DELETE /v1/session`, `POST /v1/scores {scores: [{b, v}]}`.
-- `GET /v1/boards/:board?me=<id>` → top 50 `[{rank, id, name, avatar, value}]` + the player's own rank and value.
-  Public, cached at the edge for 30 s.
+- `GET /v1/boards/:board?page=<0-4>` → a page of 10 (top 50 in all) `{board, rows: [{rank, name, shape, color, value,
+  me?}], me}`: no player ids; with a token, `me: true` on your own row and `me: {rank, value}` (else `null`). Public;
+  an answer without a token may be browser-cached for 30 s (`Cache-Control: public, max-age=30`, `Vary: Authorization`).
 - Admin (ADMIN_KEY): the `/stats` page lists the 50 newest players with RENAME-TO-PLAYERnnnnnn and DELETE buttons.
 
 **Boards.** A board id is `game` or `game:track`. The server knows each game's direction (higher or lower is better)
@@ -169,7 +170,10 @@ scores never overwrites a record. No game file changes; game VERSIONs stay as th
 - MAKE AN ACCOUNT / NEW ACCOUNT: after the local account is made, register it on the server with the same password
   and recovery code. Offline or failed → the local account still works; YOUR ACCOUNT then shows a **JOIN THE
   LEADERBOARD** button (asks the password once and registers). `NAME_TAKEN` → "THAT NAME IS TAKEN. CHANGE IT IN
-  EDIT." `ID_TAKEN` → pick a new random ID for this account and retry (rare; the old ID's friends links break).
+  EDIT, THEN JOIN THE LEADERBOARD." `ID_TAKEN` → first log in to that ID with the same password: if it works, it is
+  this very account (an earlier answer got lost), which is signed in and keeps its recovery code. Only a wrong
+  password (somebody else's ID) picks a new random ID and retries once (rare; the old ID's friends links break); if
+  that fails too, the account gets its old ID back.
 - Existing local accounts: the next LOG IN with password registers them silently (or logs in, if `srv` and no token).
   The account that is logged in now (who never retypes the password) uses JOIN THE LEADERBOARD.
 - **LOG IN FROM ANOTHER PHONE** (new button on WHO IS PLAYING? and next to MAKE AN ACCOUNT): name + password →
@@ -180,14 +184,16 @@ scores never overwrites a record. No game file changes; game VERSIONs stay as th
   pushes to `PUT /v1/me`; if the name is taken the local change stays and EDIT shows "NAME TAKEN ON THE LEADERBOARD".
 - LOG OUT: drop the token locally and call `DELETE /v1/session` (best effort).
 - POLICY: rewritten for server accounts (what is stored: ID, nickname, avatar, scrambled password, best scores;
-  DELETE ACCOUNT removes it all; still no e-mail, use a nickname, don't reuse a password).
+  DELETE ACCOUNT removes it from the server and this phone, other phones keep their copy until deleted there; still
+  no e-mail, use a nickname, don't reuse a password).
 
 **Leaderboard screen (`index.html`)**
 
 - A trophy button on the home screen next to FRIENDS.
-- `◀ GAME ▶` picker (STARS first, then the games in arcade order), and `◀ TRACK ▶` when the game has several boards.
+- `◀ GAME ▶` picker (STARS EARNED first, then the games in arcade order), and `◀ TRACK ▶` when the game has several boards.
 - Top 10 rows (rank, avatar, name, formatted value; your row highlighted), MORE pages up to 50, then a YOU row with
-  your rank, or "MAKE AN ACCOUNT TO BE ON THE LEADERBOARD" / "NO INTERNET".
+  your rank, or "MAKE AN ACCOUNT TO BE ON THE LEADERBOARD" (no account) / "JOIN THE LEADERBOARD IN YOUR ACCOUNT" (an
+  account that is not on the board yet; "LOG IN TO …" when it is on the server but has no token) / "NO INTERNET".
 - Controller: LB/RB switch game, PX.Pad moves between buttons, B back. Same look as FRIENDS.
 - Values formatted per game: times as m:ss.d, metres, $, coins, counts.
 

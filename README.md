@@ -609,7 +609,7 @@ The **trophy button (TOP)** next to SETTINGS opens the global leaderboards.
   maps have one board for each: Pixel Heist (the 5 places), Pixel Ski (every map and level), Pixel Bike Run and Pixel
   Moto (every track, and FREE RIDE), Pixel Sky GP (3 tracks), Pixel Horde (3 maps) and Pixel Defense (8 maps, endless
   waves); `<` `>` under the game name changes the track. Pixel GP has one board (best lap).
-- **STARS** is a board too: the stars you have earned ever (not the ones in your wallet).
+- **STARS EARNED** is a board too: the stars you have earned ever (not the ones in your wallet).
 - Ten players per page, MORE shows the next pages (up to 5). The best is on top: the fastest time, or the highest score.
 - **How scores get there:** you don't do anything. Whenever an arcade page opens online, the arcade reads each game's
   BEST from the phone and sends only the ones that are new. No game had to change.
@@ -642,7 +642,8 @@ friends and game saves. So brothers and sisters can share a phone: one logs out,
   code there is no way back in to that account.
 - YOUR ACCOUNT also has CHANGE PASSWORD and DELETE ACCOUNT. For an account on the server both **need internet**. Deleting
   the only account takes just the password away (the player stays as they are); deleting one of several deletes that
-  whole account, with its stars and saves, and from the server (with its scores) too.
+  whole account, with its stars and saves, and from the server (with its scores) too. Other phones keep their own copy
+  of the account until it is deleted there.
 - **What the server keeps:** your ID, nickname, avatar, a scrambled password and your best scores. No e-mail, no real
   name. Stars and game saves stay on the phone. The password is never kept: the phone and the server only keep scrambled
   copies (PBKDF2 on the phone, and a salted hash of that on the server).
@@ -923,7 +924,7 @@ games call it through `PX.Api` in `common.js`.
 
 - **Endpoints (`/v1`):** `POST /hit` (visit count); `POST /prelogin`, `/register`, `/login`, `/reset` (`prelogin`,
   `login` and `reset` take a nickname or a player id); `GET`, `PUT`, `DELETE /me` (the account); `POST /password`;
-  `POST /session` (is my token still good); `POST /scores` (new bests); `GET /boards/:board` (a page of a board).
+  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board).
 - **Passwords:** the phone sends a PBKDF2 of the password, and the server stores a salted SHA-256 of that. The phone's
   own hash (the one that unlocks the account on the phone) never leaves it.
 - **Limits:** 10 wrong passwords (or recovery codes) on a nickname lock it for 15 minutes; sign-ups are rate-limited
@@ -937,7 +938,7 @@ games call it through `PX.Api` in `common.js`.
 - Local dev: create `api/.dev.vars` containing `ADMIN_KEY=dev-admin` (it is git-ignored), then
   `cd api && npx wrangler d1 migrations apply pixel-arcade --local && npm run dev` (the API is on `http://localhost:8787`).
   On localhost the arcade does not count visits unless you set `localStorage['pixelArcade.hitLocal'] = '1'`.
-- Deploy: `cd api && npm run deploy && npx wrangler d1 migrations apply pixel-arcade --remote`
+- Deploy (migrations first, then the Worker): `cd api && npx wrangler d1 migrations apply pixel-arcade --remote && npm run deploy`
 - Stats page: `https://pixel-arcade-api.matej-hron.workers.dev/stats?key=…` (the admin key)
 
 ### Usage numbers

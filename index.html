@@ -1459,7 +1459,10 @@ function drawLeaders(t) {
   const fy = 221;
   if (!res) return;
   if (res.status === 0) T('NO INTERNET', cx, fy, '#ff8a8a', 1, 'center', '#000');
-  else if (!PX.Api.session()) { if (UI.button('lacct', cx - 150, fy - 6, 300, 18, 'MAKE AN ACCOUNT TO BE ON THE LEADERBOARD', { size: 1, accent: '#5ad43f' })) Account.open(); }
+  else if (!PX.Api.session()) {                      // (an account that isn't on the board yet joins in YOUR ACCOUNT)
+    const a = Account.me(), label = !a ? 'MAKE AN ACCOUNT TO BE ON THE LEADERBOARD' : a.srv ? 'LOG IN TO THE LEADERBOARD IN YOUR ACCOUNT' : 'JOIN THE LEADERBOARD IN YOUR ACCOUNT';
+    if (UI.button('lacct', cx - 150, fy - 6, 300, 18, label, { size: 1, accent: '#5ad43f' })) Account.open();
+  }
   else if (rows && !rows.length) T('NOBODY YET. BE THE FIRST!', cx, fy, '#9a92b8', 1, 'center', '#000');
   else if (res.ok) { const me = res.data && res.data.me; T(me ? 'YOU: #' + me.rank + '  ' + PX.Scores.format(board, me.value) : 'YOU: NOT ON THIS BOARD YET', cx, fy, me ? '#ffd23f' : '#9a92b8', 1, 'center', '#000'); }
 }
@@ -1494,7 +1497,7 @@ const SALT_RE = /^([0-9a-f]{32}|[0-9a-f]{64})$/, TOKEN_RE = /^[0-9a-f]{64}$/;
 const errOf = res => res.status === 0 ? 'OFFLINE' : res.data && typeof res.data.error === 'string' ? res.data.error : 'SERVER';
 const SERVER_SAYS = {
   OFFLINE: 'THIS NEEDS INTERNET.', LOCKED: 'TOO MANY TRIES. WAIT 15 MINUTES.', SLOW_DOWN: 'TOO MANY NEW ACCOUNTS. TRY AGAIN IN A MINUTE.',
-  WRONG: 'WRONG PASSWORD.', NAME_TAKEN: 'THAT NAME IS TAKEN. CHANGE IT IN EDIT.', NAME_BAD: 'PICK ANOTHER NAME.', BAD: 'PICK ANOTHER NAME.',
+  WRONG: 'WRONG PASSWORD.', NAME_TAKEN: 'THAT NAME IS TAKEN. CHANGE IT IN EDIT, THEN JOIN THE LEADERBOARD.', NAME_BAD: 'PICK ANOTHER NAME.', BAD: 'PICK ANOTHER NAME.',
   NO_PLAYER: 'NO PLAYER HAS THAT NICKNAME.', ID_TAKEN: "THAT DIDN'T WORK. TRY AGAIN.",
 };
 const JOIN_SAYS = { NAME_BAD: 'PICK ANOTHER NAME IN EDIT.', BAD: 'PICK ANOTHER NAME IN EDIT.' };     // (registering: the name is the profile's)
@@ -1587,24 +1590,36 @@ const Account = {
   server: {
     // Puts account `a` (the one logged in now, with its profile's name and avatar) on the server, with this password
     // and recovery code, each scrambled with a fresh salt of its own. 'ok' (then `a` has srv, tok, csalt) or the error.
-    // Somebody has this ID on the server already: an account that was never there gets a new ID (its old friends links
-    // break), once.
+    // Somebody has this ID on the server already: if this password logs in to it, it is this very account (an earlier
+    // answer got lost on the way, or the phone's record forgot it was on the server): 'again', and `a` is signed in, with
+    // the recovery code the server has had since. Only somebody else's ID gives an account that was never there a new
+    // ID (its old friends links break), once; if that doesn't work either, it keeps its old ID.
     async register(a, password, code) {
       const p = PX.Profile.load();
       a.name = PX.cleanName(p.name) || a.name; a.avatar = { shape: p.avatar.shape, color: p.avatar.color };
       const csalt = Account.newSalt(), rsalt = Account.newSalt();
       const body = { name: a.name, avatar: a.avatar, csalt, pw: await PX.Api.pbkdf2(password, csalt), rsalt, rpw: await PX.Api.pbkdf2(code, rsalt) };
-      for (let tries = 0; ; tries++) {
-        const res = await PX.Api.call('POST', '/v1/register', { id: a.id, ...body });
-        if (res.ok && res.data && TOKEN_RE.test(res.data.token)) {
-          Account.signedIn(a, { token: res.data.token, csalt });
-          Account.forgetSent(a.id);                  // a new player on the server: all the bests go up again
-          return 'ok';
+      const send = () => PX.Api.call('POST', '/v1/register', { id: a.id, ...body }), made = res => res.ok && res.data && TOKEN_RE.test(res.data.token);
+      const errorOf = res => res.ok ? 'SERVER' : errOf(res);
+      let res = await send();
+      if (!made(res)) {
+        const e = errorOf(res);
+        if (e !== 'ID_TAKEN') return e;
+        const r = await Account.loginAs(a, password);
+        if (r.ok) {
+          Account.signedIn(a, r.data);
+          Account.forgetSent(a.id);                  // (what the server has of it is unknown: all the bests go up again)
+          return 'again';
         }
-        const e = res.ok ? 'SERVER' : errOf(res);
-        if (e !== 'ID_TAKEN' || tries || a.was) return e;          // (one that was on the server keeps its ID)
-        Account.renumber(a);
+        if (r.error !== 'WRONG') return r.error === 'NO_PLAYER' ? 'SERVER' : r.error;
+        if (a.was) return e;                         // (one that was on the server keeps its ID)
+        const old = Account.renumber(a);
+        res = await send();
+        if (!made(res)) { Account.renumber(a, old); return errorOf(res); }
       }
+      Account.signedIn(a, { token: res.data.token, csalt });
+      Account.forgetSent(a.id);                      // a new player on the server: all the bests go up again
+      return 'ok';
     },
     // { name } (typed) or { id } (an account this phone knows) + password → { ok, data: { token, id, name, avatar, csalt }, error }
     async serverLogin(who, password) {
@@ -1644,14 +1659,15 @@ const Account = {
   forgetSent(id) {
     try { const k = 'pixelArcade.sentScores', s = JSON.parse(localStorage.getItem(k)); if (s && s[id]) { delete s[id]; localStorage.setItem(k, JSON.stringify(s)); } } catch (e) { /* nothing sent yet */ }
   },
-  // a new random ID for account `a` (logged in now), and for its profile
-  renumber(a) {
-    const old = a.id; let id;
-    do { id = String(100000 + Math.floor(Math.random() * 900000)); } while (this.list.some(x => x.id === id));
+  // a new random ID (or this one: the old ID back) for account `a` (logged in now), and for its profile. Gives the old ID.
+  renumber(a, id) {
+    const old = a.id;
+    if (!id) do { id = String(100000 + Math.floor(Math.random() * 900000)); } while (this.list.some(x => x.id === id));
     a.id = id; if (this.cur === old) this.cur = id;
     const p = PX.Profile.load(); if (p.id === old) { p.id = id; PX.Profile.save(p); }
     if (profile.id === old) profile.id = id;
     if (!this.save()) throw new Error('no room');
+    return old;
   },
   // Is this the account's password? The phone's hash first. A server account whose password was changed on another
   // phone asks the server, and if it agrees, the phone's hash is updated (and the account has a token). '' = yes.
@@ -1683,9 +1699,11 @@ const Account = {
   },
   // Registers `a` (logged in now) with a NEW recovery code: an account made before the server only has a hash of its
   // old code, so it gets a new one, for the server and this phone alike. Shows it (mode 'code'). 'ok' or the error.
+  // 'again': it was on the server already (see server.register), which keeps the code it has: no new code, nothing shown.
   async joinNew(a, password, fresh) {
     const code = this.newCode(), rsalt = this.newSalt(), rhash = await this.hash(code, rsalt);
     const r = await this.server.register(a, password, code);
+    if (r === 'again') { if (!this.save()) throw new Error('no room'); PX.Scores.sync(); return r; }
     if (r !== 'ok') { if (!this.save()) throw new Error('no room'); return r; }
     a.rsalt = rsalt; a.rhash = rhash;
     this.go('code'); this.code = code; this.fresh = fresh;   // the server has this code now: it is shown whatever happens next
@@ -1695,10 +1713,11 @@ const Account = {
     PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
     return 'ok';
   },
-  // The player here has something to lose: stars, or a game's save.
+  // The player here has something to lose: stars, friends (or requests to or from them), or a game's save.
   hasProgress() {
-    const w = PX.Wallet.read();
+    const w = PX.Wallet.read(), f = Friends.d;
     if ((w.totalEarned | 0) > 0 || (w.points | 0) > 0) return true;
+    if (f.list.length || f.inc.length || f.out.length) return true;
     const saves = PX.Scores.GAMES.map(g => g.save).filter(k => k !== 'mouseThief.save.v1');
     return playerKeys().some(k => saves.includes(k));
   },
@@ -1731,7 +1750,7 @@ const Account = {
     const r = await this.server.register(a, p, code);          // the same password and code (the account here is made either way)
     this.go('code'); this.code = code; this.fresh = fresh; PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
     if (!this.save()) throw new Error('no room');              // (the code stays on the screen, with the message)
-    if (r === 'ok') PX.Scores.sync(); else this.say('NOT ON THE LEADERBOARD YET: ' + this.says(r, JOIN_SAYS), '#ff8a8a');
+    if (r === 'ok' || r === 'again') PX.Scores.sync(); else this.say('NOT ON THE LEADERBOARD YET: ' + this.says(r, JOIN_SAYS), '#ff8a8a');
   }); },
   // LOG IN. A server account gets a new token; an account that never joined the server joins it now (silently,
   // but with a new recovery code, which is shown before the arcade reloads).
@@ -1760,16 +1779,17 @@ const Account = {
         if (await this.hash(p, a.salt) !== a.hash) { const salt = this.newSalt(); a.hash = await this.hash(p, salt); a.salt = salt; }
         if (!this.save()) throw new Error('no room');
         PX.Scores.sync();
-        this.go('menu'); this.say('YOU ARE ON THE LEADERBOARD!', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
-        return;
+        return this.onBoard();
       }
       if (r.error !== 'NO_PLAYER') return this.fail(this.says(r.error));
       this.unjoin(a); this.save();                   // gone from the server: join it again, below
     }
     if (await this.hash(p, a.salt) !== a.hash) { pw1.value = ''; return this.fail('WRONG PASSWORD.'); }
     const r = await this.joinNew(a, p, false);
+    if (r === 'again') return this.onBoard();       // it was on the server already: the recovery code stays the same
     if (r !== 'ok') this.fail(this.says(r, a.was ? { ...JOIN_SAYS, ID_TAKEN: "THIS ACCOUNT CAN'T JOIN AGAIN WITH THE SAME ID. MAKE A NEW ACCOUNT." } : JOIN_SAYS));
   }); },
+  onBoard() { this.go('menu'); this.say('YOU ARE ON THE LEADERBOARD!', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 }); },
   // LOG IN FROM ANOTHER PHONE: an account from the server becomes a new account on this phone, with empty progress.
   fromAnotherPhone() { return this.run(async () => {
     const name = PX.cleanName(nameInput.value), p = pw1.value;
@@ -1876,7 +1896,7 @@ function wrapText(str, maxW) {
 const POLICY = [
   'YOUR ACCOUNT IS KEPT ON THIS PHONE AND ON OUR SERVER: YOUR ID, NICKNAME, AVATAR, A SCRAMBLED PASSWORD AND YOUR BEST SCORES.',
   'LOG IN ON ANY PHONE WITH YOUR NICKNAME AND PASSWORD. STARS AND GAME SAVES STAY ON EACH PHONE (FOR NOW).',
-  'DELETE ACCOUNT REMOVES IT EVERYWHERE: FROM THIS PHONE, THE SERVER AND THE LEADERBOARD.',
+  'DELETE ACCOUNT REMOVES IT FROM THE SERVER, THE LEADERBOARD AND THIS PHONE. OTHER PHONES KEEP THEIR COPY UNTIL YOU DELETE IT THERE.',
   "WE DON'T KNOW YOUR E-MAIL. THE ONLY WAY BACK IN IS YOUR RECOVERY CODE: WRITE IT DOWN!",
   'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS.',
   'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME, WHICH COUNTRY AND A RANDOM CODE.',
@@ -1991,7 +2011,7 @@ function drawAccount(t) {
     const srv = A.me() && A.me().srv;
     if (A.list.length > 1) T('THIS DELETES THE ACCOUNT FOR GOOD: ITS NAME, ID, STARS, FRIENDS AND GAME SAVES!', cx, 62, '#ff8a8a', 1, 'center', '#000');
     else T('ONLY THE PASSWORD GOES AWAY. YOUR NAME, ID, STARS AND FRIENDS STAY ON THIS PHONE.', cx, 62, '#efe9ff', 1, 'center', '#000');
-    if (srv) T('IT IS ALSO DELETED FROM THE SERVER AND THE LEADERBOARD, ON EVERY PHONE.', cx, 72, '#ff8a8a', 1, 'center', '#000');
+    if (srv) T('IT IS ALSO DELETED FROM THE SERVER AND THE LEADERBOARD.', cx, 72, '#ff8a8a', 1, 'center', '#000');
     put(pw1, 'PASSWORD', 84);
     if (UI.button('adel', cx - 100, 116, 200, 24, 'DELETE ACCOUNT', { accent: '#ff5a5a', disabled: busy })) A.remove();
     msg(150);

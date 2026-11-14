@@ -251,7 +251,7 @@ window.PX = (() => {
   const DEFENSE_TRACKS = [['meadow', 'GREEN MEADOW'], ['dunes', 'DRY DUNES'], ['frost', 'FROZEN FORK'], ['swamp', 'CROSSROAD SWAMP'], ['lava', 'LAVA CAVE'], ['crystal', 'CRYSTAL MINE'], ['sky', 'CLOUD BRIDGES'], ['core', 'THE CORE']].map(([k, l]) => tr(k, l));
   // in arcade order (the stars wallet first); save = the game's localStorage key
   const GAMES = [
-    G('stars', 'STARS', 'mouseThief.save.v1', 'stars', s => one('stars', s.totalEarned)),
+    G('stars', 'STARS EARNED', 'mouseThief.save.v1', 'stars', s => one('stars', s.totalEarned)),
     G('thief', 'MOUSE THIEF', 'mouseThief.save.v1', 'time', s => one('thief', s.bestTime)),
     G('racer', 'PIXEL GP', 'pixelGP.save', 'time', s => one('racer', s.bestLap)),
     G('heist', 'PIXEL HEIST', 'pixelHeist.save', 'time', s => perTrack('heist', s.best, HEIST_TRACKS), HEIST_TRACKS),
