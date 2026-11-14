@@ -3,7 +3,7 @@
 	"name": "pixel-arcade-api",
 	"account_id": "86857b772da63ff1d71ef98acd440f33",
 	"main": "src/index.ts",
-	"compatibility_date": "2026-11-01",
+	"compatibility_date": "2026-07-22",
 	"d1_databases": [
 		{
 			"binding": "DB",

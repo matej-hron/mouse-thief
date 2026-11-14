@@ -13,8 +13,6 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
-          // installed workerd (1.2026072x) predates wrangler.jsonc's compatibility_date; tests only
-          compatibilityDate: '2026-07-22',
           bindings: { TEST_MIGRATIONS: migrations, ADMIN_KEY: 'test-admin' },
         },
       }),
