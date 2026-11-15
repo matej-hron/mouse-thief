@@ -40,7 +40,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.48.0';
+const VERSION = '2.49.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -1302,6 +1302,7 @@ const Friends = {
     screen = 'friends'; giveInput.value = ''; this.told = false; this.sure = ''; this.page = 0; PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
     this.say("ASK YOUR FRIEND FOR THEIR ID: IT'S UNDER THEIR NAME IN THE ARCADE.");
     if (performance.now() - Inbox.last > 5000) Inbox.check();
+    if (performance.now() - Online.last > 5000) Online.poll();
   },
   leave() { giveInput.blur(); screen = 'home'; },
   check() {                                          // what is wrong with what you typed, if anything
@@ -1367,16 +1368,19 @@ function drawFriends(t) {
     const w = F.find(id) ? [bad, '', '#9a92b8'] : Who.line(Who.ask(id));
     T(w[0], cx, 68, w[2], 1, 'center', '#000'); if (w[1]) T(w[1], cx, 77, '#5b5275', 1, 'center', '#000');
   } else T(F.msg, cx, 68, F.col, 1, 'center', '#000');
-  // pending requests to you first, then your friends, then the requests you sent
-  const rows = [...F.d.inc.map(f => ({ f, k: 'inc' })), ...F.d.list.map(f => ({ f, k: 'fr' })), ...F.d.out.map(f => ({ f, k: 'out' }))];
+  // pending requests to you first, then your friends (the ones online on top), then the requests you sent
+  const friends = [...F.d.list].sort((a, b) => (Online.of(b.id).s === 'on') - (Online.of(a.id).s === 'on'));
+  const rows = [...F.d.inc.map(f => ({ f, k: 'inc' })), ...friends.map(f => ({ f, k: 'fr' })), ...F.d.out.map(f => ({ f, k: 'out' }))];
   const per = 6, pages = Math.max(1, Math.ceil(rows.length / per)); if (F.page >= pages) F.page = 0;
   const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
   if (!rows.length) T('NO FRIENDS YET.', cx, 130, '#5b5275', 2, 'center', '#000');
   rows.slice(F.page * per, F.page * per + per).forEach((r, i) => {
-    const y = 88 + i * 20, f = r.f, col = { inc: '#ff7ab8', fr: '#5ad43f', out: '#9a92b8' }[r.k];
+    const y = 88 + i * 20, f = r.f, o = r.k === 'fr' && Online.of(f.id);
+    const col = o ? o.col : { inc: '#ff7ab8', out: '#9a92b8' }[r.k];
     ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, rw, 18); ctx.fillStyle = col; ctx.fillRect(x, y, 3, 18);
     T(f.name, x + 8, y + 3, '#fff', 1); T('ID ' + f.id, x + 8, y + 10, '#9a92b8', 1);
-    T({ inc: 'PENDING: WANTS TO BE YOUR FRIEND', fr: 'FRIEND', out: 'REQUEST SENT: WAITING' }[r.k], x + 72, y + 6, col, 1);
+    if (o) { onlineDot(x + 72, y + 6, o); T(o.text, x + 81, y + 6, o.col, 1); }
+    else T({ inc: 'PENDING: WANTS TO BE YOUR FRIEND', out: 'REQUEST SENT: WAITING' }[r.k], x + 72, y + 6, col, 1);
     if (r.k === 'inc') {
       if (UI.button('fadd' + f.id, x + rw - 92, y + 1, 46, 16, 'ADD', { size: 1, accent: '#5ad43f', disabled: busy })) F.accept(f);
       if (UI.button('fno' + f.id, x + rw - 42, y + 1, 40, 16, 'NO', { size: 1, disabled: busy })) F.refuse(f);
@@ -1391,6 +1395,47 @@ function drawFriends(t) {
   });
   if (pages > 1 && UI.button('fmore', cx + 56, 214, 90, 20, 'MORE ' + (F.page + 1) + '/' + pages, { size: 1 })) F.page = (F.page + 1) % pages;
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
+}
+
+// --- ONLINE / OFFLINE: which friends are playing right now --------------------------------------------------------
+// Every arcade and game says "I'm online" (PX.Presence in common.js). Here all your friends' topics are asked for
+// in one request (the last 6 minutes): every 20 seconds while FRIENDS or a chat is open.
+const Online = {
+  st: {}, last: -1e9, busy: false,
+  async poll() {
+    const ids = Friends.d.list.map(f => f.id);
+    this.last = performance.now();
+    if (!ids.length || this.busy) return;
+    this.busy = true;
+    try {
+      const res = await fetch(RELAY + ids.map(PX.Presence.topic).join(',') + '/json?poll=1&since=6m', { cache: 'no-store' });
+      if (!res.ok) throw new Error('relay ' + res.status);
+      const st = {};
+      for (const row of (await res.text()).split('\n')) {
+        try {
+          const ev = JSON.parse(row), m = ev.event === 'message' ? JSON.parse(ev.message) : null, id = String(ev.topic || '').replace('pixel-arcade-on-', '');
+          if (!m || m.v !== 1 || !ids.includes(id)) continue;
+          const t = Number.isFinite(m.t) ? m.t : 0, at = (+ev.time || 0) * 1000;
+          if (!st[id] || t >= st[id].t) st[id] = { t, at, on: m.on === 1, g: typeof m.g === 'string' ? m.g : '' };
+        } catch (e) { /* not a hello */ }
+      }
+      for (const id of ids) this.st[id] = st[id] || { t: 0, at: 0, on: false, g: '' };
+    } catch (e) { /* offline: keep what we knew */ }
+    this.busy = false;
+  },
+  // { s: 'on' | 'off' | '?', text, col } for a friend
+  of(id) {
+    const e = this.st[id];
+    if (!e) return { s: '?', text: '...', col: '#5b5275' };
+    if (!e.on || Date.now() - e.at > PX.Presence.FRESH) return { s: 'off', text: 'OFFLINE', col: '#7a7290' };
+    const g = e.g && GAMES.find(x => x.url === e.g + '.html');
+    return { s: 'on', text: g ? 'PLAYING ' + g.name : 'ONLINE', col: '#5ad43f' };
+  },
+};
+function onlineDot(x, y, o) {             // a green dot when online, a grey ring when not
+  ctx.fillStyle = '#000'; ctx.fillRect(x, y - 1, 7, 7);
+  ctx.fillStyle = o.s === 'on' ? '#5ad43f' : '#5b5275'; ctx.fillRect(x + 1, y, 5, 5);
+  if (o.s !== 'on') { ctx.fillStyle = '#16121f'; ctx.fillRect(x + 2, y + 1, 3, 3); }
 }
 
 // --- CHAT: write to a friend (CHAT next to them in FRIENDS) -------------------------------------------------------
@@ -1511,7 +1556,8 @@ function drawChat(t) {
   background(t);
   const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
   T(f.name, cx, 8, '#fff', 2, 'center', '#000');
-  T('ID ' + f.id, cx, 22, '#9a92b8', 1, 'center', '#000');
+  const o = Online.of(f.id), ow = PX.textWidth(o.text, 1) + 9, ox = Math.round(cx - ow / 2);
+  onlineDot(ox, 22, o); T(o.text, ox + 9, 22, o.col, 1, 'left', '#000');
   // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
   const top = 34, bottom = 160, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
   ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
@@ -1541,7 +1587,7 @@ function drawChat(t) {
   S.placeInput(chatInput, x, 188, rw - 64, 22);
   const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
   if (UI.button('csend', x + rw - 60, 188, 60, 22, Chat.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) Chat.send();
-  T(Chat.msg || 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).', cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
+  T(Chat.msg || (o.text.startsWith('PLAYING') ? f.name + ' IS IN A GAME: THEY SEE IT BACK IN THE ARCADE.' : 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).'), cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
   if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();
 }
 
@@ -2232,6 +2278,7 @@ function frame(now) {
   UI.begin();
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'chat' && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
+  if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
   if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);

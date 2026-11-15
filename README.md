@@ -597,6 +597,13 @@ button show how many new messages are waiting.
   (every 20 seconds, every 5 while the chat is open), or the next time they open it within 12 hours.
 - The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).
 
+**Online / offline:** next to every friend: a green dot and **ONLINE** (the arcade is open), **PLAYING** and the
+game, or a grey ring and **OFFLINE**. Friends who are online are at the top of the list; the chat shows it under the
+name too. While the arcade or a game is open and on the screen, it says "I'm online" on ntfy.sh every 4 minutes, and
+"I'm offline" when it is closed or you switch away; a friend counts as online for 5 minutes after their last "I'm
+online" (so a phone that dies without saying goodbye goes offline by itself). FRIENDS asks for all your friends at once,
+every 20 seconds. Only players who have friends send this. It is `PX.Presence` in `common.js` and `Online` in `index.html`.
+
 ## Invite a friend to a game
 
 Every online game (Mouse Thief, Pixel GP, Pixel Pong, Pixel Football, Pixel Wings, Pixel Skate, Pixel Ski, Pixel Box
