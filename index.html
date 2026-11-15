@@ -31,7 +31,7 @@
 <canvas id="screen"></canvas>
 <input id="search" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search" enterkeyhint="search" placeholder="TYPE A GAME..." aria-label="Search games">
 <input id="giveid" maxlength="6" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="numeric" aria-label="Your friend's ID">
-<input id="chatmsg" maxlength="60" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="send" placeholder="TYPE A MESSAGE..." aria-label="Message to your friend">
+<input id="chatmsg" maxlength="200" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="send" placeholder="TYPE A MESSAGE..." aria-label="Message to your friend">
 <input id="pw1" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password">
 <input id="pw2" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password again">
 <input id="code" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Recovery code">
@@ -40,7 +40,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.47.0';
+const VERSION = '2.48.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -1352,6 +1352,7 @@ const Friends = {
   },
 };
 Friends.load();
+function chatIcon(cx, cy) { PX.drawIcon(ctx, ['.#######.', '#########', '##k#k#k##', '#########', '.#######.', '.##......', '.#.......'], { '#': '#7af0ff', k: '#16121f' }, cx, cy, 1); }
 function friendsIcon(cx, cy) { PX.drawIcon(ctx, ['.##...##.', '.##...##.', '.........', '####.####', '####.####'], { '#': '#fff' }, cx, cy, 2); }
 function drawFriends(t) {
   const W = S.W, cx = Math.round(W / 2), F = Friends, busy = F.busy;
@@ -1381,7 +1382,9 @@ function drawFriends(t) {
       if (UI.button('fno' + f.id, x + rw - 42, y + 1, 40, 16, 'NO', { size: 1, disabled: busy })) F.refuse(f);
     } else if (r.k === 'fr') {
       const un = Chat.unread(f.id);
-      if (UI.button('fchat' + f.id, x + rw - 166, y + 1, 50, 16, un ? 'CHAT ' + Math.min(9, un) : 'CHAT', { size: 1, accent: '#7af0ff', on: !!un })) Chat.open(f);
+      if (UI.button('fchat' + f.id, x + rw - 148, y + 1, 32, 16, '', { size: 1, accent: '#7af0ff', on: !!un })) Chat.open(f);
+      chatIcon(x + rw - 132, y + 8);
+      if (un) { const bx = x + rw - 122; ctx.fillStyle = '#111'; ctx.fillRect(bx, y - 2, 11, 11); ctx.fillStyle = '#ff7ab8'; ctx.fillRect(bx + 1, y - 1, 9, 9); T(String(Math.min(9, un)), bx + 6, y + 1, '#111', 1, 'center'); }
       if (UI.button('fgive' + f.id, x + rw - 112, y + 1, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open(f.id);
       if (UI.button('fdel' + f.id, x + rw - 58, y + 1, 56, 16, F.sure === f.id ? 'SURE?' : 'REMOVE', { size: 1, accent: F.sure === f.id ? '#ff5a5a' : undefined, on: F.sure === f.id })) { if (F.sure === f.id) F.remove(f); else F.sure = f.id; }
     } else if (UI.button('fcan' + f.id, x + rw - 58, y + 1, 56, 16, 'CANCEL', { size: 1 })) F.cancel(f);
@@ -1399,10 +1402,47 @@ function drawFriends(t) {
 // What goes through ntfy.sh: the two IDs, your name and the message.
 const CHAT_KEY = 'pixelArcade.chat', CHAT_MAX = 60, CHAT_KEEP = 40;
 const chatInput = document.getElementById('chatmsg');
-// only what the pixel font can draw: capitals without accents, digits and a few signs
-const chatClean = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
-  .replace(/[^A-Z0-9 .,!?:\-+/'%()<>=*#"_$★♥]/g, '').slice(0, CHAT_MAX);
+// EMOJIS: 15 of them, drawn as pixel art (7 wide) in the chat. In a message they are the real emoji characters, so the
+// ones from a phone's emoji keyboard work too (a few look-alikes become one of these, see EMOJI_ALIAS).
+const EMOJI_PAL = { y: '#ffd23f', k: '#3a2a10', w: '#ffffff', r: '#ff4a4a', b: '#4aa8ff', o: '#ff9a3c', p: '#ff7ab8', g: '#efe9ff', d: '#3a2f5c', x: '#5ad43f' };
+const EMOJIS = [
+  ['\u{1F600}', ['.yyyyy.', 'yyyyyyy', 'yykykyy', 'yyyyyyy', 'ykwwwky', 'yykkkyy', '.yyyyy.']],      // grin
+  ['\u{1F602}', ['.yyyyy.', 'yyyyyyy', 'bkkykkb', 'byyyyyb', 'ykkkkky', 'yykwkyy', '.yyyyy.']],      // tears of joy
+  ['\u{1F60D}', ['.yyyyy.', 'yrryrry', 'yrryrry', 'yyyyyyy', 'ykyyyky', 'yykkkyy', '.yyyyy.']],      // heart eyes
+  ['\u{1F60E}', ['.yyyyy.', 'yyyyyyy', 'kkkkkkk', 'ykkykky', 'yyyyyyy', 'yykkkyy', '.yyyyy.']],      // cool
+  ['\u{1F622}', ['.yyyyy.', 'ykyyyky', 'ybyyyyy', 'ybyyyyy', 'yykkkyy', 'ykyyyky', '.yyyyy.']],      // sad
+  ['\u{1F621}', ['.rrrrr.', 'rkrrrkr', 'rrkrkrr', 'rrrrrrr', 'rrkkkrr', 'rkrrrkr', '.rrrrr.']],      // angry
+  ['\u{1F62E}', ['.yyyyy.', 'ykyyyky', 'yyyyyyy', 'yykkkyy', 'yykykyy', 'yykkkyy', '.yyyyy.']],      // wow
+  ['\u{1F44D}', ['..yy...', '..yy...', '.yyyyyy', 'yyyyyyy', 'yyyyyyy', 'yyyyyy.', 'yyyyy..']],      // thumbs up
+  ['\u{1F44E}', ['yyyyy..', 'yyyyyy.', 'yyyyyyy', 'yyyyyyy', '.yyyyyy', '..yy...', '..yy...']],      // thumbs down
+  ['❤', ['.rr.rr.', 'rrrrrrr', 'rrrrrrr', 'rrrrrrr', '.rrrrr.', '..rrr..', '...r...']],         // heart
+  ['\u{1F525}', ['...r...', '..rr.r.', '.rroor.', 'rrooorr', 'rooyoor', 'rooyyor', '.royyr.']],      // fire
+  ['\u{1F3AE}', ['.......', '.ggggg.', 'gdgggrg', 'dddgxgb', 'gdgggyg', 'gg...gg', '.......']],      // game
+  ['\u{1F3C6}', ['yyyyyyy', 'yyyyyyy', '.yyyyy.', '..yyy..', '...y...', '..yyy..', '.yyyyy.']],      // trophy
+  ['\u{1F44B}', ['y.y.y..', 'y.y.y.y', 'yyyyy.y', 'yyyyyyy', 'yyyyyy.', '.yyyyy.', '..yyy..']],      // wave
+  ['\u{1F431}', ['o.....o', 'oo...oo', 'ooooooo', 'okoooko', 'ooopooo', 'oowowoo', '.ooooo.']],      // cat
+];
+const EMOJI = new Map(EMOJIS);
+const EMOJI_ALIAS = { '\u{1F603}': '\u{1F600}', '\u{1F604}': '\u{1F600}', '\u{1F601}': '\u{1F600}', '\u{1F642}': '\u{1F600}', '\u{1F60A}': '\u{1F600}',
+  '\u{1F923}': '\u{1F602}', '\u{1F970}': '\u{1F60D}', '\u{1F62D}': '\u{1F622}', '☹': '\u{1F622}', '\u{1F641}': '\u{1F622}', '\u{1F620}': '\u{1F621}',
+  '\u{1F92C}': '\u{1F621}', '\u{1F62F}': '\u{1F62E}', '\u{1F632}': '\u{1F62E}', '\u{1F631}': '\u{1F62E}', '♥': '❤', '\u{1F9E1}': '❤',
+  '\u{1F49B}': '❤', '\u{1F49A}': '❤', '\u{1F499}': '❤', '\u{1F49C}': '❤', '\u{1F496}': '❤', '\u{1F497}': '❤',
+  '\u{1F579}': '\u{1F3AE}', '\u{1F947}': '\u{1F3C6}', '\u{1F408}': '\u{1F431}', '\u{1F63A}': '\u{1F431}', '\u{1F638}': '\u{1F431}' };
+// only what the arcade can draw: capitals without accents, digits, a few signs and the emojis (at most CHAT_MAX)
+const chatClean = v => Array.from(String(v || '').replace(/[\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())
+  .map(ch => EMOJI_ALIAS[ch] || ch).filter(ch => EMOJI.has(ch) || /^[A-Z0-9 .,!?:\-+/'%()<>=*#"_$★]$/.test(ch)).slice(0, CHAT_MAX).join('');
 chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; });
+// a chat line's width and drawing: letters in the pixel font, emojis as their pixel art
+const chatW = str => { let w = 0; for (const ch of str) w += EMOJI.has(ch) ? 9 : PX.textWidth(ch, 1) + 1; return w - 1; };   // (textWidth leaves out the gap after the last letter)
+function chatText(str, x, y, color) {
+  let run = '';
+  const flush = () => { if (run) { T(run, x, y, color, 1); x += PX.textWidth(run, 1) + 1; run = ''; } };
+  for (const ch of str) {
+    if (!EMOJI.has(ch)) { run += ch; continue; }
+    flush(); PX.drawIcon(ctx, EMOJI.get(ch), EMOJI_PAL, x + 4.5, y + 2.5, 1); x += 9;
+  }
+  flush();
+}
 const Chat = {
   d: {},                                             // friend's ID → { m: [{ me, x, tx }], un: how many you haven't read }
   f: null, busy: false, msg: '',
@@ -1429,6 +1469,7 @@ const Chat = {
     if (performance.now() - Inbox.last > 3000) Inbox.check();
   },
   leave() { chatInput.blur(); screen = 'friends'; this.f = null; },
+  emoji(ch) { const v = chatClean(chatInput.value + ch); if (v !== chatInput.value) { chatInput.value = v; PX.Sound.tone(990, 0.03, { vol: 0.05 }); } },
   async send() {
     const f = this.f, raw = chatClean(chatInput.value).trim();
     if (!f || this.busy || !raw) return;
@@ -1458,9 +1499,9 @@ Chat.load();
 // a message's lines, at most maxW wide (a very long word is cut into pieces)
 function chatLines(str, maxW) {
   const words = [];
-  for (const w of str.split(' ')) { let p = w; while (PX.textWidth(p, 1) > maxW) { let n = p.length - 1; while (n > 1 && PX.textWidth(p.slice(0, n), 1) > maxW) n--; words.push(p.slice(0, n)); p = p.slice(n); } words.push(p); }
+  for (const w of str.split(' ')) { let p = Array.from(w); while (p.length > 1 && chatW(p.join('')) > maxW) { let n = p.length - 1; while (n > 1 && chatW(p.slice(0, n).join('')) > maxW) n--; words.push(p.slice(0, n).join('')); p = p.slice(n); } words.push(p.join('')); }
   const out = []; let line = '';
-  for (const w of words) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
+  for (const w of words) { const next = line ? line + ' ' + w : w; if (line && chatW(next) > maxW) { out.push(line); line = w; } else line = next; }
   if (line) out.push(line);
   return out;
 }
@@ -1472,23 +1513,30 @@ function drawChat(t) {
   T(f.name, cx, 8, '#fff', 2, 'center', '#000');
   T('ID ' + f.id, cx, 22, '#9a92b8', 1, 'center', '#000');
   // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
-  const top = 34, bottom = 182, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
+  const top = 34, bottom = 160, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
   ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
   if (!c.m.length) {
-    T('SAY HI TO ' + f.name + '!', cx, 90, '#5b5275', 2, 'center');
-    T('SWEAR WORDS TURN INTO #####.', cx, 112, '#5b5275', 1, 'center');
+    T('SAY HI TO ' + f.name + '!', cx, 80, '#5b5275', 2, 'center');
+    T('SWEAR WORDS TURN INTO #####.', cx, 102, '#5b5275', 1, 'center');
   }
   let y = bottom - 3;
   for (let i = c.m.length - 1; i >= 0 && y > top + 4; i--) {
-    const m = c.m[i], lines = chatLines(m.x, bw - 8), h = lines.length * 8 + 4;
-    const w = Math.max(...lines.map(l => PX.textWidth(l, 1))) + 8, bx = m.me ? x + rw - 4 - w : x + 4;
+    const m = c.m[i], lines = chatLines(m.x, bw - 8), h = lines.length * 10 + 2;
+    const w = Math.max(...lines.map(chatW)) + 8, bx = m.me ? x + rw - 4 - w : x + 4;
     y -= h;
     if (y < top + 2) break;
     ctx.fillStyle = m.me ? '#3a2f10' : '#221c33'; ctx.fillRect(bx, y, w, h);
     ctx.fillStyle = m.me ? '#ffd23f' : '#7af0ff'; ctx.fillRect(m.me ? bx + w - 2 : bx, y, 2, h);
-    lines.forEach((l, k) => T(l, bx + 4, y + 3 + k * 8, m.me ? '#ffe9a0' : '#fff', 1));
+    lines.forEach((l, k) => chatText(l, bx + 4, y + 3 + k * 10, m.me ? '#ffe9a0' : '#fff'));
     y -= 3;
   }
+  // the emojis: tap one to add it to the message
+  const n = EMOJIS.length, ew = Math.floor((rw + 2) / n) - 2, ex = Math.round(cx - (n * (ew + 2) - 2) / 2);
+  EMOJIS.forEach(([ch, rows], i) => {
+    const bx = ex + i * (ew + 2);
+    if (UI.button('emo' + i, bx, 164, ew, 20, '', { size: 1, accent: '#3a2f5c' })) Chat.emoji(ch);
+    PX.drawIcon(ctx, rows, EMOJI_PAL, bx + ew / 2, 173, 2);
+  });
   // typing and sending
   S.placeInput(chatInput, x, 188, rw - 64, 22);
   const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
