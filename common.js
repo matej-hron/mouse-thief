@@ -235,6 +235,104 @@ window.PX = (() => {
   };
   window.addEventListener('load', () => Api.hit());
 
+  // --- CLOUD SAVE: your progress (stars, every game's save, friends, chats) on the server, for every phone you log in on --
+  // Only for an account on the server that is logged in. Everything in this browser's storage that belongs to the player
+  // (not the phone's own keys below) is packed into one blob (gzip, base64) and kept on the server with a rev number.
+  // The phone remembers which rev it last saw and what its data looked like then (a hash), in pixelArcade.cloud.
+  //   - The server has a newer rev, nothing changed here since: the server's copy is taken (the arcade reloads).
+  //   - Only this phone changed: it is sent up, on top of the rev it saw.
+  //   - Both changed (two phones played without internet): the one with more stars ever earned wins, plus what only
+  //     the other one has (a game played on just that phone), and that goes up.
+  // The arcade syncs when it opens, every 90 s, when you switch away and when you log in or out. A game only sends up,
+  // it never changes what it is playing with: the arcade takes the server's copy when you are back.
+  const PHONE_KEYS = ['pixelArcade.settings', 'pixelArcade.padId', 'pixelArcade.padCode', 'pixelArcade.remoteOrder', 'pixelArcade.remoteScreen',
+    'pixelArcade.vid', 'pixelArcade.hitLocal', 'pixelArcade.sentScores', 'pixelArcade.cloud', 'pixelArcade.hereAt'];
+  const isPhoneKey = k => k === ACCOUNTS_KEY || k.startsWith('pixelArcade.acct.') || k.startsWith('pixelArcade.starGift') || PHONE_KEYS.includes(k);
+  const CLOUD_KEY = 'pixelArcade.cloud', MAX_SAVE = 1500000;
+  const Cloud = {
+    busy: null,
+    keys() { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k !== null && !isPhoneKey(k)) a.push(k); } return a.sort(); },
+    collect() { const o = {}; for (const k of this.keys()) o[k] = localStorage.getItem(k); return o; },
+    async hash(o) {
+      const keys = Object.keys(o).sort(), s = JSON.stringify(keys.map(k => [k, o[k]]));
+      const d = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+      return Array.from(d, b => b.toString(16).padStart(2, '0')).join('');
+    },
+    async pack(o) {
+      const json = JSON.stringify(o);
+      if (typeof CompressionStream === 'undefined') return 'j' + json;
+      const buf = new Uint8Array(await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      return 'g' + btoa(bin);
+    },
+    async unpack(s) {
+      try {
+        if (typeof s !== 'string') return null;
+        let json = '';
+        if (s[0] === 'j') json = s.slice(1);
+        else if (s[0] === 'g' && typeof DecompressionStream !== 'undefined') {
+          const bin = atob(s.slice(1)), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+          json = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+        } else return null;
+        const o = JSON.parse(json);
+        if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+        for (const k in o) if (typeof o[k] !== 'string' || isPhoneKey(k)) delete o[k];
+        return o;
+      } catch (e) { return null; }
+    },
+    state(id) { try { const d = JSON.parse(localStorage.getItem(CLOUD_KEY)); const e = d && d[id]; return e && Number.isInteger(e.rev) ? e : { rev: 0, hash: '', at: 0 }; } catch (e) { return { rev: 0, hash: '', at: 0 }; } },
+    setState(id, e) { try { const d = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; d[id] = e; localStorage.setItem(CLOUD_KEY, JSON.stringify(d)); } catch (x) { /* no room: next time */ } },
+    forget(id) { try { const d = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; delete d[id]; localStorage.setItem(CLOUD_KEY, JSON.stringify(d)); } catch (x) { /* nothing */ } },
+    earned(o) { try { return JSON.parse(o['mouseThief.save.v1']).totalEarned | 0; } catch (e) { return 0; } },
+    // both changed: the one with more stars ever earned, plus the keys only the other one has
+    merge(local, srv) { const win = this.earned(local) > this.earned(srv) ? local : srv, lose = win === local ? srv : local; return { ...lose, ...win }; },
+    apply(o) {
+      for (const k of this.keys()) if (!(k in o)) localStorage.removeItem(k);
+      for (const k in o) if (localStorage.getItem(k) !== o[k]) localStorage.setItem(k, o[k]);
+    },
+    // One sync (one at a time). opt.pull: take the server's copy whatever is here (a new phone). opt.apply: false in a
+    // game (it only sends up). Gives 'applied' (this phone's data changed: reload), 'up', 'same', 'off' (no account,
+    // no internet, or a server without cloud saves yet), 'later', 'big' or 'retry'.
+    sync(opt = {}) {
+      if (!this.busy) this.busy = this.run(opt).catch(() => 'off').finally(() => { this.busy = null; });
+      return this.busy;
+    },
+    async run({ pull = false, apply = true } = {}) {
+      const s = Api.session(); if (!s || !crypto.subtle) return 'off';
+      let st = this.state(s.id), local = this.collect(), h = await this.hash(local), changed = false;
+      const res = await Api.call('GET', '/v1/save', undefined, s.tok);
+      if (res.status === 401) { Api.onAuthLost(); return 'off'; }
+      let rev = 0, srv = null;
+      if (res.ok && res.data && Number.isInteger(res.data.rev)) { rev = res.data.rev; srv = await this.unpack(res.data.data); if (!srv) return 'off'; }
+      else if (!(res.status === 404 && res.data && res.data.error === 'NO_SAVE')) return 'off';
+      if (Api.session()?.id !== s.id) return 'off';                        // logged out meanwhile
+      if (srv && rev !== st.rev) {                                          // another phone saved since this one looked
+        const next = pull || h === st.hash ? srv : this.merge(local, srv);
+        if (!apply) return 'later';
+        const nh = await this.hash(next);
+        if (nh !== h) { this.apply(next); changed = true; local = next; h = nh; }
+        if (nh === await this.hash(srv)) { this.setState(s.id, { rev, hash: nh, at: Date.now() }); return changed ? 'applied' : 'same'; }
+        st = { rev, hash: '', at: st.at };                                  // merged: it goes up on top of the server's rev
+      }
+      if (h === st.hash && rev === st.rev) { if (!st.at) this.setState(s.id, { ...st, at: Date.now() }); return changed ? 'applied' : 'same'; }
+      const data = await this.pack(local);
+      if (data.length > MAX_SAVE) return 'big';
+      const up = await Api.call('PUT', '/v1/save', { base: rev, data }, s.tok);
+      if (up.ok && up.data && Number.isInteger(up.data.rev)) { this.setState(s.id, { rev: up.data.rev, hash: h, at: Date.now() }); return changed ? 'applied' : 'up'; }
+      return changed ? 'applied' : up.status === 409 ? 'retry' : up.status === 413 ? 'big' : 'off';
+    },
+    // the games: send up a little after opening, every 90 s, and when you switch away (never change what they play with)
+    auto() {
+      const tick = () => { if (document.visibilityState === 'visible') this.sync({ apply: false }); };
+      setTimeout(tick, 5000); setInterval(tick, 90000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.sync({ apply: false }); });
+    },
+  };
+  {
+    const page = (location.pathname.split('/').pop() || 'index.html').replace(/\.html$/, '');
+    if (page && page !== 'index' && page !== 'pad' && location.protocol.startsWith('http')) Cloud.auto();
+  }
+
   // --- scores: every game's personal bests, sent to the leaderboard ---------------------------
   // Same rules as api/src/boards.ts (a recorded copy: keep the two in step). Times are seconds.
   const BOUNDS = {
@@ -1020,6 +1118,6 @@ window.PX = (() => {
   };
   Presence.start();
 
-  return { Invite, Presence, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  return { Invite, Presence, Cloud, isPhoneKey, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

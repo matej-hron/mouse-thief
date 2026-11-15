@@ -663,7 +663,14 @@ friends and game saves. So brothers and sisters can share a phone: one logs out,
   Pick yours and type your password, or press **NEW ACCOUNT** (a nickname and a password) to start a new player with
   a new ID and no stars. You stay logged in until you log out.
 - **LOG IN FROM ANOTHER PHONE:** type your nickname and password. The phone gets your name, ID and avatar from the
-  server as a new account. Game progress (stars, saves) does **not** come along yet: it stays on the old phone.
+  server as a new account, and your **cloud save**: stars, every game's progress, friends and chats.
+- **Cloud save:** an account on the server keeps all its progress on the server too, so every phone you log in on has
+  it. The arcade saves when it opens, every 90 seconds while you look at the games, when you switch away and when you
+  log out; a game saves too (a little after it opens, every 90 s and when you switch away). When another phone saved
+  something newer, the arcade takes it (and reloads) as soon as you are back on the list of games. If two phones
+  played without internet and both changed, the one with **more stars ever earned** wins, and a game that was played
+  on only one of them is kept too. YOUR ACCOUNT shows when the games were last saved. It needs internet; without it
+  everything keeps working on the phone and is saved the next time. (`PX.Cloud` in `common.js`.)
 - **Forgot password:** nobody can mail you a new one (there is no e-mail). FORGOT PASSWORD? takes the recovery code and
   a new password, and on an account on the server it works on **any phone** (the server knows the code). Without the
   code there is no way back in to that account.
@@ -671,8 +678,8 @@ friends and game saves. So brothers and sisters can share a phone: one logs out,
   the only account takes just the password away (the player stays as they are); deleting one of several deletes that
   whole account, with its stars and saves, and from the server (with its scores) too. Other phones keep their own copy
   of the account until it is deleted there.
-- **What the server keeps:** your ID, nickname, avatar, a scrambled password and your best scores. No e-mail, no real
-  name. Stars and game saves stay on the phone. The password is never kept: the phone and the server only keep scrambled
+- **What the server keeps:** your ID, nickname, avatar, a scrambled password, your best scores and your cloud save
+  (stars, game saves, friends, chats). No e-mail, no real name. The password is never kept: the phone and the server only keep scrambled
   copies (PBKDF2 on the phone, and a salted hash of that on the server).
 - **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 8 short points.
 
@@ -682,7 +689,7 @@ to the phone and stay put: the settings, the phone-controller pairing, and which
 phone (so a new account can't take the same gift again). It is a lock against brothers and sisters, not a vault:
 while nobody is logged in, a game opened by its own address plays as a nameless guest whose progress is thrown away,
 and clearing the browser's data removes all the accounts from the phone (the ones on the server stay there, and
-LOG IN FROM ANOTHER PHONE brings them back, without the progress).
+LOG IN FROM ANOTHER PHONE brings them back, with the cloud save).
 
 ## Buy me a coffee
 
@@ -951,7 +958,9 @@ games call it through `PX.Api` in `common.js`.
 
 - **Endpoints (`/v1`):** `POST /hit` (visit count); `POST /prelogin`, `/register`, `/login`, `/reset` (`prelogin`,
   `login` and `reset` take a nickname or a player id); `GET`, `PUT`, `DELETE /me` (the account); `POST /password`;
-  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board).
+  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board); `GET`, `PUT /save`
+  (the cloud save: one packed blob per player, up to 1.5 MB, with a `rev`; a `PUT` names the `base` rev it builds on
+  and gets CONFLICT if another phone saved first).
 - **Passwords:** the phone sends a PBKDF2 of the password, and the server stores a salted SHA-256 of that. The phone's
   own hash (the one that unlocks the account on the phone) never leaves it.
 - **Limits:** 10 wrong passwords (or recovery codes) on a nickname lock it for 15 minutes; sign-ups are rate-limited

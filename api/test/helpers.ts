@@ -22,4 +22,4 @@ export const login = (name = 'MIA', pw = PW) => call('POST', '/v1/login', { name
 export const code = async (r: Response) => ((await r.json()) as { error: string }).error;
 
 export const resetTables = () =>
-  env.DB.batch(['players', 'sessions', 'scores', 'login_fail'].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  env.DB.batch(['players', 'sessions', 'scores', 'saves', 'login_fail'].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
+import { saves } from './saves';
 import { scores } from './scores';
 import { deletePlayerRoute, renamePlayerRoute, statsRoute } from './stats';
 
@@ -22,6 +23,7 @@ app.post('/stats/players/:id/rename', renamePlayerRoute);
 app.post('/stats/players/:id/delete', deletePlayerRoute);
 app.route('/', accounts);
 app.route('/', scores);
+app.route('/', saves);
 
 export default {
   fetch: app.fetch,
