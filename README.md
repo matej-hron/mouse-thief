@@ -647,6 +647,24 @@ The **trophy button (TOP)** next to SETTINGS opens the global leaderboards.
 - **Cheating:** the scores are reported by the phone, so the server can't see them being played. It rejects values that
   are impossible for that game (a lap of 0.1 s, a million stars), and the owner can remove a player from the boards.
 
+## Ideas
+
+The **light bulb button (IDEAS)** next to TOP opens the players' ideas for the arcade: a new game, a track, a button,
+anything. Everybody can read them; to write one or vote you need an account on the server (the same as for the
+leaderboard).
+
+- **Write one:** + NEW IDEA, a title (up to 40 letters) and, if you want, more about it (up to 200). Everybody sees it,
+  with your nickname and avatar. Swear words become ##### (on the server too). **3 ideas a day** per player. If the same
+  idea is there already, the arcade shows it to you, so you can vote for it instead.
+- **Vote:** the arrow box left of an idea (or VOTE FOR THIS IDEA when you open it) upvotes it; tap again to take the
+  vote back. One vote per player, not for your own idea, and only while the idea is WAITING or ACCEPTED.
+- **Statuses:** WAITING (untriaged: nobody has answered yet), ACCEPTED (we want to make it), DONE (implemented) and
+  REJECTED. The tabs show each, with how many, and MINE shows yours. Sort by MOST VOTES or NEWEST. Opening an idea
+  shows all of it and our answer (PIXEL ARCADE SAYS: ...).
+- **Take it back:** your own idea can be deleted (TAKE IT BACK, tap twice) while it is still WAITING.
+- **The maker answers** on the stats page (`/stats`, section Ideas): a status and a short reply (for example why
+  not, or which version has it) for each idea, or DELETE for one that doesn't belong there.
+
 ## Accounts
 
 One phone can hold up to **6 accounts**, each behind its own password, each with its own name, avatar, ID, stars,
@@ -671,10 +689,11 @@ friends and game saves. So brothers and sisters can share a phone: one logs out,
   the only account takes just the password away (the player stays as they are); deleting one of several deletes that
   whole account, with its stars and saves, and from the server (with its scores) too. Other phones keep their own copy
   of the account until it is deleted there.
-- **What the server keeps:** your ID, nickname, avatar, a scrambled password and your best scores. No e-mail, no real
+- **What the server keeps:** your ID, nickname, avatar, a scrambled password, your best scores, and the ideas you
+  wrote and voted for (see Ideas). DELETE ACCOUNT deletes those too. No e-mail, no real
   name. Stars and game saves stay on the phone. The password is never kept: the phone and the server only keep scrambled
   copies (PBKDF2 on the phone, and a salted hash of that on the server).
-- **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 8 short points.
+- **PRIVACY AND POLICY** (a button on the account screens) lists all this for the player: 9 short points.
 
 How it works (`Account` in `index.html`): everything the games save is in the browser's storage. LOG OUT packs all of
 it into one entry for that account and empties the rest; LOG IN unpacks it; then the page reloads. A few things belong
@@ -970,7 +989,9 @@ games call it through `PX.Api` in `common.js`.
 
 - **Endpoints (`/v1`):** `POST /hit` (visit count); `POST /prelogin`, `/register`, `/login`, `/reset` (`prelogin`,
   `login` and `reset` take a nickname or a player id); `GET`, `PUT`, `DELETE /me` (the account); `POST /password`;
-  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board); notifications:
+  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board);
+  `GET /ideas` (a page of ideas: `status`, `sort=top|new`, `page`, `mine=1`), `GET /ideas/:id`, `POST /ideas`,
+  `DELETE /ideas/:id` (your own, while untriaged), `PUT` / `DELETE /ideas/:id/vote`; notifications:
   `GET /push/key`, `POST` / `DELETE /push/sub`, `POST /push/send` (30 a minute per address), `POST /push/test`, and
   `POST /admin/push/:id` (the owner sends a player a test notification, with the admin key).
 - **VAPID key (notifications):** the public half is `VAPID_PUBLIC_KEY` in `wrangler.jsonc`, the private half a secret:
@@ -982,7 +1003,8 @@ games call it through `PX.Api` in `common.js`.
 - **Limits:** 10 wrong passwords (or recovery codes) on a nickname lock it for 15 minutes; sign-ups are rate-limited
   too (the answer is SLOW_DOWN).
 - **Moderation:** the stats page lists the players. RENAME turns a nickname into P+ID, and DELETE removes the player
-  with their scores.
+  with their scores, ideas and votes. It also lists the ideas (untriaged first): SAVE sets the status and the reply,
+  DELETE removes the idea.
 - **Release order:** apply the migrations remotely and deploy the Worker **before** merging client changes that need
   them, or the live arcade calls endpoints that are not there yet.
 

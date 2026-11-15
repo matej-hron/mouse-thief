@@ -25,6 +25,10 @@
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.1em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
   #code { text-transform: uppercase; }
+  #ideatitle, #ideabody { position: fixed; display: none; box-sizing: border-box; text-align: left; text-transform: uppercase; padding: 0 0.4em;
+          font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.05em;
+          color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+  #ideabody { padding: 0.3em 0.4em; resize: none; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -35,12 +39,14 @@
 <input id="pw1" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password">
 <input id="pw2" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password again">
 <input id="code" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Recovery code">
+<input id="ideatitle" maxlength="40" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="next" placeholder="MORE TRACKS IN PIXEL SKI" aria-label="Your idea">
+<textarea id="ideabody" maxlength="200" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="More about your idea"></textarea>
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.51.0';
+const VERSION = '2.52.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -49,7 +55,7 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | chat | leaders | account | invite | coffee
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | chat | leaders | ideas | account | invite | coffee
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
@@ -62,6 +68,8 @@ window.addEventListener('keydown', e => {
   if (e.target === pw1 || e.target === pw2 || e.target === codeInput) { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
   if (e.target === nameInput && screen === 'account') { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
   if (e.target === nameInput) { if (e.key === 'Enter') saveProfile(); else if (e.key === 'Escape') { nameInput.blur(); screen = 'home'; } return; }
+  if (e.target === ideaTitleInput) { if (e.key === 'Enter') { e.preventDefault(); ideaBodyInput.focus(); } else if (e.key === 'Escape') Ideas.back(); return; }
+  if (e.target === ideaBodyInput) { if (e.key === 'Enter') { e.preventDefault(); Ideas.send(); } else if (e.key === 'Escape') Ideas.back(); return; }
   if (e.target === searchInput) { if (e.key === 'Enter') searchInput.blur(); else if (e.key === 'Escape') closeSearch(); return; }
   if (e.key === 'Escape') UI.back = true;
   if (screen === 'gift') { if (e.key === 'Enter' || e.key === ' ') claimGift(); return; }
@@ -619,10 +627,14 @@ function drawHome(t) {
   // next to it: phones as controllers (play on an Xbox, a TV or a computer with your phone)
   const px = W - 10 - PX.textWidth(stars, 2) - 38;
   // the title, smaller (and moved left) when the buttons on the right need the room
-  const tw4 = PX.textWidth('PIXEL ARCADE', 4), small = W / 2 + tw4 / 2 > px - 78;
-  const ts = small ? 3 : 4, tx = small ? Math.min(W / 2, px - 78 - PX.textWidth('PIXEL ARCADE', 3) / 2) : W / 2;
-  T('PIXEL ARCADE', tx + 2, (small ? 12 : 10), '#e01e1e', ts, 'center');
-  T('PIXEL ARCADE', tx, (small ? 10 : 8), '#fff', ts, 'center');
+  const right = px - 114, left = installPrompt ? 86 : 8;
+  // (with a huge wallet and INSTALL on a narrow screen there is no room at all: then no title)
+  const ts = [4, 3, 2].find(s => Math.min(W / 2, right - PX.textWidth('PIXEL ARCADE', s) / 2) - PX.textWidth('PIXEL ARCADE', s) / 2 >= left);
+  if (ts) {
+    const tx = Math.min(W / 2, right - PX.textWidth('PIXEL ARCADE', ts) / 2), ty = { 4: 8, 3: 10, 2: 12 }[ts], d = ts > 2 ? 2 : 1;
+    T('PIXEL ARCADE', tx + d, ty + d, '#e01e1e', ts, 'center');
+    T('PIXEL ARCADE', tx, ty, '#fff', ts, 'center');
+  }
   if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
   padIcon(px + 15 + (UI.mx >= px && UI.mx < px + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   // and the settings
@@ -633,6 +645,10 @@ function drawHome(t) {
   const lx = gx - 36;
   if (UI.button('top', lx, 7, 30, 20, '', { size: 1, accent: '#ffd23f' })) Leaders.open();
   trophyIcon(lx + 15 + (UI.mx >= lx && UI.mx < lx + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
+  // and the players' ideas
+  const ix = lx - 36;
+  if (UI.button('ideas', ix, 7, 30, 20, '', { size: 1, accent: '#1ec8e0' })) Ideas.open();
+  bulbIcon(ix + 15 + (UI.mx >= ix && UI.mx < ix + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
   if (PX.Remote.phones.length) { ctx.fillStyle = '#111'; ctx.fillRect(px + 22, 1, 11, 11); ctx.fillStyle = '#5ad43f'; ctx.fillRect(px + 23, 2, 9, 9); T(String(PX.Remote.phones.length), px + 28, 4, '#111', 1, 'center'); }
   // you
   const nw = PX.textWidth(profile.name, 2), rowW = 30 + nw + 8 + 46 + 4 + 50, rx = Math.round(W / 2 - rowW / 2);
@@ -996,6 +1012,8 @@ function padPoll(dt) {
       }
     } else if (screen === 'leaders') {          // PX.Pad moves between the buttons and does B; LB / RB: the previous / next game
       const k = edge(4) ? -1 : edge(5) ? 1 : 0; if (k) Leaders.game(k);
+    } else if (screen === 'ideas') {            // PX.Pad moves between the buttons and does B; LB / RB: the previous / next tab
+      const k = edge(4) ? -1 : edge(5) ? 1 : 0; if (k && Ideas.mode === 'list') Ideas.pick((Ideas.tab + k + IDEA_TABS.length) % IDEA_TABS.length);
     } else if (screen === 'settings' || screen === 'coffee' || screen === 'notify') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
@@ -1775,6 +1793,217 @@ function drawLeaders(t) {
   else if (res.ok) { const me = res.data && res.data.me; T(me ? 'YOU: #' + me.rank + '  ' + PX.Scores.format(board, me.value) : 'YOU: NOT ON THIS BOARD YET', cx, fy, me ? '#ffd23f' : '#9a92b8', 1, 'center', '#000'); }
 }
 
+// --- IDEAS: the players' ideas for the arcade (the light bulb next to TOP) -------------------------------------------
+// Everybody can read them. A player whose account is on the server writes them (3 a day) and upvotes other players'
+// ones; an idea nobody answered yet can be taken back. The maker answers on the stats page: ACCEPTED, REJECTED or DONE
+// (implemented), with a short reply. Swear words become ##### on the server. Server: /v1/ideas (api/src/ideas.ts).
+const ideaTitleInput = document.getElementById('ideatitle'), ideaBodyInput = document.getElementById('ideabody');
+const IDEA_TITLE_MAX = 40, IDEA_BODY_MAX = 200;
+// what the pixel font can draw (the same as the server's ideaText), while typing: no trimming at the end yet
+const ideaClean = (v, max) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+  .replace(/[^A-Z0-9 .,!?:\-+/'%()<>=*#"_]/g, ' ').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, max);
+for (const [el, max] of [[ideaTitleInput, IDEA_TITLE_MAX], [ideaBodyInput, IDEA_BODY_MAX]])
+  el.addEventListener('input', () => { const v = ideaClean(el.value, max); if (v !== el.value) el.value = v; });
+const IDEA_STATUS = { untriaged: ['WAITING', '#1ec8e0'], accepted: ['ACCEPTED', '#ffd23f'], implemented: ['DONE', '#5ad43f'], rejected: ['REJECTED', '#ff5a5a'] };
+const IDEA_TABS = [['untriaged', 'WAITING', '#1ec8e0', 'WAITING FOR AN ANSWER'], ['accepted', 'ACCEPTED', '#ffd23f', 'WE WILL MAKE THESE'],
+  ['implemented', 'DONE', '#5ad43f', 'IN THE ARCADE NOW'], ['rejected', 'REJECTED', '#ff5a5a', 'NOT FOR NOW'], ['mine', 'MINE', '#ff7ab8', 'YOUR IDEAS']];
+const IDEA_ANSWER = { untriaged: 'WAITING FOR AN ANSWER.', accepted: 'GOOD IDEA! WE WANT TO MAKE IT.', implemented: 'IT IS IN THE ARCADE NOW!', rejected: 'NOT FOR NOW. THANKS FOR THE IDEA!' };
+const IDEA_SAYS = {
+  OFFLINE: 'THIS NEEDS INTERNET.', TOO_MANY: 'THAT IS 3 IDEAS TODAY. COME BACK TOMORROW!', TOO_SHORT: 'THE TITLE NEEDS A FEW MORE LETTERS.',
+  OWN: "YOU CAN'T VOTE FOR YOUR OWN IDEA.", CLOSED: 'THIS IDEA IS CLOSED.', NOT_FOUND: 'THAT IDEA IS GONE.', NOT_YOURS: 'THAT IS NOT YOUR IDEA.',
+  AUTH: 'LOG IN TO THE LEADERBOARD IN YOUR ACCOUNT, THEN TRY AGAIN.',
+};
+function bulbIcon(cx, cy, s = 2) {
+  PX.drawIcon(ctx, ['..###..', '.##w##.', '##w####', '#######', '.#####.', '..###..', '..ggg..', '..ggg..'], { '#': '#ffd23f', w: '#fff6c0', g: '#9a92b8' }, cx, cy, s);
+}
+const Ideas = {
+  mode: 'list', tab: 0, sort: 'top', page: 0, res: null, req: 0, counts: null, idea: null, msg: '', col: '#9a92b8', busy: false, sure: false,
+  tok() { const s = PX.Api.session(); return s ? s.tok : null; },
+  open() { screen = 'ideas'; this.mode = 'list'; this.page = 0; this.busy = false; this.say(''); this.load(); PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
+  leave() { this.blur(); screen = 'home'; this.req++; },
+  blur() { ideaTitleInput.blur(); ideaBodyInput.blur(); },
+  say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
+  fail(m) { this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
+  failed(res) { if (res.status === 401) PX.Api.onAuthLost(); this.fail(IDEA_SAYS[errOf(res)] || "THE SERVER DIDN'T ANSWER. TRY AGAIN LATER."); },
+  // the account it needs: MAKE AN ACCOUNT, JOIN THE LEADERBOARD or LOG IN TO THE LEADERBOARD (the same as TOP)
+  account() { const a = Account.me(); return !a ? 'MAKE AN ACCOUNT TO WRITE IDEAS AND VOTE' : a.srv ? 'LOG IN TO THE LEADERBOARD TO WRITE AND VOTE' : 'JOIN THE LEADERBOARD TO WRITE AND VOTE'; },
+  async load() {
+    const mine = ++this.req, k = IDEA_TABS[this.tab][0], tok = this.tok();
+    this.res = null;
+    if (k === 'mine' && !tok) { this.res = { ok: true, status: 200, data: { rows: [], more: false } }; return; }
+    const res = await PX.Api.call('GET', '/v1/ideas?sort=' + this.sort + '&page=' + this.page + (k === 'mine' ? '&mine=1' : '&status=' + k), undefined, tok || undefined);
+    if (res.status === 401) PX.Api.onAuthLost();
+    if (mine !== this.req) return;                    // (an answer for a tab or page that isn't shown any more)
+    this.res = res;
+    if (res.ok && res.data && res.data.counts) this.counts = res.data.counts;
+  },
+  pick(i) { if (this.busy) return; this.tab = i; this.page = 0; this.say(''); this.load(); PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  flip(p) { this.page = p; this.load(); PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  resort() { this.sort = this.sort === 'top' ? 'new' : 'top'; this.page = 0; this.load(); PX.Sound.tone(520, 0.04, { vol: 0.05 }); },
+  view(r) { this.idea = r; this.mode = 'view'; this.sure = false; this.say(''); PX.Sound.tone(660, 0.05, { vol: 0.06 }); },
+  write() {
+    if (!this.tok()) { this.fail(this.account() + '.'); return; }
+    this.mode = 'write'; ideaTitleInput.value = ''; ideaBodyInput.value = ''; this.say('');
+    PX.Sound.tone(660, 0.05, { vol: 0.06 }); if (!pad.used) setTimeout(() => ideaTitleInput.focus(), 0);
+  },
+  back() {
+    if (this.busy) return;
+    if (this.mode === 'list') { this.leave(); return; }
+    this.blur(); if (this.mode === 'write') this.say(''); this.mode = 'list';
+  },
+  async vote(r) {
+    if (this.busy) return;
+    if (!this.tok()) { this.fail(this.account() + '.'); return; }
+    const on = !r.voted;
+    this.busy = true;
+    const res = await PX.Api.call(on ? 'PUT' : 'DELETE', '/v1/ideas/' + r.id + '/vote', undefined, this.tok());
+    this.busy = false;
+    if (!res.ok || !res.data) { this.failed(res); return; }
+    r.votes = res.data.votes | 0; if (res.data.voted) r.voted = true; else delete r.voted;
+    this.say(on ? 'YOU VOTED FOR IT!' : 'YOUR VOTE IS TAKEN BACK.', on ? '#5ad43f' : '#9a92b8');
+    PX.Sound.tone(on ? [523, 784] : 300, on ? 0.15 : 0.08, { vol: 0.1 });
+  },
+  async send() {
+    if (this.busy) return;
+    const title = ideaClean(ideaTitleInput.value, IDEA_TITLE_MAX).trim(), body = ideaClean(ideaBodyInput.value, IDEA_BODY_MAX).trim();
+    if (title.replace(/[^A-Z0-9]/g, '').length < 4) { this.fail(IDEA_SAYS.TOO_SHORT); return; }
+    const tok = this.tok(); if (!tok) { this.fail(this.account() + '.'); return; }
+    this.busy = true; this.say('SENDING...');
+    const res = await PX.Api.call('POST', '/v1/ideas', { title, body }, tok);
+    if (res.ok) {
+      this.busy = false; this.blur(); this.mode = 'list'; this.tab = IDEA_TABS.length - 1; this.sort = 'new'; this.page = 0; this.load();
+      this.say('THANKS! EVERYBODY CAN SEE YOUR IDEA NOW.', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+      return;
+    }
+    if (errOf(res) === 'DUPLICATE' && res.data && res.data.id) {      // somebody had it first: show it, so you can vote for it
+      const one = await PX.Api.call('GET', '/v1/ideas/' + (res.data.id | 0), undefined, tok);
+      this.busy = false;
+      if (one.ok && one.data) { this.blur(); this.view(one.data); this.say('THIS IDEA IS HERE ALREADY: VOTE FOR IT!', '#ffd23f'); return; }
+      this.fail('THIS IDEA IS ON THE LIST ALREADY.'); return;
+    }
+    this.busy = false; this.failed(res);
+  },
+  async remove() {
+    if (this.busy) return;
+    if (!this.sure) { this.sure = true; this.say('TAP TAKE IT BACK AGAIN TO DELETE YOUR IDEA.', '#ffd23f'); PX.Sound.tone(440, 0.06, { vol: 0.06 }); return; }
+    this.busy = true;
+    const res = await PX.Api.call('DELETE', '/v1/ideas/' + this.idea.id, undefined, this.tok());
+    this.busy = false; this.sure = false;
+    if (!res.ok) { this.failed(res); return; }
+    this.mode = 'list'; this.load(); this.say('YOUR IDEA IS DELETED.'); PX.Sound.tone(300, 0.12, { vol: 0.08 });
+  },
+};
+// the upvote box: an arrow and the votes; a button when you may vote (not your own, not a closed idea)
+function ideaVote(r, id, x, y, w, h) {
+  const open = r.status === 'untriaged' || r.status === 'accepted', can = open && !r.mine;
+  if (can) { if (UI.button(id, x, y, w, h, '', { size: 1, accent: '#ffd23f', on: !!r.voted })) Ideas.vote(r); }
+  else { ctx.fillStyle = '#16121f'; ctx.fillRect(x + 1, y, w - 2, h); ctx.fillRect(x, y + 1, w, h - 2); }
+  const hot = can && UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h, c = hot ? '#111' : r.voted ? '#ffd23f' : can ? '#efe9ff' : '#5b5275';
+  const cy = Math.round(y + h / 2) - 5;
+  PX.drawIcon(ctx, ['..#..', '.###.', '#####'], { '#': c }, x + w / 2, cy + 1, 1);
+  T(String(r.votes | 0), x + w / 2, cy + 5, c, 1, 'center');
+}
+// lines of a text in the pixel font, at a size, at most maxW wide (a word longer than that is cut)
+function wrapSized(str, size, maxW) {
+  const out = []; let line = '';
+  for (const w of String(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, size) > maxW) { out.push(line); line = fitText(w, size, maxW); } else line = fitText(next, size, maxW); }
+  if (line) out.push(line);
+  return out;
+}
+function drawIdeas(t) {
+  const W = S.W, cx = Math.round(W / 2), I = Ideas, pw = Math.min(W - 16, 440), x = Math.round(cx - pw / 2);
+  background(t);
+  if (I.mode === 'write') { drawIdeaWrite(cx, x, pw); return; }
+  if (I.mode === 'view' && I.idea) { drawIdeaView(cx, x, pw); return; }
+  if (UI.button('iback', 8, 8, 46, 22, 'BACK', { size: 1 }) || UI.back) { I.back(); return; }
+  const tw3 = PX.textWidth('IDEAS', 3);
+  bulbIcon(cx - tw3 / 2 - 14, 18); T('IDEAS', cx + 6, 10, '#fff', 3, 'center', '#000');
+  if (UI.button('inew', W - 8 - 84, 8, 84, 22, '+ NEW IDEA', { size: 1, accent: '#5ad43f' })) I.write();
+  // the tabs: each status (with how many), and yours
+  const n = IDEA_TABS.length, tw = Math.floor((pw - (n - 1) * 4) / n);
+  IDEA_TABS.forEach(([k, label, col], i) => {
+    const bx = x + i * (tw + 4), cnt = I.counts && k !== 'mine' ? I.counts[k] | 0 : 0, lab = cnt ? label + ' ' + cnt : label;
+    if (UI.button('itab' + i, bx, 34, tw, 18, PX.textWidth(lab, 1) > tw - 6 ? label : lab, { size: 1, accent: col, on: I.tab === i })) I.pick(i);
+    if (I.tab === i) { ctx.fillStyle = col; ctx.fillRect(bx, 50, tw, 2); }
+  });
+  T(IDEA_TABS[I.tab][3], x + 2, 59, IDEA_TABS[I.tab][2], 1, 'left', '#000');
+  if (UI.button('isort', x + pw - 92, 55, 92, 14, I.sort === 'top' ? 'MOST VOTES' : 'NEWEST', { size: 1 })) I.resort();
+  T('SORT:', x + pw - 98, 59, '#5b5275', 1, 'right', '#000');
+  // the ideas: tap one to read all of it
+  const res = I.res, rows = res && res.ok && res.data && Array.isArray(res.data.rows) ? res.data.rows : null, y0 = 74, rh = 22;
+  if (rows) rows.slice(0, 6).forEach((r, i) => {
+    const y = y0 + i * rh, [sl, sc] = IDEA_STATUS[r.status] || IDEA_STATUS.untriaged;
+    if (UI.button('irow' + r.id, x + 34, y, pw - 34, 20, '', { size: 1, accent: '#3a2f5c' })) I.view(r);
+    ctx.fillStyle = sc; ctx.fillRect(x + 35, y + 2, 2, 15);
+    ideaVote(r, 'ivote' + r.id, x, y, 30, 20);
+    const sw = PX.textWidth(sl, 1);
+    T(fitText(String(r.title), 1, pw - 34 - 18 - sw), x + 42, y + 4, r.mine ? '#ffd23f' : '#fff', 1);
+    T(sl, x + pw - 6, y + 4, sc, 1, 'right');
+    T(fitText((r.mine ? 'YOU' : String(r.name)) + '  ' + r.created + (r.reply ? '  REPLY: ' + r.reply : ''), 1, pw - 34 - 14), x + 42, y + 12, '#9a92b8', 1);
+  });
+  if (!res) T('LOADING...', cx, 128, '#9a92b8', 2, 'center', '#000');
+  else if (!rows) T(res.status === 0 ? 'NO INTERNET' : "CAN'T LOAD THE IDEAS.", cx, 128, '#ff8a8a', 2, 'center', '#000');
+  else if (!rows.length) {
+    const k = IDEA_TABS[I.tab][0];
+    T(k === 'mine' ? (I.tok() ? 'NO IDEAS YET. TAP + NEW IDEA!' : 'NO IDEAS YET.') : I.page ? 'NO MORE IDEAS HERE.' : 'NOTHING HERE YET.', cx, 120, '#9a92b8', 2, 'center', '#000');
+    if (k === 'untriaged' || k === 'mine') T('WHAT SHOULD WE ADD TO THE ARCADE? A GAME, A TRACK, A BUTTON...', cx, 140, '#5b5275', 1, 'center', '#000');
+  }
+  // the footer: a message, the pages, and the account it needs
+  if (I.msg) T(fitText(I.msg, 1, pw), cx, 208, I.col, 1, 'center', '#000');
+  const more = rows && res.data.more === true;
+  if (I.page > 0 && UI.button('iprev', x, 220, 40, 16, '<', { size: 1 })) I.flip(I.page - 1);
+  if (more && UI.button('inext', x + pw - 40, 220, 40, 16, '>', { size: 1 })) I.flip(I.page + 1);
+  if (!I.tok()) { if (UI.button('iacct', cx - 130, 220, 260, 16, I.account(), { size: 1, accent: '#5ad43f' })) Account.open(); }
+  else if (I.page > 0 || more) T('PAGE ' + (I.page + 1), cx, 225, '#9a92b8', 1, 'center', '#000');
+}
+function drawIdeaView(cx, x, pw) {
+  const W = S.W, I = Ideas, r = I.idea, [sl, sc] = IDEA_STATUS[r.status] || IDEA_STATUS.untriaged;
+  if (UI.button('iback', 8, 8, 46, 22, 'BACK', { size: 1, disabled: I.busy }) || (UI.back && !I.busy)) { I.back(); return; }
+  // the status, top right
+  const sw = PX.textWidth(sl, 1) + 12;
+  ctx.fillStyle = sc; ctx.fillRect(W - 8 - sw, 11, sw, 15); T(sl, W - 8 - sw / 2, 16, '#111', 1, 'center');
+  // the title, who wrote it, and all of it
+  let y = 36;
+  for (const line of wrapSized(r.title, 2, pw)) { T(line, x, y, '#fff', 2, 'left', '#000'); y += 13; }
+  y += 2;
+  PX.drawAvatar(ctx, { shape: r.shape, color: r.color }, x, y - 3, 1, null);
+  T((r.mine ? 'YOUR IDEA' : 'BY ' + r.name) + '  ' + r.created, x + 16, y, '#9a92b8', 1, 'left', '#000');
+  y += 14;
+  if (r.body) { for (const line of wrapSized(r.body, 1, pw)) { T(line, x, y, '#efe9ff', 1, 'left', '#000'); y += 9; } y += 4; }
+  // the answer
+  const answer = wrapSized(r.reply || IDEA_ANSWER[r.status] || '', 1, pw - 20), ph = 18 + answer.length * 9;
+  if (r.status !== 'untriaged' || r.reply) {
+    panel(x, y, pw, ph, sc);
+    T('PIXEL ARCADE SAYS:', x + 10, y + 6, sc, 1);
+    answer.forEach((line, k) => T(line, x + 10, y + 16 + k * 9, '#fff', 1));
+  } else T(answer[0] || '', x, y + 2, '#5b5275', 1, 'left', '#000');
+  // votes and what you can do: vote (or take the vote back), or take your own idea back while it is waiting
+  if (I.msg) T(fitText(I.msg, 1, pw), cx, 200, I.col, 1, 'center', '#000');
+  const open = r.status === 'untriaged' || r.status === 'accepted';
+  ideaVote(r, 'ivbig', cx - 130, 210, 36, 24);
+  const bx = cx - 88, bw = 218;
+  if (r.mine && r.status === 'untriaged') { if (UI.button('idel', bx, 210, bw, 24, I.sure ? 'SURE? TAP AGAIN' : 'TAKE IT BACK', { size: 1, accent: '#ff5a5a', disabled: I.busy })) I.remove(); }
+  else if (r.mine || !open) T(r.mine ? 'YOUR IDEA: ' + (r.votes | 0) + (r.votes === 1 ? ' VOTE' : ' VOTES') : 'CLOSED: ' + (r.votes | 0) + (r.votes === 1 ? ' VOTE' : ' VOTES'), bx + 6, 219, '#9a92b8', 1, 'left', '#000');
+  else if (UI.button('ivbtn', bx, 210, bw, 24, r.voted ? 'VOTED! (TAP TO TAKE IT BACK)' : 'VOTE FOR THIS IDEA', { size: 1, accent: '#ffd23f', on: !!r.voted, disabled: I.busy })) I.vote(r);
+  if (!I.tok() && open && !r.mine && UI.button('iacct', cx - 130, 188, 260, 16, I.account(), { size: 1, accent: '#5ad43f' })) Account.open();
+}
+function drawIdeaWrite(cx, x, pw) {
+  const I = Ideas;
+  if (UI.button('iback', 8, 8, 46, 22, 'BACK', { size: 1, disabled: I.busy }) || (UI.back && !I.busy)) { I.back(); return; }
+  bulbIcon(cx - PX.textWidth('NEW IDEA', 3) / 2 - 14, 18); T('NEW IDEA', cx + 6, 10, '#fff', 3, 'center', '#000');
+  const tl = ideaClean(ideaTitleInput.value, IDEA_TITLE_MAX).trim().length, bl = ideaClean(ideaBodyInput.value, IDEA_BODY_MAX).trim().length;
+  T('YOUR IDEA IN A FEW WORDS', x, 38, '#efe9ff', 1, 'left', '#000'); T(tl + '/' + IDEA_TITLE_MAX, x + pw, 38, '#5b5275', 1, 'right', '#000');
+  S.placeInput(ideaTitleInput, x, 47, pw, 22); ideaTitleInput.placed = true;
+  T('MORE ABOUT IT (IF YOU WANT)', x, 76, '#efe9ff', 1, 'left', '#000'); T(bl + '/' + IDEA_BODY_MAX, x + pw, 76, '#5b5275', 1, 'right', '#000');
+  S.placeInput(ideaBodyInput, x, 85, pw, 56); ideaBodyInput.placed = true;
+  ideaBodyInput.style.fontSize = Math.round(16 * S.view.scale / S.view.dpr * 0.55) + 'px';
+  T('EVERYBODY CAN SEE YOUR IDEA, WITH YOUR NICKNAME. 3 IDEAS A DAY.', cx, 148, '#5b5275', 1, 'center', '#000');
+  T('SWEAR WORDS TURN INTO #####. WE READ THEM ALL!', cx, 158, '#5b5275', 1, 'center', '#000');
+  if (I.msg) T(fitText(I.msg, 1, pw), cx, 174, I.col, 1, 'center', '#000');
+  const ok = ideaClean(ideaTitleInput.value, IDEA_TITLE_MAX).replace(/[^A-Z0-9]/g, '').length >= 4;
+  if (UI.button('isend', cx - 80, 188, 160, 26, I.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: I.busy || !ok })) I.send();
+}
+
 // --- ACCOUNTS: each player on this phone has their own arcade, behind a password -------------------------------------
 // One phone can hold several accounts: LOG OUT, and somebody else logs in to theirs, or makes a new one. Each account
 // has its own name, avatar, ID, stars, friends and game saves.
@@ -2207,6 +2436,7 @@ const POLICY = [
   'LOG IN ON ANY PHONE WITH YOUR NICKNAME AND PASSWORD. STARS AND GAME SAVES STAY ON EACH PHONE (FOR NOW).',
   'DELETE ACCOUNT REMOVES IT FROM THE SERVER, THE LEADERBOARD AND THIS PHONE. OTHER PHONES KEEP THEIR COPY UNTIL YOU DELETE IT THERE.',
   "WE DON'T KNOW YOUR E-MAIL. THE ONLY WAY BACK IN IS YOUR RECOVERY CODE: WRITE IT DOWN!",
+  'IDEAS YOU WRITE ARE PUBLIC, WITH YOUR NICKNAME AND AVATAR. DELETE ACCOUNT DELETES THEM TOO.',
   'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. NOTIFICATIONS (IF ON) GO THROUGH YOUR PHONE MAKER\'S PUSH SERVICE.',
   'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME, WHICH COUNTRY AND A RANDOM CODE.',
   "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
@@ -2385,9 +2615,9 @@ function frame(now) {
   if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'ideas') drawIdeas(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
-  for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
+  for (const el of [pw1, pw2, codeInput, nameInput, ideaTitleInput, ideaBodyInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
   if (screen !== 'chat') chatInput.style.display = 'none';
   UI.end();
@@ -2396,9 +2626,9 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders', ui: UI,
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders' || screen === 'ideas', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
-  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
+  help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME / IDEAS: TAB'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });
 </script>
 </body>
