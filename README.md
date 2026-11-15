@@ -990,7 +990,12 @@ games call it through `PX.Api` in `common.js`.
 - Local dev: create `api/.dev.vars` containing `ADMIN_KEY=dev-admin` (it is git-ignored), then
   `cd api && npx wrangler d1 migrations apply pixel-arcade --local && npm run dev` (the API is on `http://localhost:8787`).
   On localhost the arcade does not count visits unless you set `localStorage['pixelArcade.hitLocal'] = '1'`.
-- Deploy (migrations first, then the Worker): `cd api && npx wrangler d1 migrations apply pixel-arcade --remote && npm run deploy`
+- **Release (automatic):** the GitHub Action `.github/workflows/api.yml` runs the tests on every pull request that
+  changes `api/`, and when such a change lands on `main` it applies the migrations and deploys the Worker. It needs the
+  repository secret `CLOUDFLARE_API_TOKEN` (a Cloudflare token from the "Edit Cloudflare Workers" template, with D1 Edit
+  added). Run it by hand: Actions → API → Run workflow. The pages go live from `main` (GitHub Pages) at the same time, so
+  a client change that needs a new endpoint may see it a minute late.
+- Deploy by hand (migrations first, then the Worker): `cd api && npx wrangler d1 migrations apply pixel-arcade --remote && npm run deploy`
 - Stats page: `https://pixel-arcade-api.matej-hron.workers.dev/stats?key=…` (the admin key)
 
 ### Usage numbers
