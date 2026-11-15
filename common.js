@@ -952,6 +952,7 @@ window.PX = (() => {
         const p = Profile.get();
         const res = await fetch('https://ntfy.sh/pixel-arcade-stars-' + f.id, { method: 'POST', body: JSON.stringify({ v: 1, t: 'inv', tx: Date.now().toString(36) + Math.random().toString(36).slice(2, 10), from: p.name, fid: p.id, g: this.game, code }) });
         if (!res.ok) throw new Error('relay ' + res.status);
+        Push.tell(f.id, 'inv', { g: this.game, code });       // and a notification on their phone
         this.sent[f.id] = 'ok'; this.msg = f.name + ' IS INVITED! WAIT FOR THEM HERE.'; this.col = '#5ad43f';
       } catch (e) { delete this.sent[f.id]; this.msg = "COULDN'T SEND IT. CHECK YOUR INTERNET."; this.col = '#ff8a8a'; }
     },
@@ -1020,6 +1021,96 @@ window.PX = (() => {
   };
   Presence.start();
 
-  return { Invite, Presence, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  // --- NOTIFICATIONS: a gift, a friend request, an invite or a chat message shows on the phone, arcade open or not ---
+  // Turned on in SETTINGS (it needs an account: the server keeps this phone's push subscription with your ID). When
+  // the arcade sends a friend something through ntfy.sh, Push.tell() also asks the server to notify that friend; the
+  // server writes the words itself (who, and what kind of message, never what a chat message says). The service
+  // worker (sw.js) shows the notification, and a tap opens the arcade (or the game, for an invite).
+  // On an iPhone it only works in the app installed from Safari (Share, Add to Home Screen), iOS 16.4 or newer.
+  const Push = {
+    KEY: 'pixelArcade.push',
+    read() { try { const d = JSON.parse(localStorage.getItem(this.KEY)); return d && typeof d === 'object' ? d : {}; } catch (e) { return {}; } },
+    write(d) { try { localStorage.setItem(this.KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } },
+    supported() { return location.protocol.startsWith('http') && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
+    ios() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); },
+    installed() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; },
+    // what SETTINGS shows: 'on', 'off', 'denied' (blocked in the browser), 'install' (iPhone: add to home screen first), 'no' (this browser can't)
+    state() {
+      if (!this.supported()) return this.ios() && !this.installed() ? 'install' : 'no';
+      if (Notification.permission === 'denied') return 'denied';
+      return this.read().on && Notification.permission === 'granted' ? 'on' : 'off';
+    },
+    async sub(make) {
+      const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('no service worker')), 8000))]);
+      let s = await reg.pushManager.getSubscription();
+      if (!s && make) {
+        const k = await Api.call('GET', '/v1/push/key');
+        if (!k.ok || !k.data || !k.data.key) throw new Error('NO_SERVER');
+        const raw = atob(k.data.key.replace(/-/g, '+').replace(/_/g, '/')), key = Uint8Array.from(raw, ch => ch.charCodeAt(0));
+        s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      }
+      return s;
+    },
+    // Turn on (from a tap: the browser asks for permission). '' when it worked, otherwise what went wrong.
+    async enable() {
+      const me = Api.session();
+      if (!me) return 'ACCOUNT';
+      if (!this.supported()) return 'NO';
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return perm === 'denied' ? 'DENIED' : 'ASK';
+        const s = await this.sub(true), r = await Api.call('POST', '/v1/push/sub', s.toJSON(), me.tok);
+        if (r.status === 401) { Api.onAuthLost(); return 'ACCOUNT'; }
+        if (!r.ok) return 'NET';
+        this.write({ on: true, id: me.id, ep: s.endpoint, at: Date.now() });
+        return '';
+      } catch (e) { return e && e.message === 'NO_SERVER' ? 'NET' : 'FAIL'; }
+    },
+    // Turn off: this phone forgets the subscription and the server too.
+    async disable() {
+      const d = this.read(); this.write({ on: false });
+      try {
+        const s = await this.sub(false), ep = (s && s.endpoint) || d.ep;
+        if (ep) await Api.call('DELETE', '/v1/push/sub', { endpoint: ep });
+        if (s) await s.unsubscribe();
+      } catch (e) { /* gone already */ }
+    },
+    // Log out: the server forgets this phone (so the next player on it doesn't get your notifications), but it stays
+    // on for this phone: logging in again (as anybody) sends the subscription again.
+    async forget() {
+      const d = this.read(); if (!d.on || !d.ep) return;
+      this.write({ ...d, id: '' });
+      await Promise.race([Api.call('DELETE', '/v1/push/sub', { endpoint: d.ep }), new Promise(ok => setTimeout(ok, 2000))]);
+    },
+    // When the arcade opens: if notifications are on, tell the server this phone's subscription again when the
+    // account changed, the browser gave it a new one, or once a day (in case the server lost it).
+    async sync() {
+      const d = this.read(), me = Api.session();
+      if (!d.on || !me || !this.supported() || Notification.permission !== 'granted') return;
+      try {
+        const s = await this.sub(true);
+        if (d.id === me.id && d.ep === s.endpoint && Date.now() - (d.at || 0) < 864e5) return;
+        const r = await Api.call('POST', '/v1/push/sub', s.toJSON(), me.tok);
+        if (r.ok) this.write({ on: true, id: me.id, ep: s.endpoint, at: Date.now() });
+      } catch (e) { /* next time */ }
+    },
+    // SEND A TEST: a notification to your own phones. How many phones got it, or null.
+    async test() {
+      const me = Api.session(); if (!me) return null;
+      const r = await Api.call('POST', '/v1/push/test', undefined, me.tok);
+      return r.ok && r.data ? r.data.sent : null;
+    },
+    // Tell a player's phones that you just sent them something. t: gift, back, freq, fyes, inv, chat. Never throws.
+    tell(to, t, extra = {}) {
+      try {
+        if (!/^[1-9][0-9]{5}$/.test(to) || navigator.onLine === false) return;
+        const p = Profile.load(), me = Api.session();
+        Api.call('POST', '/v1/push/send', { to, t, from: p.name, fid: p.id, ...extra }, me && me.id === p.id ? me.tok : undefined);
+      } catch (e) { /* a notification must never break sending */ }
+    },
+  };
+  if (location.protocol.startsWith('http')) window.addEventListener('load', () => setTimeout(() => Push.sync(), 2000));
+
+  return { Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

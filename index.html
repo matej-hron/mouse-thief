@@ -40,7 +40,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.50.0';
+const VERSION = '2.51.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -693,7 +693,10 @@ function drawSettings(t) {
   T('YOU', x + 18 + half, 96, '#9a92b8', 1);
   if (UI.button('me', x + 18 + half, 108, half, 22, 'NAME AND AVATAR', { size: 1, accent: '#e0a820' })) editProfile();
   T('PLAY ON A BIG SCREEN', x + 12, 142, '#9a92b8', 1);
-  if (UI.button('phones', x + 12, 154, pw - 24, 22, PX.Remote.active() ? 'PHONE CONTROLLERS: ON (CODE ' + PX.Remote.code + ')' : 'PHONE CONTROLLERS', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
+  if (UI.button('phones', x + 12, 154, half, 22, PX.Remote.active() ? 'ON (CODE ' + PX.Remote.code + ')' : 'PHONE CONTROLLERS', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
+  T('NOTIFICATIONS', x + 18 + half, 142, '#9a92b8', 1);
+  const pon = PX.Push.state() === 'on';
+  if (UI.button('notify', x + 18 + half, 154, half, 22, pon ? 'NOTIFICATIONS: ON' : 'NOTIFICATIONS: OFF', { size: 1, accent: '#ff7ab8', on: pon })) openNotify();
   if (COFFEE_URL && UI.button('coffee', x + 12, 184, pw - 24, 22, 'BUY ME A COFFEE', { size: 1, accent: '#c8843a' })) openCoffee();
   if (COFFEE_URL) cupIcon(x + 28, 195);
   T('PIXEL ARCADE ' + VERSION, x + pw - 8, COFFEE_URL ? 220 : 192, '#4a4068', 1, 'right');
@@ -718,6 +721,56 @@ const Coffee = {
   },
 };
 function openCoffee() { Coffee.ask(); Coffee.msg = ''; screen = 'coffee'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+// NOTIFICATIONS (in SETTINGS): turn them on or off, and send yourself a test. How they work: PX.Push in common.js.
+const Notify = {
+  msg: '', col: '#9a92b8', busy: false,
+  say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
+  async run(f) { if (this.busy) return; this.busy = true; try { await f(); } finally { this.busy = false; } },
+  on() { return this.run(async () => {
+    this.say('ASKING...');
+    const e = await PX.Push.enable();
+    if (!e) { this.say('ON! YOUR PHONE WILL TELL YOU ABOUT GIFTS, FRIENDS, INVITES AND MESSAGES.', '#5ad43f'); PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.1 }); return; }
+    PX.Sound.tone(150, 0.2);
+    this.say({ ACCOUNT: 'LOG IN TO YOUR ACCOUNT FIRST.', DENIED: 'NOTIFICATIONS ARE BLOCKED IN YOUR BROWSER.', ASK: 'YOU HAVE TO PRESS ALLOW.',
+               NET: "COULDN'T REACH THE SERVER. CHECK YOUR INTERNET.", NO: "THIS BROWSER CAN'T DO NOTIFICATIONS." }[e] || "THAT DIDN'T WORK. TRY AGAIN.", '#ff8a8a');
+  }); },
+  off() { return this.run(async () => { await PX.Push.disable(); this.say('OFF. NO MORE NOTIFICATIONS ON THIS PHONE.'); PX.Sound.tone(300, 0.12, { vol: 0.08 }); }); },
+  test() { return this.run(async () => {
+    this.say('SENDING...');
+    const n = await PX.Push.test();
+    if (n === null) this.say("COULDN'T REACH THE SERVER. CHECK YOUR INTERNET.", '#ff8a8a');
+    else if (n === 0) this.say("THE SERVER DOESN'T KNOW THIS PHONE: TURN THEM OFF AND ON AGAIN.", '#ff8a8a');
+    else this.say('SENT! IT SHOULD POP UP IN A FEW SECONDS.', '#5ad43f');
+  }); },
+};
+function openNotify() { Notify.say(''); screen = 'notify'; PX.Sound.tone(660, 0.05, { vol: 0.06 }); }
+function drawNotify(t) {
+  const W = S.W, cx = Math.round(W / 2), st = PX.Push.state(), acct = !!PX.Api.session(), busy = Notify.busy;
+  background(t);
+  if (UI.button('nback', 8, 8, 46, 22, 'BACK', { size: 1 }) || (UI.back && !busy)) { screen = 'settings'; return; }
+  T('NOTIFICATIONS', cx, 10, '#fff', 3, 'center', '#000');
+  const pw = Math.min(360, W - 24), x = Math.round(W / 2 - pw / 2);
+  panel(x, 40, pw, 160, '#ff7ab8');
+  const say = (text, y, col = '#efe9ff') => wrapText(text, pw - 24).forEach((l, i) => T(l, cx, y + i * 11, col, 1, 'center', '#000'));
+  say('A NOTIFICATION ON YOUR PHONE WHEN A FRIEND SENDS YOU STARS, A FRIEND REQUEST, AN INVITE TO A GAME OR A MESSAGE, EVEN WHEN THE ARCADE IS CLOSED.', 50);
+  const bw = Math.floor((pw - 30) / 2);
+  if (st === 'no') say("THIS BROWSER CAN'T SHOW NOTIFICATIONS. TRY CHROME, EDGE, FIREFOX OR SAFARI.", 110, '#ff8a8a');
+  else if (st === 'install') say('ON AN IPHONE OR IPAD: OPEN THE ARCADE IN SAFARI, TAP SHARE, THEN ADD TO HOME SCREEN, AND OPEN IT FROM THE HOME SCREEN. THEN TURN THEM ON HERE.', 104, '#ffd23f');
+  else if (st === 'denied') say("NOTIFICATIONS ARE BLOCKED FOR THE ARCADE. ALLOW THEM IN YOUR BROWSER'S (OR PHONE'S) SETTINGS, THEN COME BACK.", 104, '#ffd23f');
+  else if (!acct) {
+    say('YOU NEED AN ACCOUNT FOR THIS: THE SERVER HAS TO KNOW WHICH PHONE IS YOURS.', 104, '#ffd23f');
+    if (UI.button('nacct', cx - 90, 134, 180, 24, 'ACCOUNT', { accent: '#e0a820' })) Account.open();
+  } else if (st === 'on') {
+    T('ON', cx, 104, '#5ad43f', 3, 'center', '#000');
+    if (UI.button('noff', x + 12, 134, bw, 24, 'TURN OFF', { size: 1, accent: '#ff8a2a', disabled: busy })) Notify.off();
+    if (UI.button('ntest', x + 18 + bw, 134, bw, 24, 'SEND A TEST', { size: 1, accent: '#5ad43f', disabled: busy })) Notify.test();
+  } else {
+    T('OFF', cx, 104, '#9a92b8', 3, 'center', '#000');
+    if (UI.button('non', cx - 90, 134, 180, 24, busy ? 'ASKING...' : 'TURN ON', { accent: '#5ad43f', disabled: busy })) Notify.on();
+  }
+  say(Notify.msg, 172, Notify.col);
+  T('ONLY WHO SENT IT, NEVER WHAT A MESSAGE SAYS.', cx, 210, '#5b5275', 1, 'center', '#000');
+}
 function drawCoffee(t) {
   const W = S.W, cx = Math.round(W / 2);
   background(t);
@@ -943,7 +996,7 @@ function padPoll(dt) {
       }
     } else if (screen === 'leaders') {          // PX.Pad moves between the buttons and does B; LB / RB: the previous / next game
       const k = edge(4) ? -1 : edge(5) ? 1 : 0; if (k) Leaders.game(k);
-    } else if (screen === 'settings' || screen === 'coffee') { /* PX.Pad moves between its buttons */ }
+    } else if (screen === 'settings' || screen === 'coffee' || screen === 'notify') { /* PX.Pad moves between its buttons */ }
     else if (screen === 'gift' && (edge(0) || edge(1) || edge(9))) claimGift();
     else if (screen === 'stars' && (edge(0) || edge(9))) claimStars();
     else if (screen === 'invite' && (edge(0) || edge(9))) joinInvite();
@@ -1157,6 +1210,7 @@ const Give = {
       const gift = { v: 1, tx: newTx(), n, from: profile.name, fid: profile.id };
       const res = await fetch(RELAY + relayTopic(id), { method: 'POST', body: JSON.stringify(gift) });
       if (!res.ok) throw new Error('relay ' + res.status);
+      PX.Push.tell(id, 'gift', { n });
       this.busy = false; giveInput.value = ''; this.told = true;
       this.say('★' + n + ' SENT TO ' + Who.ask(id).name + ' (' + id + ')! IT WAITS 12 HOURS FOR THEM TO OPEN THE ARCADE.', '#5ad43f'); PX.Sound.tone([523, 659, 784, 1047], 0.35, { vol: 0.12 });
     } catch (e) {
@@ -1203,6 +1257,7 @@ const Inbox = {
     try {
       const res = await fetch(RELAY + relayTopic(g.fid), { method: 'POST', body: JSON.stringify({ v: 1, tx: 'b' + g.tx.slice(0, 38), n: g.stars, from: profile.name, fid: profile.id, back: true }) });
       if (!res.ok) throw new Error('relay ' + res.status);
+      PX.Push.tell(g.fid, 'back', { n: g.stars });
       this.done(g); PX.Sound.tone(300, 0.12, { vol: 0.08 }); if (screen === 'stars') screen = 'home';
     } catch (e) { g.sending = false; g.note = "COULDN'T SEND THEM BACK. CHECK YOUR INTERNET."; PX.Sound.tone(150, 0.2); }
   },
@@ -1295,6 +1350,7 @@ const Friends = {
   async post(id, t) {
     const res = await fetch(RELAY + relayTopic(id), { method: 'POST', body: JSON.stringify({ v: 1, t, tx: newTx(), from: profile.name, fid: profile.id }) });
     if (!res.ok) throw new Error('relay ' + res.status);
+    if (t === 'freq' || t === 'fyes') PX.Push.tell(id, t);       // a notification for "be my friend" and "yes" (not for no or bye)
   },
   say(m, col = '#9a92b8') { this.msg = m; this.col = col; },
   fail(m) { this.busy = false; this.told = true; this.say(m, '#ff8a8a'); PX.Sound.tone(150, 0.2); },
@@ -1537,6 +1593,7 @@ const Chat = {
       this.es.onmessage = e => {
         let m = null; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
         if (!m || m.v !== 1 || !validId(m.fid) || !Friends.find(m.fid)) return;
+        this.heardAt[m.fid] = performance.now();
         if (m.sent) { delete this.typAt[m.fid]; Inbox.check(); } else this.typAt[m.fid] = performance.now();
       };
     } catch (e) { this.es = null; }
@@ -1553,17 +1610,27 @@ const Chat = {
       const res = await fetch(RELAY + relayTopic(f.id), { method: 'POST', body: JSON.stringify({ v: 1, t: 'chat', tx, from: profile.name, fid: profile.id, text: x }) });
       if (!res.ok) throw new Error('relay ' + res.status);
       this.add(f.id, true, x, tx); chatInput.value = ''; this.ping(f.id, true); this.typSent = 0;
+      if (this.wantsNote(f.id)) PX.Push.tell(f.id, 'chat');
       if (x !== raw) this.msg = 'NO SWEARING! THOSE WORDS WERE SENT AS #####.';
       PX.Sound.tone(880, 0.05, { vol: 0.06 });
     } catch (e) { this.msg = "COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."; PX.Sound.tone(150, 0.2); }
     this.busy = false;
+  },
+  // A notification on the friend's phone for a chat message: not when they wrote or typed to you in the last 30
+  // seconds (they are in the chat), and at most one a minute for each friend (the newest replaces the old one anyway).
+  noteAt: {}, heardAt: {},
+  wantsNote(id) {
+    const now = performance.now();
+    if (this.heardAt[id] && now - this.heardAt[id] < 30e3) return false;
+    if (this.noteAt[id] && now - this.noteAt[id] < 60e3) return false;
+    this.noteAt[id] = now; return true;
   },
   got(m) {                                           // a message came in (each one only once): only from a friend
     const id = m.fid, f = validId(id) && Friends.find(id);
     if (!f || typeof m.text !== 'string') return;
     const x = PX.censor(chatClean(m.text)).trim(); if (!x) return;
     const c = this.with(id); if (c.m.some(y => y.tx === m.tx)) return;
-    this.add(id, false, x, m.tx); delete this.typAt[id];
+    this.add(id, false, x, m.tx); delete this.typAt[id]; this.heardAt[id] = performance.now();
     if (screen === 'chat' && this.f && this.f.id === id) { c.un = 0; this.save(); PX.Sound.tone(1047, 0.06, { vol: 0.06 }); }
     else PX.Sound.tone([784, 1047], 0.12, { vol: 0.07 });
   },
@@ -2060,6 +2127,7 @@ const Account = {
   }); },
   logout() { return this.run(async () => {
     const a = this.me(), tok = a.tok;
+    await PX.Push.forget();                          // the server stops sending this account's notifications to this phone
     delete a.tok;                                    // (the token stays with nobody: the next LOG IN gets a new one)
     try { this.stash(a); } catch (e) { if (tok) a.tok = tok; throw e; }
     if (tok) await Promise.race([PX.Api.call('DELETE', '/v1/session', undefined, tok), new Promise(ok => setTimeout(ok, 2000))]);   // best effort
@@ -2139,7 +2207,7 @@ const POLICY = [
   'LOG IN ON ANY PHONE WITH YOUR NICKNAME AND PASSWORD. STARS AND GAME SAVES STAY ON EACH PHONE (FOR NOW).',
   'DELETE ACCOUNT REMOVES IT FROM THE SERVER, THE LEADERBOARD AND THIS PHONE. OTHER PHONES KEEP THEIR COPY UNTIL YOU DELETE IT THERE.',
   "WE DON'T KNOW YOUR E-MAIL. THE ONLY WAY BACK IN IS YOUR RECOVERY CODE: WRITE IT DOWN!",
-  'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS.',
+  'FRIENDS AND GIFTS OF STARS GO THROUGH NTFY.SH, AN OUTSIDE MESSAGE SERVICE: YOUR ID, YOUR NAME AND THE STARS. NOTIFICATIONS (IF ON) GO THROUGH YOUR PHONE MAKER\'S PUSH SERVICE.',
   'THE ARCADE COUNTS VISITS WITHOUT KNOWING WHO YOU ARE: WHICH GAME, WHICH COUNTRY AND A RANDOM CODE.',
   "USE A NICKNAME, NEVER YOUR REAL NAME. DON'T USE A PASSWORD THAT YOU USE SOMEWHERE ELSE.",
   "CLEARING THE BROWSER'S DATA LOGS YOU OUT AND DELETES THE STARS AND SAVES ON THIS PHONE. THE ACCOUNT STAYS ON THE SERVER.",
@@ -2317,7 +2385,7 @@ function frame(now) {
   if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
@@ -2328,7 +2396,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'leaders', ui: UI,
+  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
   help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });

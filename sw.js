@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.95.1';
+const CACHE = 'pixel-arcade-v2.96.0';
 const ASSETS = [
   './',
   './index.html',
@@ -85,4 +85,35 @@ self.addEventListener('fetch', e => {
       return res;
     }))
   );
+});
+
+// --- NOTIFICATIONS (PX.Push in common.js): the server sends { title, body, url, tag }, already in the arcade's words.
+// A tap opens that page (the arcade, or a game with ?join= for an invite): a tab showing it is brought to the front,
+// or else a tab with the arcade's menu goes there (never a tab with a game running), otherwise a new one opens.
+self.addEventListener('push', e => {
+  let n = null;
+  try { n = e.data && e.data.json(); } catch (x) { n = null; }
+  if (!n || typeof n.title !== 'string') n = { title: 'PIXEL ARCADE', body: 'SOMETHING NEW IS WAITING FOR YOU.', url: 'index.html', tag: 'arcade' };
+  e.waitUntil(self.registration.showNotification(n.title, {
+    body: n.body || '',
+    tag: n.tag || 'arcade',
+    renotify: true,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/favicon-32.png',
+    data: { url: typeof n.url === 'string' ? n.url : 'index.html' },
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || 'index.html', self.registration.scope);
+  if (url.origin !== location.origin) return;
+  e.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const same = tabs.find(c => c.url === url.href) || (url.search ? null : tabs.find(c => pageKey(c.url) === pageKey(url.href)));
+    if (same) return same.focus();
+    const menu = tabs.find(c => 'navigate' in c && pageKey(c.url) === new URL('index.html', self.registration.scope).href);
+    if (menu) { try { const c = await menu.navigate(url.href); if (c) return c.focus(); } catch (x) { /* not ours to move */ } }
+    return self.clients.openWindow(url.href);
+  })());
 });
