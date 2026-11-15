@@ -991,6 +991,35 @@ window.PX = (() => {
     auto(join) { const c = this.joinCode(); if (c) join(c); },
   };
 
-  return { Invite, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  // --- ONLINE / OFFLINE: your friends see when you are playing --------------------------------------------------
+  // While the arcade or a game is open and on the screen, it says "I'm online" (and which game) on ntfy.sh, on a topic
+  // of your ID, every 4 minutes, and "I'm offline" when you close it or switch away (sendBeacon, so it still goes
+  // out while the page closes). The FRIENDS menu reads your friends' topics, all in one request, and a friend is
+  // ONLINE if their newest message (by its time t) says so and is less than 5 minutes old. Only a player who has
+  // friends says anything at all. What goes through ntfy.sh: your ID, online or not, and the game.
+  const Presence = {
+    EVERY: 4 * 60e3, FRESH: 5 * 60e3,
+    topic: id => 'pixel-arcade-on-' + id,
+    on: false, last: 0,
+    game() { const g = (location.pathname.split('/').pop() || '').replace(/\.html$/, ''); return g === 'index' || g === 'pad' ? '' : g; },
+    send(on) {
+      const p = Profile.load(); if (!/^[1-9][0-9]{5}$/.test(p.id) || !Invite.friends().length) return;
+      const url = 'https://ntfy.sh/' + this.topic(p.id), body = JSON.stringify({ v: 1, on: on ? 1 : 0, g: this.game(), t: Date.now() });
+      if (!on) { this.on = false; try { if (navigator.sendBeacon && navigator.sendBeacon(url, body)) return; } catch (e) { /* no beacon */ } }
+      else { this.on = true; this.last = Date.now(); }
+      fetch(url, { method: 'POST', body, keepalive: true }).catch(() => { /* offline: next time */ });
+    },
+    tick() { if (document.visibilityState === 'visible' && (!this.on || Date.now() - this.last > this.EVERY)) this.send(true); },
+    off() { if (this.on) this.send(false); },
+    start() {
+      if (!location.protocol.startsWith('http')) return;
+      setTimeout(() => this.tick(), 1500); setInterval(() => this.tick(), 15000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.off(); else this.tick(); });
+      window.addEventListener('pagehide', () => this.off());
+    },
+  };
+  Presence.start();
+
+  return { Invite, Presence, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();
