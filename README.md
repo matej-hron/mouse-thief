@@ -593,6 +593,10 @@ button show how many new messages are waiting.
   sent, and every message that comes in too. It also catches 5H1T, FUUUCK, F*CK, F U C K and words with accents. The
   list is `PX.censor` in `common.js`.
 - Only messages from players on your FRIENDS list are shown.
+- **Typing...:** while your friend types to you, your open chat shows a bubble with three hopping dots and
+  (NAME) IS TYPING. It is a ping on ntfy.sh (at most every 2.5 s, with `cache=no`, so it is not kept) to a topic your
+  open chat listens to live; the dots go after 4 seconds without a ping. After a message is sent one more ping tells
+  the friend's chat to fetch it right away, so two open chats talk instantly.
 - A message travels like a friend request (ntfy.sh, about **12 hours**): your friend gets it when their arcade is open
   (every 20 seconds, every 5 while the chat is open), or the next time they open it within 12 hours.
 - The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).

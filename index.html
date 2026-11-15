@@ -40,7 +40,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.49.0';
+const VERSION = '2.50.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -1445,6 +1445,7 @@ function onlineDot(x, y, o) {             // a green dot when online, a grey rin
 // (PX.censor in common.js): your own before they are sent, and every message that comes in too (in case somebody
 // sends one some other way). The chats are kept on each phone, the last 40 messages with each friend.
 // What goes through ntfy.sh: the two IDs, your name and the message.
+const typingTopic = id => 'pixel-arcade-typing-' + id;
 const CHAT_KEY = 'pixelArcade.chat', CHAT_MAX = 60, CHAT_KEEP = 40;
 const chatInput = document.getElementById('chatmsg');
 // EMOJIS: 15 of them, drawn as pixel art (7 wide) in the chat. In a message they are the real emoji characters, so the
@@ -1476,7 +1477,7 @@ const EMOJI_ALIAS = { '\u{1F603}': '\u{1F600}', '\u{1F604}': '\u{1F600}', '\u{1F
 // only what the arcade can draw: capitals without accents, digits, a few signs and the emojis (at most CHAT_MAX)
 const chatClean = v => Array.from(String(v || '').replace(/[\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())
   .map(ch => EMOJI_ALIAS[ch] || ch).filter(ch => EMOJI.has(ch) || /^[A-Z0-9 .,!?:\-+/'%()<>=*#"_$★]$/.test(ch)).slice(0, CHAT_MAX).join('');
-chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; });
+chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; if (v.trim()) Chat.typing(); });
 // a chat line's width and drawing: letters in the pixel font, emojis as their pixel art
 const chatW = str => { let w = 0; for (const ch of str) w += EMOJI.has(ch) ? 9 : PX.textWidth(ch, 1) + 1; return w - 1; };   // (textWidth leaves out the gap after the last letter)
 function chatText(str, x, y, color) {
@@ -1512,9 +1513,36 @@ const Chat = {
     this.with(f.id).un = 0; this.save();
     PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
     if (performance.now() - Inbox.last > 3000) Inbox.check();
+    this.listen();
   },
-  leave() { chatInput.blur(); screen = 'friends'; this.f = null; },
-  emoji(ch) { const v = chatClean(chatInput.value + ch); if (v !== chatInput.value) { chatInput.value = v; PX.Sound.tone(990, 0.03, { vol: 0.05 }); } },
+  leave() { chatInput.blur(); screen = 'friends'; this.f = null; this.hush(); },
+  emoji(ch) { const v = chatClean(chatInput.value + ch); if (v !== chatInput.value) { chatInput.value = v; PX.Sound.tone(990, 0.03, { vol: 0.05 }); this.typing(); } },
+  // --- TYPING...: while you type, your friend's open chat shows a bubble with three dots ---
+  // A ping on ntfy.sh at most every 2.5 seconds, to a topic of the friend's ID, with cache=no: it isn't kept, only
+  // passed on live to an arcade that listens right then, and every open chat listens (an EventSource on its own
+  // topic). The dots stay 4 seconds after the last ping. Right after a message is sent, one more ping says "sent",
+  // and the friend's arcade asks for its messages at once, so a chat between two open chats is instant.
+  typAt: {}, typSent: 0, es: null,
+  ping(id, sent) {
+    fetch(RELAY + typingTopic(id) + '?cache=no', { method: 'POST', body: JSON.stringify({ v: 1, fid: profile.id, ...(sent ? { sent: 1 } : {}) }) }).catch(() => { /* never mind */ });
+  },
+  typing() {
+    const f = this.f; if (!f || !Friends.find(f.id) || performance.now() - this.typSent < 2500) return;
+    this.typSent = performance.now(); this.ping(f.id, false);
+  },
+  listen() {
+    if (this.es || typeof EventSource === 'undefined') return;
+    try {
+      this.es = new EventSource(RELAY + typingTopic(profile.id) + '/sse');
+      this.es.onmessage = e => {
+        let m = null; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
+        if (!m || m.v !== 1 || !validId(m.fid) || !Friends.find(m.fid)) return;
+        if (m.sent) { delete this.typAt[m.fid]; Inbox.check(); } else this.typAt[m.fid] = performance.now();
+      };
+    } catch (e) { this.es = null; }
+  },
+  hush() { if (this.es) { try { this.es.close(); } catch (e) { /* closed */ } } this.es = null; this.typAt = {}; },
+  isTyping(id) { return performance.now() - (this.typAt[id] || -1e9) < 4000; },
   async send() {
     const f = this.f, raw = chatClean(chatInput.value).trim();
     if (!f || this.busy || !raw) return;
@@ -1524,7 +1552,7 @@ const Chat = {
     try {
       const res = await fetch(RELAY + relayTopic(f.id), { method: 'POST', body: JSON.stringify({ v: 1, t: 'chat', tx, from: profile.name, fid: profile.id, text: x }) });
       if (!res.ok) throw new Error('relay ' + res.status);
-      this.add(f.id, true, x, tx); chatInput.value = '';
+      this.add(f.id, true, x, tx); chatInput.value = ''; this.ping(f.id, true); this.typSent = 0;
       if (x !== raw) this.msg = 'NO SWEARING! THOSE WORDS WERE SENT AS #####.';
       PX.Sound.tone(880, 0.05, { vol: 0.06 });
     } catch (e) { this.msg = "COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."; PX.Sound.tone(150, 0.2); }
@@ -1535,7 +1563,7 @@ const Chat = {
     if (!f || typeof m.text !== 'string') return;
     const x = PX.censor(chatClean(m.text)).trim(); if (!x) return;
     const c = this.with(id); if (c.m.some(y => y.tx === m.tx)) return;
-    this.add(id, false, x, m.tx);
+    this.add(id, false, x, m.tx); delete this.typAt[id];
     if (screen === 'chat' && this.f && this.f.id === id) { c.un = 0; this.save(); PX.Sound.tone(1047, 0.06, { vol: 0.06 }); }
     else PX.Sound.tone([784, 1047], 0.12, { vol: 0.07 });
   },
@@ -1556,7 +1584,8 @@ function drawChat(t) {
   background(t);
   const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
   T(f.name, cx, 8, '#fff', 2, 'center', '#000');
-  const o = Online.of(f.id), ow = PX.textWidth(o.text, 1) + 9, ox = Math.round(cx - ow / 2);
+  let o = Online.of(f.id); if (o.s !== 'on' && Chat.isTyping(f.id)) o = { s: 'on', text: 'ONLINE', col: '#5ad43f' };   // (typing = online for sure)
+  const ow = PX.textWidth(o.text, 1) + 9, ox = Math.round(cx - ow / 2);
   onlineDot(ox, 22, o); T(o.text, ox + 9, 22, o.col, 1, 'left', '#000');
   // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
   const top = 34, bottom = 160, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
@@ -1566,6 +1595,13 @@ function drawChat(t) {
     T('SWEAR WORDS TURN INTO #####.', cx, 102, '#5b5275', 1, 'center');
   }
   let y = bottom - 3;
+  if (Chat.isTyping(f.id)) {                         // your friend is typing: a bubble with three dots that hop
+    y -= 12; const bx = x + 4;
+    ctx.fillStyle = '#221c33'; ctx.fillRect(bx, y, 24, 12); ctx.fillStyle = '#7af0ff'; ctx.fillRect(bx, y, 2, 12);
+    for (let k = 0; k < 3; k++) { const up = Math.sin(t * 9 - k * 0.9) > 0.3 ? 1 : 0; ctx.fillStyle = up ? '#fff' : '#9a92b8'; ctx.fillRect(bx + 6 + k * 6, y + 5 - up * 2, 3, 3); }
+    T(f.name + ' IS TYPING', bx + 30, y + 4, '#5b5275', 1);
+    y -= 3;
+  }
   for (let i = c.m.length - 1; i >= 0 && y > top + 4; i--) {
     const m = c.m[i], lines = chatLines(m.x, bw - 8), h = lines.length * 10 + 2;
     const w = Math.max(...lines.map(chatW)) + 8, bx = m.me ? x + rw - 4 - w : x + 4;
