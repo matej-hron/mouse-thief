@@ -16,7 +16,13 @@
 		}
 	],
 	// Per-IP brake on /v1/register: 5 per minute
-	"ratelimits": [{ "name": "REGISTER_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
+	"ratelimits": [
+		{ "name": "REGISTER_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+		// Per-IP brake on /v1/push/send (notifications to a friend's phone): 30 per minute
+		{ "name": "PUSH_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
+	],
+	// Web Push: the public half of the VAPID key. The private half is a secret (wrangler secret put VAPID_PRIVATE_KEY).
+	"vars": { "VAPID_PUBLIC_KEY": "BPoBzhmUjjwSA6jili8kJUs2Gqvahxth9To3WBWWhPDuIbpOii7k1QVRB6xP4_nJ20nBIesNYIcFsx7OoWxKN0g" },
 	"triggers": { "crons": ["23 3 * * *"] },
 	"observability": { "enabled": true, "logs": { "invocation_logs": false } }
 }

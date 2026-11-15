@@ -704,6 +704,25 @@ are `STAR_GIFTS` in `index.html`.
 - **★1000 for VOJTA7, STEPAK and LEVKO:** the first time the arcade is opened with that name (or right after the name
   is typed in EDIT). No end date.
 
+## Notifications
+
+**SETTINGS → NOTIFICATIONS** turns on notifications on your phone (or computer): when a friend sends you stars (or
+sends yours back), a friend request, a yes to yours, an invite to an online game, or a chat message, your phone shows
+it **even when the arcade is closed**. Tap it and the arcade opens (an invite opens the game and joins it). SEND A TEST
+sends one to yourself.
+
+- **You need an account** (and to be logged in): the server keeps this phone's push subscription with your ID. LOG OUT
+  tells the server to forget this phone; logging in again (as anybody) sends it again. Up to 5 phones per account.
+- **iPhone / iPad:** only in the arcade installed from Safari (Share → Add to Home Screen), iOS 16.4 or newer. In
+  Safari's tab the screen says so.
+- **What it says:** the server writes the words itself from the kind of message (★50 FROM TOM!, NEW MESSAGE FROM MIA,
+  ...), so nobody can push their own text to a phone, and it never says what a chat message says. Chat notifications
+  come at most once a minute per friend, and not while your friend is writing to you right then.
+- **How:** the arcade still sends everything through ntfy.sh as before; right after, it asks the backend
+  (`POST /v1/push/send`) to notify that friend. The backend sends a Web Push (encrypted for that phone, signed with
+  the arcade's VAPID key) to the browser's push service (Google, Mozilla, Apple), and `sw.js` shows it. The client
+  part is `PX.Push` in `common.js`; the server part is `api/src/push.ts` and `api/src/webpush.ts`.
+
 ## First of the month update
 
 Only on the **1st of every month** (January 1, February 1, ... December 1): the first time you open the arcade that
@@ -951,7 +970,13 @@ games call it through `PX.Api` in `common.js`.
 
 - **Endpoints (`/v1`):** `POST /hit` (visit count); `POST /prelogin`, `/register`, `/login`, `/reset` (`prelogin`,
   `login` and `reset` take a nickname or a player id); `GET`, `PUT`, `DELETE /me` (the account); `POST /password`;
-  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board).
+  `DELETE /session` (log out); `POST /scores` (new bests); `GET /boards/:board` (a page of a board); notifications:
+  `GET /push/key`, `POST` / `DELETE /push/sub`, `POST /push/send` (30 a minute per address), `POST /push/test`, and
+  `POST /admin/push/:id` (the owner sends a player a test notification, with the admin key).
+- **VAPID key (notifications):** the public half is `VAPID_PUBLIC_KEY` in `wrangler.jsonc`, the private half a secret:
+  `npx wrangler secret put VAPID_PRIVATE_KEY` (base64url of the P-256 private key `d`). A new pair: in Node,
+  `crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign'])`, then the raw public key and the
+  JWK's `d`, both base64url. Changing the pair means every phone has to turn notifications on again.
 - **Passwords:** the phone sends a PBKDF2 of the password, and the server stores a salted SHA-256 of that. The phone's
   own hash (the one that unlocks the account on the phone) never leaves it.
 - **Limits:** 10 wrong passwords (or recovery codes) on a nickname lock it for 15 minutes; sign-ups are rate-limited

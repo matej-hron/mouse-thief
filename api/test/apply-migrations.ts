@@ -7,6 +7,8 @@ declare global {
     interface Env {
       DB: D1Database;
       ADMIN_KEY: string;
+      VAPID_PUBLIC_KEY: string;
+      VAPID_PRIVATE_KEY: string;
       TEST_MIGRATIONS: D1Migration[];
     }
   }

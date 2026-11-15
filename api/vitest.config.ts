@@ -13,9 +13,18 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations, ADMIN_KEY: 'test-admin' },
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            ADMIN_KEY: 'test-admin',
+            // a key pair only for the tests (the real private key is a secret on Cloudflare)
+            VAPID_PUBLIC_KEY: 'BMabOob5ZRW9FJuggNzQxS_DFBxi-Q0CAjeN0PY-WZZuZSLBlT-SISo5VsLi7P53koBB0A7PoYX1BMhCUCf4RZY',
+            VAPID_PRIVATE_KEY: 'JMwMLnvjRAbReAV7cKrbCqgj67cIHBhiM1dyAi_tezc',
+          },
           // the real limit (5/min) would throttle the many registers in the tests; the limit itself is tested with a stub
-          ratelimits: { REGISTER_LIMIT: { namespace_id: '1001', simple: { limit: 100000, period: 60 } } },
+          ratelimits: {
+            REGISTER_LIMIT: { namespace_id: '1001', simple: { limit: 100000, period: 60 } },
+            PUSH_LIMIT: { namespace_id: '1002', simple: { limit: 100000, period: 60 } },
+          },
         },
       }),
     ],

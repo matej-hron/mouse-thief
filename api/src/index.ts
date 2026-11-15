@@ -2,10 +2,18 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
+import { push } from './push';
 import { scores } from './scores';
 import { deletePlayerRoute, renamePlayerRoute, statsRoute } from './stats';
 
-export type Env = { DB: D1Database; ADMIN_KEY: string; REGISTER_LIMIT: RateLimit };
+export type Env = {
+  DB: D1Database;
+  ADMIN_KEY: string;
+  REGISTER_LIMIT: RateLimit;
+  PUSH_LIMIT: RateLimit;
+  VAPID_PUBLIC_KEY: string;
+  VAPID_PRIVATE_KEY: string;
+};
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
 
@@ -22,6 +30,7 @@ app.post('/stats/players/:id/rename', renamePlayerRoute);
 app.post('/stats/players/:id/delete', deletePlayerRoute);
 app.route('/', accounts);
 app.route('/', scores);
+app.route('/', push);
 
 export default {
   fetch: app.fetch,
