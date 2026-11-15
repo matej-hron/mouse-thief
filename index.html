@@ -17,10 +17,10 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
-  #name, #search, #giveid { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+  #name, #search, #giveid, #chatmsg { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
-  #search { text-align: left; letter-spacing: 0.1em; padding: 0 0.4em; }
+  #search, #chatmsg { text-align: left; letter-spacing: 0.1em; padding: 0 0.4em; }
   #pw1, #pw2, #code { position: fixed; display: none; box-sizing: border-box; text-align: center;
           font: bold 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.1em;
           color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
@@ -31,6 +31,7 @@
 <canvas id="screen"></canvas>
 <input id="search" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="search" enterkeyhint="search" placeholder="TYPE A GAME..." aria-label="Search games">
 <input id="giveid" maxlength="6" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="numeric" aria-label="Your friend's ID">
+<input id="chatmsg" maxlength="60" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="send" placeholder="TYPE A MESSAGE..." aria-label="Message to your friend">
 <input id="pw1" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password">
 <input id="pw2" type="password" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Password again">
 <input id="code" maxlength="9" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Recovery code">
@@ -39,7 +40,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.46.0';
+const VERSION = '2.47.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -48,13 +49,14 @@ const UI = PX.makeUI(S, canvas);
 const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
 let profile = PX.Profile.load();
 PX.Profile.save(profile);
-let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | leaders | account | invite | coffee
+let screen = 'home';                  // home | search | profile | remote | settings | gift | stars | give | friends | chat | leaders | account | invite | coffee
 let draft = null;                     // the profile being edited
 const nameInput = document.getElementById('name');
 const searchInput = document.getElementById('search');
 searchInput.addEventListener('input', () => { searchInput.value = searchInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 20); search.q = searchInput.value; scrollTo(0); pad.focus = 0; });
 nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
 window.addEventListener('keydown', e => {
+  if (e.target === chatInput) { if (e.key === 'Enter') Chat.send(); else if (e.key === 'Escape') Chat.leave(); return; }
   if (e.target === giveInput && screen === 'friends') { if (e.key === 'Enter') Friends.request(); else if (e.key === 'Escape') Friends.leave(); return; }
   if (e.target === giveInput) { if (e.key === 'Enter') Give.send(); else if (e.key === 'Escape') Give.leave(); return; }
   if (e.target === pw1 || e.target === pw2 || e.target === codeInput) { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
@@ -641,8 +643,8 @@ function drawHome(t) {
   if (UI.button('give', rx + 36 + nw + 8 + 50, 40, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open();
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
-  // your friends (with how many players are waiting for your answer)
-  const fx = W - 80, asks = Friends.d.inc.length;
+  // your friends (with how many players are waiting for your answer, and how many chats have new messages)
+  const fx = W - 80, asks = Friends.d.inc.length + Chat.unread();
   if (UI.button('friends', fx, 38, 72, 20, '', { size: 1, accent: '#ff7ab8' })) Friends.open();
   friendsIcon(fx + 14, 48); T('FRIENDS', fx + 28, 45, '#fff', 1);
   if (asks) { ctx.fillStyle = '#111'; ctx.fillRect(fx + 63, 33, 11, 11); ctx.fillStyle = '#ff7ab8'; ctx.fillRect(fx + 64, 34, 9, 9); T(String(Math.min(9, asks)), fx + 69, 36, '#111', 1, 'center'); }
@@ -1169,7 +1171,7 @@ const Inbox = {
   seen() { try { const a = JSON.parse(localStorage.getItem(this.KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } },
   done(g) {                                          // remember a gift you took or turned down, so it never comes twice
     this.list = this.list.filter(x => x.tx !== g.tx);
-    try { localStorage.setItem(this.KEY, JSON.stringify([...this.seen(), g.tx].slice(-300))); return this.seen().includes(g.tx); } catch (e) { return false; }
+    try { localStorage.setItem(this.KEY, JSON.stringify([...this.seen(), g.tx].slice(-1000))); return this.seen().includes(g.tx); } catch (e) { return false; }
   },
   async check() {
     this.last = performance.now();
@@ -1181,8 +1183,8 @@ const Inbox = {
       for (const row of (await res.text()).split('\n')) {
         let m = null, at = 0;
         try { const ev = JSON.parse(row); if (ev.event === 'message') { m = JSON.parse(ev.message); at = +ev.time || 0; } } catch (e) { /* not a gift */ }
-        if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, an answer to yours, or an invite to a game
-          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-300))); } catch (e) { /* private mode */ } if (m.t === 'inv') gotInvite(m, at); else Friends.got(m); }
+        if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, an answer to yours, an invite to a game, or a chat message
+          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-1000))); } catch (e) { /* private mode */ } if (m.t === 'inv') gotInvite(m, at); else if (m.t === 'chat') Chat.got(m, at); else Friends.got(m); }
           continue;
         }
         if (!m || m.v !== 1 || !Number.isInteger(m.n) || m.n < 1 || m.n > 1000 || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40) continue;
@@ -1378,12 +1380,121 @@ function drawFriends(t) {
       if (UI.button('fadd' + f.id, x + rw - 92, y + 1, 46, 16, 'ADD', { size: 1, accent: '#5ad43f', disabled: busy })) F.accept(f);
       if (UI.button('fno' + f.id, x + rw - 42, y + 1, 40, 16, 'NO', { size: 1, disabled: busy })) F.refuse(f);
     } else if (r.k === 'fr') {
+      const un = Chat.unread(f.id);
+      if (UI.button('fchat' + f.id, x + rw - 166, y + 1, 50, 16, un ? 'CHAT ' + Math.min(9, un) : 'CHAT', { size: 1, accent: '#7af0ff', on: !!un })) Chat.open(f);
       if (UI.button('fgive' + f.id, x + rw - 112, y + 1, 50, 16, 'GIVE ★', { size: 1, accent: '#ffd23f' })) Give.open(f.id);
       if (UI.button('fdel' + f.id, x + rw - 58, y + 1, 56, 16, F.sure === f.id ? 'SURE?' : 'REMOVE', { size: 1, accent: F.sure === f.id ? '#ff5a5a' : undefined, on: F.sure === f.id })) { if (F.sure === f.id) F.remove(f); else F.sure = f.id; }
     } else if (UI.button('fcan' + f.id, x + rw - 58, y + 1, 56, 16, 'CANCEL', { size: 1 })) F.cancel(f);
   });
   if (pages > 1 && UI.button('fmore', cx + 56, 214, 90, 20, 'MORE ' + (F.page + 1) + '/' + pages, { size: 1 })) F.page = (F.page + 1) % pages;
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
+}
+
+// --- CHAT: write to a friend (CHAT next to them in FRIENDS) -------------------------------------------------------
+// A message goes the same way as a friend request (ntfy.sh, to the topic of the friend's ID, kept about 12 hours), so
+// your friend gets it when their arcade is open (every 20 seconds, every 5 while their chat is open), or the next time
+// they open it within 12 hours. Only messages from players on your FRIENDS list are shown. Swear words become #####
+// (PX.censor in common.js): your own before they are sent, and every message that comes in too (in case somebody
+// sends one some other way). The chats are kept on each phone, the last 40 messages with each friend.
+// What goes through ntfy.sh: the two IDs, your name and the message.
+const CHAT_KEY = 'pixelArcade.chat', CHAT_MAX = 60, CHAT_KEEP = 40;
+const chatInput = document.getElementById('chatmsg');
+// only what the pixel font can draw: capitals without accents, digits and a few signs
+const chatClean = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+  .replace(/[^A-Z0-9 .,!?:\-+/'%()<>=*#"_$★♥]/g, '').slice(0, CHAT_MAX);
+chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; });
+const Chat = {
+  d: {},                                             // friend's ID → { m: [{ me, x, tx }], un: how many you haven't read }
+  f: null, busy: false, msg: '',
+  load() {
+    let d = null; try { d = JSON.parse(localStorage.getItem(CHAT_KEY)); } catch (e) { d = null; }
+    this.d = {};
+    for (const id in (d && typeof d === 'object' ? d : {})) {
+      const c = d[id]; if (!validId(id) || !c || !Array.isArray(c.m)) continue;
+      this.d[id] = { m: c.m.filter(x => x && typeof x.x === 'string').map(x => ({ me: x.me === true, x: PX.censor(chatClean(x.x)), tx: String(x.tx || '') })).slice(-CHAT_KEEP),
+                     un: Math.max(0, Math.min(CHAT_KEEP, c.un | 0)) };
+    }
+  },
+  save() { try { localStorage.setItem(CHAT_KEY, JSON.stringify(this.d)); } catch (e) { /* private mode */ } },
+  with(id) { return this.d[id] || (this.d[id] = { m: [], un: 0 }); },
+  add(id, me, x, tx) { const c = this.with(id); c.m.push({ me, x, tx }); c.m = c.m.slice(-CHAT_KEEP); if (!me) c.un++; this.save(); },
+  unread(id) {                                       // new messages from this friend (or from all your friends)
+    if (id) return this.d[id] && Friends.find(id) ? this.d[id].un : 0;
+    let n = 0; for (const k in this.d) if (Friends.find(k)) n += this.d[k].un; return n;
+  },
+  open(f) {
+    this.f = f; this.busy = false; this.msg = ''; chatInput.value = ''; screen = 'chat';
+    this.with(f.id).un = 0; this.save();
+    PX.Sound.unlock(); PX.Sound.tone(660, 0.05, { vol: 0.06 });
+    if (performance.now() - Inbox.last > 3000) Inbox.check();
+  },
+  leave() { chatInput.blur(); screen = 'friends'; this.f = null; },
+  async send() {
+    const f = this.f, raw = chatClean(chatInput.value).trim();
+    if (!f || this.busy || !raw) return;
+    if (!Friends.find(f.id)) { this.msg = f.name + ' IS NOT YOUR FRIEND ANY MORE.'; return; }
+    const x = PX.censor(raw), tx = newTx();
+    this.busy = true; this.msg = '';
+    try {
+      const res = await fetch(RELAY + relayTopic(f.id), { method: 'POST', body: JSON.stringify({ v: 1, t: 'chat', tx, from: profile.name, fid: profile.id, text: x }) });
+      if (!res.ok) throw new Error('relay ' + res.status);
+      this.add(f.id, true, x, tx); chatInput.value = '';
+      if (x !== raw) this.msg = 'NO SWEARING! THOSE WORDS WERE SENT AS #####.';
+      PX.Sound.tone(880, 0.05, { vol: 0.06 });
+    } catch (e) { this.msg = "COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."; PX.Sound.tone(150, 0.2); }
+    this.busy = false;
+  },
+  got(m) {                                           // a message came in (each one only once): only from a friend
+    const id = m.fid, f = validId(id) && Friends.find(id);
+    if (!f || typeof m.text !== 'string') return;
+    const x = PX.censor(chatClean(m.text)).trim(); if (!x) return;
+    const c = this.with(id); if (c.m.some(y => y.tx === m.tx)) return;
+    this.add(id, false, x, m.tx);
+    if (screen === 'chat' && this.f && this.f.id === id) { c.un = 0; this.save(); PX.Sound.tone(1047, 0.06, { vol: 0.06 }); }
+    else PX.Sound.tone([784, 1047], 0.12, { vol: 0.07 });
+  },
+};
+Chat.load();
+// a message's lines, at most maxW wide (a very long word is cut into pieces)
+function chatLines(str, maxW) {
+  const words = [];
+  for (const w of str.split(' ')) { let p = w; while (PX.textWidth(p, 1) > maxW) { let n = p.length - 1; while (n > 1 && PX.textWidth(p.slice(0, n), 1) > maxW) n--; words.push(p.slice(0, n)); p = p.slice(n); } words.push(p); }
+  const out = []; let line = '';
+  for (const w of words) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
+  if (line) out.push(line);
+  return out;
+}
+function drawChat(t) {
+  const W = S.W, cx = Math.round(W / 2), f = Chat.f;
+  if (!f) { screen = 'friends'; return; }
+  background(t);
+  const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
+  T(f.name, cx, 8, '#fff', 2, 'center', '#000');
+  T('ID ' + f.id, cx, 22, '#9a92b8', 1, 'center', '#000');
+  // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
+  const top = 34, bottom = 182, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
+  ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
+  if (!c.m.length) {
+    T('SAY HI TO ' + f.name + '!', cx, 90, '#5b5275', 2, 'center');
+    T('SWEAR WORDS TURN INTO #####.', cx, 112, '#5b5275', 1, 'center');
+  }
+  let y = bottom - 3;
+  for (let i = c.m.length - 1; i >= 0 && y > top + 4; i--) {
+    const m = c.m[i], lines = chatLines(m.x, bw - 8), h = lines.length * 8 + 4;
+    const w = Math.max(...lines.map(l => PX.textWidth(l, 1))) + 8, bx = m.me ? x + rw - 4 - w : x + 4;
+    y -= h;
+    if (y < top + 2) break;
+    ctx.fillStyle = m.me ? '#3a2f10' : '#221c33'; ctx.fillRect(bx, y, w, h);
+    ctx.fillStyle = m.me ? '#ffd23f' : '#7af0ff'; ctx.fillRect(m.me ? bx + w - 2 : bx, y, 2, h);
+    lines.forEach((l, k) => T(l, bx + 4, y + 3 + k * 8, m.me ? '#ffe9a0' : '#fff', 1));
+    y -= 3;
+  }
+  // typing and sending
+  S.placeInput(chatInput, x, 188, rw - 64, 22);
+  const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
+  if (UI.button('csend', x + rw - 60, 188, 60, 22, Chat.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) Chat.send();
+  T(Chat.msg || 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).', cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
+  if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();
 }
 
 // --- TOP: the global leaderboards ---------------------------------------------------------------------------------
@@ -2072,12 +2183,14 @@ function frame(now) {
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
+  if (screen === 'chat' && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
+  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
+  if (screen !== 'chat') chatInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);

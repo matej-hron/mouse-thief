@@ -581,6 +581,18 @@ too). A request you sent shows as REQUEST SENT: WAITING, with CANCEL.
 The requests and answers travel like a gift of stars (ntfy.sh, about **12 hours**): if your friend doesn't open the
 arcade in that time, send the request again. The list itself is kept on each phone (`Friends` in `index.html`).
 
+**CHAT** (next to a friend) opens a chat with them: type a message (up to 60 letters) and press **SEND** (or Enter).
+Your messages are on the right in yellow, theirs on the left. The CHAT button and the FRIENDS button show how many new
+messages are waiting.
+
+- **No swearing:** swear words (English and Czech) turn into `#####`, as long as the word: your own before they are
+  sent, and every message that comes in too. It also catches 5H1T, FUUUCK, F*CK, F U C K and words with accents. The
+  list is `PX.censor` in `common.js`.
+- Only messages from players on your FRIENDS list are shown.
+- A message travels like a friend request (ntfy.sh, about **12 hours**): your friend gets it when their arcade is open
+  (every 20 seconds, every 5 while the chat is open), or the next time they open it within 12 hours.
+- The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).
+
 ## Invite a friend to a game
 
 Every online game (Mouse Thief, Pixel GP, Pixel Pong, Pixel Football, Pixel Wings, Pixel Skate, Pixel Ski, Pixel Box
