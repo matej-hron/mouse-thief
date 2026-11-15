@@ -3,8 +3,9 @@ import { cors } from 'hono/cors';
 import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
 import { push } from './push';
+import { ideas } from './ideas';
 import { scores } from './scores';
-import { deletePlayerRoute, renamePlayerRoute, statsRoute } from './stats';
+import { deleteIdeaRoute, deletePlayerRoute, ideaStatusRoute, renamePlayerRoute, statsRoute } from './stats';
 
 export type Env = {
   DB: D1Database;
@@ -28,9 +29,12 @@ app.post('/v1/hit', hitRoute);
 app.get('/stats', statsRoute);
 app.post('/stats/players/:id/rename', renamePlayerRoute);
 app.post('/stats/players/:id/delete', deletePlayerRoute);
+app.post('/stats/ideas/:id/status', ideaStatusRoute);
+app.post('/stats/ideas/:id/delete', deleteIdeaRoute);
 app.route('/', accounts);
 app.route('/', scores);
 app.route('/', push);
+app.route('/', ideas);
 
 export default {
   fetch: app.fetch,
