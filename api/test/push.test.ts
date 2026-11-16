@@ -93,6 +93,7 @@ describe('notes', () => {
     expect(noteFor({ t: 'inv', name: 'MIA', g: 'nope', code: 'ABCD' })).toBeNull();
     expect(noteFor({ t: 'gift', name: 'MIA' })).toBeNull();
     expect(noteFor({ t: 'chat', name: 'MIA', fid: '222222' })).toMatchObject({ title: 'NEW MESSAGE FROM MIA', tag: 'chat-222222' });
+    expect(noteFor({ t: 'call', name: 'TOM', fid: '222222' })).toEqual({ title: 'TOM IS CALLING YOU!', body: 'OPEN THE ARCADE TO ANSWER.', url: 'index.html', tag: 'call-222222', call: true });
   });
 });
 

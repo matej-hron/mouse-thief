@@ -1560,17 +1560,32 @@ window.PX = (() => {
         setTimeout(() => Voice.closeDirect(0), 45e3);               // a link nobody uses goes away
       });
     },
-    // CALL: ring a friend's arcade. Resolves 'ok' (it rings now), 'busy' (you are in a call), 'off' (voice chat is
-    // off here), 'net' (can't get online) or 'away' (their arcade isn't open)
+    // CALL: ring a friend's arcade. When it isn't open, their phone gets a notification and this keeps trying for 45
+    // seconds. Resolves 'ok' (it rings now), 'busy' (you are in a call), 'off' (voice chat is off here), 'net' (can't
+    // get online), 'away' (their arcade didn't open in time) or 'cancel' (you hung up while waiting)
     async dial(f) {
       if (Voice.conn) return 'busy';
       if (!Voice.enabled()) return 'off';
       Voice.bless();                                                // (a tap: now the phone lets the friend's voice play)
       Voice.askMic();                                               // and asks for the mic now, like a phone does
-      const r = await this.ring(f);
+      let r = await this.ring(f);
+      if (r === 'away') {                                           // their arcade isn't open: their phone gets a notification
+        Push.tell(f.id, 'call');                                    // (TOM IS CALLING YOU!), and I keep trying until they open it
+        this.waiting = f; const until = Date.now() + this.WAIT;
+        while (r === 'away' && this.waiting === f && Date.now() < until) {
+          Sound.tone(440, 0.3, { vol: 0.04 });                      // (ring, ring, on my side)
+          await new Promise(res => setTimeout(res, 3000));
+          if (this.waiting !== f) break;
+          r = await this.ring(f);
+        }
+        if (this.waiting !== f) r = 'cancel';
+        this.waiting = null;
+      }
       if (r !== 'ok' && !Voice.conn) { Voice.dropMic(); Voice.micP = null; }
       return r;
     },
+    WAIT: 45e3, waiting: null,                                      // the friend I'm waiting for (their arcade is opening)
+    cancel() { if (this.waiting) { this.waiting = null; Sound.tone(330, 0.12, { vol: 0.08 }); } },
     async ring(f) {
       let p = await this.start();
       if (!p || p.destroyed || p.disconnected) { this.lostAt = 1; p = await this.start(); }   // (asleep a moment ago: start over now)

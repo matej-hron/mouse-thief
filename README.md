@@ -721,8 +721,14 @@ You don't need a game to talk: **CALL** (top right in a friend's chat) rings you
    TOP, IDEAS, SETTINGS...). Opening a game ends the call (a game is a new page), so to play together, invite your
    friend to an online game and press TALK there.
 
-- Your friend's **arcade has to be open** (not a game): CALL says so when they are offline, in a game, or their arcade
-  isn't open. Only friends on both FRIENDS lists, and VOICE CHAT has to be on (SETTINGS) on both phones.
+- **Arcade closed? Their phone rings:** when your friend's arcade isn't open (closed, in a game, the phone locked),
+  their phone gets a notification **(YOUR NAME) IS CALLING YOU!**: on Android it buzzes long, like a phone, and stays
+  on the screen until it is tapped or swiped away. Tapping it opens the arcade, which rings with ANSWER and NO. Your
+  arcade shows CALLING (NAME)... SENT TO THEIR PHONE and keeps trying for 45 seconds (HANG UP stops it). The
+  notification needs NOTIFICATIONS: ON in your friend's SETTINGS (on an iPhone, the arcade added to the home screen);
+  it uses the phone's own notification sound, once: a web app can't take over the screen or loop a ringtone like a
+  real phone app. (Notification kind `call`, see Notifications.)
+- Only friends on both FRIENDS lists, and VOICE CHAT has to be on (SETTINGS) on both phones.
 - One call at a time: calling somebody who is in a call gets (NAME) IS IN ANOTHER CALL.
 - **CALLS: ON** under the CALL button means friends can call you right now. CALLS: ... means the arcade is still
   getting its line to the call server, for example just after the phone woke up.
@@ -840,7 +846,7 @@ are `STAR_GIFTS` in `index.html`.
 ## Notifications
 
 **SETTINGS → NOTIFICATIONS** turns on notifications on your phone (or computer): when a friend sends you stars (or
-sends yours back), a friend request, a yes to yours, an invite to an online game, or a chat message, your phone shows
+sends yours back), a friend request, a yes to yours, an invite to an online game, a chat message, or a call (CALL in the chat while your arcade is closed), your phone shows
 it **even when the arcade is closed**. Tap it and the arcade opens (an invite opens the game and joins it). SEND A TEST
 sends one to yourself.
 
