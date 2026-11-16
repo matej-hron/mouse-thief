@@ -392,8 +392,34 @@ window.PX = (() => {
     { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
   ];
   const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';
+  // Cloudflare's relay (TURN), the one that really works: the free ones above are often down, and two phones often
+  // can't reach each other without a relay (mobile data, or a Wi-Fi that keeps its devices apart). Our API hands out
+  // credentials for it (/v1/turn, good for a day); the phone keeps them 12 hours. They go at the front of ICE_SERVERS,
+  // which every game passes to PeerJS, before any Peer is made (loadPeer waits for them, at most 3 seconds).
+  const TURN_KEY = 'pixelArcade.turn';
+  let relaysP = null, relaysIn = 0;
+  const okIce = s => s && (Array.isArray(s.urls) ? s.urls : [s.urls]).every(u => typeof u === 'string' && /^(stun|turns?):/.test(u))
+    && (s.username === undefined || typeof s.username === 'string') && (s.credential === undefined || typeof s.credential === 'string');
+  function addRelays(list) {
+    const ok = (Array.isArray(list) ? list : []).filter(okIce).map(s => ({ urls: s.urls, ...(s.username ? { username: s.username, credential: s.credential } : {}) }));
+    if (!ok.length) return false;
+    ICE_SERVERS.splice(0, relaysIn, ...ok); relaysIn = ok.length;               // (in place: the games hold this array)
+    return true;
+  }
+  function relays() {
+    if (relaysIn) return Promise.resolve();
+    if (relaysP) return relaysP;
+    try { const k = JSON.parse(localStorage.getItem(TURN_KEY)); if (k && Date.now() - k.at < 12 * 3600e3 && addRelays(k.s)) return Promise.resolve(); } catch (e) { /* none kept */ }
+    const ask = Api.call('GET', '/v1/turn').then(r => {
+      const list = r.ok && r.data && r.data.iceServers;
+      if (addRelays(list)) try { localStorage.setItem(TURN_KEY, JSON.stringify({ at: Date.now(), s: list })); } catch (e) { /* private mode */ }
+    });
+    relaysP = Promise.race([ask, new Promise(res => setTimeout(res, 3000))]).finally(() => { relaysP = null; });   // (none yet: ask again next time)
+    return relaysP;
+  }
   let peerLoading = null;
-  function loadPeer() {
+  function loadPeer() { return Promise.all([loadPeerLib(), relays()]).then(() => {}); }
+  function loadPeerLib() {
     if (window.Peer) return Promise.resolve();
     if (peerLoading) return peerLoading;
     // a download that hangs (a filter or a bad network can just never answer) moves on to the next copy after 8 s
@@ -1154,7 +1180,9 @@ window.PX = (() => {
     send(m) { const c = this.conn; if (c && c.open) try { c.send({ t: 'vc', ...m }); } catch (e) { /* closing */ } },
 
     connect(conn) {
+      const keep = this.micP; this.micP = null;                    // (a mic CALL just asked for stays)
       this.reset();
+      this.micP = keep;
       if (!conn) return;
       this.conn = conn; this.peer = conn.provider || null;
       if (this.peer && !this.peers.has(this.peer)) {
@@ -1260,6 +1288,7 @@ window.PX = (() => {
       try { if (call) call.close(); } catch (e) { /* gone */ }
       try { if (pending) pending.close(); } catch (e) { /* gone */ }
       if (this.mic) this.mic.getTracks().forEach(t => t.stop());
+      this.dropMic();
       if (this.audio) { try { this.audio.pause(); } catch (e) { /* fine */ } this.audio.srcObject = null; }
       clearInterval(this.timer);
       Object.assign(this, { call: null, pending: null, mic: null, micP: null, micOn: false, remote: null, meter: null, timer: 0, wantMic: false, talk: { me: 0, them: 0 } });
@@ -1273,6 +1302,16 @@ window.PX = (() => {
       if (!this.direct || !this.conn) return;
       const c = this.conn;
       setTimeout(() => { if (this.conn === c && (this.phase === 'idle' || this.phase === 'off')) { this.reset(); try { c.close(); } catch (e) { /* gone */ } } }, delay);
+    },
+    // the mic was asked for (CALL asks right away) but never used: let it go, so the phone doesn't show it as on
+    dropMic() {
+      const p = this.micP; if (!p || this.mic) return;
+      p.then(st => { if (st !== this.mic) st.getTracks().forEach(t => t.stop()); }, () => { /* never got it */ });
+    },
+    askMic() {
+      if (this.mic || this.micP || !navigator.mediaDevices) return;
+      this.micP = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+      this.micP.catch(() => { /* setMic says what went wrong */ });
     },
     // what we send before the mic is on: silence (a call needs a sound to send)
     outStream() {
@@ -1527,6 +1566,12 @@ window.PX = (() => {
       if (Voice.conn) return 'busy';
       if (!Voice.enabled()) return 'off';
       Voice.bless();                                                // (a tap: now the phone lets the friend's voice play)
+      Voice.askMic();                                               // and asks for the mic now, like a phone does
+      const r = await this.ring(f);
+      if (r !== 'ok' && !Voice.conn) { Voice.dropMic(); Voice.micP = null; }
+      return r;
+    },
+    async ring(f) {
       let p = await this.start();
       if (!p || p.destroyed || p.disconnected) { this.lostAt = 1; p = await this.start(); }   // (asleep a moment ago: start over now)
       if (!p || p.destroyed || p.disconnected) return 'net';
@@ -1550,5 +1595,5 @@ window.PX = (() => {
   };
 
   return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
-           CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
+           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound };
 })();

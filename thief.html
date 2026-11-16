@@ -4224,17 +4224,8 @@ function installApp() {
 const PEERJS_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
                      'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'];
 const PEER_PREFIX = 'mouse-thief-room-';
-// Phones on mobile data (or behind strict routers) can't reach each other directly and need a
-// relay (TURN) server in between. PeerJS's free public relays are often down, so add a TURN
-// account of your own to TURN_SERVERS (e.g. metered.ca's free plan) to make those connections work.
-const TURN_SERVERS = [];
-const ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-  ...TURN_SERVERS,
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
-  // a second free public relay, for phones on mobile data that can't reach each other directly
-  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
-];
+// The relays (TURN) are shared with the other games: PX.ICE_SERVERS in common.js, with Cloudflare's in front.
+const ICE_SERVERS = PX.ICE_SERVERS;
 const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ23456789';   // no I/O/Q/0/1: easy to mix up in pixel font
 // True on the device that runs a multiplayer round: its events get mirrored to the friend.
@@ -4360,7 +4351,7 @@ const Net = {
     this.reset(); this.role = role; this.mode = mode; this.isHost = true;
     this.startLog('HOST ' + (mode === 'race' ? 'A RACE' : 'AS ' + role));
     this.screen = 'connecting'; this.msg = 'CREATING A GAME';
-    try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
+    try { await this.loadLib(); await PX.relays(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
     const open = attempt => {
       let code = '';
       for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -4391,7 +4382,7 @@ const Net = {
     this.reset(); this.isHost = false;
     this.startLog('JOIN ' + code);
     this.screen = 'connecting'; this.msg = 'CONNECTING TO ' + code;
-    try { await this.loadLib(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
+    try { await this.loadLib(); await PX.relays(); } catch (_) { return this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); }
     const peer = new Peer(PEER_OPTS);
     this.peer = peer;
     peer.on('open', id => { this.note('GAME SERVER OK, ID ' + id); this.bind(peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' })); });
