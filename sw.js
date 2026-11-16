@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.103.0';
+const CACHE = 'pixel-arcade-v2.104.0';
 const ASSETS = [
   './',
   './index.html',
@@ -62,6 +62,7 @@ const pageKey = url => { const u = new URL(url); u.search = ''; u.hash = ''; ret
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  if (req.cache === 'no-store') return;      // asked for fresh on purpose (the arcade checking for a new version)
 
   // Pages and the games' own scripts (common.js, gunner.js) are fetched fresh, together: a new page with an old
   // common.js from the cache would call things that are not there yet, and the game would freeze. The big

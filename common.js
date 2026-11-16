@@ -1459,34 +1459,56 @@ window.PX = (() => {
   // the arcade; opening a game (a new page) ends the call.
   // Data on the link: PX.Voice's messages, and { t: 'vc', k: 'busy' } from an arcade that is already in a call.
   const Call = {
-    PREFIX: 'pixelarcade-vc-', peer: null, starting: null, msg: '', msgAt: 0, hooked: false,
+    PREFIX: 'pixelarcade-vc-', peer: null, starting: null, msg: '', msgAt: 0, hooked: false, lostAt: 0, claimAt: 0,
     tell(text) { this.msg = text; this.msgAt = Date.now(); },
     note() { return Date.now() - this.msgAt < 6000 ? this.msg : ''; },
     // listen for calls (the arcade calls this every now and then; it does nothing when it already listens)
+    // A phone that sleeps loses the link to the PeerJS server: it reconnects, and when that doesn't work in a few
+    // seconds it starts over. When the server still had my address (a moment after a reload or a sleep) I listen on a
+    // random one meanwhile and keep asking for mine every 20 seconds, so calls find me again.
+    mine() { return this.PREFIX + Profile.load().id; },
+    ready() { const p = this.peer; return !!(p && !p.destroyed && !p.disconnected && p.id === this.mine()); },   // friends can call me
     start() {
-      if (this.peer) return Promise.resolve(this.peer);
       if (this.starting) return this.starting;
-      const id = Profile.load().id;
+      const id = Profile.load().id, now = Date.now();
       if (!Voice.enabled() || !/^[1-9][0-9]{5}$/.test(id) || !Invite.friends().length || navigator.onLine === false) return Promise.resolve(null);
-      if (!this.hooked) { this.hooked = true; addEventListener('pagehide', () => { if (Voice.direct) Voice.reset(); try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } }); }
-      this.starting = loadPeer().then(() => this.open(this.PREFIX + id)).catch(() => null).finally(() => { this.starting = null; });
+      if (!this.hooked) {
+        this.hooked = true;
+        addEventListener('pagehide', () => { if (Voice.direct) Voice.reset(); try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) this.start(); });   // back from sleep: listen again now
+      }
+      let p = this.peer;
+      if (p && p.destroyed) p = this.peer = null;
+      if (p && p.disconnected) {
+        if (!this.lostAt) this.lostAt = now;
+        if (now - this.lostAt < 8000) { try { p.reconnect(); } catch (e) { /* not now */ } return Promise.resolve(null); }
+        if (!(Voice.conn && Voice.peer === p)) { try { p.destroy(); } catch (e) { /* gone */ } p = this.peer = null; }
+      } else this.lostAt = 0;
+      if (p && p.id !== this.mine() && now - this.claimAt > 20000 && !Voice.conn) {   // on a random address: try for mine again
+        this.claimAt = now;
+        this.starting = this.open(this.mine(), false).then(q => { if (q) { const old = this.peer; this.peer = q; if (old && old !== q) try { old.destroy(); } catch (e) { /* gone */ } } return this.peer; }).finally(() => { this.starting = null; });
+        return this.starting;
+      }
+      if (p) return Promise.resolve(p);
+      this.claimAt = now;
+      this.starting = loadPeer().then(() => this.open(this.mine(), true)).catch(() => null).finally(() => { this.starting = null; });
       return this.starting;
     },
     // a peer on my address (or, when another tab of mine has it, on a random one: calls out still work)
-    open(pid) {
+    open(pid, fallback) {
       return new Promise(res => {
         let p, done = false;
         try { p = pid ? new Peer(pid, { debug: 0, config: { iceServers: ICE_SERVERS } }) : new Peer({ debug: 0, config: { iceServers: ICE_SERVERS } }); } catch (e) { res(null); return; }
         const end = v => { if (done) return; done = true; clearTimeout(tm); if (!v) try { p.destroy(); } catch (e) { /* gone */ } res(v); };
         const tm = setTimeout(() => end(null), 15000);
-        p.on('open', () => { this.peer = p; end(p); });
+        p.on('open', () => { if (fallback !== false) this.peer = p; this.lostAt = 0; end(p); });
         p.on('connection', c => this.inbound(c));
         p.on('error', e => {
           const type = e && e.type;
-          if (!done) { if (pid && type === 'unavailable-id') { done = true; clearTimeout(tm); try { p.destroy(); } catch (x) { /* gone */ } this.open(null).then(res); } else end(null); return; }
+          if (!done) { if (pid && type === 'unavailable-id' && fallback) { done = true; clearTimeout(tm); try { p.destroy(); } catch (x) { /* gone */ } this.open(null).then(res); } else end(null); return; }
           if (type === 'peer-unavailable' && this.dialRes) this.dialRes('away');
         });
-        p.on('disconnected', () => { if (this.peer === p) try { p.reconnect(); } catch (e) { /* gone */ } });
+        p.on('disconnected', () => { if (this.peer === p) { this.lostAt = this.lostAt || Date.now(); try { p.reconnect(); } catch (e) { /* gone */ } } });
         p.on('close', () => { if (this.peer === p) this.peer = null; });
       });
     },
@@ -1505,14 +1527,15 @@ window.PX = (() => {
       if (Voice.conn) return 'busy';
       if (!Voice.enabled()) return 'off';
       Voice.bless();                                                // (a tap: now the phone lets the friend's voice play)
-      const p = await this.start();
+      let p = await this.start();
+      if (!p || p.destroyed || p.disconnected) { this.lostAt = 1; p = await this.start(); }   // (asleep a moment ago: start over now)
       if (!p || p.destroyed || p.disconnected) return 'net';
       if (Voice.conn) return 'busy';
       return new Promise(res => {
         let c; try { c = p.connect(this.PREFIX + f.id, { reliable: true, metadata: { vc: 1 } }); } catch (e) { res('net'); return; }
         const end = v => { if (this.dialRes !== end) return; this.dialRes = null; clearTimeout(tm); if (v !== 'ok') try { c.close(); } catch (e) { /* gone */ } res(v); };
         this.dialRes = end;
-        const tm = setTimeout(() => end('away'), 12000);
+        const tm = setTimeout(() => end('away'), 9000);
         c.on('open', () => {
           if (this.dialRes !== end) return;
           if (Voice.conn) { end('busy'); return; }
