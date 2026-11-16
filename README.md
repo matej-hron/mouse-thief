@@ -1107,7 +1107,17 @@ games call it through `PX.Api` in `common.js`.
   `GET /ideas` (a page of ideas: `status`, `sort=top|new`, `page`, `mine=1`), `GET /ideas/:id`, `POST /ideas`,
   `DELETE /ideas/:id` (your own, while untriaged), `PUT` / `DELETE /ideas/:id/vote`; notifications:
   `GET /push/key`, `POST` / `DELETE /push/sub`, `POST /push/send` (30 a minute per address), `POST /push/test`, and
-  `POST /admin/push/:id` (the owner sends a player a test notification, with the admin key).
+  `POST /admin/push/:id` (the owner sends a player a test notification, with the admin key); `GET /turn` (relay
+  credentials for the phones' WebRTC links, see below).
+- **TURN relay (online games, voice chat, calls):** two phones often can't reach each other directly (mobile data,
+  or a Wi-Fi that keeps its devices apart), and then everything has to go through a relay. The free public relays are
+  often down, so the arcade uses **Cloudflare Realtime TURN** (free up to 1000 GB a month). Make a key once in the
+  Cloudflare dashboard (**Realtime > TURN Server > Create**) and give the Worker its two halves as secrets:
+  `npx wrangler secret put TURN_KEY_ID` (the key's ID) and `npx wrangler secret put TURN_KEY_API_TOKEN` (its API
+  token), or in the dashboard under the Worker's **Settings > Variables and Secrets**. `GET /v1/turn` turns them into
+  credentials good for a day (kept 6 hours on the Worker, 12 hours on the phone); without the secrets it answers an
+  empty list. On the phone, `PX.relays()` (which `PX.loadPeer()` waits for, at most 3 seconds) puts them at the
+  front of `PX.ICE_SERVERS`, the list every game gives PeerJS.
 - **VAPID key (notifications):** the public half is `VAPID_PUBLIC_KEY` in `wrangler.jsonc`, the private half a secret:
   `npx wrangler secret put VAPID_PRIVATE_KEY` (base64url of the P-256 private key `d`). A new pair: in Node,
   `crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign'])`, then the raw public key and the

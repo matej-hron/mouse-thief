@@ -5,6 +5,7 @@ import { cleanupHits, hitRoute } from './hits';
 import { push } from './push';
 import { ideas } from './ideas';
 import { scores } from './scores';
+import { turn } from './turn';
 import { deleteIdeaRoute, deletePlayerRoute, ideaStatusRoute, renamePlayerRoute, statsRoute } from './stats';
 
 export type Env = {
@@ -14,6 +15,8 @@ export type Env = {
   PUSH_LIMIT: RateLimit;
   VAPID_PUBLIC_KEY: string;
   VAPID_PRIVATE_KEY: string;
+  TURN_KEY_ID?: string;          // Cloudflare Realtime TURN (secrets; see turn.ts)
+  TURN_KEY_API_TOKEN?: string;
 };
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
@@ -35,6 +38,7 @@ app.route('/', accounts);
 app.route('/', scores);
 app.route('/', push);
 app.route('/', ideas);
+app.route('/', turn);
 
 export default {
   fetch: app.fetch,
