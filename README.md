@@ -648,6 +648,7 @@ button show how many new messages are waiting.
 - A message travels like a friend request (ntfy.sh, about **12 hours**): your friend gets it when their arcade is open
   (every 20 seconds, every 5 while the chat is open), or the next time they open it within 12 hours.
 - The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).
+- **CALL** (top right in the chat) calls your friend: see **Call a friend from the chat** under Voice chat.
 
 **Online / offline:** next to every friend: a green dot and **ONLINE** (the arcade is open), **PLAYING** and the
 game, or a grey ring and **OFFLINE**. Friends who are online are at the top of the list; the chat shows it under the
@@ -692,8 +693,8 @@ Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Sky GP and Pixel 
 
 - **Only friends:** no TALK with a random player or anybody who isn't on both FRIENDS lists. A call has to be allowed
   by the friend the first time.
-- **VOICE CHAT: ON / OFF** in SETTINGS (in the arcade) turns it off for every game on this phone: no TALK button, and
-  nobody can ask you. (For parents: voice can't be filtered like the chat's swear words.)
+- **VOICE CHAT: ON / OFF** in SETTINGS (in the arcade) turns it off for every game on this phone and for calls from
+  the chat: no TALK button, and nobody can ask or call you. (For parents: voice can't be filtered like the chat's swear words.)
 - The voice goes **straight between the two phones** (WebRTC, over the game's own PeerJS link), never through a
   server, and nothing is recorded. The phone asks for the microphone the first time (if you say no, you can still
   listen). Your voice is only sent while your mic button is on.
@@ -705,6 +706,33 @@ Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Sky GP and Pixel 
   (hang up), `gone` (left the game). When both said yes, the phone with the smaller PeerJS id calls the other
   (`peer.call`) with silence; the mic's track replaces it when the mic goes on. The friends who were allowed are kept
   in `localStorage['pixelArcade.voice']`.
+
+### Call a friend from the chat
+
+You don't need a game to talk: **CALL** (top right in a friend's chat) rings your friend's arcade.
+
+1. Your friend sees **(YOUR NAME) IS CALLING YOU!** at the top of the screen (wherever they are in the arcade), and it
+   rings. **ANSWER** or **NO**. Nobody answers in 30 seconds: NO ANSWER. (A call always rings: the remembered ALLOW
+   from the games doesn't pick it up by itself.)
+2. While it rings you see CALLING (NAME)... on the left and **HANG UP** in the chat.
+3. Then it is the same bar as in a game: your mic button (the caller starts with it on, the one who answered with it
+   off), the friend's name with the speaker, and X to hang up.
+4. **Look around the arcade while you talk:** the bar stays on every screen (the games list, FRIENDS, the chat,
+   TOP, IDEAS, SETTINGS...). Opening a game ends the call (a game is a new page), so to play together, invite your
+   friend to an online game and press TALK there.
+
+- Your friend's **arcade has to be open** (not a game): CALL says so when they are offline, in a game, or their arcade
+  isn't open. Only friends on both FRIENDS lists, and VOICE CHAT has to be on (SETTINGS) on both phones.
+- One call at a time: calling somebody who is in a call gets (NAME) IS IN ANOTHER CALL.
+- How it works: `PX.Call` in `common.js`. While the arcade is open (with VOICE CHAT on and at least one friend) it
+  waits for calls on its own PeerJS address, `pixelarcade-vc-` and your ID. CALL connects to your friend's address and
+  hands the link to `PX.Voice`, which talks as in a game (with `direct` set: always ring, and close the link a few
+  seconds after the call is over). An arcade already in a call answers `{ t: 'vc', k: 'busy' }`. If another tab of
+  yours already has your address, that tab gets the calls (this one can still call out).
+- **Good to know:** the address is your ID, and IDs aren't secret. Somebody technical could take a player's address
+  while that player's arcade is closed and pick up the calls their friends make. The call bar always shows the name
+  from your own FRIENDS list, so it can't warn you. Like the rest of the friends features, it is made for friends,
+  not for strangers.
 
 ## Leaderboards
 

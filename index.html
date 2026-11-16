@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.57.0';
+const VERSION = '2.58.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -742,8 +742,8 @@ function drawSettings(t) {
   T('NOTIFICATIONS', x + 18 + half, 142, '#9a92b8', 1);
   const pon = PX.Push.state() === 'on';
   if (UI.button('notify', x + 18 + half, 154, half, 22, pon ? 'NOTIFICATIONS: ON' : 'NOTIFICATIONS: OFF', { size: 1, accent: '#ff7ab8', on: pon })) openNotify();
-  // VOICE CHAT: talk to friends in the online games (PX.Voice in common.js)
-  T('VOICE CHAT (ONLINE GAMES)', x + 12, 184, '#9a92b8', 1);
+  // VOICE CHAT: talk to friends in the online games (PX.Voice in common.js) and call them from the chat (PX.Call)
+  T('VOICE CHAT (GAMES AND CALLS)', x + 12, 184, '#9a92b8', 1);
   if (UI.button('voice', x + 12, 196, half, 22, set.voice ? 'VOICE CHAT: ON' : 'VOICE CHAT: OFF', { size: 1, accent: '#4aa8ff', on: set.voice })) {
     PX.Settings.save({ ...set, voice: !set.voice }); PX.Sound.tone(set.voice ? 300 : 660, 0.08, { vol: 0.08 });
   }
@@ -1697,6 +1697,24 @@ function chatLines(str, maxW) {
   if (line) out.push(line);
   return out;
 }
+// CALL in a chat: ring the friend's arcade (it has to be open: in a game they can't pick up)
+const ChatCall = {
+  busy: false,
+  async go(f, o) {
+    Chat.msg = '';
+    if (!PX.Settings.load().voice) { Chat.msg = 'TURN ON VOICE CHAT IN SETTINGS FIRST.'; return; }
+    if (o.s === 'off') { Chat.msg = f.name + ' IS OFFLINE. CALL WHEN THEY OPEN THE ARCADE.'; return; }
+    if (o.text.startsWith('PLAYING')) { Chat.msg = f.name + ' IS IN A GAME. CALL WHEN THEY ARE BACK IN THE ARCADE.'; return; }
+    this.busy = true; PX.Sound.tone([523, 659], 0.12, { vol: 0.07 });
+    const r = await PX.Call.dial(f);
+    this.busy = false;
+    if (Chat.f !== f) return;
+    if (r === 'away') Chat.msg = f.name + "'S ARCADE ISN'T OPEN RIGHT NOW.";
+    else if (r === 'net') Chat.msg = "COULDN'T CONNECT. CHECK YOUR INTERNET.";
+    else if (r === 'busy') Chat.msg = 'YOU ARE ALREADY IN A CALL.';
+    else if (r === 'off') Chat.msg = "VOICE CHAT DOESN'T WORK IN THIS BROWSER.";
+  },
+};
 function drawChat(t) {
   const W = S.W, cx = Math.round(W / 2), f = Chat.f;
   if (!f) { screen = 'friends'; return; }
@@ -1706,6 +1724,13 @@ function drawChat(t) {
   let o = Online.of(f.id); if (o.s !== 'on' && Chat.isTyping(f.id)) o = { s: 'on', text: 'ONLINE', col: '#5ad43f' };   // (typing = online for sure)
   const ow = PX.textWidth(o.text, 1) + 9, ox = Math.round(cx - ow / 2);
   onlineDot(ox, 22, o); T(o.text, ox + 9, 22, o.col, 1, 'left', '#000');
+  // CALL: talk to your friend right here, no game needed (PX.Call in common.js); you can look around the arcade meanwhile
+  const inCall = PX.Call.with(f.id) && ['live', 'asking'].includes(PX.Voice.phase), cw = 62, cbx = Math.round(cx + rw / 2 - cw);
+  if (inCall) { if (UI.button('ccall', cbx, 4, cw, 22, 'HANG UP', { size: 1, accent: '#e0483a', on: true })) PX.Voice.hangup(true); }
+  else {
+    if (UI.button('ccall', cbx, 4, cw, 22, ChatCall.busy ? '...' : '    CALL', { size: 1, accent: '#4aa8ff', disabled: ChatCall.busy })) ChatCall.go(f, o);
+    if (!ChatCall.busy) PX.drawIcon(ctx, PX.Voice.ICONS.mic, { '#': '#fff' }, cbx + 14, 15, 1);
+  }
   // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
   const top = 34, bottom = 160, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
   ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
@@ -1742,6 +1767,8 @@ function drawChat(t) {
   S.placeInput(chatInput, x, 188, rw - 64, 22);
   const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
   if (UI.button('csend', x + rw - 60, 188, 60, 22, Chat.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) Chat.send();
+  const callNote = PX.Call.note();
+  if (!Chat.msg && callNote) T(callNote, cx, 214, '#ffd23f', 1, 'center', '#000'); else
   T(Chat.msg || (o.text.startsWith('PLAYING') ? f.name + ' IS IN A GAME: THEY SEE IT BACK IN THE ARCADE.' : 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).'), cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
   if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();
 }
@@ -2638,7 +2665,7 @@ function drawInvite(t) {
   if (UI.button('ino', Math.round(W / 2 + 4), y + 102, 120, 24, 'NO THANKS', { size: 1 }) || UI.back) { invite = null; screen = 'home'; PX.Sound.tone(300, 0.12, { vol: 0.08 }); }
 }
 
-let t0 = performance.now(), tPrev = t0;
+let t0 = performance.now(), tPrev = t0, callCheck = -1e9;
 function frame(now) {
   const t = (now - t0) / 1000;
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
@@ -2647,6 +2674,7 @@ function frame(now) {
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
   if (screen === 'chat' && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
   if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
+  if (now - callCheck > 10000) { callCheck = now; PX.Call.start(); }               // wait for friends' calls (PX.Call)
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
   if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'ideas') drawIdeas(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);

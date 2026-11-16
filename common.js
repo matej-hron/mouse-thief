@@ -1174,12 +1174,16 @@ window.PX = (() => {
           this.send({ k: 'st', ok: this.friend && this.enabled() ? 1 : 0 });          // can they talk to me?
           this.ready();
           break;
-        case 'st': this.theirOn = !!m.ok; this.ready(); break;              // can I talk to them? (I'm their friend too, voice on)
+        case 'st':                                                          // can I talk to them? (I'm their friend too, voice on)
+          this.theirOn = !!m.ok; this.ready();
+          if (this.direct && this.autoAsk && !m.ok) { this.autoAsk = false; Call.tell((this.friend ? this.friend.name : 'YOUR FRIEND') + " CAN'T TALK: VOICE CHAT IS OFF THERE"); this.closeDirect(0); }
+          break;
+        case 'busy': Call.tell((this.friend ? this.friend.name : 'YOUR FRIEND') + ' IS IN ANOTHER CALL'); this.closeDirect(0); break;
         case 'ask':
           if (!this.friend || !this.enabled()) { this.send({ k: 'no' }); break; }
           if (this.phase === 'asking') { this.agree(); break; }                     // we both pressed TALK
           if (this.phase !== 'idle') break;
-          if (this.allowed(this.friend.id)) { this.agree(); break; }
+          if (this.allowed(this.friend.id) && !this.direct) { this.agree(); break; }   // (a call from the arcade always rings)
           this.phase = 'asked'; this.askT = Date.now();
           Sound.tone([660, 880, 660, 880], 0.5, { vol: 0.08 });
           break;
@@ -1191,11 +1195,14 @@ window.PX = (() => {
       this.draw();
       return true;
     },
-    ready() { if (this.phase === 'off' || this.phase === 'idle') this.phase = this.friend && this.theirOn && this.enabled() ? 'idle' : 'off'; },
+    ready() {
+      if (this.phase === 'off' || this.phase === 'idle') this.phase = this.friend && this.theirOn && this.enabled() ? 'idle' : 'off';
+      if (this.phase === 'idle' && this.autoAsk) { this.autoAsk = false; this.press(); }   // CALL in the arcade's chat: ask right away
+    },
     reset() {
       this.send({ k: 'gone' });                                    // I'm leaving the game: my friend's TALK goes away now
       this.hangup(false);
-      Object.assign(this, { conn: null, peer: null, friend: null, theirOn: false, phase: 'off', note: '' });
+      Object.assign(this, { conn: null, peer: null, friend: null, theirOn: false, phase: 'off', note: '', direct: false, autoAsk: false });
       this.draw();
     },
 
@@ -1211,8 +1218,8 @@ window.PX = (() => {
     answer(yes) {                                                   // ALLOW / NO
       if (this.phase !== 'asked') return;
       this.bless();
-      if (yes) { this.allow(this.friend.id); this.agree(); this.say('TAP THE MIC TO TALK'); }
-      else { this.send({ k: 'no' }); this.phase = 'idle'; }
+      if (yes) { if (!this.direct) this.allow(this.friend.id); this.agree(); this.say('TAP THE MIC TO TALK'); }
+      else { this.send({ k: 'no' }); this.phase = 'idle'; this.closeDirect(); }
       this.draw();
     },
     // both said yes: the phone with the smaller PeerJS id makes the WebRTC call, the other one picks it up
@@ -1248,8 +1255,10 @@ window.PX = (() => {
     fail() { this.hangup(false); this.say("COULDN'T CONNECT THE VOICE"); },
     hangup(tell = true) {
       if (tell && this.phase !== 'idle' && this.phase !== 'off') this.send({ k: this.phase === 'asked' ? 'no' : 'end' });
-      try { if (this.call) this.call.close(); } catch (e) { /* gone */ }
-      try { if (this.pending) this.pending.close(); } catch (e) { /* gone */ }
+      const call = this.call, pending = this.pending;
+      this.call = null; this.pending = null;                       // (first, so closing it isn't taken for VOICE LOST)
+      try { if (call) call.close(); } catch (e) { /* gone */ }
+      try { if (pending) pending.close(); } catch (e) { /* gone */ }
       if (this.mic) this.mic.getTracks().forEach(t => t.stop());
       if (this.audio) { try { this.audio.pause(); } catch (e) { /* fine */ } this.audio.srcObject = null; }
       clearInterval(this.timer);
@@ -1257,6 +1266,13 @@ window.PX = (() => {
       if (this.phase !== 'off') this.phase = this.friend ? 'idle' : 'off';
       Sound.setDuck(1);
       this.draw();
+      this.closeDirect();
+    },
+    // a call from the arcade (PX.Call) has no game around it: when it is over, the link goes too
+    closeDirect(delay = 3500) {                                  // (after a moment, so a note like SAID NO can be read)
+      if (!this.direct || !this.conn) return;
+      const c = this.conn;
+      setTimeout(() => { if (this.conn === c && (this.phase === 'idle' || this.phase === 'off')) { this.reset(); try { c.close(); } catch (e) { /* gone */ } } }, delay);
     },
     // what we send before the mic is on: silence (a call needs a sound to send)
     outStream() {
@@ -1328,8 +1344,11 @@ window.PX = (() => {
         if (was !== this.talk.me + ':' + this.talk.them) this.draw();
       }, 80);
     },
-    say(text) { this.note = text; this.noteT = Date.now(); this.draw(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => { if (Date.now() - this.noteT >= 3400) { this.note = ''; this.draw(); } }, 3500); },
+    say(text) { if (this.direct && text) Call.tell(text); this.note = text; this.noteT = Date.now(); this.draw(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => { if (Date.now() - this.noteT >= 3400) { this.note = ''; this.draw(); } }, 3500); },
     tick() {                                                        // nobody answered in time
+      if (this.direct && (this.phase === 'asked' || this.phase === 'asking') && (Date.now() - this.askT) % 2000 < 1000) {   // ring, ring
+        if (this.phase === 'asked') Sound.tone([660, 880, 660, 880], 0.5, { vol: 0.08 }); else Sound.tone(440, 0.3, { vol: 0.04 });
+      }
       if ((this.phase === 'asking' || this.phase === 'asked') && Date.now() - this.askT > this.TIMEOUT) {
         const asking = this.phase === 'asking'; this.hangup(true); this.say(asking ? 'NO ANSWER' : '');
       }
@@ -1382,17 +1401,21 @@ window.PX = (() => {
       this.hits = []; this.askHits = [];
       // the question: NAME WANTS TO TALK
       if (this.phase === 'asked') {
-        const line = name + ' WANTS TO TALK!', w = Math.max(116, textWidth(line) + 16), ctx = this.paint(this.ask, w, 40);
+        const line = name + (this.direct ? ' IS CALLING YOU!' : ' WANTS TO TALK!'), w = Math.max(116, textWidth(line) + 16), ctx = this.paint(this.ask, w, 40);
         ctx.fillStyle = '#0b0912'; ctx.fillRect(0, 0, w, 40); ctx.fillStyle = '#272043'; ctx.fillRect(1, 1, w - 2, 38);
         ctx.fillStyle = '#5ad43f'; ctx.fillRect(1, 1, w - 2, 1);
         drawText(ctx, line, w / 2, 5, '#fff', 1, 'center');
         drawText(ctx, 'VOICE CHAT', w / 2, 12, '#9a92b8', 1, 'center');
         const bw = 48, gx = Math.round(w / 2 - bw - 3);
-        this.btn(ctx, this.askHits, gx, 21, bw, 15, '#2f9a3a', () => this.answer(true)); drawText(ctx, 'ALLOW', gx + bw / 2, 26, '#fff', 1, 'center');
+        this.btn(ctx, this.askHits, gx, 21, bw, 15, '#2f9a3a', () => this.answer(true)); drawText(ctx, this.direct ? 'ANSWER' : 'ALLOW', gx + bw / 2, 26, '#fff', 1, 'center');
         this.btn(ctx, this.askHits, gx + bw + 6, 21, bw, 15, '#9a2f3a', () => this.answer(false)); drawText(ctx, 'NO', gx + bw * 1.5 + 6, 26, '#fff', 1, 'center');
       } else this.ask.style.display = 'none';
       if (!show) { this.el.style.display = 'none'; return; }
       const note = this.note, noteW = note ? textWidth(note) + 8 : 0;
+      if (this.direct && this.phase !== 'live' && this.phase !== 'asking') {   // a call from the arcade: no TALK button, only what happened
+        if (!note) { this.el.style.display = 'none'; return; }
+        this.noteLine(this.paint(this.el, noteW, 8), note, 0); return;
+      }
       if (this.phase === 'live') {
         const nw = Math.max(textWidth(name), 18), w = Math.max(20 + 4 + 14 + nw + 4 + 14, noteW), h = note ? 30 : 22, ctx = this.paint(this.el, w, h);
         // the mic: green and on, or grey with a red line through it
@@ -1428,6 +1451,81 @@ window.PX = (() => {
     noteLine(ctx, note, y) { const w = textWidth(note) + 8; ctx.fillStyle = 'rgba(11,9,18,0.85)'; ctx.fillRect(0, y, w, 8); drawText(ctx, note, 4, y + 1, '#ffd23f', 1); },
   };
 
-  return { Voice, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  // --- CALL A FRIEND FROM THE ARCADE: voice without a game (CALL in a friend's chat) --------------------------------
+  // While the arcade is open (VOICE CHAT on, and you have friends) it waits for calls on its own PeerJS address,
+  // pixelarcade-vc-<your ID>. CALL in a friend's chat connects to their arcade's address and hands the link to PX.Voice,
+  // which does the rest as in a game, except that a call from the arcade always rings (NAME IS CALLING YOU! with
+  // ANSWER and NO) and the link closes when the call is over. The voice bar stays on the screen while you look around
+  // the arcade; opening a game (a new page) ends the call.
+  // Data on the link: PX.Voice's messages, and { t: 'vc', k: 'busy' } from an arcade that is already in a call.
+  const Call = {
+    PREFIX: 'pixelarcade-vc-', peer: null, starting: null, msg: '', msgAt: 0, hooked: false,
+    tell(text) { this.msg = text; this.msgAt = Date.now(); },
+    note() { return Date.now() - this.msgAt < 6000 ? this.msg : ''; },
+    // listen for calls (the arcade calls this every now and then; it does nothing when it already listens)
+    start() {
+      if (this.peer) return Promise.resolve(this.peer);
+      if (this.starting) return this.starting;
+      const id = Profile.load().id;
+      if (!Voice.enabled() || !/^[1-9][0-9]{5}$/.test(id) || !Invite.friends().length || navigator.onLine === false) return Promise.resolve(null);
+      if (!this.hooked) { this.hooked = true; addEventListener('pagehide', () => { if (Voice.direct) Voice.reset(); try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } }); }
+      this.starting = loadPeer().then(() => this.open(this.PREFIX + id)).catch(() => null).finally(() => { this.starting = null; });
+      return this.starting;
+    },
+    // a peer on my address (or, when another tab of mine has it, on a random one: calls out still work)
+    open(pid) {
+      return new Promise(res => {
+        let p, done = false;
+        try { p = pid ? new Peer(pid, { debug: 0, config: { iceServers: ICE_SERVERS } }) : new Peer({ debug: 0, config: { iceServers: ICE_SERVERS } }); } catch (e) { res(null); return; }
+        const end = v => { if (done) return; done = true; clearTimeout(tm); if (!v) try { p.destroy(); } catch (e) { /* gone */ } res(v); };
+        const tm = setTimeout(() => end(null), 15000);
+        p.on('open', () => { this.peer = p; end(p); });
+        p.on('connection', c => this.inbound(c));
+        p.on('error', e => {
+          const type = e && e.type;
+          if (!done) { if (pid && type === 'unavailable-id') { done = true; clearTimeout(tm); try { p.destroy(); } catch (x) { /* gone */ } this.open(null).then(res); } else end(null); return; }
+          if (type === 'peer-unavailable' && this.dialRes) this.dialRes('away');
+        });
+        p.on('disconnected', () => { if (this.peer === p) try { p.reconnect(); } catch (e) { /* gone */ } });
+        p.on('close', () => { if (this.peer === p) this.peer = null; });
+      });
+    },
+    wire(c) { c.on('data', m => Voice.onData(m)); },
+    inbound(c) {
+      if (!c.metadata || c.metadata.vc !== 1) { try { c.close(); } catch (e) { /* gone */ } return; }
+      c.on('open', () => {
+        if (Voice.conn) { try { c.send({ t: 'vc', k: 'busy' }); } catch (e) { /* gone */ } setTimeout(() => { try { c.close(); } catch (e) { /* gone */ } }, 600); return; }
+        this.wire(c); Voice.connect(c); Voice.direct = true;
+        setTimeout(() => Voice.closeDirect(0), 45e3);               // a link nobody uses goes away
+      });
+    },
+    // CALL: ring a friend's arcade. Resolves 'ok' (it rings now), 'busy' (you are in a call), 'off' (voice chat is
+    // off here), 'net' (can't get online) or 'away' (their arcade isn't open)
+    async dial(f) {
+      if (Voice.conn) return 'busy';
+      if (!Voice.enabled()) return 'off';
+      Voice.bless();                                                // (a tap: now the phone lets the friend's voice play)
+      const p = await this.start();
+      if (!p || p.destroyed || p.disconnected) return 'net';
+      if (Voice.conn) return 'busy';
+      return new Promise(res => {
+        let c; try { c = p.connect(this.PREFIX + f.id, { reliable: true, metadata: { vc: 1 } }); } catch (e) { res('net'); return; }
+        const end = v => { if (this.dialRes !== end) return; this.dialRes = null; clearTimeout(tm); if (v !== 'ok') try { c.close(); } catch (e) { /* gone */ } res(v); };
+        this.dialRes = end;
+        const tm = setTimeout(() => end('away'), 12000);
+        c.on('open', () => {
+          if (this.dialRes !== end) return;
+          if (Voice.conn) { end('busy'); return; }
+          this.wire(c); Voice.connect(c); Voice.friend = f; Voice.direct = true; Voice.autoAsk = true;
+          end('ok');
+        });
+        c.on('error', () => end('away'));
+      });
+    },
+    // the call (or the ringing) with this friend, from the arcade
+    with(id) { return !!(Voice.direct && Voice.friend && Voice.friend.id === id && Voice.phase !== 'off'); },
+  };
+
+  return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();
