@@ -724,6 +724,14 @@ You don't need a game to talk: **CALL** (top right in a friend's chat) rings you
 - Your friend's **arcade has to be open** (not a game): CALL says so when they are offline, in a game, or their arcade
   isn't open. Only friends on both FRIENDS lists, and VOICE CHAT has to be on (SETTINGS) on both phones.
 - One call at a time: calling somebody who is in a call gets (NAME) IS IN ANOTHER CALL.
+- **CALLS: ON** under the CALL button means friends can call you right now. CALLS: ... means the arcade is still
+  getting its line to the call server, for example just after the phone woke up.
+- A phone that sleeps loses that line: when the arcade is back on the screen it gets it again (and starts over
+  if that doesn't work in 8 seconds). If the server still had your address from before (a moment after a reload or a
+  sleep), the arcade waits on another one and asks for its own every 20 seconds, so calls find you again.
+- **New version, by itself:** a phone keeps the arcade open for days. When it comes back on the screen (and every
+  10 minutes) the arcade checks for a newer version and reloads itself the next time you are on the list of games and
+  not in a call, so both phones have the newest one.
 - How it works: `PX.Call` in `common.js`. While the arcade is open (with VOICE CHAT on and at least one friend) it
   waits for calls on its own PeerJS address, `pixelarcade-vc-` and your ID. CALL connects to your friend's address and
   hands the link to `PX.Voice`, which talks as in a game (with `direct` set: always ring, and close the link a few

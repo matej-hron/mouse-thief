@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.58.0';
+const VERSION = '2.59.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -1697,6 +1697,23 @@ function chatLines(str, maxW) {
   if (line) out.push(line);
   return out;
 }
+// A NEW VERSION: a phone keeps the arcade open for days, and an old arcade misses new things (like getting calls).
+// When it comes back on the screen, and every 10 minutes, it asks for its own page without any cache; when that has a
+// newer VERSION, it reloads itself the next time you are on the list of games and not in a call.
+const Update = {
+  at: -1e9, newer: false,
+  num: v => v.split('.').reduce((n, x) => n * 1000 + (+x || 0), 0),
+  check() {
+    if (this.newer || performance.now() - this.at < 60e3 || !location.protocol.startsWith('http')) return;
+    this.at = performance.now();
+    fetch('index.html', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).then(txt => {
+      const m = /const VERSION = '([0-9.]+)'/.exec(txt);
+      if (m && this.num(m[1]) > this.num(VERSION)) this.newer = true;
+    }).catch(() => { /* offline: next time */ });
+  },
+  step() { if (this.newer && screen === 'home' && PX.Voice.phase === 'off' && !document.hidden) { this.newer = false; location.reload(); } },
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden) Update.check(); });
 // CALL in a chat: ring the friend's arcade (it has to be open: in a game they can't pick up)
 const ChatCall = {
   busy: false,
@@ -1706,10 +1723,10 @@ const ChatCall = {
     if (o.s === 'off') { Chat.msg = f.name + ' IS OFFLINE. CALL WHEN THEY OPEN THE ARCADE.'; return; }
     if (o.text.startsWith('PLAYING')) { Chat.msg = f.name + ' IS IN A GAME. CALL WHEN THEY ARE BACK IN THE ARCADE.'; return; }
     this.busy = true; PX.Sound.tone([523, 659], 0.12, { vol: 0.07 });
-    const r = await PX.Call.dial(f);
-    this.busy = false;
+    let r = 'net';
+    try { r = await PX.Call.dial(f); } catch (e) { /* r stays 'net' */ } finally { this.busy = false; }
     if (Chat.f !== f) return;
-    if (r === 'away') Chat.msg = f.name + "'S ARCADE ISN'T OPEN RIGHT NOW.";
+    if (r === 'away') Chat.msg = f.name + "'S ARCADE DIDN'T ANSWER. ASK THEM TO CLOSE THE ARCADE AND OPEN IT AGAIN.";
     else if (r === 'net') Chat.msg = "COULDN'T CONNECT. CHECK YOUR INTERNET.";
     else if (r === 'busy') Chat.msg = 'YOU ARE ALREADY IN A CALL.';
     else if (r === 'off') Chat.msg = "VOICE CHAT DOESN'T WORK IN THIS BROWSER.";
@@ -1731,6 +1748,8 @@ function drawChat(t) {
     if (UI.button('ccall', cbx, 4, cw, 22, ChatCall.busy ? '...' : '    CALL', { size: 1, accent: '#4aa8ff', disabled: ChatCall.busy })) ChatCall.go(f, o);
     if (!ChatCall.busy) PX.drawIcon(ctx, PX.Voice.ICONS.mic, { '#': '#fff' }, cbx + 14, 15, 1);
   }
+  // can friends call me right now? (the arcade's own line to the call server, PX.Call)
+  if (PX.Settings.load().voice) T(PX.Call.ready() ? 'CALLS: ON' : 'CALLS: ...', cbx + cw / 2, 28, PX.Call.ready() ? '#5ad43f' : '#5b5275', 1, 'center', '#000');
   // the messages, newest at the bottom: mine on the right (yellow), theirs on the left (white)
   const top = 34, bottom = 160, c = Chat.with(f.id), bw = Math.round(rw * 0.72);
   ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
@@ -1768,6 +1787,7 @@ function drawChat(t) {
   const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
   if (UI.button('csend', x + rw - 60, 188, 60, 22, Chat.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) Chat.send();
   const callNote = PX.Call.note();
+  if (!Chat.msg && ChatCall.busy) T('CALLING ' + f.name + '...', cx, 214, '#ffd23f', 1, 'center', '#000'); else
   if (!Chat.msg && callNote) T(callNote, cx, 214, '#ffd23f', 1, 'center', '#000'); else
   T(Chat.msg || (o.text.startsWith('PLAYING') ? f.name + ' IS IN A GAME: THEY SEE IT BACK IN THE ARCADE.' : 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).'), cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
   if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();
@@ -2675,6 +2695,8 @@ function frame(now) {
   if (screen === 'chat' && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
   if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
   if (now - callCheck > 10000) { callCheck = now; PX.Call.start(); }               // wait for friends' calls (PX.Call)
+  if (now - Update.at > 600e3) Update.check();
+  Update.step();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
   if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'ideas') drawIdeas(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
