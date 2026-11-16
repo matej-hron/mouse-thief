@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.60.0';
+const VERSION = '2.61.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -1720,13 +1720,11 @@ const ChatCall = {
   async go(f, o) {
     Chat.msg = '';
     if (!PX.Settings.load().voice) { Chat.msg = 'TURN ON VOICE CHAT IN SETTINGS FIRST.'; return; }
-    if (o.s === 'off') { Chat.msg = f.name + ' IS OFFLINE. CALL WHEN THEY OPEN THE ARCADE.'; return; }
-    if (o.text.startsWith('PLAYING')) { Chat.msg = f.name + ' IS IN A GAME. CALL WHEN THEY ARE BACK IN THE ARCADE.'; return; }
     this.busy = true; PX.Sound.tone([523, 659], 0.12, { vol: 0.07 });
     let r = 'net';
     try { r = await PX.Call.dial(f); } catch (e) { /* r stays 'net' */ } finally { this.busy = false; }
     if (Chat.f !== f) return;
-    if (r === 'away') Chat.msg = f.name + "'S ARCADE DIDN'T ANSWER. ASK THEM TO CLOSE THE ARCADE AND OPEN IT AGAIN.";
+    if (r === 'away') Chat.msg = f.name + " DIDN'T ANSWER. (THEIR PHONE RINGS ONLY WITH NOTIFICATIONS ON IN SETTINGS.)";
     else if (r === 'net') Chat.msg = "COULDN'T CONNECT. CHECK YOUR INTERNET.";
     else if (r === 'busy') Chat.msg = 'YOU ARE ALREADY IN A CALL.';
     else if (r === 'off') Chat.msg = "VOICE CHAT DOESN'T WORK IN THIS BROWSER.";
@@ -1742,8 +1740,9 @@ function drawChat(t) {
   const ow = PX.textWidth(o.text, 1) + 9, ox = Math.round(cx - ow / 2);
   onlineDot(ox, 22, o); T(o.text, ox + 9, 22, o.col, 1, 'left', '#000');
   // CALL: talk to your friend right here, no game needed (PX.Call in common.js); you can look around the arcade meanwhile
-  const inCall = PX.Call.with(f.id) && ['live', 'asking'].includes(PX.Voice.phase), cw = 62, cbx = Math.round(cx + rw / 2 - cw);
-  if (inCall) { if (UI.button('ccall', cbx, 4, cw, 22, 'HANG UP', { size: 1, accent: '#e0483a', on: true })) PX.Voice.hangup(true); }
+  const waiting = PX.Call.waiting && PX.Call.waiting.id === f.id;   // (their arcade is closed: their phone got a notification)
+  const inCall = waiting || (PX.Call.with(f.id) && ['live', 'asking'].includes(PX.Voice.phase)), cw = 62, cbx = Math.round(cx + rw / 2 - cw);
+  if (inCall) { if (UI.button('ccall', cbx, 4, cw, 22, 'HANG UP', { size: 1, accent: '#e0483a', on: true })) { if (waiting) PX.Call.cancel(); else PX.Voice.hangup(true); } }
   else {
     if (UI.button('ccall', cbx, 4, cw, 22, ChatCall.busy ? '...' : '    CALL', { size: 1, accent: '#4aa8ff', disabled: ChatCall.busy })) ChatCall.go(f, o);
     if (!ChatCall.busy) PX.drawIcon(ctx, PX.Voice.ICONS.mic, { '#': '#fff' }, cbx + 14, 15, 1);
@@ -1787,7 +1786,7 @@ function drawChat(t) {
   const ready = !!chatClean(chatInput.value).trim() && !Chat.busy;
   if (UI.button('csend', x + rw - 60, 188, 60, 22, Chat.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) Chat.send();
   const callNote = PX.Call.note();
-  if (!Chat.msg && ChatCall.busy) T('CALLING ' + f.name + '...', cx, 214, '#ffd23f', 1, 'center', '#000'); else
+  if (!Chat.msg && ChatCall.busy) T(PX.Call.waiting ? 'CALLING ' + f.name + '... SENT TO THEIR PHONE' : 'CALLING ' + f.name + '...', cx, 214, '#ffd23f', 1, 'center', '#000'); else
   if (!Chat.msg && callNote) T(callNote, cx, 214, '#ffd23f', 1, 'center', '#000'); else
   T(Chat.msg || (o.text.startsWith('PLAYING') ? f.name + ' IS IN A GAME: THEY SEE IT BACK IN THE ARCADE.' : 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).'), cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
   if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();

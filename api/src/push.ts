@@ -7,7 +7,7 @@ import { adminOk } from './stats';
 import { sendPush } from './webpush';
 import type { Subscription, Vapid } from './webpush';
 
-// --- NOTIFICATIONS: the phone gets a notification for a gift, a friend request, an invite or a chat message -------
+// --- NOTIFICATIONS: the phone gets a notification for a gift, a friend request, an invite, a chat message or a call -
 // A player with an account turns them on in SETTINGS: the browser makes a push subscription and the phone sends it
 // here (POST /v1/push/sub), kept with the player's ID. When the arcade sends a friend something through ntfy.sh (a
 // gift, a request, an invite, a chat message), it also asks this server to notify them (POST /v1/push/send). The
@@ -32,7 +32,7 @@ const unsubBody = z.object({ endpoint: z.string().max(1000) });
 const playerId = z.string().regex(/^[1-9][0-9]{5}$/);
 const sendBody = z.object({
   to: playerId,
-  t: z.enum(['gift', 'back', 'freq', 'fyes', 'inv', 'chat']),
+  t: z.enum(['gift', 'back', 'freq', 'fyes', 'inv', 'chat', 'call']),
   from: z.string().max(40).optional(),
   fid: playerId.optional(),
   n: z.number().int().min(1).max(1000).optional(),
@@ -47,7 +47,7 @@ const GAME_NAMES: Record<string, string> = {
   moto: 'PIXEL MOTO', snake: 'PIXEL SNAKE',
 };
 
-export type Note = { title: string; body: string; url: string; tag: string };
+export type Note = { title: string; body: string; url: string; tag: string; call?: true };   // call: the phone rings (vibrates long, stays on)
 
 /** The words of a notification: written here, from the kind and a few checked values, never taken from the sender. */
 export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number; g?: string; code?: string }): Note | null {
@@ -68,6 +68,8 @@ export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number
     }
     case 'chat':
       return { title: `NEW MESSAGE FROM ${who}`, body: 'TAP TO READ IT IN THE ARCADE.', url: 'index.html', tag: `chat-${b.fid ?? who}` };
+    case 'call':                                                  // CALL in the arcade's chat, while your arcade isn't open
+      return { title: `${who} IS CALLING YOU!`, body: 'OPEN THE ARCADE TO ANSWER.', url: 'index.html', tag: `call-${b.fid ?? who}`, call: true };
     case 'test':
       return { title: 'PIXEL ARCADE', body: 'NOTIFICATIONS WORK! YOU WILL HEAR FROM YOUR FRIENDS HERE.', url: 'index.html', tag: 'test' };
   }

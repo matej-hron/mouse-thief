@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.105.0';
+const CACHE = 'pixel-arcade-v2.106.0';
 const ASSETS = [
   './',
   './index.html',
@@ -103,6 +103,9 @@ self.addEventListener('push', e => {
     icon: 'icons/icon-192.png',
     badge: 'icons/favicon-32.png',
     data: { url: typeof n.url === 'string' ? n.url : 'index.html' },
+    // a call (CALL in a friend's chat): it rings like a phone, as much as a notification can: a long buzz, and it
+    // stays on the screen until you tap it or swipe it away
+    ...(n.call === true ? { vibrate: [600, 300, 600, 300, 600, 300, 600, 300, 600, 300, 600], requireInteraction: true } : {}),
   }));
 });
 
