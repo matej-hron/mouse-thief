@@ -30,7 +30,9 @@
    the table and work with them: pour the milk, roll the dough with the
    rolling pin, spread the sauce, sprinkle the toppings where you want them,
    drag the pizza into the oven, grab it when it is done (in the green!) and
-   drag the finished meal to the customer.
+   drag the finished meal to the customer. Some meals need the KNIFE at the end:
+   swipe across them to cut the pizza into slices, the sushi roll into pieces,
+   the burger in half and the steak into strips.
    You have 1 minute for one meal; the faster you are, the bigger the tip.
    You start with a CAFE SHOP, then buy an ICE CREAM SHOP, a PIZZA RESTAURANT,
    a BURGER RESTAURANT, a SUSHI BAR and at last a LUXURY RESTAURANT. You learn by doing: a coach says
@@ -40,7 +42,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '3.4.1';
+const VERSION = '3.5.0';
 const SAVE_KEY = 'pixelCook.save';
 const NREST = 6;
 const save = { v: 3, money: 0, earned: 0, rest: 0, owned: [true, false, false, false, false, false], up: { timer: 0, stove: 0, tips: 0, menu: 0 },
@@ -85,6 +87,7 @@ const HEARTS = 3;                          // customers who may leave hungry bef
 //   rub:   drag it onto the meal and move it around (roll, spread, pour, drizzle) for `need` pixels
 //   cook:  drag it to the coffee machine / the grill / the pan, and grab it back when it is done
 //   bake:  (not on the shelf) drag the whole pizza into the oven
+//   cut:   drag the knife onto the meal and swipe across it: one stroke is one cut (CUTS: how many, in each restaurant)
 const ITEMS = {
   cup: { n: 'CUP', k: 'cook', s: 'BREW THE COFFEE' }, milk: { n: 'MILK', k: 'rub', need: 110, s: 'POUR THE MILK' }, sugar: { n: 'SUGAR', k: 'place', c: 2 },
   cocoa: { n: 'COCOA', k: 'place', c: 5, s: 'SPRINKLE COCOA' }, cream: { n: 'CREAM', k: 'rub', need: 90, s: 'WHIPPED CREAM' },
@@ -106,7 +109,11 @@ const ITEMS = {
   potato: { n: 'POTATO', k: 'place', c: 3, s: 'POTATOES' }, aspar: { n: 'ASPARAGUS', k: 'place', c: 3 }, lemon: { n: 'LEMON', k: 'place', c: 1 }, butter: { n: 'BUTTER', k: 'place', c: 1 },
   truffle: { n: 'TRUFFLE', k: 'place', c: 4 }, parm: { n: 'PARMESAN', k: 'place', c: 5 }, choco: { n: 'CHOCO', k: 'rub', need: 100, s: 'CHOCOLATE SAUCE' },
   berry: { n: 'BERRY', k: 'place', c: 3, s: 'STRAWBERRIES' }, gold: { n: 'GOLD', k: 'place', c: 4, s: 'GOLD LEAF' },
+  knife: { n: 'KNIFE', k: 'cut' },
 };
+const CUTS = { pizza: 4, sushi: 5, burger: 1, lux: 3 };                       // swipes with the knife: 8 slices, 6 pieces, 2 halves, 4 strips
+const CUT_SAY = { pizza: 'CUT INTO 8 SLICES', sushi: 'CUT INTO 6 PIECES', burger: 'CUT IT IN HALF', lux: 'SLICE THE STEAK' };
+const CUT_LEN = 26;                                                             // how long one swipe must be (pixels over the meal)
 // REAL LIFE: what you would really do in a kitchen. {braces} mark the numbers worth remembering.
 const FACTS = {
   cup: 'AN ESPRESSO RUNS FOR ONLY {25-30 SECONDS}.', milk: 'WARM THE MILK TO {60-65 C}. NEVER LET IT BOIL.', sugar: 'ONE SUGAR CUBE IS ABOUT {4 GRAMS}.',
@@ -131,6 +138,7 @@ const FACTS = {
   aspar: 'ASPARAGUS NEEDS ONLY {2-4 MIN} IN BOILING WATER.', lemon: 'ROLL A LEMON ON THE TABLE: MORE JUICE COMES OUT.', butter: 'BUTTER BURNS FAST: ADD IT AT THE END.',
   truffle: 'TRUFFLE IS SHAVED ON RAW, AT THE VERY END.', parm: 'GRATE PARMESAN FRESH, RIGHT BEFORE SERVING.', choco: 'MELT CHOCOLATE GENTLY: IT BURNS ABOVE {50 C}.',
   berry: 'WASH BERRIES JUST BEFORE YOU USE THEM.', gold: 'GOLD LEAF IS REAL GOLD, AND YOU CAN EAT IT.',
+  knife: 'CUT AWAY FROM YOUR FINGERS. A SHARP KNIFE IS {SAFER} THAN A BLUNT ONE.',
 };
 const REAL = {                             // for the recipe page: what you need, and something worth knowing
   cafe: ['FOR 1 CUP: {7-9 G} GROUND COFFEE AND {30 ML} OF WATER AT {93 C}.', 'A CAPPUCCINO IS {1/3} ESPRESSO, {1/3} MILK AND {1/3} FOAM.'],
@@ -168,11 +176,11 @@ const MAINS = ['steak', 'lobster', 'pasta', 'cake'];
 const SCOOPS = { sv: ['#fff4d0', '#e0cc98'], sc: ['#7a4428', '#5a3018'], ss: ['#ff9ab8', '#e06a90'], sm: ['#9be8c0', '#62c094'] };
 const FILLS = { salmon: '#ff8a50', tuna: '#c82a4a', avocado: '#8ac84a', cucumber: '#3a9a3a', shrimp: '#ffb0a0' };
 const ice = (name, price, scoops, top) => ({ name, price, groups: [['cone'], ...scoops.map(x => [x]), ...(top.length ? [top] : [])] });
-const sushi = (name, price, fill, extra) => ({ name, price, groups: [['nori'], ['rice'], fill, ['mat'], ...(extra.length ? [extra] : [])] });
+const sushi = (name, price, fill, extra) => ({ name, price, groups: [['nori'], ['rice'], fill, ['mat'], ['knife'], ...(extra.length ? [extra] : [])] });
 const cafe = (name, price, extras) => ({ name, price, groups: extras.length ? [['cup'], extras] : [['cup']] });
-const pizza = (name, price, top) => ({ name, price, groups: [['dough'], ['roll'], ['sauce'], ['mozz', ...top], ['bake']] });
-const burger = (name, price, top) => ({ name, price, groups: [['bun'], ['patty'], ...top.map(x => [x]), ['bun']] });
-const lux = (name, price, main, sides) => ({ name, price, groups: [['plate'], [main], sides] });
+const pizza = (name, price, top) => ({ name, price, groups: [['dough'], ['roll'], ['sauce'], ['mozz', ...top], ['bake'], ['knife']] });
+const burger = (name, price, top) => ({ name, price, groups: [['bun'], ['patty'], ...top.map(x => [x]), ['bun'], ['knife']] });
+const lux = (name, price, main, sides) => ({ name, price, groups: [['plate'], [main], ...(main === 'steak' ? [['knife']] : []), sides] });   // a steak is sliced before the sides go on
 // a meal's steps are groups: the groups go in order, the things inside one group in any order
 const REST = [
   { id: 'cafe', name: 'CAFE SHOP', short: 'CAFE', price: 0, color: '#3fae8a', st: 'COFFEE MACHINE', verb: 'BREWING', lo: 'FILLING', hi: 'SPILLS', late: 'IT IS SPILLING!', bad: 'SPILLED! TAKE A NEW CUP', meal: 'TRAY', r: 12,
@@ -185,22 +193,22 @@ const REST = [
              ice('MINT CHOCO CONE', 26, ['sm', 'sc'], ['syrup']), ice('CHERRY SUNDAE CONE', 32, ['sv', 'ss'], ['cream', 'cherry', 'wafer']),
              ice('TRIPLE TOWER', 40, ['sc', 'sm', 'ss'], ['syrup', 'sprinkles', 'cherry'])] },
   { id: 'pizza', name: 'PIZZA RESTAURANT', short: 'PIZZA', price: 900, color: '#e8402a', st: 'OVEN', verb: 'BAKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! MAKE A NEW PIZZA', meal: 'PIZZA', r: 23,
-    tray: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'mush', 'ham', 'pine', 'olive', 'pepper'],
+    tray: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'mush', 'ham', 'pine', 'olive', 'pepper', 'knife'],
     dishes: [pizza('PIZZA WITH MOZZARELLA', 26, []), pizza('SALAMI PIZZA', 32, ['salami']), pizza('MUSHROOM PIZZA', 32, ['mush']),
              pizza('HAWAII PIZZA', 40, ['ham', 'pine']), pizza('VEGGIE PIZZA', 48, ['mush', 'pepper', 'olive']),
              pizza('DELUXE PIZZA', 58, ['salami', 'ham', 'mush', 'olive'])] },
   { id: 'burger', name: 'BURGER RESTAURANT', short: 'BURGER', price: 2400, color: '#ffb020', st: 'GRILL', verb: 'GRILLING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! GRILL A NEW PATTY', meal: 'BURGER', r: 5,
-    tray: ['bun', 'patty', 'cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'ketchup', 'egg'],
+    tray: ['bun', 'patty', 'cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'ketchup', 'egg', 'knife'],
     dishes: [burger('HAMBURGER', 45, ['ketchup']), burger('CHEESEBURGER', 55, ['cheese', 'ketchup']),
              burger('SALAD BURGER', 65, ['cheese', 'lettuce', 'tomato']), burger('BACON BURGER', 78, ['cheese', 'bacon', 'onion', 'ketchup']),
              burger('EGG BURGER', 85, ['egg', 'bacon', 'lettuce', 'pickle']), burger('MEGA BURGER', 98, ['cheese', 'bacon', 'lettuce', 'tomato', 'pickle'])] },
   { id: 'sushi', name: 'SUSHI BAR', short: 'SUSHI', price: 6000, color: '#e8483a', st: 'RICE COOKER', verb: 'COOKING', lo: 'HARD', hi: 'MUSHY', late: 'IT IS GETTING MUSHY!', bad: 'MUSHY RICE! COOK NEW RICE', meal: 'SUSHI', r: 16,
-    tray: ['nori', 'rice', 'salmon', 'tuna', 'avocado', 'cucumber', 'shrimp', 'mat', 'sesame', 'wasabi', 'ginger', 'soy'],
+    tray: ['nori', 'rice', 'salmon', 'tuna', 'avocado', 'cucumber', 'shrimp', 'mat', 'sesame', 'wasabi', 'ginger', 'soy', 'knife'],
     dishes: [sushi('CUCUMBER ROLL', 90, ['cucumber'], []), sushi('SALMON ROLL', 105, ['salmon'], ['soy']), sushi('TUNA AVOCADO ROLL', 125, ['tuna', 'avocado'], ['wasabi']),
              sushi('CALIFORNIA ROLL', 145, ['shrimp', 'avocado', 'cucumber'], ['sesame']), sushi('SALMON DELUXE', 170, ['salmon', 'avocado'], ['sesame', 'ginger', 'soy']),
              sushi('DRAGON ROLL', 200, ['shrimp', 'tuna', 'cucumber'], ['sesame', 'wasabi', 'ginger', 'soy'])] },
   { id: 'lux', name: 'LUXURY RESTAURANT', short: 'LUXURY', price: 15000, color: '#c89aff', st: 'PAN', verb: 'COOKING', lo: 'RAW', hi: 'BURNT', late: 'IT IS BURNING!', bad: 'BURNT! COOK A NEW ONE', meal: 'PLATE', r: 24,
-    tray: ['plate', 'steak', 'lobster', 'pasta', 'cake', 'potato', 'aspar', 'lemon', 'butter', 'cream', 'truffle', 'parm', 'choco', 'berry', 'gold'],
+    tray: ['plate', 'steak', 'lobster', 'pasta', 'cake', 'potato', 'aspar', 'lemon', 'butter', 'cream', 'truffle', 'parm', 'choco', 'berry', 'gold', 'knife'],
     dishes: [lux('STEAK AND POTATOES', 240, 'steak', ['potato', 'butter']), lux('CHOCOLATE CAKE', 250, 'cake', ['choco', 'berry']),
              lux('TRUFFLE PASTA', 290, 'pasta', ['cream', 'truffle', 'parm']), lux('LEMON LOBSTER', 340, 'lobster', ['lemon', 'butter', 'aspar']),
              lux('ROYAL STEAK', 420, 'steak', ['potato', 'aspar', 'truffle', 'butter']), lux('GOLDEN CAKE', 500, 'cake', ['choco', 'berry', 'cream', 'gold'])] },
@@ -287,6 +295,12 @@ function placePiece(id, x, y) {            // a piece lands where your hand is
   D.count[id] = (D.count[id] || 0) + 1;
   puff(x, y, '#fff8e0', 3, 18); sfx('put');
   if (D.count[id] >= it.c) { complete(id); return true; }
+  return false;
+}
+function cutOnce(x, y) {                  // one swipe of the knife across the meal
+  const D = G.D, n = D.count.knife = (D.count.knife || 0) + 1;
+  puff(x, y, '#fff8e0', 4, 30); sfx('chop');
+  if (n >= CUTS[REST[G.rest].id]) { complete('knife'); puff(dishX(), DISH_Y, '#fff8e0', 8, 50); return true; }
   return false;
 }
 function startCook(id) {                   // into the coffee machine / the oven, onto the grill, into the pan
@@ -409,11 +423,17 @@ function pDown(pid, x, y) {
 }
 function pMove(pid, x, y) {
   if (!drag || drag.pid !== pid) return;
-  const dist = Math.hypot(x - drag.x, y - drag.y);
+  const dist = Math.hypot(x - drag.x, y - drag.y), vx = x - drag.x, vy = y - drag.y, wasOver = overDish(drag.x, drag.y);
   drag.x = x; drag.y = y;
-  if (!canPlay() || drag.id === 'dish' || !overDish(x, y) || !needs().includes(drag.id)) return;
+  if (drag.id === 'knife') { drag.trail = (drag.trail || []).concat([{ x, y }]).slice(-7); }
+  if (!canPlay() || drag.id === 'dish' || !overDish(x, y) || !needs().includes(drag.id)) { if (drag.id === 'knife') { drag.acc = 0; drag.sx = drag.sy = 0; drag.cut = false; } return; }
   const it = ITEMS[drag.id], D = G.D;
-  if (it.k === 'rub') {                     // roll, spread, pour, drizzle: keep moving
+  if (it.k === 'cut') {                     // swipe: a long enough stroke one way is one cut; turn back for the next one
+    if (!wasOver) return;                   // (only what you move over the meal counts)
+    if (dist >= 1.5 && (drag.sx || drag.sy) && vx * drag.sx + vy * drag.sy < -0.3 * dist * Math.hypot(drag.sx, drag.sy)) { drag.acc = 0; drag.sx = drag.sy = 0; drag.cut = false; }
+    drag.sx = (drag.sx || 0) + vx; drag.sy = (drag.sy || 0) + vy; drag.acc += dist; drag.used = true;
+    if (!drag.cut && drag.acc >= CUT_LEN) { drag.cut = true; if (cutOnce(x, y)) drag = null; }
+  } else if (it.k === 'rub') {                     // roll, spread, pour, drizzle: keep moving
     D.prog[drag.id] = (D.prog[drag.id] || 0) + dist / it.need; drag.used = true;
     if ((drag.snd += dist) > 26) { drag.snd = 0; sfx('rub'); if (drag.id !== 'roll') puff(x, y + 6, RUB_COLOR[drag.id] || '#fff', 1, 10); }
     if (D.prog[drag.id] >= 1) { D.prog[drag.id] = 1; complete(drag.id); puff(dishX(), DISH_Y, '#fff8e0', 8, 50); drag = null; }
@@ -440,6 +460,7 @@ function pUp(pid, x, y) {
     if (!need) { if (!d.used) wrong(d.id); }
     else if (it.k === 'place' && !d.used) placePiece(d.id, x, y);
     else if (it.k === 'rub' && !d.used) pop('MOVE IT AROUND!', '#7ac8ff');
+    else if (it.k === 'cut' && !d.used) pop('SWIPE ACROSS IT!', '#7ac8ff');
   } else if (overStation(x, y)) { pop('THAT DOES NOT GO THERE!', '#7ac8ff'); sfx('wrong'); }
 }
 const RUB_COLOR = { sauce: '#d8301e', milk: '#fff', cream: '#fffaf0', caramel: '#e89a2a', ketchup: '#d8201a', choco: '#5a3018' };
@@ -517,6 +538,7 @@ function icon(id, cx, cy) {
     case 'wasabi': d(0, 1, 4, '#5aa838'); d(0, 0, 4, '#8ad85a'); r(-2, -2, 2, 1, '#c8f0a0'); break;
     case 'ginger': r(-5, 0, 10, 4, '#ffa8c0'); r(-3, -3, 7, 4, '#ffc0d0'); r(-1, -5, 4, 3, '#ffa8c0'); r(-5, 4, 10, 1, '#e080a0'); break;
     case 'soy': r(-3, -1, 6, 8, '#2a140a'); r(-2, -3, 4, 2, '#2a140a'); r(-2, -6, 4, 3, '#e8203a'); r(-3, 2, 6, 2, '#f4f4f0'); break;
+    case 'knife': r(1, -2, 7, 4, '#6a3a1a'); r(1, -2, 7, 1, '#8a5a2a'); r(3, -1, 1, 1, '#e0c070'); r(6, -1, 1, 1, '#e0c070'); r(0, -3, 1, 6, '#3a3a46'); r(-7, -2, 7, 4, '#d8d8e4'); r(-7, -2, 7, 1, '#fff'); r(-8, -1, 1, 3, '#d8d8e4'); r(-7, 1, 7, 1, '#a8a8b8'); break;
     default: iconFood(id, cx, cy);
   }
 }
@@ -546,6 +568,8 @@ function piece(id, x, y, baked) {
     case 'sesame': R(x, y, 2, 1, '#f0dca0'); R(x + 2, y + 2, 1, 1, '#f0dca0'); break;
   }
 }
+const cutsOf = D => (D.done.includes('knife') ? 9 : (D.count.knife || 0));   // how many swipes the meal has had
+function line(x0, y0, x1, y1, c) { const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0))); for (let q = 0; q <= n; q++) R(x0 + (x1 - x0) * q / n, y0 + (y1 - y0) * q / n, 1, 1, c); }
 const iceTop = D => -8 - 15 * Math.max(0, D.done.filter(id => SCOOPS[id]).length - 1);   // where the top scoop is
 function drawIce(cx, cy, D) {               // from the side: a cone in its stand, scoops on top of each other
   const P = D.prog, has = id => D.done.includes(id);
@@ -594,6 +618,15 @@ function drawSushi(cx, cy, D) {             // from above: nori, rice and fish o
     if (has('rice')) { R(mx - 24, y0 + 3, 48, h - 6, '#f8f8f0'); for (let q = 0; q < 20; q++) R(mx - 22 + (q * 17) % 44, y0 + 4 + (q * 7) % Math.max(1, h - 9), 1, 1, '#d8d8c8'); }
     for (const p of fills) { const l = Math.round(Math.max(0, 1 - p.t / 0.12) * 6), y = cy + Math.round(p.y * h / 40) - 2 - l; R(mx - 23, y, 46, 4, FILLS[p.id]); R(mx - 23, y, 46, 1, 'rgba(255,255,255,0.35)'); if (p.id === 'salmon') for (let q = -18; q < 22; q += 8) R(mx + q, y, 1, 4, '#ffd0b0'); }
     if (k > 0) { R(mx - 27, y0, 54, 3, '#0a1c12'); R(mx - 27, y0 + h - 3, 54, 3, '#0a1c12'); }
+    return;
+  }
+  if (!has('knife')) {                          // one long roll; every swipe of the knife cuts it once more
+    const n = cutsOf(D), gaps = [-1, 1, -2, 2, 0].slice(0, n).map(g => mx + g * 9);
+    R(mx - 28, cy - 7, 56, 17, 'rgba(0,0,0,0.3)'); R(mx - 28, cy - 9, 56, 17, '#0f2a1c'); R(mx - 27, cy - 8, 54, 15, '#1a3a2a'); R(mx - 27, cy - 7, 54, 2, '#2a5a40');
+    R(mx - 29, cy - 7, 2, 13, '#f8f8f0'); R(mx + 27, cy - 7, 2, 13, '#f8f8f0');
+    fills.slice(0, 3).forEach((p, q) => { R(mx - 30, cy - 4 + q * 3, 2, 2, FILLS[p.id]); R(mx + 28, cy - 4 + q * 3, 2, 2, FILLS[p.id]); });
+    for (const g of gaps) { R(g - 1, cy - 9, 3, 17, '#b8c86a'); R(g - 2, cy - 7, 1, 13, '#f8f8f0'); R(g + 2, cy - 7, 1, 13, '#f8f8f0'); R(g - 2, cy - 2, 1, 2, FILLS[(fills[0] || {}).id] || '#f8f8f0'); R(g + 2, cy - 2, 1, 2, FILLS[(fills[0] || {}).id] || '#f8f8f0'); }
+    for (const p of D.parts) if (p.id === 'sesame') piece('sesame', mx + p.x, cy + p.y - Math.round(Math.max(0, 1 - p.t / 0.12) * 6));
     return;
   }
   for (let i = 0; i < 6; i++) {
@@ -649,11 +682,21 @@ function drawPizza(cx, cy, D, baked) {      // from above: the dough grows as yo
   if (sr > 2) { disc(cx, cy, sr, baked ? '#a82414' : '#b82a18'); disc(cx, cy, sr - 1, baked ? '#c02a18' : '#d8301e'); if (sr > 12) { R(cx - sr * 0.5, cy - sr * 0.55, 5, 2, '#f05a40'); R(cx + sr * 0.2, cy + sr * 0.4, 4, 2, '#f05a40'); } }
   if (baked && has('mozz')) { disc(cx, cy, 23, '#f8e8b0'); for (let a = 0; a < 6.28; a += 0.7) disc(cx + Math.cos(a) * 21, cy + Math.sin(a) * 21, 3, '#f8e8b0'); }
   drawParts(cx, cy, D, baked);
+  const n = Math.min(4, cutsOf(D));               // the knife: halves, quarters, then eighths
+  [0, Math.PI / 2, Math.PI / 4, Math.PI * 3 / 4].slice(0, n).forEach(a => {
+    const c = Math.cos(a), s = Math.sin(a); line(cx - c * 31, cy - s * 31 + 1, cx + c * 31, cy + s * 31 + 1, '#7a4a1a'); line(cx - c * 31, cy - s * 31, cx + c * 31, cy + s * 31, '#4a2a10');
+  });
 }
 function drawBurger(cx, cy, D) {            // from the side: a stack, in the order you put it together
+  R(cx - 44, cy + 28, 88, 12, '#8a2a2a'); R(cx - 46, cy + 30, 92, 7, '#c83a3a'); R(cx - 44, cy + 30, 88, 1, '#e86a6a'); R(cx - 30, cy + 31, 60, 4, 'rgba(0,0,0,0.2)');
+  if (!cutsOf(D)) { stackBurger(cx, cy, D); return; }
+  for (const side of [-1, 1]) {                // cut in half: the two halves move apart
+    ctx.save(); ctx.translate(side * 2, 0); ctx.beginPath(); ctx.rect(side < 0 ? cx - 80 : cx, 0, 80, cy + 30); ctx.clip(); stackBurger(cx, cy, D); ctx.restore();
+  }
+}
+function stackBurger(cx, cy, D) {
   let y = cy + 30, buns = 0;
   const lay = (dx, w, h, c, c2) => { y -= h; R(cx + dx - w / 2, y, w, h, c); if (c2) R(cx + dx - w / 2, y, w, 1, c2); };
-  R(cx - 44, cy + 28, 88, 12, '#8a2a2a'); R(cx - 46, cy + 30, 92, 7, '#c83a3a'); R(cx - 44, cy + 30, 88, 1, '#e86a6a'); R(cx - 30, cy + 31, 60, 4, 'rgba(0,0,0,0.2)');
   D.done.forEach((id, i) => {
     const dx = D.off[i] || 0;
     if (id === 'bun') {
@@ -697,6 +740,7 @@ function drawPlate(cx, cy, D) {             // from above
   disc(cx, cy + 2, 34, 'rgba(0,0,0,0.2)'); disc(cx, cy, 34, '#b8b8c8'); disc(cx, cy, 33, '#f4f4f8'); disc(cx, cy, 26, '#dcdce8'); disc(cx, cy, 25, '#f8f8fc');
   const main = done.find(id => MAINS.includes(id)), mx = cx - 4, my = cy;
   if (main) drawMain(main, mx, my, true);
+  if (main === 'steak') [-7, 0, 7].slice(0, cutsOf(D)).forEach(q => { R(mx + q - 1, my - 10, 3, 21, '#f8f8fc'); R(mx + q - 2, my - 8, 1, 17, '#d86a5a'); R(mx + q + 2, my - 8, 1, 17, '#d86a5a'); });   // pink inside: medium
   const cr = has('cream') ? 1 : (P.cream || 0);
   if (cr > 0) { const rows = [[-9, 2, 16, 4, '#fffaf0'], [-7, -1, 12, 3, '#fffaf0'], [-5, -4, 8, 3, '#f0e8d8'], [-3, -7, 4, 3, '#fffaf0']]; rows.slice(0, Math.ceil(cr * 4)).forEach(([x, y, w, h, c]) => R(mx + x, my + y, w, h, c)); }
   const ch = has('choco') ? 1 : (P.choco || 0);
@@ -840,9 +884,10 @@ function drawTicket(t) {
     if (done) { R(x + 6, ly + 2, 1, 2, '#fff'); R(x + 7, ly + 3, 1, 1, '#fff'); R(x + 8, ly + 1, 1, 2, '#fff'); }
     let s = it.s || it.n;
     if (id === 'bun') s = gi === 0 ? 'BUN (BOTTOM)' : 'BUN (TOP)';
+    if (id === 'knife') s = CUT_SAY[REST[G.rest].id];
     T(s, x + 14, ly, done ? '#9a9280' : now ? '#111' : '#6a6250');
     if (now && !done) {                        // how far you are with this step
-      const k = it.k === 'rub' ? (G.D.prog[id] || 0) : it.k === 'place' && it.c > 1 ? (G.D.count[id] || 0) / it.c : G.cook && G.cook.id === id ? Math.min(1, G.cook.t / G.cook.wait) : 0;
+      const k = it.k === 'rub' ? (G.D.prog[id] || 0) : it.k === 'cut' ? (G.D.count.knife || 0) / CUTS[REST[G.rest].id] : it.k === 'place' && it.c > 1 ? (G.D.count[id] || 0) / it.c : G.cook && G.cook.id === id ? Math.min(1, G.cook.t / G.cook.wait) : 0;
       if (k > 0) { R(x + 14, ly + 7, w - 22, 2, '#c8b890'); R(x + 14, ly + 7, Math.round((w - 22) * Math.min(1, k)), 2, '#3fae4a'); }
     }
     ly += 12;
@@ -911,6 +956,16 @@ function drawHeld(t) {                         // what your hand holds, and wher
   if (need.includes(drag.id)) { if (it.k === 'cook') ring(stationX() + 27, 74, 30 + Math.sin(t * 6) * 2, '#ffe23a', t); else ring(dishX(), DISH_Y, 42 + Math.sin(t * 6) * 2, '#ffe23a', t); }
   const x = drag.x, y = drag.y - 6;
   disc(x + 2, y + 12, 8, 'rgba(0,0,0,0.25)');
+  if (drag.id === 'knife') {                   // the knife, blade down, the tip under your finger; a swoosh behind it
+    const tr = drag.trail || [];
+    for (let i = 1; i < tr.length; i++) { ctx.globalAlpha = i / tr.length * 0.7; const a = tr[i - 1], b = tr[i], n = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y))); for (let q = 0; q < n; q++) R(a.x + (b.x - a.x) * q / n, a.y + (b.y - a.y) * q / n, 2, 2, '#fff'); }
+    ctx.globalAlpha = 1; if (tr.length) tr.shift();
+    const kx = Math.round(drag.x), ky = Math.round(drag.y);
+    R(kx - 3, ky - 30, 7, 13, '#111'); R(kx - 2, ky - 29, 5, 11, '#6a3a1a'); R(kx - 2, ky - 29, 1, 11, '#8a5a2a'); R(kx, ky - 26, 1, 1, '#e0c070'); R(kx, ky - 21, 1, 1, '#e0c070');
+    R(kx - 4, ky - 18, 9, 2, '#3a3a46');
+    R(kx - 3, ky - 16, 6, 14, '#111'); R(kx - 2, ky - 16, 4, 13, '#d8d8e4'); R(kx - 2, ky - 16, 1, 13, '#fff'); R(kx - 1, ky - 3, 2, 2, '#d8d8e4');
+    return;
+  }
   if (drag.id === 'roll') {                    // the rolling pin, big, across the dough
     R(x - 30, y - 2, 8, 4, '#8a5a2a'); R(x + 22, y - 2, 8, 4, '#8a5a2a'); R(x - 23, y - 6, 46, 12, '#111'); R(x - 22, y - 5, 44, 10, '#d8a868'); R(x - 22, y - 5, 44, 2, '#f0c890'); R(x - 22, y + 3, 44, 2, '#b8884a');
   } else bigIcon(drag.id, x, y, 2);
@@ -1010,6 +1065,7 @@ function guide() {                            // what to do next: { say, icon, t
   const i = rest.tray.indexOf(id), r = tileRect(i, rest.tray.length), from = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
   if (it.k === 'cook') return { say: 'PUT IT IN!', icon: id, tile: id, from, to: st, mode: 'drag' };
   if (it.k === 'rub') return { say: RUB_SAY[id] || 'SQUEEZE!', icon: id, tile: id, from, to: dish, mode: 'rub' };
+  if (it.k === 'cut') return { say: 'CUT! SWIPE!', icon: id, tile: id, from, to: dish, mode: 'cut' };
   return { say: it.c > 1 ? 'SPRINKLE!' : 'DROP IT ON!', icon: id, tile: id, from, to: dish, mode: it.c > 1 ? 'rub' : 'drag' };
 }
 function drawGuide(t, g) {
@@ -1036,6 +1092,7 @@ function drawGuide(t, g) {
   let hx, hy;
   if (k < 0.5) { const e = k / 0.5, s = e * e * (3 - 2 * e); hx = g.from.x + (g.to.x - g.from.x) * s; hy = g.from.y + (g.to.y - g.from.y) * s; }
   else if (g.mode === 'rub') { const a = (k - 0.5) * 25; hx = g.to.x + Math.cos(a) * 14; hy = g.to.y + Math.sin(a) * 10; }
+  else if (g.mode === 'cut') { const q = ((k - 0.5) * 6) % 2, e = q < 1 ? q : 2 - q; hx = g.to.x - 24 + e * 48; hy = g.to.y - 12 + e * 24; }   // back and forth across the meal
   else { hx = g.to.x; hy = g.to.y; }
   ctx.globalAlpha = k > 0.9 ? (1 - k) * 10 : 0.9;
   if (g.icon && k > 0.04) bigIcon(g.icon, hx + 2, hy - 8, 1);       // the hand carries the thing
@@ -1055,12 +1112,12 @@ function chefHat(x, y, gold) {
 }
 const DEMOS = {
   cafe: { done: ['cup', 'milk', 'croissant'], prog: {}, parts: [{ id: 'croissant', x: 0, y: 0, t: 9 }], count: {}, off: [] },
-  pizza: { done: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'bake'], prog: {}, count: {}, off: [],
+  pizza: { done: ['dough', 'roll', 'sauce', 'mozz', 'salami', 'bake', 'knife'], prog: {}, count: {}, off: [],
            parts: [[0, 0], [-12, -8], [12, -9], [-9, 12], [12, 10]].map(([x, y]) => ({ id: 'mozz', x, y, t: 9 })).concat([[-2, -16], [16, 1], [-17, 2], [2, 17], [6, -4]].map(([x, y]) => ({ id: 'salami', x, y, t: 9 }))) },
   burger: { done: ['bun', 'patty', 'cheese', 'lettuce', 'tomato', 'bun'], prog: {}, parts: [], count: {}, off: [0, 1, -2, 2, -1, 0] },
   ice: { done: ['cone', 'ss', 'sv', 'syrup', 'cherry'], prog: {}, count: {}, off: [0, 1, -1], parts: [{ id: 'cherry', x: 0, y: 0, t: 9 }] },
-  sushi: { done: ['nori', 'rice', 'salmon', 'avocado', 'mat', 'wasabi', 'soy'], prog: {}, count: {}, off: [], parts: [{ id: 'salmon', x: 0, y: -4, t: 9 }, { id: 'avocado', x: 0, y: 5, t: 9 }, { id: 'wasabi', x: 0, y: 0, t: 9 }] },
-  lux: { done: ['plate', 'steak', 'potato', 'butter'], prog: {}, count: {}, off: [], parts: [{ id: 'potato', x: 20, y: -9, t: 9 }, { id: 'potato', x: 23, y: 2, t: 9 }, { id: 'potato', x: 17, y: 12, t: 9 }, { id: 'butter', x: -4, y: 0, t: 9 }] },
+  sushi: { done: ['nori', 'rice', 'salmon', 'avocado', 'mat', 'knife', 'wasabi', 'soy'], prog: {}, count: {}, off: [], parts: [{ id: 'salmon', x: 0, y: -4, t: 9 }, { id: 'avocado', x: 0, y: 5, t: 9 }, { id: 'wasabi', x: 0, y: 0, t: 9 }] },
+  lux: { done: ['plate', 'steak', 'knife', 'potato', 'butter'], prog: {}, count: {}, off: [], parts: [{ id: 'potato', x: 20, y: -9, t: 9 }, { id: 'potato', x: 23, y: 2, t: 9 }, { id: 'potato', x: 17, y: 12, t: 9 }, { id: 'butter', x: -4, y: 0, t: 9 }] },
 };
 function header(title) {
   const W = S.W;
@@ -1270,6 +1327,7 @@ function sfx(k) {
   else if (k === 'tick') s.tone(880, 0.06, { vol: 0.1 });
   else if (k === 'grab') s.tone([440, 560], 0.05, { vol: 0.07, type: 'triangle' });
   else if (k === 'rub') s.noise(0.07, { freq: 900, vol: 0.1, filter: 'bandpass' });
+  else if (k === 'chop') { s.noise(0.06, { freq: 3000, vol: 0.2, filter: 'highpass' }); s.tone([620, 300], 0.07, { vol: 0.08, type: 'triangle' }); }
   else if (k === 'ding') s.tone(1760, 0.3, { vol: 0.09, type: 'triangle' });
   else if (k === 'done') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.18, { vol: 0.1, delay: i * 0.11 }));
 }
