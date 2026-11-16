@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.62.0';
+const VERSION = '2.63.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -112,7 +112,7 @@ const GAMES = [
   { id: 'snake', name: 'PIXEL SNAKE', sub: 'EAT, GROW, CUT THEM OFF!', url: 'snake.html', color: '#5ad43f', cats: ['ACTION', 'ONLINE'], tags: 'SNAKE SNAKES IO ARENA BOTS DOTS EAT GROW BOOST KILLS MULTIPLAYER REAL PLAYERS ROOM SKINS' },
   { id: 'horde', name: 'PIXEL HORDE', sub: 'SURVIVE THE HORDE!', url: 'horde.html', color: '#ff4a4a', cats: ['ACTION'], tags: 'HORDE SURVIVE SURVIVOR SURVIVORS MONSTERS ARENA WAVES ROGUELITE LEVEL UP UPGRADES WEAPONS EVOLVE EVOLUTION BOSS HEROES KNIGHT MAGE MAGIC WHIP BOMBS LIGHTNING' },
   { id: 'miner', name: 'PIXEL MINER', sub: 'DIG DEEP, GET RICH!', url: 'miner.html', color: '#ffc81e', cats: ['ACTION'], tags: 'MINER MINING MINE DIG DIGGING DRILL ORE ORES GOLD DIAMOND GEMS UPGRADE UPGRADES CAVE LAVA CORE MONEY ARTIFACTS DEEP' },
-  { id: 'hook', name: 'PIXEL HOOK', sub: 'SWING, FLY, FLIP!', url: 'hook.html', color: '#ff3a3a', cats: ['ACTION'], tags: 'HOOK GRAPPLE GRAPPLING ROPE SWING STICKMAN STICK FLY FLIP JUMP BOUNCE LEVELS ENDLESS PHYSICS LASER SAW NEON LAVA SKINS' },
+  { id: 'hook', name: 'PIXEL HOOK', sub: 'SWING, FLY, FLIP!', url: 'hook.html', color: '#ff3a3a', cats: ['ACTION', 'ONLINE'], tags: 'HOOK GRAPPLE GRAPPLING ROPE SWING STICKMAN STICK FLY FLIP JUMP BOUNCE LEVELS ENDLESS PHYSICS LASER SAW NEON LAVA SKINS RACE TAG CHASE CATCH MULTIPLAYER FRIEND' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -2687,7 +2687,7 @@ function drawAccount(t) {
 // In an online game, the screen with the game's code has INVITE A FRIEND (PX.Invite in common.js). The invite comes
 // here like a gift of stars, and pops up over the list of games: JOIN opens that game with the code, and it joins.
 // Only from players on your FRIENDS list, and only for 10 minutes (then the game is most likely gone).
-const ONLINE_GAMES = ['thief', 'racer', 'pong', 'football', 'wings', 'skate', 'ski', 'boxfight', 'bike', 'skygp', 'moto', 'snake'];
+const ONLINE_GAMES = ['thief', 'racer', 'pong', 'football', 'wings', 'skate', 'ski', 'boxfight', 'bike', 'skygp', 'moto', 'snake', 'hook'];
 let invite = null;                                  // { name, g: the game, code }
 function gotInvite(m, at) {
   const f = Friends.find(m.fid), g = ONLINE_GAMES.includes(m.g) && GAMES.find(x => x.url === m.g + '.html');

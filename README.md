@@ -36,7 +36,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, and **
 | **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
-| **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, and a shop of runners and ropes. |
+| **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, a shop of runners and ropes, and online RACE and TAG with a friend. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -407,6 +407,20 @@ A rope-swinging game. Your red pixel stick figure hangs from a hook; **hold anyw
 - **Sound:** a chiptune for each world (MUSIC on the title screen); the speaker button switches all the sounds off.
 - The levels are built from a seed, so a level is the same every time. Every level was played through by a bot to
   check that it can be finished.
+- **ONLINE** (with a friend, a 4-letter code or an invite, bets and voice chat like the other online games). The host
+  picks the mode:
+  - **RACE:** the same level on both phones (all 24 are open online); your friend swings beside you as a see-through
+    ghost, with both of you on the progress bar. The first at the FINISH wins ★2 (both at once: the faster time from
+    GO, a tie goes to the host). A fall puts you back at the last flag.
+  - **TAG:** one runs, the other chases (marked **IT!** on the runner's screen), **best of 3 rounds**, and you swap
+    every round (the host runs first). A new course every round, the same on both phones. The runner gets a **2 s
+    head start** and wins the round by lasting **45 s**; the chaser swings a little harder (a stronger swing and a 6 %
+    higher top speed) and wins it by **touching** the runner. **STOLEN!** Grab the hook the other one hangs on and they
+    drop. **SNIP!** Fly through their rope and it snaps. A fall puts you back on the last hook you grabbed. Winning the
+    match is ★2.
+  - Each phone runs its own runner and sends where it is 20 times a second; the friend is drawn 0.1 s late and
+    smoothed. In TAG the runner's phone decides whether you were caught, so the two phones never disagree.
+    X (top right) or START: KEEP PLAYING or LEAVE (the game doesn't stop).
 
 ## Pixel Defense
 
@@ -660,7 +674,7 @@ every 20 seconds. Only players who have friends send this. It is `PX.Presence` i
 ## Invite a friend to a game
 
 Every online game (Mouse Thief, Pixel GP, Pixel Pong, Pixel Football, Pixel Wings, Pixel Skate, Pixel Ski, Pixel Box
-Fight, Pixel Bike Run, Pixel Sky GP, Pixel Moto) works the same way: one player presses CREATE GAME (MAKE A GAME) and
+Fight, Pixel Bike Run, Pixel Sky GP, Pixel Moto, Pixel Hook) works the same way: one player presses CREATE GAME (MAKE A GAME) and
 gets a 4-letter code, the other presses JOIN WITH A CODE and types it.
 
 The screen that shows your code now also has **INVITE A FRIEND**: it lists the players on your FRIENDS list; tap one
@@ -672,7 +686,7 @@ JOIN opens the game and joins yours right away: no code to type.
 - An invite is good for **10 minutes**, and only counts from somebody on your FRIENDS list.
 - It travels like a gift of stars (ntfy.sh): your ID, your name, the game and the code.
 - The games that are for one player (Pixel Heist, Pixel Hoops, Deep Catch, Pixel Cook, Pixel Runs,
-  Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
+  Pixel Defense, Pixel Miner, Pixel Horde) have no online play, so no code and no invite.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
@@ -680,7 +694,7 @@ The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `ind
 ## Voice chat
 
 Talk to a friend while you play an online game together: in Mouse Thief, Pixel GP, Pixel Pong, Pixel Football,
-Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Sky GP and Pixel Moto (with a code or an invite).
+Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Sky GP, Pixel Moto and Pixel Hook (with a code or an invite).
 
 1. When the other player is on your FRIENDS list (and you are on theirs), a blue **TALK** button with a mic shows on
    the left side of the screen, in the lobby and while you play.
