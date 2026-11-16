@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.61.0';
+const VERSION = '2.62.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -131,7 +131,35 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
 }
-function play(g) { PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(() => { location.href = g.url; }, 120); }
+function play(g) { PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(() => Shell.go(g.url), 120); }
+// GAMES DURING A CALL: a game is a page of its own, so opening it would end a call from the chat. During a call the
+// arcade opens the game in a frame over itself instead: the call and its bar go on above the game, and < ALL GAMES
+// (or the phone's back button) closes the frame (common.js catches the game going back to './'). While a game is in
+// the frame the arcade stops drawing and lets go of the controller. Without a call, games open as always.
+const Shell = window.ArcadeShell = {
+  frame: null, popping: false,
+  wanted() { return !!(PX.Voice.direct && PX.Voice.phase !== 'off'); },
+  go(url) { if (this.wanted()) this.open(url); else location.href = url; },
+  open(url) {
+    if (this.frame) this.frame.remove();
+    for (const el of [giveInput, pw1, pw2, codeInput, nameInput, ideaTitleInput, ideaBodyInput, searchInput, chatInput]) { el.blur(); el.style.display = 'none'; }
+    const f = document.createElement('iframe');
+    f.src = url; f.title = 'game';
+    f.allow = 'autoplay; fullscreen; gamepad; microphone';
+    f.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;border:0;margin:0;z-index:50;background:#000;display:block;';
+    f.addEventListener('load', () => { try { f.contentWindow.focus(); } catch (e) { /* fine */ } });
+    document.body.appendChild(f); this.frame = f; screen = 'game'; PX.Pad.off = true;
+    try { history.pushState({ game: 1 }, ''); } catch (e) { /* fine */ }      // (so the phone's back button closes the game)
+  },
+  back() {
+    const f = this.frame; if (!f) return;
+    this.frame = null; screen = 'home'; PX.Pad.off = false;
+    setTimeout(() => f.remove(), 0);                                         // (after the game's own script step)
+    if (!this.popping) try { history.back(); } catch (e) { /* fine */ }
+    this.popping = false;
+  },
+};
+addEventListener('popstate', () => { if (Shell.frame) { Shell.popping = true; Shell.back(); } });
 
 // --- background: a slowly scrolling pixel starfield and floor grid ------------------------------
 function background(t) {
@@ -2667,7 +2695,7 @@ function gotInvite(m, at) {
   if (at && Date.now() / 1000 - at > 600) return;
   invite = { name: f.name, g, code: m.code }; PX.Sound.tone([784, 1047, 784, 1047], 0.4, { vol: 0.12 });
 }
-function joinInvite() { const i = invite; invite = null; PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(() => { location.href = i.g.url + '?join=' + i.code; }, 120); }
+function joinInvite() { const i = invite; invite = null; PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(() => Shell.go(i.g.url + '?join=' + i.code), 120); }
 function drawInvite(t) {
   const W = S.W, i = invite;
   drawHome(t);
@@ -2687,6 +2715,10 @@ function drawInvite(t) {
 let t0 = performance.now(), tPrev = t0, callCheck = -1e9;
 function frame(now) {
   const t = (now - t0) / 1000;
+  if (Shell.frame) {                                 // a game is open over the arcade (during a call): only keep listening for calls
+    if (now - callCheck > 10000) { callCheck = now; PX.Call.start(); }
+    tPrev = now; requestAnimationFrame(frame); return;
+  }
   padPoll(Math.min(0.05, (now - tPrev) / 1000));
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
