@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde and Pixel Snake. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Snake and Pixel Farmings. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.52.0';
+const VERSION = '2.53.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -108,6 +108,7 @@ const GAMES = [
   { id: 'skygp', name: 'PIXEL SKY GP', sub: 'RACE FLYING CARS!', url: 'skygp.html', color: '#9a6aff', cats: ['RACING', 'ONLINE'], tags: 'FLYING CAR CARS FLY SKY HOVER RACE GRAND PRIX GP FUTURE RINGS LASER CLOUD CITY NEON' },
   { id: 'moto', name: 'PIXEL MOTO', sub: 'MOTOCROSS: FLIP AND TRICK!', url: 'moto.html', color: '#e8303a', cats: ['RACING', 'SPORTS', 'ONLINE'], tags: 'MOTO MOTORBIKE MOTORCYCLE MOTOCROSS DIRT BIKE ENGINE FLIP BACKFLIP SUPERMAN WHEELIE TRICK TRICKS DESERT MONEY' },
   { id: 'defense', name: 'PIXEL DEFENSE', sub: 'STOP THE BLOBS!', url: 'defense.html', color: '#4ad48a', cats: ['ACTION'], tags: 'TOWER DEFENSE TD STRATEGY TOWERS BUILD UPGRADE WAVES ENEMIES BLOBS BOSS CASTLE CANNON SNIPER TESLA FROST METEOR MAPS ENDLESS WORKSHOP' },
+  { id: 'farm', name: 'PIXEL FARMINGS', sub: 'GROW IT, SELL IT!', url: 'farm.html', color: '#7ad84a', cats: [], tags: 'FARM FARMING FARMINGS FARMER CROPS PLANT GROW SEEDS HARVEST CARROT WHEAT PUMPKIN CORN COW PIG SHEEP CHICKEN EGG MILK ANIMALS MARKET BARN TRACTOR' },
   { id: 'snake', name: 'PIXEL SNAKE', sub: 'EAT, GROW, CUT THEM OFF!', url: 'snake.html', color: '#5ad43f', cats: ['ACTION', 'ONLINE'], tags: 'SNAKE SNAKES IO ARENA BOTS DOTS EAT GROW BOOST KILLS MULTIPLAYER REAL PLAYERS ROOM SKINS' },
   { id: 'horde', name: 'PIXEL HORDE', sub: 'SURVIVE THE HORDE!', url: 'horde.html', color: '#ff4a4a', cats: ['ACTION'], tags: 'HORDE SURVIVE SURVIVOR SURVIVORS MONSTERS ARENA WAVES ROGUELITE LEVEL UP UPGRADES WEAPONS EVOLVE EVOLUTION BOSS HEROES KNIGHT MAGE MAGIC WHIP BOMBS LIGHTNING' },
   { id: 'miner', name: 'PIXEL MINER', sub: 'DIG DEEP, GET RICH!', url: 'miner.html', color: '#ffc81e', cats: ['ACTION'], tags: 'MINER MINING MINE DIG DIGGING DRILL ORE ORES GOLD DIAMOND GEMS UPGRADE UPGRADES CAVE LAVA CORE MONEY ARTIFACTS DEEP' },
@@ -286,6 +287,34 @@ function previewHorde(x, y, w, h, t) {            // a hero in the middle of a r
   for (let i = 0; i < 4; i++) { const k = (t * 1.5 + i * 0.25) % 1, a = i * 1.57 + 0.6; ctx.fillStyle = '#7af0ff'; ctx.fillRect(Math.round(cx + Math.cos(a) * k * 70) - 1, Math.round(cy + Math.sin(a) * k * 35) - 1, 3, 3); }
   ctx.fillStyle = '#0b0614'; ctx.fillRect(cx - 5, cy - 9, 10, 16); ctx.fillStyle = '#c8c8d8'; ctx.fillRect(cx - 4, cy - 2, 8, 6); ctx.fillStyle = '#f0c090'; ctx.fillRect(cx - 3, cy - 8, 6, 5);
   ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(cx - 6, cy - 2, 2, 5);
+  ctx.restore();
+}
+function previewFarm(x, y, w, h, t) {             // a farmer walks along the rows; the crops grow, ripen and get picked; a cow in the meadow
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#5ab4f0'; ctx.fillRect(x, y, w, 20);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(x + w - 16, y + 4, 8, 8); ctx.fillRect(x + w - 17, y + 5, 10, 6);
+  ctx.fillStyle = '#fff'; const cl = (t * 4) % (w + 30) - 20; ctx.fillRect(x + cl, y + 6, 14, 3); ctx.fillRect(x + cl + 3, y + 4, 7, 2);
+  ctx.fillStyle = '#3a9a3a'; ctx.fillRect(x, y + 18, w, 4);
+  ctx.fillStyle = '#5cb83a'; ctx.fillRect(x, y + 22, w, h - 22);
+  const cols = ['#ff8a1e', '#e8303a', '#ffd83a', '#ff8a1e'], fx = x + 8, fw = Math.min(w - 40, 64);
+  for (let r = 0; r < 4; r++) {
+    const ry = y + 28 + r * 8;
+    ctx.fillStyle = '#7a4c2a'; ctx.fillRect(fx, ry, fw, 6); ctx.fillStyle = '#5a3418'; ctx.fillRect(fx, ry + 4, fw, 2);
+    for (let k = 0; k < fw / 8; k++) {
+      const g = ((t * 0.35 + k * 0.13 + r * 0.29) % 1), px = fx + 2 + k * 8;
+      if (g < 0.15) continue;
+      ctx.fillStyle = '#3fb84a'; ctx.fillRect(px + 1, ry + 4 - Math.round(g * 5), 2, Math.round(g * 5));
+      if (g > 0.75) { ctx.fillStyle = cols[r]; ctx.fillRect(px, ry, 4, 3); }
+    }
+  }
+  const step = Math.floor(t * 8) % 2, wx = fx + ((t * 14) % fw), wy = y + 26 + (Math.floor(t * 14 / fw) % 4) * 8;
+  ctx.fillStyle = '#2a4a9a'; ctx.fillRect(wx - 2, wy + 1, 2, 3 - step); ctx.fillRect(wx + 1, wy + 1, 2, 2 + step);
+  ctx.fillStyle = PX.AVATAR_COLORS[profile.avatar.color]; ctx.fillRect(wx - 2, wy - 4, 5, 5);
+  ctx.fillStyle = '#ffd0a8'; ctx.fillRect(wx - 1, wy - 7, 4, 3); ctx.fillStyle = '#e8c860'; ctx.fillRect(wx - 3, wy - 8, 7, 1); ctx.fillRect(wx - 1, wy - 10, 4, 2);
+  const cx = x + w - 26, cy = y + 44 + Math.round(Math.sin(t * 2));
+  ctx.fillStyle = '#1a1020'; ctx.fillRect(cx - 1, cy - 1, 16, 9); ctx.fillStyle = '#fff'; ctx.fillRect(cx, cy, 11, 6); ctx.fillRect(cx + 10, cy - 2, 5, 5);
+  ctx.fillStyle = '#2a2a32'; ctx.fillRect(cx + 2, cy, 3, 2); ctx.fillRect(cx + 6, cy + 3, 3, 2); ctx.fillStyle = '#ffa0b0'; ctx.fillRect(cx + 13, cy + 1, 2, 2);
+  ctx.fillStyle = '#fff'; ctx.fillRect(cx + 1, cy + 6, 2, 3); ctx.fillRect(cx + 8, cy + 6, 2, 3);
   ctx.restore();
 }
 function previewMiner(x, y, w, h, t) {            // a digger drills down through the dirt, past ores, into the dark
@@ -594,7 +623,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['snake', 'horde', 'miner'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['farm', 'snake', 'horde'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -606,7 +635,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, miner: previewMiner, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
