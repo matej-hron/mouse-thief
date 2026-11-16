@@ -39,6 +39,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
+| **Pixel Farmings** (`farm.html`) | You farm: till the field, plant seeds, water them and harvest. Raise chickens, cows, sheep and pigs, sell at the market, fill orders for ★, buy more land and upgrades. 8 crops, a day and night, rainy days. |
 
 ## Pixel Wings
 
@@ -275,6 +276,31 @@ held together by springs), so it rolls, bounces, wheelies and flips for real.
 - **RACE A FRIEND** (online): CREATE GAME gives a 4-letter code, your friend joins with it (same version). The host picks
   the trail (all open online). You see your friend as a ghost; a crash puts you back at the last checkpoint. First to
   the finish wins ($500 and ★2; the other gets $200). REMATCH or OTHER TRAIL.
+
+## Pixel Farmings
+
+A farming game seen from above. Your farmer (in your avatar's color, with a straw hat) walks around the farm: the
+house, the MARKET stall, the well, the field, the pen with the barn, the pond and the windmill.
+
+- **Farming:** one button does the right thing on the tile in front of you: on grass in your field it **tills**, on
+  soil it **plants** the seeds you picked, on a dry plant it **waters**, on a ripe plant it **harvests**. A blue drop
+  over a plant means it is thirsty: crops only grow while the soil is wet (45 s after watering). The watering can is
+  filled at the WELL or the POND. Some days it **rains** and the rain waters everything.
+- **8 crops:** CARROT and WHEAT, then TOMATO (regrows), CORN, STRAWBERRY (regrows), PUMPKIN, SUNFLOWER and MELON, one
+  after another as you level up. The first harvest of each is ★1.
+- **Animals** (in the pen, from level 2): CHICKEN, COW, SHEEP and PIG. Feed one (HAY from the market, or your WHEAT),
+  wait, and collect its EGG, MILK, WOOL or TRUFFLE. A bubble over an animal shows what it wants.
+- **The MARKET** (walk up to the stall, or to the barn for the animals): SELL, SEEDS (and hay and SPRINKLERS, which
+  keep the 8 tiles around them wet), ANIMALS, UPGRADES (WATERING CAN: holds more and waters 3 or 9 tiles at once;
+  MORE LAND: the field grows from 6 x 4 up to 16 x 10; BIGGER PEN; FAST BOOTS; AUTO FEEDER) and ORDERS: three orders
+  at a time, each pays cash, XP and ★1.
+- **Levels:** harvests, animal products and orders give XP; every level is ★2 and unlocks new crops and animals.
+- **Days:** a day lasts 2.5 minutes, then night falls; sleep at home in the evening to start the next day. The farm is
+  saved all the time and keeps growing while you are away (up to 2 hours; only wet soil grows).
+- **Controls:** tap (or click) a tile, an animal or a building and the farmer walks there and does it; drag over the
+  field to queue several tiles. Keyboard: arrows or WASD walk, Space or Enter does it (hold it and walk to do a whole
+  row), Q / E or 1-9 pick the seeds, P pauses. Controller: stick or d-pad walks, A does it, X / Y pick the seeds.
+- **First steps:** a hint line at the top says what to do next until you have sold your first harvest.
 
 ## Pixel Snake
 

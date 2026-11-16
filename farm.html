@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Farmings: till the field, plant seeds, water them and harvest; raise chickens, cows, sheep and pigs, sell at the market, fill orders and grow your farm.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Farmings</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a3a12; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL FARMINGS: you farm (part of the PIXEL ARCADE).
+   Walk around your farm. Till the grass in the field, plant seeds, water them,
+   wait, harvest. Sell at the MARKET, buy more seeds, animals and upgrades.
+   Chickens, cows, sheep and pigs live in the pen: feed them (hay or wheat) and
+   collect eggs, milk, wool and truffles. ORDERS at the market pay cash and ★1.
+   Every level unlocks new crops and animals. A day lasts 2.5 minutes; some days it rains
+   (the rain waters everything). The farm is saved all the time.
+     1. Setup   2. The farm   3. Saving   4. Farming   5. Update   6. Drawing   7. HUD and menus   8. Sound   9. Input   10. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelFarmings.save';
+const profile = PX.Profile.get();
+const MY_COLOR = PX.AVATAR_COLORS[profile.avatar.color];
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const hash = (a, b = 0, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+const money = n => '$' + Math.floor(n).toLocaleString('en-US');
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+const TS = 16;                       // a tile, in pixels
+const MW = 42, MH = 28;              // the farm, in tiles
+const FIELD_C = 4, FIELD_R = 11, FIELD_MW = 16, FIELD_MH = 10;   // the biggest field there can be
+const LAND = [[6, 4], [8, 5], [10, 6], [12, 7], [14, 8], [16, 10]]; // the field you own, at each MORE LAND level
+const WET = 45;                      // seconds the soil stays wet after watering
+const DAY_LEN = 150;                 // seconds in a day
+const PEN = { x0: 24.6 * TS, x1: 36.4 * TS, y0: 8 * TS, y1: 14.7 * TS };   // where the animals walk
+
+const CROPS = [
+  { id: 'carrot', name: 'CARROT', seed: 5, sell: 14, time: 35, lvl: 1, xp: 2, col: '#ff8a1e', leaf: '#3fb84a' },
+  { id: 'wheat', name: 'WHEAT', seed: 4, sell: 10, time: 28, lvl: 1, xp: 2, col: '#f0c850', leaf: '#8ab83a' },
+  { id: 'tomato', name: 'TOMATO', seed: 14, sell: 22, time: 60, lvl: 2, xp: 4, regrow: 0.55, col: '#e8303a', leaf: '#2e9a3a' },
+  { id: 'corn', name: 'CORN', seed: 20, sell: 52, time: 80, lvl: 3, xp: 6, col: '#ffd83a', leaf: '#4ab84a' },
+  { id: 'straw', name: 'STRAWBERRY', seed: 30, sell: 30, time: 70, lvl: 4, xp: 5, regrow: 0.6, col: '#ff3a5a', leaf: '#38a848' },
+  { id: 'pumpkin', name: 'PUMPKIN', seed: 45, sell: 130, time: 140, lvl: 5, xp: 12, col: '#ff8a1e', leaf: '#3a9a3a' },
+  { id: 'sunflower', name: 'SUNFLOWER', seed: 35, sell: 95, time: 110, lvl: 6, xp: 9, col: '#ffd23f', leaf: '#3a9a3a' },
+  { id: 'melon', name: 'MELON', seed: 70, sell: 220, time: 190, lvl: 8, xp: 18, col: '#3ac84a', leaf: '#2e8a3a' },
+];
+const ANIMALS = [
+  { id: 'chicken', name: 'CHICKEN', price: 80, lvl: 2, prod: 'egg', time: 40, xp: 2 },
+  { id: 'cow', name: 'COW', price: 250, lvl: 3, prod: 'milk', time: 60, xp: 4 },
+  { id: 'sheep', name: 'SHEEP', price: 400, lvl: 5, prod: 'wool', time: 80, xp: 6 },
+  { id: 'pig', name: 'PIG', price: 700, lvl: 7, prod: 'truffle', time: 110, xp: 10 },
+];
+const PRODUCTS = [
+  { id: 'egg', name: 'EGG', sell: 18 }, { id: 'milk', name: 'MILK', sell: 45 },
+  { id: 'wool', name: 'WOOL', sell: 75 }, { id: 'truffle', name: 'TRUFFLE', sell: 160 },
+];
+const GOODS = [...CROPS.map(c => ({ id: c.id, name: c.name, sell: c.sell })), ...PRODUCTS];
+const good = id => GOODS.find(g => g.id === id);
+const HAY_PRICE = 2, SPRINKLER = { price: 150, lvl: 4 };
+const UPS = [
+  { id: 'can', name: 'WATERING CAN', costs: [60, 180, 450, 1100, 2500], desc: l => ['HOLDS 15', 'HOLDS 25, WATERS 3', 'HOLDS 40, WATERS 3', 'HOLDS 60, WATERS 9', 'HOLDS 99, WATERS 9'][l] },
+  { id: 'land', name: 'MORE LAND', costs: [100, 300, 800, 2000, 5000], desc: l => 'FIELD ' + LAND[l + 1][0] + ' X ' + LAND[l + 1][1] },
+  { id: 'barn', name: 'BIGGER PEN', costs: [300, 900, 2500], desc: l => 'ROOM FOR ' + (l + 2) * 4 + ' ANIMALS' },
+  { id: 'boots', name: 'FAST BOOTS', costs: [120, 400, 1200], desc: l => 'WALK ' + (l + 1) * 25 + '% FASTER' },
+  { id: 'feeder', name: 'AUTO FEEDER', costs: [1500], desc: () => 'FEEDS ANIMALS FROM HAY' },
+];
+const CAN_CAP = [10, 15, 25, 40, 60, 99];
+const canArea = () => (save.up.can >= 4 ? 9 : save.up.can >= 2 ? 3 : 1);
+const xpNeed = l => Math.round(25 * Math.pow(l, 1.5));
+const MAX_LVL = 30;
+const TUT = ['WALK TO THE FIELD AND TILL THE GRASS', 'PLANT A SEED IN THE SOIL', 'WATER THE SEED', 'WAIT FOR IT TO GROW, THEN HARVEST IT', 'SELL IT AT THE MARKET (THE STALL WITH THE AWNING)'];
+
+/* --- 2. THE FARM ------------------------------------------------------------ */
+const G_GRASS = 0, G_PATH = 1, G_WATER = 2, G_TREE = 3, G_FENCE = 4, G_BLOCK = 5, G_FLOWER = 6;
+const BUILD = [
+  { id: 'house', name: 'HOME', c: 3, r: 3, w: 5, h: 4 },
+  { id: 'market', name: 'MARKET', c: 10, r: 4, w: 4, h: 3 },
+  { id: 'well', name: 'WELL', c: 16, r: 6, w: 1, h: 1 },
+  { id: 'barn', name: 'BARN', c: 31, r: 3, w: 5, h: 4 },
+  { id: 'mill', name: 'WINDMILL', c: 35, r: 18, w: 2, h: 3 },
+];
+const map = new Uint8Array(MW * MH);
+const gi = (c, r) => r * MW + c;
+const ground = (c, r) => (c < 0 || r < 0 || c >= MW || r >= MH ? G_TREE : map[gi(c, r)]);
+const solidT = t => t === G_WATER || t === G_TREE || t === G_FENCE || t === G_BLOCK;
+const solid = (c, r) => solidT(ground(c, r));
+const buildAt = (c, r) => BUILD.find(b => c >= b.c && c < b.c + b.w && r >= b.r && r < b.r + b.h) || null;
+function buildMap() {
+  map.fill(G_GRASS);
+  const set = (c, r, t) => { if (c >= 0 && r >= 0 && c < MW && r < MH) map[gi(c, r)] = t; };
+  for (let r = 0; r < MH; r++) for (let c = 0; c < MW; c++) {
+    if (c < 2 || c >= MW - 2 || r < 2 || r >= MH - 2) set(c, r, G_TREE);
+    else if (hash(c, r, 7) < 0.05) set(c, r, G_FLOWER);
+  }
+  for (let c = 3; c <= 23; c++) set(c, 8, G_PATH);          // the main path, house to pen gate
+  for (let c = 3; c <= 22; c++) set(c, 10, G_PATH);         // along the top of the field
+  for (let r = 7; r <= 10; r++) { set(5, r, G_PATH); set(11, r, G_PATH); }
+  for (let r = 8; r <= 21; r++) set(22, r, G_PATH);
+  for (let c = 3; c <= 22; c++) set(c, 21, G_PATH);
+  for (let r = FIELD_R; r < FIELD_R + FIELD_MH; r++) for (let c = FIELD_C; c < FIELD_C + FIELD_MW; c++) set(c, r, G_GRASS);
+  for (let c = 23; c <= 37; c++) { set(c, 2, G_FENCE); set(c, 15, G_FENCE); }    // the pen
+  for (let r = 2; r <= 15; r++) { set(23, r, G_FENCE); set(37, r, G_FENCE); }
+  for (let r = 3; r <= 14; r++) for (let c = 24; c <= 36; c++) set(c, r, G_GRASS);
+  set(23, 8, G_PATH); set(23, 9, G_PATH);                     // the gate
+  for (let r = 17; r <= 25; r++) for (let c = 23; c <= 33; c++) {   // the pond
+    const dx = (c + 0.5 - 28) / 4, dy = (r + 0.5 - 21.5) / 2.7;
+    if (dx * dx + dy * dy < 1) set(c, r, G_WATER);
+  }
+  for (const [c, r] of [[9, 2], [14, 2], [18, 3], [20, 5], [21, 3], [2, 12], [3, 16], [2, 19], [38, 3], [39, 6], [38, 9], [39, 12], [38, 15],
+    [20, 12], [21, 15], [20, 18], [34, 24], [37, 23], [38, 20], [21, 24], [16, 24], [11, 23], [6, 24], [3, 23], [25, 16], [33, 16]]) set(c, r, G_TREE);
+  for (const b of BUILD) for (let r = b.r; r < b.r + b.h; r++) for (let c = b.c; c < b.c + b.w; c++) set(c, r, G_BLOCK);
+}
+buildMap();
+
+/* --- 3. SAVING --------------------------------------------------------------- */
+const FN = FIELD_MW * FIELD_MH;
+function freshSave() {
+  return { v: 1, cash: 60, xp: 0, lvl: 1, day: 1, dayT: 0.08, rain: false, seeds: { carrot: 10, wheat: 6 }, inv: {}, water: 10, hay: 0, spr: 0,
+    up: { can: 0, land: 0, barn: 0, boots: 0, feeder: 0 }, field: Array.from({ length: FN }, () => [0, -1, 0, 0, 0]),
+    animals: [], orders: [], firsts: {}, tut: 0, earned: 0, harvests: 0, orderCount: 0, t: Date.now() };
+}
+let save = load();
+function load() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { s = null; }
+  const f = freshSave();
+  if (!s || typeof s !== 'object' || s.v !== 1) return f;
+  for (const k in f) if (!(k in s)) s[k] = f[k];
+  for (const k in f.up) if (typeof s.up[k] !== 'number') s.up[k] = 0;
+  if (!Array.isArray(s.field) || s.field.length !== FN) s.field = f.field;
+  if (!Array.isArray(s.animals)) s.animals = [];
+  return s;
+}
+function store() { save.t = Date.now(); try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
+function catchUp() {                 // the farm keeps going while you're away (up to 2 hours)
+  const away = clamp((Date.now() - (save.t || Date.now())) / 1000, 0, 7200);
+  if (away < 5) return;
+  sprinklers();
+  for (const f of save.field) {
+    if (f[1] < 0 || !f[0]) continue;
+    const wet = f[4] === 2 ? away : Math.min(away, f[3]);
+    f[2] = Math.min(1, f[2] + wet / CROPS[f[1]].time); f[3] = Math.max(0, f[3] - away);
+    if (f[4] === 2) f[4] = 0;
+  }
+  for (const a of save.animals) if (a.fed && !a.ready) { a.pt -= away; if (a.pt <= 0) { a.ready = 1; a.fed = 0; } }
+}
+catchUp();
+
+/* --- 4. FARMING -------------------------------------------------------------- */
+const player = { x: 5.5 * TS, y: 9 * TS, dir: 0, walk: 0, moving: false, act: 0 };
+const DIRS = [[0, 1], [0, -1], [-1, 0], [1, 0]];          // down, up, left, right
+let state = 'title', paused = false, shopTab = 0, confirmNew = 0;
+let parts = [], pops = [], toastMsg = null, jobs = [], animals = [], rainDrops = [];
+const cam = { x: 0, y: 0 };
+const fieldW = () => LAND[save.up.land][0], fieldH = () => LAND[save.up.land][1];
+function fi(c, r) {                 // the field index of a tile you own, or -1
+  const x = c - FIELD_C, y = r - FIELD_R;
+  if (x < 0 || y < 0 || x >= fieldW() || y >= fieldH()) return -1;
+  return y * FIELD_MW + x;
+}
+const inMaxField = (c, r) => c >= FIELD_C && r >= FIELD_R && c < FIELD_C + FIELD_MW && r < FIELD_R + FIELD_MH;
+const unlockedCrops = () => CROPS.filter(c => c.lvl <= save.lvl);
+const slots = () => { const l = unlockedCrops().map(c => c.id); if (save.lvl >= SPRINKLER.lvl) l.push('spr'); return l; };
+let sel = 'carrot';
+const penCap = () => (save.up.barn + 1) * 4;
+function spawnAnimal(a) { animals.push({ d: a, x: rnd(PEN.x0, PEN.x1), y: rnd(PEN.y0, PEN.y1), vx: 0, vy: 0, t: rnd(0, 2), face: Math.random() < 0.5 ? -1 : 1, bob: Math.random() * 6 }); }
+for (const a of save.animals) spawnAnimal(a);
+
+function toast(s, col = '#fff') { toastMsg = { s, col, t: 2.6 }; }
+function pop(x, y, s, col = '#fff') { pops.push({ x, y, s, col, t: 1.2 }); }
+function burst(x, y, col, n = 8, up = 40) { for (let i = 0; i < n; i++) parts.push({ x, y, vx: rnd(-40, 40), vy: rnd(-up, -up / 3), g: 160, t: rnd(0.3, 0.7), col }); }
+function addXP(n) {
+  save.xp += n;
+  while (save.lvl < MAX_LVL && save.xp >= xpNeed(save.lvl)) {
+    save.xp -= xpNeed(save.lvl); save.lvl++; PX.Wallet.add(2);
+    const nu = [...CROPS, ...ANIMALS].filter(x => x.lvl === save.lvl).map(x => x.name);
+    if (save.lvl === SPRINKLER.lvl) nu.push('SPRINKLER');
+    toast('LEVEL ' + save.lvl + '! ★2' + (nu.length ? '  NEW: ' + nu.join(', ') : ''), '#ffd23f'); sfx('level');
+    burst(player.x, player.y - 10, '#ffd23f', 20, 80);
+  }
+}
+function tut(step) { if (save.tut === step) { save.tut++; sfx('goal'); } }
+function sprinklers() {              // a sprinkler keeps the 3 x 3 tiles around it wet (f[4] = 1 sprinkler, 2 watered by one)
+  for (const f of save.field) if (f[4] === 2) f[4] = 0;
+  for (let i = 0; i < FN; i++) if (save.field[i][4] === 1) {
+    const x = i % FIELD_MW, y = (i / FIELD_MW) | 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= FIELD_MW || yy >= FIELD_MH) continue;
+      const f = save.field[yy * FIELD_MW + xx]; if (f[4] === 0) f[4] = 2;
+    }
+  }
+}
+function newOrder() {
+  const pool = unlockedCrops().map(c => c.id);
+  for (const a of ANIMALS) if (save.animals.some(x => x.k === a.id)) pool.push(a.prod);
+  const n = Math.min(pool.length, 1 + Math.floor(Math.random() * Math.min(3, 1 + save.lvl / 2))), need = [];
+  const p = pool.slice();
+  for (let i = 0; i < n; i++) {
+    const id = p.splice(Math.floor(Math.random() * p.length), 1)[0], g = good(id);
+    const k = Math.max(1, Math.round((2 + Math.random() * (2 + save.lvl)) * (g.sell > 60 ? 0.4 : 1)));
+    need.push([id, k]);
+  }
+  const val = need.reduce((s, [id, k]) => s + good(id).sell * k, 0);
+  return { need, cash: Math.round(val * 1.6 + 20), xp: Math.round(5 + val / 6) };
+}
+function fillOrders() { while (save.orders.length < 3) save.orders.push(newOrder()); }
+fillOrders();
+
+function tileCenter(c, r) { return [(c + 0.5) * TS, (r + 0.5) * TS]; }
+function waterTiles(c, r) {           // the tiles one pour of the can waters
+  const n = canArea(); if (n === 1) return [[c, r]];
+  if (n === 9) { const l = []; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) l.push([c + dx, r + dy]); return l; }
+  const [dx, dy] = DIRS[player.dir];
+  return [[c, r], [c + dy, r + dx], [c - dy, r - dx]];   // a row of 3 across where you face
+}
+function refill() {
+  const cap = CAN_CAP[save.up.can];
+  if (save.water >= cap) { toast('THE CAN IS FULL', '#7ac0ff'); return; }
+  save.water = cap; sfx('refill'); pop(player.x, player.y - 22, 'CAN FULL!', '#7ac0ff');
+}
+// Do the right thing on a tile (the one in front of you, or the one you tapped)
+function actOn(c, r) {
+  player.act = 0.25;
+  const b = buildAt(c, r);
+  if (b) {
+    if (b.id === 'market') return openShop(0);
+    if (b.id === 'barn') return openShop(2);
+    if (b.id === 'well') return refill();
+    if (b.id === 'house') {
+      if (save.dayT > 0.6) { sfx('sleep'); newDay(); toast('GOOD MORNING! DAY ' + save.day, '#ffd23f'); }
+      else toast('SLEEP WHEN IT GETS DARK', '#c8b8ff');
+      return;
+    }
+    return toast('WHAT A LOVELY ' + b.name + '!', '#c8b8ff');
+  }
+  if (ground(c, r) === G_WATER) return refill();
+  const i = fi(c, r), [cx, cy] = tileCenter(c, r);
+  if (i < 0) {
+    if (inMaxField(c, r)) { toast('BUY MORE LAND AT THE MARKET', '#ffb02a'); sfx('bonk'); }
+    return;
+  }
+  const f = save.field[i];
+  if (!f[0]) { f[0] = 1; f[3] = 0; sfx('till'); burst(cx, cy + 3, '#7a4c2a', 8, 40); tut(0); return; }
+  if (f[4] === 1) { toast('A SPRINKLER: IT WATERS THE 8 TILES AROUND IT', '#7ac0ff'); return; }
+  if (f[1] < 0) {
+    if (sel === 'spr') {
+      if (save.spr <= 0) { toast('NO SPRINKLERS: BUY THEM AT THE MARKET', '#ffb02a'); sfx('bonk'); return; }
+      save.spr--; f[4] = 1; sprinklers(); sfx('plant'); burst(cx, cy, '#7ac0ff', 8); return;
+    }
+    const k = CROPS.findIndex(x => x.id === sel), cr = CROPS[k];
+    if (!cr || !(save.seeds[sel] > 0)) { toast('NO ' + (cr ? cr.name : '') + ' SEEDS: BUY THEM AT THE MARKET', '#ffb02a'); sfx('bonk'); return; }
+    save.seeds[sel]--; f[1] = k; f[2] = 0; sfx('plant'); burst(cx, cy + 2, '#5a3a20', 5, 20); tut(1); return;
+  }
+  const cr = CROPS[f[1]];
+  if (f[2] >= 1) {                    // harvest
+    save.inv[cr.id] = (save.inv[cr.id] || 0) + 1; save.harvests++;
+    if (cr.regrow) f[2] = cr.regrow; else { f[1] = -1; f[2] = 0; }
+    sfx('harvest'); burst(cx, cy - 4, cr.col, 10, 70); pop(cx, cy - 10, '+1 ' + cr.name, cr.col); addXP(cr.xp); tut(3);
+    if (!save.firsts[cr.id]) { save.firsts[cr.id] = 1; PX.Wallet.add(1); toast('FIRST ' + cr.name + '! ★1', '#ffd23f'); }
+    return;
+  }
+  if (f[3] > 0 || f[4] === 2 || save.rain) { pop(cx, cy - 10, Math.round(f[2] * 100) + '%', '#c8f0a0'); return; }
+  pour(c, r);
+}
+function pour(c, r) {
+  if (save.water <= 0) { toast('THE CAN IS EMPTY: FILL IT AT THE WELL OR THE POND', '#7ac0ff'); sfx('bonk'); return; }
+  save.water--; sfx('water');
+  for (const [x, y] of waterTiles(c, r)) {
+    const i = fi(x, y); if (i < 0 || !save.field[i][0]) continue;
+    save.field[i][3] = WET; const [cx, cy] = tileCenter(x, y);
+    for (let k = 0; k < 4; k++) parts.push({ x: cx + rnd(-5, 5), y: cy - 10, vx: rnd(-10, 10), vy: rnd(20, 50), g: 200, t: 0.3, col: '#7ac0ff' });
+  }
+  if (save.field.some(f => f[1] >= 0 && f[3] > 0)) tut(2);
+}
+function actOnAnimal(a) {
+  player.act = 0.25;
+  const s = a.d, d = ANIMALS.find(x => x.id === s.k), g = good(d.prod);
+  if (s.ready) {
+    s.ready = 0; save.inv[d.prod] = (save.inv[d.prod] || 0) + 1; sfx(d.id); burst(a.x, a.y - 10, '#fff', 8, 60);
+    pop(a.x, a.y - 18, '+1 ' + g.name, '#fff'); addXP(d.xp);
+    if (!save.firsts[d.prod]) { save.firsts[d.prod] = 1; PX.Wallet.add(1); toast('FIRST ' + g.name + '! ★1', '#ffd23f'); }
+    return;
+  }
+  if (s.fed) { pop(a.x, a.y - 18, 'HAPPY! ' + Math.max(1, Math.ceil(s.pt)) + ' S', '#ffd8f0'); sfx(d.id); return; }
+  if (feed(s)) { sfx('eat'); pop(a.x, a.y - 18, 'YUM!', '#c8f0a0'); burst(a.x, a.y - 4, '#f0c850', 6, 30); }
+  else { toast('NO FOOD: BUY HAY AT THE MARKET, OR GROW WHEAT', '#ffb02a'); sfx('bonk'); }
+}
+function feed(s) {
+  if (save.hay > 0) save.hay--;
+  else if ((save.inv.wheat || 0) > 0) save.inv.wheat--;
+  else return false;
+  s.fed = 1; s.pt = ANIMALS.find(x => x.id === s.k).time; return true;
+}
+function newDay() {
+  save.day++; save.dayT = 0.02;
+  save.rain = save.day > 2 && Math.random() < 0.22;
+  if (save.rain) toast('IT IS RAINING: THE RAIN WATERS YOUR FIELD', '#7ac0ff');
+  if (save.orders.length && Math.random() < 0.5) { save.orders.shift(); fillOrders(); }
+  store();
+}
+function openShop(tab) { state = 'shop'; shopTab = tab; jobs = []; sfx('click'); }
+function sellAll() {
+  let total = 0;
+  for (const g of GOODS) { const n = save.inv[g.id] || 0; if (n > 0) { total += n * g.sell; save.inv[g.id] = 0; } }
+  if (total > 0) { earn(total); sfx('cash'); tut(4); }
+  return total;
+}
+function earn(n) { save.cash += n; save.earned += n; }
+
+/* --- 5. UPDATE --------------------------------------------------------------- */
+const inp = { l: false, r: false, u: false, d: false, a: false };
+let actRepeat = 0, touchUsed = false, padOrKeys = true;
+function blockedAt(x, y) {
+  for (const [ox, oy] of [[-4, -4], [4, -4], [-4, 0], [4, 0]]) if (solid(Math.floor((x + ox) / TS), Math.floor((y + oy) / TS))) return true;
+  return false;
+}
+function moveBy(dx, dy) {
+  const ox = player.x, oy = player.y;
+  if (!blockedAt(player.x + dx, player.y)) player.x += dx;
+  if (!blockedAt(player.x, player.y + dy)) player.y += dy;
+  return Math.abs(player.x - ox) + Math.abs(player.y - oy);
+}
+const feetTile = () => [Math.floor(player.x / TS), Math.floor((player.y - 2) / TS)];
+const frontTile = () => { const [c, r] = feetTile(); return [c + DIRS[player.dir][0], r + DIRS[player.dir][1]]; };
+function faceTo(dx, dy) { if (Math.abs(dx) > Math.abs(dy)) player.dir = dx < 0 ? 2 : 3; else if (dy) player.dir = dy < 0 ? 1 : 0; }
+function nearAnimal(x, y, rad) { let best = null, bd = rad; for (const a of animals) { const d = Math.hypot(a.x - x, a.y - 5 - y); if (d < bd) { bd = d; best = a; } } return best; }
+function actFront() {
+  const [c, r] = frontTile(), [cx, cy] = tileCenter(c, r);
+  const a = nearAnimal((player.x + cx) / 2, (player.y - 4 + cy) / 2, 14);
+  if (a) actOnAnimal(a); else actOn(c, r);
+}
+// Paths for tapping: walk tile by tile (BFS) to a tile next to the one you tapped
+function findPath(goalFn) {
+  const [sc, sr] = feetTile(), start = gi(clamp(sc, 0, MW - 1), clamp(sr, 0, MH - 1)), prev = new Int32Array(MW * MH).fill(-1);
+  const q = [start]; prev[start] = start;
+  for (let h = 0; h < q.length; h++) {
+    const cur = q[h], c = cur % MW, r = (cur / MW) | 0;
+    if (goalFn(c, r)) { const path = []; let k = cur; while (k !== start) { path.push(k); k = prev[k]; } return path.reverse(); }
+    for (const [dx, dy] of DIRS) {
+      const nc = c + dx, nr = r + dy; if (nc < 0 || nr < 0 || nc >= MW || nr >= MH) continue;
+      const n = gi(nc, nr); if (prev[n] >= 0 || solid(nc, nr)) continue;
+      prev[n] = cur; q.push(n);
+    }
+  }
+  return null;
+}
+function addJob(j) {
+  if (jobs.length >= 24) return;
+  if (j.c !== undefined && jobs.some(o => o.c === j.c && o.r === j.r)) return;
+  jobs.push(j);
+}
+function runJob(dt) {
+  const j = jobs[0];
+  let tc, tr;
+  if (j.a) { if (!animals.includes(j.a)) { jobs.shift(); return; } tc = Math.floor(j.a.x / TS); tr = Math.floor((j.a.y - 4) / TS); }
+  else { tc = j.c; tr = j.r; }
+  const [fc, fr] = feetTile();
+  const near = j.a ? Math.hypot(j.a.x - player.x, j.a.y - player.y) < 18 : Math.abs(fc - tc) + Math.abs(fr - tr) <= 1;
+  if (near) {
+    if (j.a) { faceTo(j.a.x - player.x, j.a.y - player.y); jobs.shift(); actOnAnimal(j.a); }
+    else { faceTo(tc - fc, tr - fr); jobs.shift(); actOn(tc, tr); }
+    j.path = null; return;
+  }
+  j.repath = (j.repath || 0) - dt;
+  if (!j.path || (j.a && j.repath <= 0)) {
+    j.repath = 0.5;
+    j.path = findPath((c, r) => Math.abs(c - tc) + Math.abs(r - tr) <= 1 && !(c === tc && r === tr && solid(c, r)));
+    if (!j.path) { jobs.shift(); sfx('bonk'); return; }
+  }
+  if (!j.path.length) { j.path = null; return; }
+  const k = j.path[0], wx = (k % MW + 0.5) * TS, wy = (((k / MW) | 0) + 0.5) * TS + 5;
+  const dx = wx - player.x, dy = wy - player.y, d = Math.hypot(dx, dy), sp = speed() * dt;
+  if (d <= sp + 0.5) { player.x = wx; player.y = wy; j.path.shift(); }
+  else { moveBy(dx / d * sp, dy / d * sp); faceTo(dx, dy); }
+  player.moving = true;
+  j.stuck = (j.stuck || 0) + dt; if (j.stuck > 12) jobs.shift();
+}
+const speed = () => 62 * (1 + save.up.boots * 0.25);
+function update(dt) {
+  save.dayT += dt / DAY_LEN;
+  if (save.dayT >= 1) { newDay(); toast('A NEW DAY: DAY ' + save.day, '#ffd23f'); }
+  // the farmer
+  player.moving = false;
+  let mx = (inp.r ? 1 : 0) - (inp.l ? 1 : 0), my = (inp.d ? 1 : 0) - (inp.u ? 1 : 0);
+  if (mx || my) {
+    jobs = [];
+    const n = Math.hypot(mx, my), sp = speed() * dt;
+    moveBy(mx / n * sp, my / n * sp); faceTo(mx, my); player.moving = true;
+  } else if (jobs.length) runJob(dt);
+  if (player.moving) player.walk += dt * 9;
+  player.act = Math.max(0, player.act - dt);
+  if (inp.a) { actRepeat -= dt; if (actRepeat <= 0) { actRepeat = 0.28; actFront(); } } else actRepeat = 0;
+  // the field
+  sprinklers();
+  for (const f of save.field) {
+    if (!f[0]) continue;
+    if (save.rain || f[4] === 2) f[3] = WET;
+    if (f[1] >= 0 && f[3] > 0 && f[2] < 1) f[2] = Math.min(1, f[2] + dt / CROPS[f[1]].time);
+    f[3] = Math.max(0, f[3] - dt);
+  }
+  // the animals
+  for (const a of animals) {
+    const s = a.d;
+    if (s.fed && !s.ready) { s.pt -= dt; if (s.pt <= 0) { s.ready = 1; s.fed = 0; } }
+    if (!s.fed && !s.ready && save.up.feeder && save.hay > 0) { save.hay--; s.fed = 1; s.pt = ANIMALS.find(x => x.id === s.k).time; }
+    a.t -= dt;
+    if (a.t <= 0) { a.t = rnd(1, 4); if (Math.random() < 0.45) { a.vx = 0; a.vy = 0; } else { const an = rnd(0, Math.PI * 2), sp = s.k === 'chicken' ? 18 : 10; a.vx = Math.cos(an) * sp; a.vy = Math.sin(an) * sp * 0.6; } }
+    a.x += a.vx * dt; a.y += a.vy * dt;
+    if (a.x < PEN.x0 || a.x > PEN.x1) { a.vx = -a.vx; a.x = clamp(a.x, PEN.x0, PEN.x1); }
+    if (a.y < PEN.y0 || a.y > PEN.y1) { a.vy = -a.vy; a.y = clamp(a.y, PEN.y0, PEN.y1); }
+    if (a.vx) a.face = a.vx < 0 ? -1 : 1;
+    a.bob += dt * (a.vx || a.vy ? 8 : 1);
+  }
+  // effects
+  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; p.t -= dt; }
+  parts = parts.filter(p => p.t > 0);
+  for (const p of pops) { p.y -= 18 * dt; p.t -= dt; }
+  pops = pops.filter(p => p.t > 0);
+  if (toastMsg) { toastMsg.t -= dt; if (toastMsg.t <= 0) toastMsg = null; }
+  saveT += dt; if (saveT > 5) { saveT = 0; store(); }
+}
+let saveT = 0;
+function updateCam(dt, t) {
+  const W = S.W;
+  let tx, ty;
+  if (state === 'title') { tx = 8 * TS + Math.sin(t * 0.07) * 9 * TS; ty = 7 * TS; }
+  else { tx = player.x - W / 2; ty = player.y - H / 2 - 4; }
+  tx = clamp(tx, 0, MW * TS - W); ty = clamp(ty, -24, MH * TS - H + 30);
+  const k = Math.min(1, dt * 8);
+  cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+}
+
+/* --- 6. DRAWING ---------------------------------------------------------------- */
+const OUT = '#1a1020';
+let outlinePass = false, ox0 = 0, oy0 = 0, oface = 1;
+function R(dx, dy, w, h, col) {        // a rectangle of a sprite (x mirrored when the sprite faces left)
+  const x = oface > 0 ? ox0 + dx : ox0 - dx - w;
+  if (outlinePass) { ctx.fillStyle = OUT; ctx.fillRect(x - 1, oy0 + dy - 1, w + 2, h + 2); }
+  else { ctx.fillStyle = col; ctx.fillRect(x, oy0 + dy, w, h); }
+}
+function sprite(x, y, face, fn) { ox0 = Math.round(x); oy0 = Math.round(y); oface = face; outlinePass = true; fn(); outlinePass = false; fn(); }
+
+const ICONS = {
+  carrot: [['....g.g.', '....ggg.', '...oooG.', '..oooo..', '..ooo...', '.ooo....', '.oo.....', 'o.......'], { o: '#ff8a1e', g: '#3fb84a', G: '#2e8a3a' }],
+  wheat: [['..y.y.y.', '..yyyyy.', '...yyy..', '..y.y.y.', '...yyy..', '....g...', '....g...', '....g...'], { y: '#f0c850', g: '#a8a040' }],
+  tomato: [['...gg.g.', '....gg..', '..rrrrr.', '.rrwrrrr', '.rwrrrrr', '.rrrrrrr', '..rrrrr.'], { r: '#e8303a', w: '#ff9a9a', g: '#2e9a3a' }],
+  corn: [['....yg..', '...yyyg.', '...yyyg.', '..yyyyg.', '..yyyg..', '..yyyg..', '...yg...', '..gg....'], { y: '#ffd83a', g: '#4ab84a' }],
+  straw: [['...ggg..', '..gg.gg.', '..rrrrr.', '..rwrrr.', '..rrrwr.', '...rrr..', '....r...'], { r: '#ff3a5a', w: '#ffe08a', g: '#38a848' }],
+  pumpkin: [['....b...', '...bb...', '.oooooo.', 'oodoodoo', 'oodoodoo', 'oodoodoo', '.oooooo.'], { o: '#ff8a1e', d: '#d0601a', b: '#5a8a2a' }],
+  sunflower: [['..yyyy..', '.yybbyy.', 'yybbbbyy', 'yybbbbyy', '.yybbyy.', '..yyyy..', '...g.gg.', '...gg...'], { y: '#ffd23f', b: '#7a4a1a', g: '#3a9a3a' }],
+  melon: [['..gggg..', '.gGgGgG.', 'gGgGgGgG', 'gGgGgGgG', '.gGgGgG.', '..gggg..'], { g: '#3ac84a', G: '#1e7a2a' }],
+  egg: [['..ww..', '.wwww.', 'wwwwww', 'wwwwwe', 'wwwwee', '.weee.'], { w: '#fff8e8', e: '#e8d8b8' }],
+  milk: [['..bb..', '..ww..', '.wwww.', 'wwwwww', 'wbbbbw', 'wbwwbw', 'wwwwww', 'wwwwww'], { w: '#ffffff', b: '#4a8ae0' }],
+  wool: [['..wwww..', '.wwewww.', 'wwewwwew', 'wewwweww', 'wwwewwww', '.wwwwew.', '..wwww..'], { w: '#fff8f0', e: '#d8d0e0' }],
+  truffle: [['...dd...', '.ddkdd..', 'dddddkd.', 'dkdddddd', '.dddkdd.', '..dddd..'], { d: '#6a4a3a', k: '#3a2418' }],
+  hay: [['.y.y.y.', 'yyyyyyy', 'yYyYyYy', 'bbbbbbb', 'yyyyyyy', 'yYyYyYy'], { y: '#f0c850', Y: '#c8a030', b: '#c0402a' }],
+  spr: [['b.....b', '.b...b.', '...s...', '..sss..', '...g...', '...g...', '..ggg..'], { b: '#7ac0ff', s: '#c8c8d8', g: '#7a7a8a' }],
+  drop: [['..b..', '.bbb.', 'bbbbb', 'bwbbb', '.bbb.'], { b: '#4a9aff', w: '#c8e8ff' }],
+  chicken: [['..r...', '.ww...', '.wwo..', 'wwww.w', 'wwwwww', '.wwww.', '.o..o.'], { w: '#ffffff', r: '#e8303a', o: '#ffa020' }],
+  cow: [['k.....kk', 'wwkwwwww', 'wkkwwwpp', 'wwwwkwww', 'w.w..w.w'], { w: '#ffffff', k: '#2a2a32', p: '#ffa0b0' }],
+  sheep: [['.wwwww..', 'wwwwwwkk', 'wwwwwwkk', '.wwwww..', '.k.k.k..'], { w: '#fff8f0', k: '#2a2a32' }],
+  pig: [['.....pp.', '.ppppppp', 'pppppppd', 'ppppppp.', '.p.p.p..'], { p: '#ff9ab0', d: '#e0708a' }],
+};
+function icon(id, cx, cy, s = 2) { const ic = ICONS[id]; if (ic) PX.drawIcon(ctx, ic[0], ic[1], cx, cy, s); }
+
+function drawGround(t) {
+  const c0 = Math.max(0, Math.floor(cam.x / TS)), r0 = Math.max(0, Math.floor(cam.y / TS));
+  const c1 = Math.min(MW - 1, Math.ceil((cam.x + S.W) / TS)), r1 = Math.min(MH - 1, Math.ceil((cam.y + H) / TS));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const x = Math.round(c * TS - cam.x), y = Math.round(r * TS - cam.y), g = map[gi(c, r)], h = hash(c, r);
+    if (g === G_WATER) {
+      ctx.fillStyle = '#3a8ae0'; ctx.fillRect(x, y, TS, TS);
+      ctx.fillStyle = '#5aa8f0'; if (Math.sin(t * 2 + c * 1.7 + r) > 0.3) ctx.fillRect(x + 3 + (h * 6 | 0), y + 5, 5, 1);
+      if (Math.sin(t * 1.6 + c + r * 2.3) > 0.5) ctx.fillRect(x + 8, y + 11, 4, 1);
+      ctx.fillStyle = '#e0c890';
+      if (ground(c, r - 1) !== G_WATER) ctx.fillRect(x, y, TS, 2);
+      if (ground(c, r + 1) !== G_WATER) ctx.fillRect(x, y + TS - 2, TS, 2);
+      if (ground(c - 1, r) !== G_WATER) ctx.fillRect(x, y, 2, TS);
+      if (ground(c + 1, r) !== G_WATER) ctx.fillRect(x + TS - 2, y, 2, TS);
+      continue;
+    }
+    if (g === G_PATH) {
+      ctx.fillStyle = '#d8b070'; ctx.fillRect(x, y, TS, TS);
+      ctx.fillStyle = '#c09858'; ctx.fillRect(x + (h * 12 | 0), y + (hash(r, c) * 12 | 0), 2, 1); ctx.fillRect(x + (hash(c, r, 3) * 13 | 0), y + (hash(c, r, 4) * 13 | 0), 1, 1);
+      continue;
+    }
+    ctx.fillStyle = h < 0.5 ? '#5cb83a' : '#57b036'; ctx.fillRect(x, y, TS, TS);
+    ctx.fillStyle = '#6ccc48'; ctx.fillRect(x + (h * 13 | 0), y + (hash(c, r, 2) * 12 | 0), 1, 2); ctx.fillRect(x + (hash(c, r, 5) * 13 | 0), y + (hash(c, r, 6) * 12 | 0), 1, 2);
+    if (g === G_FLOWER) {
+      const fc = ['#ffffff', '#ffd23f', '#ff8ac8', '#b48aff'][(h * 4) | 0], fx = x + 4 + (hash(c, r, 9) * 7 | 0), fy = y + 4 + (hash(c, r, 8) * 7 | 0);
+      ctx.fillStyle = '#3a8a2a'; ctx.fillRect(fx + 1, fy + 2, 1, 3);
+      ctx.fillStyle = fc; ctx.fillRect(fx, fy + 1, 3, 1); ctx.fillRect(fx + 1, fy, 1, 3); ctx.fillStyle = '#ffd23f'; ctx.fillRect(fx + 1, fy + 1, 1, 1);
+    }
+    const i = fi(c, r);
+    if (i >= 0 && save.field[i][0]) {
+      const f = save.field[i], wet = f[3] > 0;
+      ctx.fillStyle = wet ? '#6a4428' : '#9a6a3e'; ctx.fillRect(x + 1, y + 1, TS - 2, TS - 2);
+      ctx.fillStyle = wet ? '#523218' : '#835630'; for (let k = 0; k < 3; k++) ctx.fillRect(x + 2, y + 3 + k * 5, TS - 4, 2);
+      ctx.fillStyle = wet ? '#7a5230' : '#b07c4a'; ctx.fillRect(x + 1, y + 1, TS - 2, 1);
+    }
+  }
+  // the field's fence posts (the land you own)
+  const fx0 = FIELD_C * TS - cam.x, fy0 = FIELD_R * TS - cam.y, fw = fieldW() * TS, fh = fieldH() * TS;
+  ctx.fillStyle = '#8a5a2a';
+  for (let k = 0; k <= fieldW(); k++) { ctx.fillRect(Math.round(fx0 + k * TS) - 1, Math.round(fy0) - 3, 2, 4); ctx.fillRect(Math.round(fx0 + k * TS) - 1, Math.round(fy0 + fh) - 3, 2, 4); }
+  for (let k = 0; k <= fieldH(); k++) { ctx.fillRect(Math.round(fx0) - 1, Math.round(fy0 + k * TS) - 3, 2, 4); ctx.fillRect(Math.round(fx0 + fw) - 1, Math.round(fy0 + k * TS) - 3, 2, 4); }
+  if (save.up.land < LAND.length - 1) {   // the land you can buy next
+    const nw = LAND[save.up.land + 1][0] * TS, nh = LAND[save.up.land + 1][1] * TS;
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let k = 0; k < nw; k += 6) ctx.fillRect(Math.round(fx0 + k), Math.round(fy0 + nh), 3, 1);
+    for (let k = 0; k < nh; k += 6) ctx.fillRect(Math.round(fx0 + nw), Math.round(fy0 + k), 1, 3);
+  }
+}
+function drawCrop(f, x, y, t, c, r) {     // x, y: the tile's top left on screen
+  const cr = CROPS[f[1]], g = f[2], cx = x + 8, by = y + 13;
+  const st = g >= 1 ? 3 : g < 0.2 ? 0 : g < 0.6 ? 1 : 2;
+  const P = (dx, dy, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(cx + dx, by + dy, w, h); };
+  if (st === 0) { P(-3, -1, 2, 1, '#3a2010'); P(1, -2, 2, 1, '#3a2010'); P(-1, -2, 1, 2, cr.leaf); return; }
+  const sway = Math.round(Math.sin(t * 2 + c * 1.3 + r) * 0.6);
+  if (st === 1) { P(0, -5, 1, 5, cr.leaf); P(-2 + sway, -6, 2, 2, cr.leaf); P(1 + sway, -7, 2, 2, cr.leaf); return; }
+  const tall = cr.id === 'corn' || cr.id === 'sunflower' || cr.id === 'wheat';
+  if (st === 2) {
+    if (tall) { P(0, -10, 1, 10, cr.leaf); P(-3 + sway, -8, 3, 2, cr.leaf); P(1 + sway, -11, 3, 2, cr.leaf); P(-2 + sway, -4, 2, 2, cr.leaf); }
+    else { P(-4, -5, 9, 4, cr.leaf); P(-2 + sway, -8, 5, 3, cr.leaf); P(-3, -2, 7, 2, '#2a6a2a'); }
+    return;
+  }
+  const sh = '#1a1020';
+  switch (cr.id) {
+    case 'carrot': P(-2 + sway, -9, 1, 5, cr.leaf); P(0, -10, 1, 6, cr.leaf); P(2 + sway, -9, 1, 5, cr.leaf); P(-2, -4, 5, 3, cr.col); P(-1, -1, 3, 1, '#d06a10'); break;
+    case 'wheat': for (const k of [-4, -1, 2, 5]) { P(k, -10, 1, 10, '#c8a838'); P(k - 1 + sway, -13, 3, 5, cr.col); } break;
+    case 'tomato': P(-5, -9, 11, 8, cr.leaf); P(0, -11, 1, 3, cr.leaf); for (const [dx, dy] of [[-4, -7], [1, -8], [-1, -4], [3, -4]]) { P(dx, dy, 3, 3, cr.col); P(dx, dy, 1, 1, '#ff9a9a'); } break;
+    case 'corn': P(0, -15, 1, 15, cr.leaf); P(-3 + sway, -8, 3, 1, cr.leaf); P(1 + sway, -12, 4, 1, cr.leaf); P(1, -11, 3, 6, cr.col); P(1, -11, 3, 1, '#c8a030'); P(-3, -6, 3, 4, cr.col); break;
+    case 'straw': P(-5, -6, 11, 5, cr.leaf); for (const [dx, dy] of [[-4, -3], [0, -5], [3, -2]]) { P(dx, dy, 2, 3, cr.col); P(dx, dy + 1, 1, 1, '#ffe08a'); } break;
+    case 'pumpkin': P(-1, -11, 2, 3, '#5a8a2a'); P(-6, -9, 13, 9, sh); P(-5, -8, 11, 7, cr.col); P(-2, -8, 1, 7, '#d0601a'); P(2, -8, 1, 7, '#d0601a'); P(-4, -7, 2, 1, '#ffb070'); break;
+    case 'sunflower': P(0, -14, 1, 14, cr.leaf); P(-3, -6, 3, 2, cr.leaf); P(1, -9, 3, 2, cr.leaf); P(-4 + sway, -19, 9, 7, cr.col); P(-2 + sway, -17, 5, 3, '#7a4a1a'); break;
+    case 'melon': P(-3, -4, 4, 2, cr.leaf); P(-6, -8, 12, 8, sh); P(-5, -7, 10, 6, cr.col); for (let k = -4; k < 5; k += 3) P(k, -7, 1, 6, '#1e7a2a'); P(-4, -6, 2, 1, '#a8f0a8'); break;
+  }
+  if (Math.sin(t * 3 + c * 2 + r) > 0.85) { ctx.fillStyle = '#fff'; ctx.fillRect(cx + 4, by - 12, 1, 3); ctx.fillRect(cx + 3, by - 11, 3, 1); }
+}
+function drawSprinkler(x, y, t) {
+  const cx = x + 8, by = y + 13;
+  ctx.fillStyle = OUT; ctx.fillRect(cx - 3, by - 9, 7, 10);
+  ctx.fillStyle = '#9a9aa8'; ctx.fillRect(cx - 2, by - 2, 5, 2); ctx.fillStyle = '#7a7a8a'; ctx.fillRect(cx, by - 8, 1, 7);
+  ctx.fillStyle = '#c8c8d8'; ctx.fillRect(cx - 2, by - 8, 5, 2);
+  const a = t * 6;
+  ctx.fillStyle = 'rgba(122,192,255,0.8)';
+  for (let k = 0; k < 4; k++) { const an = a + k * Math.PI / 2, d = 4 + ((t * 20 + k * 3) % 8); ctx.fillRect(Math.round(cx + Math.cos(an) * d), Math.round(by - 8 + Math.sin(an) * d * 0.5), 1, 1); }
+}
+function drawTree(x, y, c, r) {           // x, y: the tile's top left
+  const h = hash(c, r, 11), cx = x + 8;
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(x + 2, y + 12, 12, 4);
+  ctx.fillStyle = OUT; ctx.fillRect(cx - 3, y + 4, 6, 12); ctx.fillStyle = '#7a4a22'; ctx.fillRect(cx - 2, y + 5, 4, 10); ctx.fillStyle = '#5a3416'; ctx.fillRect(cx + 1, y + 5, 1, 10);
+  const top = y - 10 - (h * 4 | 0);
+  ctx.fillStyle = OUT; ctx.fillRect(x - 2, top + 3, 20, 14); ctx.fillRect(x + 1, top, 14, 20);
+  ctx.fillStyle = '#2e8a2a'; ctx.fillRect(x - 1, top + 4, 18, 12); ctx.fillRect(x + 2, top + 1, 12, 18);
+  ctx.fillStyle = '#3fa83a'; ctx.fillRect(x + 1, top + 3, 12, 8); ctx.fillRect(x + 3, top + 2, 8, 3);
+  ctx.fillStyle = '#5cc84a'; ctx.fillRect(x + 3, top + 4, 5, 3);
+  if (h > 0.7) { ctx.fillStyle = '#e8303a'; ctx.fillRect(x + 4, top + 12, 2, 2); ctx.fillRect(x + 11, top + 8, 2, 2); }
+}
+function drawFence(x, y, c, r) {
+  const hz = ground(c - 1, r) === G_FENCE || ground(c + 1, r) === G_FENCE, vt = ground(c, r - 1) === G_FENCE || ground(c, r + 1) === G_FENCE;
+  ctx.fillStyle = OUT;
+  if (hz) { ctx.fillRect(x, y + 5, TS, 4); ctx.fillRect(x, y + 10, TS, 4); }
+  if (vt) ctx.fillRect(x + 6, y - 4, 4, TS + 4);
+  ctx.fillRect(x + 5, y + 1, 6, 15);
+  ctx.fillStyle = '#b07a40';
+  if (hz) { ctx.fillRect(x, y + 6, TS, 2); ctx.fillRect(x, y + 11, TS, 2); }
+  if (vt) ctx.fillRect(x + 7, y - 3, 2, TS + 2);
+  ctx.fillStyle = '#c8905a'; ctx.fillRect(x + 6, y + 2, 4, 13); ctx.fillStyle = '#e0b07a'; ctx.fillRect(x + 6, y + 2, 4, 1);
+}
+function drawBuilding(b, t) {
+  const x = Math.round(b.c * TS - cam.x), y = Math.round(b.r * TS - cam.y), w = b.w * TS, h = b.h * TS;
+  const F = (dx, dy, ww, hh, col) => { ctx.fillStyle = col; ctx.fillRect(x + dx, y + dy, ww, hh); };
+  F(2, h - 2, w, 4, 'rgba(0,0,0,0.2)');
+  if (b.id === 'house') {
+    F(3, 18, w - 6, h - 18, OUT); F(4, 19, w - 8, h - 20, '#f0e0c0'); F(4, 19, w - 8, 2, '#d8c8a0');
+    for (let k = 0; k < 6; k++) F(-2 + k * 3, 18 - k * 4, w + 4 - k * 6, 5, OUT);
+    for (let k = 0; k < 6; k++) { F(-1 + k * 3, 19 - k * 4, w + 2 - k * 6, 3, '#c83a2a'); F(-1 + k * 3, 19 - k * 4, w + 2 - k * 6, 1, '#e85a40'); }
+    F(w - 22, -6, 7, 14, OUT); F(w - 21, -5, 5, 12, '#8a6a5a');
+    if (Math.floor(t * 2) % 3 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(x + w - 20, y - 10 - (t * 6 % 6), 3, 3); }
+    F(w / 2 - 6, h - 20, 12, 20, OUT); F(w / 2 - 5, h - 19, 10, 19, '#8a4a22'); F(w / 2 + 2, h - 10, 2, 2, '#ffd23f');
+    for (const wx of [10, w - 24]) { F(wx, 30, 14, 12, OUT); F(wx + 1, 31, 12, 10, save.dayT > 0.7 ? '#ffd870' : '#8ad0ff'); F(wx + 7, 31, 1, 10, OUT); F(wx + 1, 36, 12, 1, OUT); F(wx - 1, 42, 16, 3, '#6a9a2a'); F(wx + 1, 41, 2, 2, '#ff6a8a'); F(wx + 9, 41, 2, 2, '#ffd23f'); }
+  } else if (b.id === 'market') {
+    F(2, 14, w - 4, h - 14, OUT); F(3, 15, w - 6, h - 16, '#a8743a'); F(3, 26, w - 6, 2, '#8a5a2a');
+    F(3, 0, 3, 16, OUT); F(w - 6, 0, 3, 16, OUT); F(4, 0, 1, 16, '#8a5a2a'); F(w - 5, 0, 1, 16, '#8a5a2a');
+    F(-2, -6, w + 4, 12, OUT);
+    for (let k = 0; k < 8; k++) F(-1 + k * ((w + 2) / 8), -5, Math.ceil((w + 2) / 8), 10, k % 2 ? '#fff4e0' : '#e8303a');
+    for (let k = 0; k < 8; k++) F(-1 + k * ((w + 2) / 8) + 2, 5, 4, 2, k % 2 ? '#fff4e0' : '#e8303a');
+    const goods = ['#ff8a1e', '#e8303a', '#ffd83a', '#3ac84a', '#ff3a5a', '#f0c850'];
+    for (let k = 0; k < 6; k++) { const gx = 8 + k * 8, gy = 18; F(gx - 1, gy - 1, 7, 6, OUT); F(gx, gy, 5, 4, goods[k]); F(gx, gy, 2, 1, '#fff'); }
+    F(w / 2 - 14, h - 14, 28, 9, OUT); F(w / 2 - 13, h - 13, 26, 7, '#f0e0c0');
+    PX.drawText(ctx, 'SHOP', x + w / 2, y + h - 12, '#8a3a1a', 1, 'center');
+  } else if (b.id === 'well') {
+    F(1, 5, 14, 11, OUT); F(2, 6, 12, 9, '#9a9aa8'); F(2, 6, 12, 2, '#3a5a9a'); F(4, 9, 3, 2, '#7a7a88'); F(9, 12, 3, 2, '#7a7a88');
+    F(2, -10, 2, 16, OUT); F(12, -10, 2, 16, OUT); F(-1, -14, 18, 5, OUT); F(0, -13, 16, 3, '#c83a2a');
+    F(5, -7, 6, 1, '#8a5a2a'); F(7, -6, 1, 6, '#c8c8c8'); F(6, 0, 3, 3, '#8a5a2a');
+  } else if (b.id === 'barn') {
+    F(0, 14, w, h - 12, OUT); F(1, 15, w - 2, h - 14, '#c83a2a'); for (let k = 4; k < w - 2; k += 6) F(k, 16, 1, h - 16, '#a82a1e');
+    for (let k = 0; k < 7; k++) F(-3 + k * 6, 14 - k * 4, w + 6 - k * 12, 5, OUT);
+    for (let k = 0; k < 7; k++) { F(-2 + k * 6, 15 - k * 4, w + 4 - k * 12, 3, '#4a4a56'); F(-2 + k * 6, 15 - k * 4, w + 4 - k * 12, 1, '#6a6a78'); }
+    F(w / 2 - 6, 18, 12, 9, OUT); F(w / 2 - 5, 19, 10, 7, '#ffffff'); F(w / 2 - 1, 19, 1, 7, OUT); F(w / 2 - 5, 22, 10, 1, OUT);
+    const dw = 28, dx = w / 2 - dw / 2;
+    F(dx - 1, h - 30, dw + 2, 30, OUT); F(dx, h - 29, dw, 29, '#a82a1e');
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.rect(x + dx + 1, y + h - 28, dw - 2, 27);
+    ctx.moveTo(x + dx + 1, y + h - 28); ctx.lineTo(x + dx + dw - 1, y + h - 1); ctx.moveTo(x + dx + dw - 1, y + h - 28); ctx.lineTo(x + dx + 1, y + h - 1); ctx.stroke();
+  } else if (b.id === 'mill') {
+    F(6, 0, 20, h, OUT); F(7, 1, 18, h - 1, '#c8a878'); F(9, 1, 2, h - 1, '#a88858'); F(13, h - 14, 7, 14, '#6a4a2a');
+    F(4, -6, 24, 8, OUT); F(5, -5, 22, 6, '#8a4a2a');
+    const hx = x + 16, hy = y + 2, a = t * 1.2;
+    for (let k = 0; k < 4; k++) {
+      const an = a + k * Math.PI / 2, ca = Math.cos(an), sa = Math.sin(an);
+      for (let d = 3; d < 22; d++) { const px = Math.round(hx + ca * d), py = Math.round(hy + sa * d); ctx.fillStyle = OUT; ctx.fillRect(px - 2, py - 2, 4, 4); }
+      for (let d = 3; d < 22; d++) { const px = Math.round(hx + ca * d - sa * 2), py = Math.round(hy + sa * d + ca * 2); ctx.fillStyle = d % 4 ? '#f0e0c0' : '#c8a878'; ctx.fillRect(px - 1, py - 1, 3, 3); ctx.fillStyle = '#8a5a2a'; ctx.fillRect(Math.round(hx + ca * d), Math.round(hy + sa * d), 1, 1); }
+    }
+    ctx.fillStyle = OUT; ctx.fillRect(hx - 3, hy - 3, 6, 6); ctx.fillStyle = '#8a5a2a'; ctx.fillRect(hx - 2, hy - 2, 4, 4);
+  }
+}
+function drawAnimal(a, t) {
+  const k = a.d.k, x = a.x - cam.x, y = a.y - cam.y, step = (a.vx || a.vy) ? Math.floor(a.bob) % 2 : 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(Math.round(x) - 6, Math.round(y) - 1, 12, 3);
+  sprite(x, y, a.face, () => {
+    if (k === 'chicken') {
+      R(-1, -2, 1, 2, '#ffa020'); R(1, -2, 1, 2, '#ffa020');
+      R(-4, -7, 7, 5, '#ffffff'); R(-5, -8, 2, 3, '#ffffff'); R(1, -11, 4, 4, '#ffffff');
+      R(2, -12, 2, 1, '#e8303a'); R(5, -9, 2, 1, '#ffa020'); R(3, -10, 1, 1, OUT); R(-2, -6, 3, 2, '#e8e8f0');
+    } else if (k === 'cow') {
+      R(-6, -4, 2, 4 - step, '#fff'); R(-2, -4, 2, 4 - (1 - step), '#fff'); R(1, -4, 2, 4 - step, '#fff'); R(4, -4, 2, 4 - (1 - step), '#fff');
+      R(-7, -11, 14, 8, '#ffffff'); R(-5, -11, 4, 3, '#2a2a32'); R(0, -8, 4, 3, '#2a2a32'); R(-8, -10, 1, 5, '#2a2a32');
+      R(4, -15, 7, 7, '#ffffff'); R(8, -11, 4, 3, '#ffa0b0'); R(5, -16, 1, 2, '#e8d8a8'); R(9, -16, 1, 2, '#e8d8a8'); R(7, -13, 1, 1, OUT); R(3, -14, 2, 2, '#2a2a32');
+      R(-2, -3, 3, 1, '#ffa0b0');
+    } else if (k === 'sheep') {
+      R(-5, -4, 2, 4 - step, '#2a2a32'); R(-1, -4, 2, 4 - (1 - step), '#2a2a32'); R(2, -4, 2, 4 - step, '#2a2a32');
+      R(-7, -11, 12, 8, '#fff8f0'); R(-6, -12, 4, 2, '#fff8f0'); R(-1, -12, 4, 2, '#fff8f0'); R(-5, -9, 2, 2, '#e0d8e8'); R(0, -6, 2, 2, '#e0d8e8');
+      R(4, -12, 5, 6, '#2a2a32'); R(3, -11, 2, 2, '#3a3a44'); R(6, -10, 1, 1, '#ffffff');
+    } else if (k === 'pig') {
+      R(-5, -3, 2, 3 - step, '#e0708a'); R(-1, -3, 2, 3 - (1 - step), '#e0708a'); R(2, -3, 2, 3 - step, '#e0708a');
+      R(-6, -9, 11, 6, '#ff9ab0'); R(4, -10, 5, 6, '#ff9ab0'); R(8, -8, 2, 3, '#e0708a'); R(5, -11, 2, 2, '#e0708a'); R(6, -8, 1, 1, OUT);
+      R(-8, -9, 2, 1, '#e0708a'); R(-7, -10, 1, 1, '#e0708a'); R(-5, -8, 3, 1, '#ffc0d0');
+    }
+  });
+  // what the animal wants: a product to collect, or food
+  const s = a.d, bx = Math.round(x), by = Math.round(y) - 26 + Math.round(Math.sin(t * 4 + a.bob) * 1.5);
+  if (s.ready || (!s.fed && Math.floor(t * 1.5 + a.bob) % 3 !== 0)) {
+    ctx.fillStyle = OUT; ctx.fillRect(bx - 8, by - 7, 16, 14); ctx.fillStyle = s.ready ? '#ffffff' : '#ffe8c8'; ctx.fillRect(bx - 7, by - 6, 14, 12); ctx.fillRect(bx - 1, by + 6, 3, 2);
+    icon(s.ready ? ANIMALS.find(d => d.id === s.k).prod : 'hay', bx, by, 1);
+  }
+}
+function drawFarmer(t) {
+  const x = player.x - cam.x, y = player.y - cam.y, d = player.dir, step = player.moving ? Math.floor(player.walk) % 2 : 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(Math.round(x) - 5, Math.round(y) - 1, 10, 3);
+  const face = d === 2 ? -1 : 1, side = d >= 2;
+  sprite(x, y, face, () => {
+    R(-3, -5, 2, 5 - step, '#2a4a9a'); R(1, -5, 2, 4 + step, '#2a4a9a'); R(-3, -1 + (step ? -1 : 0), 2, 1, '#4a2a18'); R(1, -1, 2, 1, '#4a2a18');
+    R(-4, -11, 8, 7, MY_COLOR); R(-3, -9, 6, 5, '#3a6ad0'); R(-3, -11, 1, 3, '#3a6ad0'); R(2, -11, 1, 3, '#3a6ad0');
+    R(-3, -16, 6, 5, '#ffd0a8');
+    R(-5, -17, 10, 2, '#e8c860'); R(-3, -20, 6, 3, '#e8c860'); R(-3, -18, 6, 1, '#c83a2a');
+    if (d === 0) { R(-2, -14, 1, 1, OUT); R(1, -14, 1, 1, OUT); R(-1, -12, 2, 1, '#e08a7a'); }
+    else if (side) { R(1, -14, 1, 1, OUT); R(3, -13, 1, 1, '#ffd0a8'); }
+    else R(-3, -15, 6, 2, '#8a5a2a');
+    // the arms, with a tool while doing something
+    if (player.act > 0) { R(side ? 3 : 4, -10, 2, 3, '#ffd0a8'); R(side ? 5 : 4, -13, 2, 6, '#8a5a2a'); R(side ? 6 : 3, -14, 3, 2, '#c8c8d8'); }
+    else { R(-5, -10, 1, 5, MY_COLOR); R(4, -10, 1, 5, MY_COLOR); R(-5, -5, 1, 1, '#ffd0a8'); R(4, -5, 1, 1, '#ffd0a8'); }
+  });
+}
+function drawWorld(t) {
+  drawGround(t);
+  const list = [];
+  const c0 = Math.max(0, Math.floor(cam.x / TS) - 1), r0 = Math.max(0, Math.floor(cam.y / TS) - 1);
+  const c1 = Math.min(MW - 1, Math.ceil((cam.x + S.W) / TS) + 1), r1 = Math.min(MH - 1, Math.ceil((cam.y + H) / TS) + 2);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const g = map[gi(c, r)], x = Math.round(c * TS - cam.x), y = Math.round(r * TS - cam.y);
+    if (g === G_TREE) list.push([(r + 1) * TS, () => drawTree(x, y, c, r)]);
+    else if (g === G_FENCE) list.push([(r + 1) * TS - 2, () => drawFence(x, y, c, r)]);
+    const i = fi(c, r);
+    if (i >= 0) { const f = save.field[i]; if (f[4] === 1) list.push([(r + 1) * TS - 3, () => drawSprinkler(x, y, t)]); else if (f[1] >= 0) list.push([(r + 1) * TS - 3, () => drawCrop(f, x, y, t, c, r)]); }
+  }
+  for (const b of BUILD) list.push([(b.r + b.h) * TS, () => drawBuilding(b, t)]);
+  for (const a of animals) list.push([a.y, () => drawAnimal(a, t)]);
+  if (state !== 'title') list.push([player.y, () => drawFarmer(t)]);
+  list.sort((a, b) => a[0] - b[0]);
+  for (const [, fn] of list) fn();
+  // dry crops ask for water
+  if (state !== 'title') for (let i = 0; i < FN; i++) {
+    const f = save.field[i]; if (f[1] < 0 || f[2] >= 1 || f[3] > 0 || f[4] === 2 || save.rain) continue;
+    const c = FIELD_C + i % FIELD_MW, r = FIELD_R + ((i / FIELD_MW) | 0); if (fi(c, r) < 0) continue;
+    const x = Math.round(c * TS - cam.x) + 8, y = Math.round(r * TS - cam.y) - 4 + Math.round(Math.sin(t * 4 + i) * 1.5);
+    if (x > -10 && x < S.W + 10 && y > -10 && y < H + 10) icon('drop', x, y, 1);
+  }
+  // queued jobs and the tile in front of you
+  for (const j of jobs) if (j.c !== undefined) corners(j.c, j.r, 'rgba(255,255,255,0.55)', 0);
+  if (state === 'play' && (!touchUsed || PX.Pad.used) && !jobs.length) { const [c, r] = frontTile(); corners(c, r, '#ffffff', Math.floor(t * 3) % 2); }
+  for (const p of parts) { ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x - cam.x), Math.round(p.y - cam.y), 2, 2); }
+  for (const p of pops) T(p.s, Math.round(p.x - cam.x), Math.round(p.y - cam.y), p.col, 1, 'center', '#000');
+  // rain, and the light of the day
+  if (save.rain && state !== 'title') {
+    ctx.fillStyle = 'rgba(40,60,110,0.18)'; ctx.fillRect(0, 0, S.W, H);
+    ctx.fillStyle = 'rgba(180,210,255,0.6)';
+    for (let k = 0; k < 70; k++) { const rx = (hash(k, 1) * S.W + t * 40) % S.W, ry = (hash(k, 2) * H + t * 260) % H; ctx.fillRect(Math.round(rx), Math.round(ry), 1, 4); }
+  }
+  const dt_ = save.dayT, night = dt_ > 0.72 ? Math.min(0.5, (dt_ - 0.72) * 2.2) : dt_ < 0.06 ? (0.06 - dt_) * 6 : 0;
+  if (night > 0 && state !== 'title') { ctx.fillStyle = 'rgba(20,16,70,' + night.toFixed(3) + ')'; ctx.fillRect(0, 0, S.W, H); }
+}
+function corners(c, r, col, off) {
+  const x = Math.round(c * TS - cam.x) - off, y = Math.round(r * TS - cam.y) - off, s = TS + off * 2;
+  ctx.fillStyle = col;
+  for (const [ax, ay, sx, sy] of [[0, 0, 1, 1], [s, 0, -1, 1], [0, s, 1, -1], [s, s, -1, -1]]) { ctx.fillRect(ax + x - (sx < 0 ? 4 : 0), ay + y - (sy < 0 ? 1 : 0), 4, 1); ctx.fillRect(ax + x - (sx < 0 ? 1 : 0), ay + y - (sy < 0 ? 4 : 0), 1, 4); }
+}
+
+/* --- 7. HUD AND MENUS ----------------------------------------------------------- */
+let sfxOn = (() => { try { return localStorage.getItem('pixelFarmings.sfx') !== '0'; } catch (e) { return true; } })();
+function sndButton(x, y) { if (UI.button('sfx', x, y, 24, 20, sfxOn ? 'SND' : 'OFF', { size: 1, on: sfxOn })) { sfxOn = !sfxOn; try { localStorage.setItem('pixelFarmings.sfx', sfxOn ? '1' : '0'); } catch (e) { /* private */ } } }
+function bar(x, y, w, k, col) { ctx.fillStyle = '#0b0912'; ctx.fillRect(x, y, w, 5); ctx.fillStyle = col; ctx.fillRect(x + 1, y + 1, Math.round((w - 2) * clamp(k, 0, 1)), 3); }
+function drawHUD(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(11,9,18,0.62)'; ctx.fillRect(0, 0, W, 28);
+  T(money(save.cash), 6, 4, '#ffd23f', 2, 'left', '#000');
+  T('LV ' + save.lvl, 6, 19, '#fff', 1, 'left', '#000'); bar(30, 19, 60, save.xp / xpNeed(save.lvl), '#b48aff');
+  // the day: a sun (or a moon), and how far along it is
+  const dx = 112, night = save.dayT > 0.75;
+  ctx.fillStyle = night ? '#e8e8ff' : '#ffd23f'; ctx.fillRect(dx, 6, 8, 8); ctx.fillRect(dx - 1, 7, 10, 6); ctx.fillRect(dx + 1, 5, 6, 10);
+  if (night) { ctx.fillStyle = '#2a2450'; ctx.fillRect(dx + 3, 5, 6, 7); }
+  else { ctx.fillStyle = '#ffb02a'; ctx.fillRect(dx + 3, 3, 2, 1); ctx.fillRect(dx + 3, 16, 2, 1); ctx.fillRect(dx - 3, 9, 1, 2); ctx.fillRect(dx + 10, 9, 1, 2); }
+  T('DAY ' + save.day, dx + 14, 5, '#fff', 1, 'left', '#000'); if (save.rain) T('RAIN', dx + 14, 12, '#7ac0ff', 1, 'left', '#000');
+  bar(dx - 2, 20, 54, save.dayT, night ? '#6a6ad8' : '#ffd23f');
+  icon('drop', 178, 10, 2);
+  const cap = CAN_CAP[save.up.can];
+  T(save.water + '/' + cap, 186, 7, save.water ? '#7ac0ff' : '#ff6a5a', 1, 'left', '#000'); bar(174, 19, 44, save.water / cap, '#4a9aff');
+  T('★' + PX.Wallet.get(), W - 64, 9, '#ffd23f', 1, 'right', '#000');
+  sndButton(W - 56, 4);
+  if (UI.button('pause', W - 30, 4, 24, 20, 'II', { size: 1 })) setPause(true);
+  // what to do next (the first steps)
+  if (save.tut < TUT.length) { const s = 'NEXT: ' + TUT[save.tut], w = PX.textWidth(s) + 10; ctx.fillStyle = 'rgba(11,9,18,0.62)'; ctx.fillRect(Math.round(W / 2 - w / 2), 31, w, 11); T(s, W / 2, 34, '#c8f0a0', 1, 'center'); }
+  if (toastMsg) {
+    const w = PX.textWidth(toastMsg.s) + 14, y = 48;
+    ctx.globalAlpha = Math.min(1, toastMsg.t * 3); ctx.fillStyle = 'rgba(11,9,18,0.85)'; ctx.fillRect(Math.round(W / 2 - w / 2), y, w, 15);
+    T(toastMsg.s, W / 2, y + 5, toastMsg.col, 1, 'center'); ctx.globalAlpha = 1;
+  }
+  // the seed bar
+  const sl = slots(), sw = 26, x0 = Math.round(W / 2 - sl.length * sw / 2), y0 = H - 30;
+  ctx.fillStyle = 'rgba(11,9,18,0.55)'; ctx.fillRect(x0 - 4, y0 - 4, sl.length * sw + 6, 32);
+  sl.forEach((id, k) => {
+    const x = x0 + k * sw, n = id === 'spr' ? save.spr : (save.seeds[id] || 0);
+    if (UI.button('slot' + k, x, y0, sw - 2, 24, '', { on: sel === id, accent: '#5ad43f' })) { sel = id; sfx('click'); }
+    if (sel === id) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - 1, y0 - 2, sw, 1); ctx.fillRect(x - 1, y0 + 25, sw, 1); }
+    ctx.globalAlpha = n > 0 ? 1 : 0.4; icon(id, x + 11, y0 + 10, 2); ctx.globalAlpha = 1;
+    T(String(n), x + sw - 4, y0 + 17, n > 0 ? '#fff' : '#ff6a5a', 1, 'right', '#000');
+  });
+  const cs = sel === 'spr' ? 'SPRINKLER' : CROPS.find(c => c.id === sel).name + ' SEEDS';
+  T(cs, W / 2, y0 - 11, '#fff', 1, 'center', '#000');
+  // the bag (harvested things) on the left
+  let by = 34; const bag = GOODS.filter(g => save.inv[g.id] > 0);
+  if (save.hay > 0) bag.push({ id: 'hay', hay: true });
+  const shown = bag.slice(0, 9);
+  if (shown.length) { ctx.fillStyle = 'rgba(11,9,18,0.55)'; ctx.fillRect(0, by - 2, 42, shown.length * 18 + 2); }
+  for (const g of shown) { icon(g.id, 12, by + 8, 2); T(String(g.hay ? save.hay : save.inv[g.id]), 23, by + 6, '#fff', 1, 'left', '#000'); by += 18; }
+  if (PX.Pad.used) T('A: DO   X / Y: SEEDS', W - 6, H - 10, '#c8b8ff', 1, 'right', '#000');
+}
+function drawShop(t) {
+  const W = S.W, pw = 384, ph = 228, px = Math.round(W / 2 - pw / 2), py = 6;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0912'; ctx.fillRect(px - 2, py - 2, pw + 4, ph + 4);
+  ctx.fillStyle = '#2a1e14'; ctx.fillRect(px, py, pw, ph); ctx.fillStyle = '#3a2a1c'; ctx.fillRect(px, py, pw, 24);
+  const tabs = ['SELL', 'SEEDS', 'ANIMALS', 'UPGRADES', 'ORDERS'];
+  tabs.forEach((n, i) => { if (UI.button('tab' + i, px + 4 + i * 64, py + 3, 61, 18, n, { size: 1, on: shopTab === i, accent: '#ffd23f' })) { shopTab = i; sfx('click'); } });
+  T(money(save.cash), px + pw - 6, py + 9, '#ffd23f', 1, 'right', '#000');
+  const y0 = py + 30, cw = (pw - 12) / 2;
+  const row = (k, rh) => [px + 4 + (k % 2) * (cw + 4), y0 + Math.floor(k / 2) * rh];
+  const box = (x, y, w, h) => { ctx.fillStyle = '#3a2a1c'; ctx.fillRect(x, y, w, h - 2); ctx.fillStyle = '#4a3624'; ctx.fillRect(x, y, w, 1); };
+  if (shopTab === 0) {
+    let total = 0; for (const g of GOODS) total += (save.inv[g.id] || 0) * g.sell;
+    if (UI.button('sellall', px + 4, y0, pw - 8, 20, total ? 'SELL EVERYTHING: ' + money(total) : 'NOTHING TO SELL YET: GROW SOMETHING!', { size: 1, accent: '#5ad43f', disabled: !total })) { sellAll(); toast('SOLD FOR ' + money(total) + '!', '#ffd23f'); }
+    GOODS.forEach((g, k) => {
+      const [x, y] = row(k, 24), n = save.inv[g.id] || 0; box(x, y + 24, cw, 24);
+      ctx.globalAlpha = n ? 1 : 0.35; icon(g.id, x + 10, y + 35, 2); ctx.globalAlpha = 1;
+      T(g.name, x + 20, y + 28, n ? '#fff' : '#6a5a4a'); T(money(g.sell) + ' EACH', x + 20, y + 36, '#c8a878');
+      if (n && UI.button('sell' + k, x + cw - 64, y + 26, 60, 18, n + ': ' + money(n * g.sell), { size: 1, accent: '#5ad43f' })) { earn(n * g.sell); save.inv[g.id] = 0; sfx('cash'); tut(4); }
+    });
+  } else if (shopTab === 1) {
+    const list = [...CROPS.map(c => ({ id: c.id, name: c.name, price: c.seed, lvl: c.lvl, info: 'SELLS ' + money(c.sell) + ', ' + c.time + ' S' + (c.regrow ? ', REGROWS' : ''), have: save.seeds[c.id] || 0, buy: n => { save.seeds[c.id] = (save.seeds[c.id] || 0) + n; } })),
+      { id: 'hay', name: 'HAY', price: HAY_PRICE, lvl: 1, info: 'FOOD FOR ANIMALS', have: save.hay, buy: n => { save.hay += n; } },
+      { id: 'spr', name: 'SPRINKLER', price: SPRINKLER.price, lvl: SPRINKLER.lvl, info: 'WATERS 8 TILES AROUND IT', have: save.spr, buy: n => { save.spr += n; } }];
+    list.forEach((it, k) => {
+      const [x, y] = row(k, 32); box(x, y, cw, 32);
+      const locked = save.lvl < it.lvl;
+      ctx.globalAlpha = locked ? 0.35 : 1; icon(it.id, x + 11, y + 13, 2); ctx.globalAlpha = 1;
+      T(it.name + (locked ? '' : '  X' + it.have), x + 22, y + 4, locked ? '#6a5a4a' : '#fff');
+      T(locked ? 'LEVEL ' + it.lvl : money(it.price) + ' - ' + it.info, x + 22, y + 12, locked ? '#ff8a5a' : '#c8a878');
+      if (locked) return;
+      const n10 = it.id === 'spr' ? 1 : 10;
+      if (UI.button('b1_' + k, x + 22, y + 19, 40, 11, 'BUY 1', { size: 1, accent: '#5ad43f', disabled: save.cash < it.price })) { save.cash -= it.price; it.buy(1); sfx('buy'); }
+      if (n10 > 1 && UI.button('b10_' + k, x + 66, y + 19, 70, 11, '10: ' + money(it.price * 10), { size: 1, accent: '#5ad43f', disabled: save.cash < it.price * 10 })) { save.cash -= it.price * 10; it.buy(10); sfx('buy'); }
+    });
+  } else if (shopTab === 2) {
+    T('IN THE PEN: ' + save.animals.length + ' / ' + penCap() + '   FEED THEM HAY OR WHEAT, THEN COLLECT WHAT THEY MAKE', px + pw / 2, y0, '#c8a878', 1, 'center');
+    ANIMALS.forEach((a, k) => {
+      const [x, y] = row(k, 50), yy = y + 12; box(x, yy, cw, 48);
+      const locked = save.lvl < a.lvl, n = save.animals.filter(s => s.k === a.id).length, g = good(a.prod);
+      ctx.globalAlpha = locked ? 0.35 : 1; icon(a.id, x + 18, yy + 16, 2); ctx.globalAlpha = 1;
+      T(a.name + (n ? '  X' + n : ''), x + 40, yy + 5, locked ? '#6a5a4a' : '#fff', 1);
+      T('MAKES ' + g.name + ' (' + money(g.sell) + ')', x + 40, yy + 13, '#c8a878');
+      T('EVERY ' + a.time + ' S AFTER EATING', x + 40, yy + 21, '#c8a878');
+      if (locked) { T('LEVEL ' + a.lvl, x + 40, yy + 33, '#ff8a5a'); return; }
+      const full = save.animals.length >= penCap();
+      if (UI.button('an' + k, x + 40, yy + 30, 100, 14, full ? 'THE PEN IS FULL' : 'BUY ' + money(a.price), { size: 1, accent: '#5ad43f', disabled: full || save.cash < a.price })) {
+        save.cash -= a.price; const s = { k: a.id, fed: 0, pt: 0, ready: 0 }; save.animals.push(s); spawnAnimal(s); sfx(a.id); toast('A NEW ' + a.name + '! IT LIVES IN THE PEN', '#ffd23f'); fillOrders();
+      }
+    });
+    if (UI.button('hay10', px + 4, y0 + 112, 150, 18, 'BUY 10 HAY: ' + money(HAY_PRICE * 10), { size: 1, accent: '#5ad43f', disabled: save.cash < HAY_PRICE * 10 })) { save.cash -= HAY_PRICE * 10; save.hay += 10; sfx('buy'); }
+    T('HAY: ' + save.hay + '   WHEAT: ' + (save.inv.wheat || 0), px + 162, y0 + 118, '#fff');
+  } else if (shopTab === 3) {
+    UPS.forEach((u, k) => {
+      const [x, y] = row(k, 40); box(x, y, cw, 40);
+      const l = save.up[u.id], max = l >= u.costs.length;
+      T(u.name, x + 6, y + 4, '#fff'); for (let i = 0; i < u.costs.length; i++) { ctx.fillStyle = i < l ? '#ffd23f' : '#5a4a3a'; ctx.fillRect(x + 6 + i * 7, y + 12, 5, 4); }
+      T(max ? 'ALL DONE!' : 'NEXT: ' + u.desc(l), x + 6, y + 20, max ? '#5ad43f' : '#c8a878');
+      if (!max && UI.button('up' + k, x + cw - 70, y + 3, 66, 14, money(u.costs[l]), { size: 1, accent: '#5ad43f', disabled: save.cash < u.costs[l] })) {
+        save.cash -= u.costs[l]; save.up[u.id]++; sfx('upgrade'); toast(u.name + ' LEVEL ' + save.up[u.id] + '!', '#ffd23f');
+        if (u.id === 'can') save.water = CAN_CAP[save.up.can];
+      }
+    });
+  } else {
+    T('FILL AN ORDER FOR CASH, XP AND ★1', px + pw / 2, y0, '#c8a878', 1, 'center');
+    const ow = (pw - 16) / 3;
+    save.orders.forEach((o, k) => {
+      const x = px + 4 + k * (ow + 4), y = y0 + 10; box(x, y, ow, 150);
+      T('ORDER ' + (save.orderCount + k + 1), x + ow / 2, y + 5, '#ffd23f', 1, 'center');
+      let ok = true;
+      o.need.forEach(([id, n], i) => {
+        const have = save.inv[id] || 0; if (have < n) ok = false;
+        icon(id, x + 14, y + 26 + i * 20, 2); T(good(id).name, x + 26, y + 20 + i * 20, '#fff'); T(Math.min(have, n) + ' / ' + n, x + 26, y + 28 + i * 20, have >= n ? '#5ad43f' : '#ff8a5a');
+      });
+      T(money(o.cash) + '  +' + o.xp + ' XP  ★1', x + ow / 2, y + 88, '#fff', 1, 'center');
+      if (UI.button('ord' + k, x + 6, y + 100, ow - 12, 18, ok ? 'DELIVER' : 'NOT YET', { size: 1, accent: '#5ad43f', disabled: !ok })) {
+        for (const [id, n] of o.need) save.inv[id] -= n;
+        earn(o.cash); addXP(o.xp); PX.Wallet.add(1); save.orderCount++; sfx('cash'); toast('ORDER DONE! ' + money(o.cash) + ' AND ★1', '#ffd23f');
+        save.orders.splice(k, 1); save.orders.splice(k, 0, newOrder());
+      }
+      if (UI.button('skip' + k, x + 6, y + 122, ow - 12, 14, 'SKIP', { size: 1 })) { save.orders[k] = newOrder(); sfx('click'); }
+    });
+  }
+  if (UI.button('close', px + pw / 2 - 70, py + ph - 24, 140, 20, 'BACK TO THE FARM', { size: 1, accent: '#5ad43f' }) || UI.back) { state = 'play'; sfx('click'); store(); }
+}
+function drawLogo(t, y) {
+  const W = S.W, s = 'PIXEL FARMINGS', size = 4, x = W / 2;
+  for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2], [0, 4], [2, 4], [-2, 4]]) T(s, x + dx, y + dy, '#1a1020', size, 'center');
+  T(s, x, y, '#ffffff', size, 'center'); ctx.globalAlpha = 0.25; ctx.fillStyle = '#c8e8ff'; ctx.fillRect(Math.round(x - PX.textWidth(s, size) / 2), y + 12, PX.textWidth(s, size), 8); ctx.globalAlpha = 1;
+}
+function drawTitle(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(30,100,200,0.25)'; ctx.fillRect(0, 0, W, H);
+  // the sun
+  const sx = W - 40, sy = 26;
+  ctx.fillStyle = '#ffd23f'; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + t * 0.3; ctx.fillRect(Math.round(sx + Math.cos(a) * 17) - 1, Math.round(sy + Math.sin(a) * 17) - 1, 3, 3); }
+  ctx.fillStyle = '#fff0a0'; ctx.fillRect(sx - 9, sy - 7, 18, 14); ctx.fillRect(sx - 7, sy - 9, 14, 18); ctx.fillStyle = '#ffd23f'; ctx.fillRect(sx - 7, sy - 5, 14, 10); ctx.fillRect(sx - 5, sy - 7, 10, 14);
+  drawLogo(t, 30 + Math.round(Math.sin(t * 2) * 2));
+  // the animals, like a family photo
+  const gy = 120;
+  const fam = [['pig', -90], ['cow', -30], ['chicken', 30], ['sheep', 85]];
+  for (const [k, dx] of fam) {
+    const a = { d: { k, fed: 1, ready: 0 }, x: W / 2 + dx + cam.x, y: gy + cam.y + (k === 'cow' ? 0 : 2), vx: 0, vy: 0, face: dx > 0 ? -1 : 1, bob: t * 3 + dx };
+    ctx.save(); ctx.translate(Math.round(W / 2 + dx), gy); ctx.scale(2, 2); ctx.translate(-Math.round(W / 2 + dx), -gy);
+    drawAnimal(a, t); ctx.restore();
+  }
+  PX.drawAvatar(ctx, profile.avatar, 8, H - 28, 2); T(profile.name, 40, H - 20, '#fff', 1, 'left', '#000');
+  T('★ ' + PX.Wallet.get(), W - 8, H - 20, '#ffd23f', 1, 'right', '#000');
+  sndButton(W - 32, 56);
+  const fresh = save.harvests === 0 && save.day === 1 && !save.firsts.carrot && save.tut === 0, bw = 160, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('play', bx, 132, bw, 26, fresh ? 'START FARMING' : 'CONTINUE', { accent: '#5ad43f' })) { sfx('click'); start(); }
+  if (!fresh) {
+    T('DAY ' + save.day + '  LEVEL ' + save.lvl + '  ' + money(save.cash), W / 2, 162, '#fff', 1, 'center', '#000');
+    if (UI.button('newfarm', bx + 30, 192, bw - 60, 16, confirmNew > 0 ? 'SURE? TAP AGAIN' : 'NEW FARM', { size: 1, accent: '#ff6a5a' })) {
+      if (confirmNew > 0) { save = freshSave(); animals = []; fillOrders(); store(); confirmNew = 0; sel = 'carrot'; player.x = 5.5 * TS; player.y = 9 * TS; }
+      else confirmNew = 3;
+    }
+  }
+  T(PX.Pad.used ? 'STICK: WALK   A: TILL, PLANT, WATER, HARVEST' : 'TAP A TILE TO WORK IT   ARROWS + SPACE ON A KEYBOARD', W / 2, 174, '#e8f8d8', 1, 'center', '#000');
+  if (UI.button('games', bx + 30, 214, bw - 60, 18, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 8, 'rgba(255,255,255,0.4)', 1, 'right');
+}
+function drawPause() {
+  const W = S.W, x = Math.round(W / 2 - 100), y = Math.round(H / 2 - 60);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0912'; ctx.fillRect(x - 2, y - 2, 204, 124); ctx.fillStyle = '#2a1e14'; ctx.fillRect(x, y, 200, 120);
+  T('PAUSED', W / 2, y + 12, '#fff', 2, 'center', '#000');
+  if (UI.button('resume', x + 25, y + 38, 150, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (UI.button('quit', x + 25, y + 66, 150, 22, 'SAVE AND QUIT')) { store(); paused = false; state = 'title'; }
+  T('HARVESTS: ' + save.harvests + '   ORDERS: ' + save.orderCount, W / 2, y + 100, '#c8a878', 1, 'center');
+}
+function start() {
+  state = 'play'; paused = false; jobs = []; for (const k in inp) inp[k] = false;
+  if (!slots().includes(sel)) sel = 'carrot';
+  if (save.tut === 0 && save.day === 1) toast('WELCOME TO YOUR FARM, ' + profile.name + '!', '#ffd23f');
+}
+function setPause(v) { if (state !== 'play') return; paused = v; jobs = []; for (const k in inp) inp[k] = false; held.clear(); if (v) store(); }
+
+/* --- 8. SOUND --------------------------------------------------------------------- */
+function sfx(k) {
+  if (!sfxOn) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.08, { vol: 0.08 });
+  else if (k === 'till') s.noise(0.12, { freq: 400, vol: 0.12 });
+  else if (k === 'plant') s.tone([300, 500], 0.08, { vol: 0.08, type: 'triangle' });
+  else if (k === 'water') s.noise(0.25, { freq: 2500, vol: 0.06, filter: 'bandpass' });
+  else if (k === 'refill') { s.noise(0.4, { freq: 1500, vol: 0.06, filter: 'bandpass' }); s.tone([400, 900], 0.3, { vol: 0.05, type: 'sine' }); }
+  else if (k === 'harvest') s.tone([520, 1040], 0.12, { vol: 0.09 });
+  else if (k === 'cash' || k === 'buy') [1047, 1319, 1568].forEach((f, i) => s.tone(f, 0.08, { vol: 0.07, delay: i * 0.05 }));
+  else if (k === 'upgrade') s.tone([440, 880, 1320], 0.25, { vol: 0.08 });
+  else if (k === 'level' || k === 'goal') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.15, { vol: 0.08, delay: i * 0.08, type: 'triangle' }));
+  else if (k === 'bonk') s.tone([220, 160], 0.1, { vol: 0.07 });
+  else if (k === 'eat') s.noise(0.15, { freq: 700, vol: 0.08 });
+  else if (k === 'sleep') [784, 659, 523, 392].forEach((f, i) => s.tone(f, 0.2, { vol: 0.06, delay: i * 0.12, type: 'sine' }));
+  else if (k === 'chicken') { s.tone([900, 1300], 0.06, { vol: 0.06 }); s.tone([1000, 1400], 0.06, { vol: 0.06, delay: 0.09 }); }
+  else if (k === 'cow') s.tone([180, 150, 120], 0.6, { vol: 0.1, type: 'sawtooth' });
+  else if (k === 'sheep') { for (let i = 0; i < 4; i++) s.tone([420, 380], 0.09, { vol: 0.06, delay: i * 0.08, type: 'triangle' }); }
+  else if (k === 'pig') { s.tone([260, 200], 0.12, { vol: 0.09, type: 'square' }); s.tone([280, 210], 0.12, { vol: 0.09, type: 'square', delay: 0.16 }); }
+}
+
+/* --- 9. INPUT ------------------------------------------------------------------- */
+const held = new Set();
+const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', Space: 'a', Enter: 'a' };
+function syncInp() { for (const k in inp) inp[k] = false; for (const c of held) if (KEYMAP[c]) inp[KEYMAP[c]] = true; }
+function cycleSeed(d) { const l = slots(); sel = l[(l.indexOf(sel) + d + l.length) % l.length]; sfx('click'); }
+let dragOn = false, lastDrag = -1;
+function worldTap(x, y) {
+  const wx = x + cam.x, wy = y + cam.y;
+  const a = nearAnimal(wx, wy, 12);
+  if (a) { addJob({ a }); return; }
+  const c = Math.floor(wx / TS), r = Math.floor(wy / TS);
+  lastDrag = gi(c, r); addJob({ c, r });
+}
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (e.pointerType !== 'mouse') touchUsed = true;
+  if (state !== 'play' || paused || UI.downId !== null) return;
+  dragOn = true; worldTap(x, y);
+};
+UI.onMove = (e, x, y) => {
+  if (!dragOn || state !== 'play' || paused) return;
+  const c = Math.floor((x + cam.x) / TS), r = Math.floor((y + cam.y) / TS);
+  if (gi(c, r) !== lastDrag && fi(c, r) >= 0) { lastDrag = gi(c, r); addJob({ c, r }); }
+};
+UI.onUp = () => { dragOn = false; };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (state === 'play' && !paused) {
+    if (KEYMAP[e.code]) { e.preventDefault(); if (!held.has(e.code) && KEYMAP[e.code] === 'a') actRepeat = 0; held.add(e.code); syncInp(); return; }
+    if (e.code === 'KeyQ') { cycleSeed(-1); return; }
+    if (e.code === 'KeyE') { cycleSeed(1); return; }
+    const n = parseInt(e.code.replace('Digit', ''), 10); if (n >= 1 && n <= slots().length) { sel = slots()[n - 1]; sfx('click'); return; }
+  }
+  if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play') setPause(!paused);
+  else if (e.code === 'Escape') UI.back = true;
+});
+window.addEventListener('keyup', e => { if (held.delete(e.code)) syncInp(); });
+window.addEventListener('blur', () => { held.clear(); syncInp(); setPause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { setPause(true); store(); } });
+window.addEventListener('pagehide', () => store());
+
+/* --- 10. MAIN LOOP ----------------------------------------------------------------- */
+let last = performance.now();
+cam.x = 2 * TS; cam.y = 3 * TS;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (confirmNew > 0) confirmNew -= dt;
+  if (state === 'play' && !paused) update(dt);
+  else if (state === 'shop') { for (const p of pops) p.t -= dt; pops = pops.filter(p => p.t > 0); if (toastMsg) { toastMsg.t -= dt; if (toastMsg.t <= 0) toastMsg = null; } }
+  updateCam(dt, t);
+  drawWorld(t);
+  if (state === 'title') drawTitle(t);
+  else if (state === 'shop') { drawShop(t); if (toastMsg) { const W = S.W, w = PX.textWidth(toastMsg.s) + 14; ctx.fillStyle = 'rgba(11,9,18,0.9)'; ctx.fillRect(Math.round(W / 2 - w / 2), H - 44, w, 15); T(toastMsg.s, W / 2, H - 39, toastMsg.col, 1, 'center'); } }
+  else { drawHUD(t); if (paused) drawPause(); }
+  UI.end();
+  S.blit('#1a3a12');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Farmings: controller', ui: UI, menu: () => state !== 'play' || paused,
+  phone: { stick: 'WALK', dpad: true, buttons: [['A', 'DO IT'], ['X', 'SEED <'], ['Y', 'SEED >']] },
+  keys: () => ({ left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', up: 'ArrowUp', A: 'Space', X: 'KeyQ', Y: 'KeyE', START: 'KeyP' }),
+  help: [['STICK|D-PAD', 'WALK'], ['A', 'TILL, PLANT, WATER, HARVEST, FEED, SHOP'], ['X|Y', 'PICK THE SEEDS'], ['START', 'PAUSE']],
+});
+</script>
+</body>
+</html>
