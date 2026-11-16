@@ -31,7 +31,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, and **
 | **Pixel Ski** (`ski.html`) | A fast downhill adventure: 10 mountains with ramps, cliffs, boosts and an avalanche, flips, 3 stars per run, a shop full of abilities. Race a friend online. |
 | **Pixel Box Fight** (`boxfight.html`) | Boxing in the ring: fight a bot, a friend online, or two players on one phone, with free power-ups. Win a fight: ★5. |
 | **Pixel Bike Run** (`bike.html`) | Mountain biking over sunset hills in pixel silhouettes: flips and wheelies earn money for new bikes and abilities. 8 trails, free ride, race a friend online. |
-| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
+| **Pixel Cook** (`cook.html`) | Cook meals to order with your own hands (drag, pour, roll, sprinkle, cut), 1 minute for one meal: start with a cafe shop, then buy an ice cream shop, a pizza and a burger restaurant, a sushi bar and a luxury restaurant. With a tutorial. |
 | **Pixel Runs** (`runs.html`) | Parkour over the rooftops: jump, slide, run up walls, ride zip lines and bounce through five city districts. Combos, missions, ranks, upgrades and runners to unlock. |
 | **Pixel Sky GP** (`skygp.html`) | Pixel GP with flying cars: steer, climb and dive on three skyways above the clouds. Fly through boost rings, over and under laser gates, past mines and storm clouds. Race 5 rivals, fly freely, or race a friend online. |
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
@@ -472,6 +472,10 @@ table in the middle. **You have 1 minute for one meal**, and the faster you are,
 - **Your hands:** DRAG an ingredient from the shelf onto the meal. Some things you keep moving: rub the ROLL PIN over
   the dough until it is flat, spread the SAUCE, pour the MILK, squeeze the KETCHUP, and sprinkle toppings (mozzarella,
   salami, cocoa, truffle...) piece by piece: they land where your finger is, so every pizza is your own.
+- **Cutting:** from the pizza restaurant on, the shelf has a KNIFE. Drag it onto the meal and swipe across it: every
+  swipe is one cut (go back the other way for the next one). The pizza is cut into 8 slices after the oven (4 swipes),
+  the sushi roll into 6 pieces after rolling it up (5 swipes), every burger in half at the end (1 swipe) and the steak
+  into strips before the sides go on (3 swipes). (An idea from a player, on the IDEAS board.)
 - **Cooking:** drag the CUP to the coffee machine, the PATTY to the grill, the STEAK to the pan, or the whole PIZZA
   into the oven. A bar runs from RAW to BURNT: tap anywhere in the green zone (the gold middle is PERFECT, a bigger
   tip). Too late and it is burnt (or the coffee spills): make a new one.
