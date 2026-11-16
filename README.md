@@ -15,7 +15,7 @@ The **controller button** next to the ★ counter turns phones into game control
 Every game's title is drawn the same way: white letters with a thick dark outline, a drop shadow and a pale blue lower half (`PX.drawLogo` in `common.js`).
 In every game the pause button is two thick bars and the sound button a speaker (a red cross when the sound is off).
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
-MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
+MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, and **VOICE CHAT** on or off (see Voice chat).
 
 | Game | |
 |---|---|
@@ -671,6 +671,36 @@ JOIN opens the game and joins yours right away: no code to type.
 
 The shared part is `PX.Invite` in `common.js`; the popup is `drawInvite` in `index.html`; a game joins from
 `?join=CODE` in its address.
+
+## Voice chat
+
+Talk to a friend while you play an online game together: in Mouse Thief, Pixel GP, Pixel Pong, Pixel Football,
+Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Sky GP and Pixel Moto (with a code or an invite).
+
+1. When the other player is on your FRIENDS list (and you are on theirs), a blue **TALK** button with a mic shows on
+   the left side of the screen, in the lobby and while you play.
+2. Tap TALK: your friend sees **(YOUR NAME) WANTS TO TALK!** at the top of the screen, with **ALLOW** and **NO**.
+   ALLOW is remembered for that friend, so next time it connects by itself. Nobody answers in 30 seconds: NO ANSWER.
+3. Now the bar shows a **mic button**, the friend's name with a **speaker** and an **X**. The mic is green while it is
+   on (brighter while you talk), grey with a red line when it is off: tap it to switch. Whoever pressed TALK starts
+   with the mic on (they pressed it to talk); the friend who said ALLOW starts with it **off**. The speaker and the
+   name light up yellow while your friend talks, and the game's sounds go quieter. X hangs up.
+
+- **Only friends:** no TALK with a random player or anybody who isn't on both FRIENDS lists. A call has to be allowed
+  by the friend the first time.
+- **VOICE CHAT: ON / OFF** in SETTINGS (in the arcade) turns it off for every game on this phone: no TALK button, and
+  nobody can ask you. (For parents: voice can't be filtered like the chat's swear words.)
+- The voice goes **straight between the two phones** (WebRTC, over the game's own PeerJS link), never through a
+  server, and nothing is recorded. The phone asks for the microphone the first time (if you say no, you can still
+  listen). Your voice is only sent while your mic button is on.
+- Headphones are best: without them the phone's echo cancelling keeps the game's sounds out of the mic.
+- Not in Pixel Wings, Pixel Snake and Pixel Farmings yet (more than two players, or random players).
+- How it works: `PX.Voice` in `common.js`. A game calls `PX.Voice.connect(conn)` when the link to the friend opens,
+  `PX.Voice.onData(m)` first for every message and `PX.Voice.reset()` when it leaves online play. The messages are
+  `{ t: 'vc', k: ... }`: `hi` (my ID), `st` (you are my friend and my voice chat is on), `ask`, `yes`, `no`, `end`
+  (hang up), `gone` (left the game). When both said yes, the phone with the smaller PeerJS id calls the other
+  (`peer.call`) with silence; the mic's track replaces it when the mic goes on. The friends who were allowed are kept
+  in `localStorage['pixelArcade.voice']`.
 
 ## Leaderboards
 

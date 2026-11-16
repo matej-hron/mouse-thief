@@ -34,7 +34,7 @@
      1. Setup        2. Track        3. Sprites      4. Race logic
      5. Drawing      6. Online       7. Screens      8. Main loop
    ========================================================================== */
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 let skyGrad = null, bgOffset = 0;   // sky gradient (rebuilt on resize) and how far the background has scrolled
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560, onResize: () => { skyGrad = null; } });
@@ -853,7 +853,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
 /* --- 6. ONLINE: race a friend (the same free PeerJS server as Mouse Thief) ---------- */
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0, wait: false,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'home'; this.msg = ''; PX.Bet.reset(); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'home'; this.msg = ''; PX.Bet.reset(); PX.Voice.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -880,7 +880,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, car: { c: myColor(), d: myCar() }, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Sound.tone([523, 784], 0.2); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, car: { c: myColor(), d: myCar() }, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); PX.Sound.tone([523, 784], 0.2); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -891,6 +891,7 @@ const Net = {
   sendPos(p) { const now = performance.now(); if (now - this.sendT < 50) return; this.sendT = now; this.send({ t: 'p', d: Math.round(p.dist), x: Math.round(p.x * 100) / 100, s: Math.round(p.speed) }); },
   start() { const seed = 1 + Math.floor(Math.random() * 100000); this.send({ t: 'go', seed }); PX.Bet.start(); startRace('mp', seed); },
   onData(m) {
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) return;                            // the bet's own messages
     switch (m.t) {
       case 'me':

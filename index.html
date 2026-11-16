@@ -46,7 +46,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.55.0';
+const VERSION = '2.56.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -719,7 +719,7 @@ function drawSettings(t) {
   gearIcon(W / 2 - PX.textWidth('SETTINGS', 3) / 2 - 16, 19);
   T('SETTINGS', W / 2 + 4, 10, '#fff', 3, 'center', '#000');
   const pw = Math.min(360, W - 24), x = Math.round(W / 2 - pw / 2);
-  panel(x, 40, pw, COFFEE_URL ? 196 : 166, '#ff8a2a');
+  panel(x, 40, pw, 196, '#ff8a2a');
   // the volume of every game
   T('SOUND (ALL GAMES)', x + 12, 50, '#9a92b8', 1);
   const n = PX.Settings.VOLUMES.length, bw = Math.floor((pw - 24 - (n - 1) * 6) / n);
@@ -742,9 +742,14 @@ function drawSettings(t) {
   T('NOTIFICATIONS', x + 18 + half, 142, '#9a92b8', 1);
   const pon = PX.Push.state() === 'on';
   if (UI.button('notify', x + 18 + half, 154, half, 22, pon ? 'NOTIFICATIONS: ON' : 'NOTIFICATIONS: OFF', { size: 1, accent: '#ff7ab8', on: pon })) openNotify();
-  if (COFFEE_URL && UI.button('coffee', x + 12, 184, pw - 24, 22, 'BUY ME A COFFEE', { size: 1, accent: '#c8843a' })) openCoffee();
-  if (COFFEE_URL) cupIcon(x + 28, 195);
-  T('PIXEL ARCADE ' + VERSION, x + pw - 8, COFFEE_URL ? 220 : 192, '#4a4068', 1, 'right');
+  // VOICE CHAT: talk to friends in the online games (PX.Voice in common.js)
+  T('VOICE CHAT (ONLINE GAMES)', x + 12, 184, '#9a92b8', 1);
+  if (UI.button('voice', x + 12, 196, half, 22, set.voice ? 'VOICE CHAT: ON' : 'VOICE CHAT: OFF', { size: 1, accent: '#4aa8ff', on: set.voice })) {
+    PX.Settings.save({ ...set, voice: !set.voice }); PX.Sound.tone(set.voice ? 300 : 660, 0.08, { vol: 0.08 });
+  }
+  if (COFFEE_URL && UI.button('coffee', x + 18 + half, 196, half, 22, '   BUY ME A COFFEE', { size: 1, accent: '#c8843a' })) openCoffee();
+  if (COFFEE_URL) cupIcon(x + 30 + half, 207);
+  T('PIXEL ARCADE ' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
 }
 function cupIcon(cx, cy) {
   PX.drawIcon(ctx, ['.#.#.#...', '.#.#.#...', '.........', '#######..', '#######.##', '#######.#.', '#######.##', '.#####...', '.........'].map(r => r.padEnd(10, '.')), { '#': '#efe9ff' }, cx, cy, 1);

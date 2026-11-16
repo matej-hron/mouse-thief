@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const SAVE_KEY = 'pixelSkate.save';
 const freshSave = () => ({ coins: 0, sfx: true, owned: { kickflip: 1, indy: 1, spin360: 1 }, eq: { flip: 'kickflip', grab: 'indy', spin: 'spin360' },
   ab: {}, best: {}, bestCombo: 0, races: 0, wins: 0, seenHelp: false });
@@ -1185,7 +1185,7 @@ const codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'pick', msg: '', friend: null, sendT: 0, track: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); PX.Voice.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -1212,7 +1212,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -1228,6 +1228,7 @@ const Net = {
   },
   start(track) { this.track = TRACKS.indexOf(track); this.send({ t: 'go', tr: this.track }); startGame('race', track, true); },
   onData(m) {
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) return;
     const f = G && G.friend;
     switch (m.t) {

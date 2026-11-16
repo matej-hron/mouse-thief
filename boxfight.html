@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const SAVE_KEY = 'pixelBoxFight.save';
 const save = { wins: 0, played: 0, kos: 0, music: true, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -504,7 +504,7 @@ function drawGame(now) {
 // The host runs the fight; the friend sends what they press and gets the fight back.
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '' }); PX.Bet.reset(); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '' }); PX.Bet.reset(); PX.Voice.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async load() { try { await PX.loadPeer(); return true; } catch (e) { this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); return false; } },
@@ -532,7 +532,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); sfx('bell'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); sfx('bell'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -550,6 +550,7 @@ const Net = {
     } else { const i = M.p[1].in; this.send({ t: 'in', l: i.l ? 1 : 0, r: i.r ? 1 : 0, b: i.blk ? 1 : 0 }); }
   },
   onData(m) {
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) return;                                       // the bet's own messages
     switch (m.t) {
       case 'me':

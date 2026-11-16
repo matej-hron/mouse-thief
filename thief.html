@@ -4185,7 +4185,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.18.0';
+const VERSION = '1.19.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -4353,6 +4353,7 @@ const Net = {
     clearTimeout(this.timer); clearInterval(this.iceT); this.showLog = false;
     try { if (this.peer) this.peer.destroy(); } catch (_) { /* already gone */ }
     this.peer = null; this.conn = null; this.live = false; this.code = ''; this.screen = 'home'; this.ev = [];
+    PX.Voice.reset();
   },
 
   async host(role, mode) {
@@ -4417,6 +4418,7 @@ const Net = {
       this.send({ t: 'ver', v: VERSION });
       this.friend = null; this.bet = 0; this.myOk = this.friendOk = false;
       this.sendMe();
+      PX.Voice.connect(c);                                   // voice chat with a friend (common.js)
       if (this.isHost) this.send({ t: 'hello', role: this.role, mode: this.mode, v: VERSION });
     });
     c.on('data', m => this.onData(m));
@@ -4458,6 +4460,7 @@ const Net = {
   act(id) { sfx('click'); this.send({ t: 'act', a: id }); },
 
   onData(m) {
+    if (PX.Voice.onData(m)) return;
     switch (m.t) {
       case 'ver':
         if (m.v !== VERSION) this.fail('YOUR FRIEND HAS V' + m.v + ', YOU HAVE V' + VERSION + '. RELOAD THE GAME ON BOTH PHONES.');

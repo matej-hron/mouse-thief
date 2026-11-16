@@ -513,7 +513,8 @@ window.PX = (() => {
   const SETTINGS_KEY = 'pixelArcade.settings';
   const VOLUMES = [['OFF', 0], ['LOW', 0.3], ['MEDIUM', 0.6], ['HIGH', 1]];
   const Settings = {
-    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3 }; },
+    // voice: VOICE CHAT in the online games (PX.Voice), on unless turned off in SETTINGS
+    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false }; },
     save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Sound.apply(); },
     volume() { return VOLUMES[this.load().volume][1]; },
     VOLUMES,
@@ -531,7 +532,13 @@ window.PX = (() => {
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
     },
-    apply() { if (this.out) this.out.gain.value = 0.5 * Settings.volume(); },   // the arcade's volume setting
+    duck: 1,                                                                       // < 1 while a friend talks (PX.Voice)
+    apply() { if (this.out) this.out.gain.value = 0.5 * Settings.volume() * this.duck; },   // the arcade's volume setting
+    setDuck(k) {
+      if (k === this.duck) return;
+      this.duck = k;
+      if (this.out && this.ctx) { try { this.out.gain.setTargetAtTime(0.5 * Settings.volume() * k, this.ctx.currentTime, 0.12); } catch (e) { this.apply(); } }
+    },
     tone(f, dur, o = {}) {
       const c = this.ctx; if (!c) return;
       const t0 = c.currentTime + (o.delay || 0), osc = c.createOscillator(), g = c.createGain();
@@ -1123,6 +1130,304 @@ window.PX = (() => {
   };
   if (location.protocol.startsWith('http')) window.addEventListener('load', () => setTimeout(() => Push.sync(), 2000));
 
-  return { Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  // --- VOICE CHAT: talk to a friend while you play an online game together ----------------------------------------
+  // A game with a friend online (CREATE GAME / JOIN WITH A CODE) gets a TALK button on the left side of the screen,
+  // when the other player is on your FRIENDS list (and you are on theirs) and VOICE CHAT is on in SETTINGS on both
+  // phones. TALK asks the friend; the first time, they see "NAME WANTS TO TALK" with ALLOW and NO (ALLOW is
+  // remembered for that friend). Then the voice goes straight between the two phones over the game's own PeerJS link
+  // (WebRTC), never through a server, and is never recorded. Your mic is OFF until you tap the mic button, and the
+  // mic button turns it off again; X hangs up. While the friend talks the speaker lights up and the game's sounds go
+  // quieter. The game calls three things, next to PX.Bet:
+  //   PX.Voice.connect(conn)   the data link to the friend is open (a PeerJS DataConnection)
+  //   PX.Voice.onData(m)       first thing for every message; true if it was a voice message
+  //   PX.Voice.reset()         leaving online play
+  // Messages are { t: 'vc', k: 'hi' (my ID) | 'st' (you are my friend and my voice chat is on: ok) | 'ask' | 'yes' | 'no' | 'end' (hang up) | 'gone' (left the game) }.
+  const Voice = {
+    KEY: 'pixelArcade.voice', TIMEOUT: 30e3,
+    conn: null, peer: null, friend: null, theirOn: false, phase: 'off', asked: false, pending: null, call: null,
+    mic: null, micOn: false, silent: null, remote: null, audio: null, meter: null, timer: 0, askT: 0, note: '', noteT: 0,
+    talk: { me: 0, them: 0 }, peers: new WeakSet(), el: null, box: null, ask: null, hits: [], askHits: [],
+    read() { try { const d = JSON.parse(localStorage.getItem(this.KEY)); return d && typeof d === 'object' ? d : {}; } catch (e) { return {}; } },
+    allowed(id) { const d = this.read(); return !!(d.ok && d.ok[id]); },
+    allow(id) { const d = this.read(); d.ok = { ...(d.ok || {}), [id]: 1 }; try { localStorage.setItem(this.KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } },
+    enabled() { return Settings.load().voice && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && !!window.RTCPeerConnection; },
+    send(m) { const c = this.conn; if (c && c.open) try { c.send({ t: 'vc', ...m }); } catch (e) { /* closing */ } },
+
+    connect(conn) {
+      this.reset();
+      if (!conn) return;
+      this.conn = conn; this.peer = conn.provider || null;
+      if (this.peer && !this.peers.has(this.peer)) {
+        this.peers.add(this.peer);
+        this.peer.on('call', call => this.incoming(call));
+      }
+      conn.on('close', () => { if (this.conn === conn) this.reset(); });
+      this.send({ k: 'hi', id: Profile.load().id });
+    },
+    onData(m) {
+      if (!m || m.t !== 'vc') return false;
+      switch (m.k) {
+        case 'hi':
+          if (!m.re) this.send({ k: 'hi', re: 1, id: Profile.load().id });   // (in case mine got lost)
+          if (this.phase === 'live' || this.phase === 'asking' || this.phase === 'asked') break;
+          this.friend = Invite.friends().find(f => f.id === String(m.id)) || null;
+          this.send({ k: 'st', ok: this.friend && this.enabled() ? 1 : 0 });          // can they talk to me?
+          this.ready();
+          break;
+        case 'st': this.theirOn = !!m.ok; this.ready(); break;              // can I talk to them? (I'm their friend too, voice on)
+        case 'ask':
+          if (!this.friend || !this.enabled()) { this.send({ k: 'no' }); break; }
+          if (this.phase === 'asking') { this.agree(); break; }                     // we both pressed TALK
+          if (this.phase !== 'idle') break;
+          if (this.allowed(this.friend.id)) { this.agree(); break; }
+          this.phase = 'asked'; this.askT = Date.now();
+          Sound.tone([660, 880, 660, 880], 0.5, { vol: 0.08 });
+          break;
+        case 'yes': if (this.phase === 'asking') { this.agree(); this.say(this.friend.name + ' IS HERE! TALK!'); } break;
+        case 'no': if (this.phase === 'asking' || this.phase === 'live') { this.hangup(false); this.say(this.friend.name + ' SAID NO'); } break;
+        case 'gone': this.hangup(false); this.phase = 'off'; break;
+        case 'end': if (this.phase !== 'off' && this.phase !== 'idle') { const was = this.phase; this.hangup(false); if (was === 'live') this.say(this.friend.name + ' HUNG UP'); } break;
+      }
+      this.draw();
+      return true;
+    },
+    ready() { if (this.phase === 'off' || this.phase === 'idle') this.phase = this.friend && this.theirOn && this.enabled() ? 'idle' : 'off'; },
+    reset() {
+      this.send({ k: 'gone' });                                    // I'm leaving the game: my friend's TALK goes away now
+      this.hangup(false);
+      Object.assign(this, { conn: null, peer: null, friend: null, theirOn: false, phase: 'off', note: '' });
+      this.draw();
+    },
+
+    // --- the call -------------------------------------------------------------------------------------------------
+    press() {                                                       // TALK
+      if (this.phase !== 'idle') return;
+      this.bless();
+      this.phase = 'asking'; this.askT = Date.now(); this.wantMic = true;
+      this.send({ k: 'ask' });
+      this.setMic(true);                                            // ask for the mic now, while it's a tap; it goes on with the call
+      Sound.tone([523, 659], 0.15, { vol: 0.08 });
+    },
+    answer(yes) {                                                   // ALLOW / NO
+      if (this.phase !== 'asked') return;
+      this.bless();
+      if (yes) { this.allow(this.friend.id); this.agree(); this.say('TAP THE MIC TO TALK'); }
+      else { this.send({ k: 'no' }); this.phase = 'idle'; }
+      this.draw();
+    },
+    // both said yes: the phone with the smaller PeerJS id makes the WebRTC call, the other one picks it up
+    agree() {
+      if (this.phase !== 'asking' && this.phase !== 'asked' && this.phase !== 'idle') return;
+      const was = this.phase;
+      this.phase = 'live';
+      if (was !== 'asking') this.send({ k: 'yes' });
+      const me = this.peer && this.peer.id, them = this.conn && this.conn.peer;
+      if (this.pending) { const c = this.pending; this.pending = null; this.pickUp(c); }
+      else if (me && them && me < them) {
+        try { this.use(this.peer.call(them, this.outStream(), { metadata: { vc: 1 } })); } catch (e) { this.fail(); }
+      }
+      if (this.wantMic) { this.wantMic = false; this.setMic(true); }
+      this.watch();
+      Sound.tone([659, 880], 0.18, { vol: 0.08 });
+    },
+    incoming(call) {
+      if (!this.conn || call.peer !== this.conn.peer || !this.friend) { try { call.close(); } catch (e) { /* gone */ } return; }
+      if (this.phase === 'live' && !this.call) this.pickUp(call);
+      else if (this.phase === 'asking' || this.phase === 'asked') this.pending = call;   // the "yes" is still on its way
+      else try { call.close(); } catch (e) { /* gone */ }
+    },
+    pickUp(call) { try { call.answer(this.outStream()); this.use(call); } catch (e) { this.fail(); } },
+    use(call) {
+      this.call = call;
+      call.on('stream', st => { if (this.call === call) this.hear(st); });
+      call.on('close', () => { if (this.call === call && this.phase === 'live') { this.hangup(false); this.say('VOICE LOST'); } });
+      call.on('error', () => { if (this.call === call) this.fail(); });
+      // the mic may have been turned on before the call existed: put it on the line
+      if (this.mic) this.line(this.mic.getAudioTracks()[0]);
+    },
+    fail() { this.hangup(false); this.say("COULDN'T CONNECT THE VOICE"); },
+    hangup(tell = true) {
+      if (tell && this.phase !== 'idle' && this.phase !== 'off') this.send({ k: this.phase === 'asked' ? 'no' : 'end' });
+      try { if (this.call) this.call.close(); } catch (e) { /* gone */ }
+      try { if (this.pending) this.pending.close(); } catch (e) { /* gone */ }
+      if (this.mic) this.mic.getTracks().forEach(t => t.stop());
+      if (this.audio) { try { this.audio.pause(); } catch (e) { /* fine */ } this.audio.srcObject = null; }
+      clearInterval(this.timer);
+      Object.assign(this, { call: null, pending: null, mic: null, micP: null, micOn: false, remote: null, meter: null, timer: 0, wantMic: false, talk: { me: 0, them: 0 } });
+      if (this.phase !== 'off') this.phase = this.friend ? 'idle' : 'off';
+      Sound.setDuck(1);
+      this.draw();
+    },
+    // what we send before the mic is on: silence (a call needs a sound to send)
+    outStream() {
+      if (this.mic) return this.mic;
+      Sound.unlock();
+      if (!this.silent && Sound.ctx) { try { const d = Sound.ctx.createMediaStreamDestination(); this.silent = d.stream; } catch (e) { /* old browser */ } }
+      return this.silent || new MediaStream();
+    },
+    line(track) {                                                  // put a track on the call
+      const pc = this.call && this.call.peerConnection; if (!pc || !track) return;
+      const s = pc.getSenders().find(x => !x.track || x.track.kind === 'audio');
+      if (s) s.replaceTrack(track).catch(() => { /* the call is ending */ });
+    },
+    async setMic(on) {
+      if (this.phase !== 'live' && this.phase !== 'asking') return;
+      if (on && !this.mic) {
+        let st;
+        try {
+          const ask = this.micP || (this.micP = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }));
+          st = await ask;
+        } catch (e) { this.micP = null; this.say(e && e.name === 'NotAllowedError' ? 'THE MIC IS BLOCKED. YOU CAN STILL LISTEN.' : 'NO MIC FOUND. YOU CAN STILL LISTEN.'); return; }
+        if (this.phase !== 'live' && this.phase !== 'asking') { if (!this.mic) st.getTracks().forEach(t => t.stop()); return; }
+        if (!this.mic) {                                            // (two taps share one request)
+          this.mic = st;
+          Sound.unlock();                                          // a phone may pause the game's sound when the mic starts
+          this.line(st.getAudioTracks()[0]);
+          this.meter = { ...(this.meter || {}), me: this.analyse(st) };
+        }
+      }
+      if (this.phase === 'asking') { if (this.mic) this.mic.getAudioTracks().forEach(t => { t.enabled = false; }); return; }   // on when the friend says yes
+      this.micOn = !!(on && this.mic);
+      if (this.mic) this.mic.getAudioTracks().forEach(t => { t.enabled = this.micOn; });
+      this.draw();
+    },
+    hear(st) {
+      if (this.remote === st) return;
+      this.remote = st;
+      if (!this.audio) this.bless();
+      const a = this.audio;
+      a.srcObject = st; const p = a.play(); if (p && p.catch) p.catch(() => this.say('TAP THE SCREEN TO HEAR YOUR FRIEND'));
+      this.meter = { ...(this.meter || {}), them: this.analyse(st) };
+    },
+    // an <audio> element started from a tap, so the phone lets it play the friend's voice later
+    bless() {
+      if (!this.audio) {
+        const a = document.createElement('audio');
+        a.autoplay = true; a.setAttribute('playsinline', ''); a.style.display = 'none';
+        document.body.appendChild(a); this.audio = a;
+      }
+      if (this.audio.paused) { const p = this.audio.play(); if (p && p.catch) p.catch(() => { /* nothing to play yet */ }); }
+      Sound.unlock();
+    },
+    analyse(st) {
+      try {
+        Sound.unlock(); const c = Sound.ctx; if (!c) return null;
+        const src = c.createMediaStreamSource(st), an = c.createAnalyser(); an.fftSize = 512;
+        src.connect(an);                                           // not to the speakers: the <audio> plays it
+        return { an, buf: new Float32Array(an.fftSize) };
+      } catch (e) { return null; }
+    },
+    level(m) { if (!m) return 0; m.an.getFloatTimeDomainData(m.buf); let s = 0; for (const v of m.buf) s += v * v; return Math.sqrt(s / m.buf.length); },
+    watch() {
+      clearInterval(this.timer);
+      this.timer = setInterval(() => {
+        const m = this.meter || {}, was = this.talk.me + ':' + this.talk.them;
+        this.talk.me = this.micOn && this.level(m.me) > 0.02 ? Date.now() : (Date.now() - this.talk.me < 300 ? this.talk.me : 0);
+        this.talk.them = this.level(m.them) > 0.02 ? Date.now() : (Date.now() - this.talk.them < 400 ? this.talk.them : 0);
+        Sound.setDuck(this.talk.them ? 0.35 : 1);                  // the game goes quieter while the friend talks
+        if (was !== this.talk.me + ':' + this.talk.them) this.draw();
+      }, 80);
+    },
+    say(text) { this.note = text; this.noteT = Date.now(); this.draw(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => { if (Date.now() - this.noteT >= 3400) { this.note = ''; this.draw(); } }, 3500); },
+    tick() {                                                        // nobody answered in time
+      if ((this.phase === 'asking' || this.phase === 'asked') && Date.now() - this.askT > this.TIMEOUT) {
+        const asking = this.phase === 'asking'; this.hangup(true); this.say(asking ? 'NO ANSWER' : '');
+      }
+    },
+
+    // --- on the screen: a small pixel bar on the left side, and the question at the top --------------------------
+    ICONS: {
+      mic: ['..###..', '.##.##.', '.##.##.', '.##.##.', '#.###.#', '#.....#', '.#...#.', '..###..', '...#...', '.#####.'],
+      spk: ['....#....', '...##..#.', '####.#..#', '####..#.#', '####.#..#', '...##..#.', '....#....'],
+      x: ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'],
+    },
+    scale() { return Math.max(1.5, Math.min(4, Math.round(Math.min(innerHeight, innerWidth * 0.6) / 240 * 2) / 2)); },
+    mount() {
+      if (this.el || !document.body) return;
+      const mk = (css) => {
+        const c = document.createElement('canvas');
+        c.style.cssText = 'position:fixed;z-index:60;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none;display:none;' + css;
+        const stop = e => e.stopPropagation();
+        ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click', 'contextmenu'].forEach(t => c.addEventListener(t, stop));
+        document.body.appendChild(c); return c;
+      };
+      this.el = mk('left:calc(4px + env(safe-area-inset-left));top:30%;');
+      this.ask = mk('left:50%;top:calc(6px + env(safe-area-inset-top));transform:translateX(-50%);');
+      const tap = (c, list) => c.addEventListener('pointerup', e => {
+        const r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * c.width, y = (e.clientY - r.top) / r.height * c.height;
+        const h = list().find(b => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+        if (h) { e.preventDefault(); h.go(); }
+      });
+      tap(this.el, () => this.hits); tap(this.ask, () => this.askHits);
+      addEventListener('resize', () => this.draw());
+      setInterval(() => this.tick(), 1000);
+    },
+    btn(ctx, list, x, y, w, h, fill, go) {
+      const box = (bx, by, bw, bh, col) => { ctx.fillStyle = col; ctx.fillRect(bx + 1, by, bw - 2, bh); ctx.fillRect(bx, by + 1, bw, bh - 2); };
+      box(x, y, w, h, '#0b0912'); box(x + 1, y + 1, w - 2, h - 2, fill);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 2, y + 1, w - 4, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(x + 1, y + h - 3, w - 2, 1);
+      list.push({ x, y, w, h, go });
+    },
+    paint(c, w, h) {
+      const k = this.scale();
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      c.style.width = (w * k) + 'px'; c.style.height = (h * k) + 'px'; c.style.display = 'block';
+      const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, w, h);
+      return ctx;
+    },
+    draw() {
+      this.mount(); if (!this.el) return;
+      const show = this.phase !== 'off' && !!this.friend, name = this.friend ? this.friend.name : '';
+      this.hits = []; this.askHits = [];
+      // the question: NAME WANTS TO TALK
+      if (this.phase === 'asked') {
+        const line = name + ' WANTS TO TALK!', w = Math.max(116, textWidth(line) + 16), ctx = this.paint(this.ask, w, 40);
+        ctx.fillStyle = '#0b0912'; ctx.fillRect(0, 0, w, 40); ctx.fillStyle = '#272043'; ctx.fillRect(1, 1, w - 2, 38);
+        ctx.fillStyle = '#5ad43f'; ctx.fillRect(1, 1, w - 2, 1);
+        drawText(ctx, line, w / 2, 5, '#fff', 1, 'center');
+        drawText(ctx, 'VOICE CHAT', w / 2, 12, '#9a92b8', 1, 'center');
+        const bw = 48, gx = Math.round(w / 2 - bw - 3);
+        this.btn(ctx, this.askHits, gx, 21, bw, 15, '#2f9a3a', () => this.answer(true)); drawText(ctx, 'ALLOW', gx + bw / 2, 26, '#fff', 1, 'center');
+        this.btn(ctx, this.askHits, gx + bw + 6, 21, bw, 15, '#9a2f3a', () => this.answer(false)); drawText(ctx, 'NO', gx + bw * 1.5 + 6, 26, '#fff', 1, 'center');
+      } else this.ask.style.display = 'none';
+      if (!show) { this.el.style.display = 'none'; return; }
+      const note = this.note, noteW = note ? textWidth(note) + 8 : 0;
+      if (this.phase === 'live') {
+        const nw = Math.max(textWidth(name), 18), w = Math.max(20 + 4 + 14 + nw + 4 + 14, noteW), h = note ? 30 : 22, ctx = this.paint(this.el, w, h);
+        // the mic: green and on, or grey with a red line through it
+        this.btn(ctx, this.hits, 0, 0, 20, 20, this.micOn ? (this.talk.me ? '#5ad43f' : '#2f9a3a') : '#3a3450', () => this.setMic(!this.micOn));
+        drawIcon(ctx, this.ICONS.mic, { '#': this.micOn ? '#fff' : '#9a92b8' }, 10, 10, 1, null);
+        if (!this.micOn) { ctx.fillStyle = '#ff4a4a'; for (let i = 0; i < 12; i++) ctx.fillRect(4 + i, 4 + i, 2, 1); }
+        // the friend: the speaker lights up while they talk
+        const sx = 24; ctx.fillStyle = 'rgba(11,9,18,0.8)'; ctx.fillRect(sx, 2, 14 + nw + 2, 16);
+        drawIcon(ctx, this.ICONS.spk, { '#': this.talk.them ? '#ffd23f' : '#5b5275' }, sx + 7, 10, 1, null);
+        drawText(ctx, name, sx + 14, 8, this.talk.them ? '#ffd23f' : '#efe9ff', 1);
+        const xx = sx + 14 + nw + 4;
+        this.btn(ctx, this.hits, xx, 3, 14, 14, '#9a2f3a', () => { this.hangup(true); Sound.tone(330, 0.12, { vol: 0.08 }); });
+        drawIcon(ctx, this.ICONS.x, { '#': '#fff' }, xx + 7, 10, 1, null);
+        if (note) this.noteLine(ctx, note, 22);
+      } else {
+        const label = this.phase === 'asking' ? 'CALLING ' + name + '...' : 'TALK', lw = textWidth(label), w = Math.max(lw + 26 + (this.phase === 'asking' ? 18 : 0), noteW), h = note ? 30 : 22;
+        const ctx = this.paint(this.el, w, h);
+        if (this.phase === 'asking') {
+          ctx.fillStyle = 'rgba(11,9,18,0.8)'; ctx.fillRect(0, 2, lw + 24, 16);
+          drawIcon(ctx, this.ICONS.mic, { '#': (Date.now() / 400 | 0) % 2 ? '#ffd23f' : '#9a92b8' }, 10, 10, 1, null);
+          drawText(ctx, label, 20, 8, '#efe9ff', 1);
+          this.btn(ctx, this.hits, lw + 26, 3, 14, 14, '#9a2f3a', () => this.hangup(true));
+          drawIcon(ctx, this.ICONS.x, { '#': '#fff' }, lw + 33, 10, 1, null);
+          clearTimeout(this.blink); this.blink = setTimeout(() => this.draw(), 400);
+        } else {
+          this.btn(ctx, this.hits, 0, 0, lw + 24, 20, '#2a4f9a', () => this.press());
+          drawIcon(ctx, this.ICONS.mic, { '#': '#fff' }, 10, 10, 1, null);
+          drawText(ctx, label, 19, 8, '#fff', 1);
+        }
+        if (note) this.noteLine(ctx, note, 22);
+      }
+    },
+    noteLine(ctx, note, y) { const w = textWidth(note) + 8; ctx.fillStyle = 'rgba(11,9,18,0.85)'; ctx.fillRect(0, y, w, 8); drawText(ctx, note, 4, y + 1, '#ffd23f', 1); },
+  };
+
+  return { Voice, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

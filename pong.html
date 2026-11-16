@@ -38,7 +38,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const SAVE_KEY = 'pixelPong.save';
 const save = { wins: 0, played: 0, music: true, sfx: true, best: {} };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -316,7 +316,7 @@ function drawGame(now) {
 const LOBBY_SLOTS = 6;
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'home', msg: '', friend: null, sendT: 0, random: false, slot: 0, search: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '', random: false, search: this.search + 1 }); PX.Bet.reset(); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '', random: false, search: this.search + 1 }); PX.Bet.reset(); PX.Voice.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async load() { try { await PX.loadPeer(); return true; } catch (e) { this.fail("COULDN'T LOAD ONLINE PLAY. CHECK YOUR INTERNET."); return false; } },
@@ -379,7 +379,7 @@ const Net = {
   },
   bind(c, opened) {
     this.conn = c;
-    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); sfx('point'); };
+    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, c: MY_COLOR, v: VERSION }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); sfx('point'); };
     if (opened) go(); else c.on('open', go);
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
@@ -399,6 +399,7 @@ const Net = {
     } else this.send({ t: 'in', x: r(M.p[1].x), y: r(M.p[1].y) });
   },
   onData(m) {
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) return;                                       // the bet's own messages
     switch (m.t) {
       case 'me':
