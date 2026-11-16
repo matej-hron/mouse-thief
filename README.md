@@ -40,7 +40,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
-| **Pixel Farmings** (`farm.html`) | You farm: buy seeds, plant them, water them, harvest and sell. GOLDEN RAIN turns crops gold (x5 money), RADIOACTIVE RAIN makes them glow (x3). Animals, a market, orders for ★, a daily gift, a book to fill. |
+| **Pixel Farmings** (`farm.html`) | You farm: buy seeds, plant them, water them, harvest and sell. 14 crops in sizes up to GIANT, sold by weight. GOLDEN and RADIOACTIVE RAIN, animals, a market, orders for ★, a daily gift, a book to fill, and trading with friends (by code or live). |
 
 ## Pixel Wings
 
@@ -293,16 +293,25 @@ house, the MARKET stall, the well, the field, the pen with the barn, the pond an
 - **Buy, plant, sell:** the SHOP and SELL buttons in the corner work from anywhere on the farm; SELL sells everything
   you carry and the coins fly into your money. Every day one crop is **HOT** and sells for double.
 - **More to come back for:** a **DAILY GIFT** (cash, seeds and ★, more for days in a row, ★3 on day 7), **LUCKY**
-  harvests (x2), harvest **COMBOS** for extra XP, and the **BOOK**: 28 things to find (every crop in normal, golden
+  harvests (x2), harvest **COMBOS** for extra XP, and the **BOOK**: 46 things to find (every crop in normal, golden
   and radioactive, and the 4 animal products), ★1 each.
-- **8 crops:** CARROT and WHEAT, then TOMATO (regrows), CORN, STRAWBERRY (regrows), PUMPKIN, SUNFLOWER and MELON, one
-  after another as you level up.
+- **14 crops:** CARROT and WHEAT, then POTATO, TOMATO (regrows), CORN, CABBAGE, STRAWBERRY (regrows), CHILI
+  (regrows), PUMPKIN, EGGPLANT, SUNFLOWER, PINEAPPLE, MELON and BANANA (regrows), one after another as you level up.
+- **Sizes and weights:** every plant grows SMALL, normal, BIG or (rarely) GIANT, and you can see it in the field.
+  Everything has a weight: a strawberry is 0.03 kg, a pumpkin 6 kg, a giant pumpkin about 19 kg. The market pays by
+  weight, so heavy plants are worth more. Your **bag** only holds so much (25 kg, up to 999 kg with BIGGER BAG): when
+  it is full you have to sell before you can harvest. COMPOST gives more big and giant plants. The BOOK remembers the
+  heaviest one of each.
+- **Trading** (the TRADE tab): **SEND BY CODE** takes plants out of your bag and makes a 12-letter code; your friend
+  types it in (I HAVE A CODE) and gets them. Each code works once on a phone. **TRADE LIVE**: one of you makes a trade
+  room, the other types its 4-letter code; both pick what to give (plants and cash), and when both say YES the
+  things swap. Changing your offer takes back both YESes.
 - **Animals** (in the pen, from level 2): CHICKEN, COW, SHEEP and PIG. Feed one (HAY from the market, or your WHEAT),
   wait, and collect its EGG, MILK, WOOL or TRUFFLE. A bubble over an animal shows what it wants.
 - **The MARKET** (walk up to the stall, tap SHOP, or walk to the barn for the animals): SELL, SEEDS (and hay and SPRINKLERS, which
   keep the 8 tiles around them wet), ANIMALS, UPGRADES (WATERING CAN: holds more and waters 3 or 9 tiles at once;
   MORE LAND: the field grows from 6 x 4 up to 16 x 10; BIGGER PEN; FAST BOOTS; AUTO FEEDER), ORDERS (three at a
-  time, each pays cash, XP and ★1) and the BOOK.
+  time, each pays cash, XP and ★1), the BOOK and TRADE.
 - **Levels:** harvests, animal products and orders give XP; every level is ★2 and unlocks new crops and animals.
 - **Days:** a day lasts 2.5 minutes, then night falls; sleep at home in the evening to start the next day. The farm is
   saved all the time and keeps growing while you are away (up to 2 hours; only wet soil grows).
