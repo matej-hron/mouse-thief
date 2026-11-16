@@ -1,6 +1,15 @@
 // PIXEL ARCADE: shared bits for the arcade (index.html) and its games.
 // Everything lives under window.PX, so it never clashes with a game's own code.
 'use strict';
+// GAMES INSIDE THE ARCADE: during a call from the chat the arcade opens a game in a frame over itself, so the call goes
+// on (ArcadeShell in index.html). When the game goes back to the arcade ('./'), the frame closes instead of loading a
+// second arcade inside it: caught before it leaves (the Navigation API), or else as soon as the arcade starts loading.
+const ARCADE_SHELL = (() => { try { return window.parent !== window && window.parent.ArcadeShell ? window.parent.ArcadeShell : null; } catch (e) { return null; } })();
+if (ARCADE_SHELL) {
+  const isArcade = u => { try { const x = new URL(u, location.href); return x.origin === location.origin && /\/(index\.html)?$/.test(x.pathname); } catch (e) { return false; } };
+  if (isArcade(location.href)) ARCADE_SHELL.back();
+  else if (window.navigation && navigation.addEventListener) navigation.addEventListener('navigate', e => { if (isArcade(e.destination.url) && e.cancelable) { e.preventDefault(); ARCADE_SHELL.back(); } });
+}
 window.PX = (() => {
   // --- pixel font (the same 3x5 font as Mouse Thief) ---------------------------------
   const FONT = {
@@ -694,6 +703,7 @@ window.PX = (() => {
     },
     key(type, code) { try { window.dispatchEvent(new KeyboardEvent(type, { code, key: keyOf(code), bubbles: true, cancelable: true })); } catch (e) { /* old browser */ } },
     poll(now) {
+      if (this.off) { this.prevBtn = [{}, {}]; this.last = now; return; }   // (a game is open in the arcade's frame: it reads the controller)
       const cfg = this.cfg, dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
       const pads = this.pads(), want = new Map();
       const inMenu = !!(cfg.menu && cfg.menu());
@@ -1208,7 +1218,7 @@ window.PX = (() => {
           break;
         case 'busy': Call.tell((this.friend ? this.friend.name : 'YOUR FRIEND') + ' IS IN ANOTHER CALL'); this.closeDirect(0); break;
         case 'ask':
-          if (!this.friend || !this.enabled()) { this.send({ k: 'no' }); break; }
+          if (!this.friend || !this.enabled() || this.shellCall()) { this.send({ k: 'no' }); break; }
           if (this.phase === 'asking') { this.agree(); break; }                     // we both pressed TALK
           if (this.phase !== 'idle') break;
           if (this.allowed(this.friend.id) && !this.direct) { this.agree(); break; }   // (a call from the arcade always rings)
@@ -1223,8 +1233,10 @@ window.PX = (() => {
       this.draw();
       return true;
     },
+    // a game in the arcade's frame while the arcade has a call: that call is the voice, so no TALK in the game
+    shellCall() { try { const v = ARCADE_SHELL && window.parent.PX.Voice; return !!(v && v.direct && v.phase !== 'off'); } catch (e) { return false; } },
     ready() {
-      if (this.phase === 'off' || this.phase === 'idle') this.phase = this.friend && this.theirOn && this.enabled() ? 'idle' : 'off';
+      if (this.phase === 'off' || this.phase === 'idle') this.phase = this.friend && this.theirOn && this.enabled() && !this.shellCall() ? 'idle' : 'off';
       if (this.phase === 'idle' && this.autoAsk) { this.autoAsk = false; this.press(); }   // CALL in the arcade's chat: ask right away
     },
     reset() {
@@ -1293,7 +1305,7 @@ window.PX = (() => {
       clearInterval(this.timer);
       Object.assign(this, { call: null, pending: null, mic: null, micP: null, micOn: false, remote: null, meter: null, timer: 0, wantMic: false, talk: { me: 0, them: 0 } });
       if (this.phase !== 'off') this.phase = this.friend ? 'idle' : 'off';
-      Sound.setDuck(1);
+      this.duck(1);
       this.draw();
       this.closeDirect();
     },
@@ -1379,9 +1391,13 @@ window.PX = (() => {
         const m = this.meter || {}, was = this.talk.me + ':' + this.talk.them;
         this.talk.me = this.micOn && this.level(m.me) > 0.02 ? Date.now() : (Date.now() - this.talk.me < 300 ? this.talk.me : 0);
         this.talk.them = this.level(m.them) > 0.02 ? Date.now() : (Date.now() - this.talk.them < 400 ? this.talk.them : 0);
-        Sound.setDuck(this.talk.them ? 0.35 : 1);                  // the game goes quieter while the friend talks
+        this.duck(this.talk.them ? 0.35 : 1);                      // the game goes quieter while the friend talks
         if (was !== this.talk.me + ':' + this.talk.them) this.draw();
       }, 80);
+    },
+    duck(k) {                                                       // (and the game in the arcade's frame, during a call)
+      Sound.setDuck(k);
+      try { const f = window.ArcadeShell && window.ArcadeShell.frame; if (f && f.contentWindow.PX) f.contentWindow.PX.Sound.setDuck(k); } catch (e) { /* loading */ }
     },
     say(text) { if (this.direct && text) Call.tell(text); this.note = text; this.noteT = Date.now(); this.draw(); clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => { if (Date.now() - this.noteT >= 3400) { this.note = ''; this.draw(); } }, 3500); },
     tick() {                                                        // nobody answered in time

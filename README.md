@@ -717,9 +717,11 @@ You don't need a game to talk: **CALL** (top right in a friend's chat) rings you
 2. While it rings you see CALLING (NAME)... on the left and **HANG UP** in the chat.
 3. Then it is the same bar as in a game: your mic button (the caller starts with it on, the one who answered with it
    off), the friend's name with the speaker, and X to hang up.
-4. **Look around the arcade while you talk:** the bar stays on every screen (the games list, FRIENDS, the chat,
-   TOP, IDEAS, SETTINGS...). Opening a game ends the call (a game is a new page), so to play together, invite your
-   friend to an online game and press TALK there.
+4. **Look around the arcade and play while you talk:** the bar stays on every screen (the games list, FRIENDS, the
+   chat, TOP, IDEAS, SETTINGS...), and **in the games too**: during a call the arcade opens a game in a frame over
+   itself, so the call goes on (`ArcadeShell` in `index.html`). < ALL GAMES, or the phone's back button, closes the
+   game and you are back in the arcade, still talking. Play an online game together (a code or an invite) and the
+   call is your voice there: the game's own TALK button stays away. Without a call, games open as always.
 
 - **Arcade closed? Their phone rings:** when your friend's arcade isn't open (closed, in a game, the phone locked),
   their phone gets a notification **(YOUR NAME) IS CALLING YOU!**: on Android it buzzes long, like a phone, and stays
