@@ -1237,8 +1237,8 @@ function drawHub(now) {
   T(c.name, 30, 7, '#fff', 2, 'left', '#000');
   T(money(c.money) + '   ★ ' + PX.Wallet.get(), 30, 21, '#9be36b', 1, 'left', '#000');
   soundButtons(W - 56, 6);
-  T('PIXEL', W / 2, 38, '#ffd23f', 2, 'center', '#000');
-  T('FOOTBALL', W / 2, 51, '#fff', 4, 'center', '#e01e1e');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 37, 2);
+  PX.drawLogo(ctx, 'FOOTBALL', W / 2, 50, 4);
   const f = myFixture(), opp = clubAt(f.opp), pos = tableOrder().indexOf(0) + 1;
   T('SEASON ' + lg.season + ' - ROUND ' + (lg.round + 1) + '/' + lg.fixtures.length + ' - YOU ARE ' + placeLabel(pos), W / 2, 76, '#c8c0e0', 1, 'center', '#000');
   const bw = 150, gap = 8, x0 = Math.round(W / 2 - bw - gap / 2), x1 = x0 + bw + gap;

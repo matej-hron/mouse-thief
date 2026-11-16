@@ -850,9 +850,8 @@ function drawTitle(t) {
   ctx.fillStyle = '#2a4a8a'; ctx.beginPath(); ctx.moveTo(W / 2 - 110, 104); ctx.lineTo(W / 2 - 20, 30); ctx.lineTo(W / 2 + 10, 52); ctx.lineTo(W / 2 + 40, 36); ctx.lineTo(W / 2 + 120, 104); ctx.fill();
   ctx.fillStyle = '#e8f2ff'; ctx.beginPath(); ctx.moveTo(W / 2 - 38, 45); ctx.lineTo(W / 2 - 20, 30); ctx.lineTo(W / 2 - 4, 43); ctx.lineTo(W / 2 - 12, 40); ctx.lineTo(W / 2 - 20, 46); ctx.lineTo(W / 2 - 28, 41); ctx.fill();
   ctx.beginPath(); ctx.moveTo(W / 2 + 28, 44); ctx.lineTo(W / 2 + 40, 36); ctx.lineTo(W / 2 + 54, 46); ctx.lineTo(W / 2 + 44, 44); ctx.lineTo(W / 2 + 36, 48); ctx.fill();
-  T('PIXEL', W / 2, 40, '#ffd23f', 3, 'center', '#000');
-  T('SKI', W / 2 + 2, 62, '#0d2a5a', 8, 'center');
-  T('SKI', W / 2, 60, '#fff', 8, 'center', '#2a6ad4');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 40, 3);
+  PX.drawLogo(ctx, 'SKI', W / 2, 60, 8);
   ctx.fillStyle = '#ffffff';                            // snow lying on top of the letters
   const lw = PX.textWidth('SKI', 8), lx0 = Math.round(W / 2 - lw / 2);
   for (let k = 0; k < lw; k += 4) if ((k * 7) % 11 < 7) ctx.fillRect(lx0 + k, 58 - ((k * 3) % 2), 4, 2);

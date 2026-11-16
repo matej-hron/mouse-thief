@@ -12,6 +12,7 @@ PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the
 **Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
 when you add the arcade to an iPhone's home screen after setting your avatar).
 The **controller button** next to the ★ counter turns phones into game controllers for a big screen (see below).
+Every game's title is drawn the same way: white letters with a thick dark outline, a drop shadow and a pale blue lower half (`PX.drawLogo` in `common.js`).
 In every game the pause button is two thick bars and the sound button a speaker (a red cross when the sound is off).
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
 MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
@@ -39,7 +40,7 @@ MEDIUM / HIGH), full screen, your name and avatar, and the phone controllers.
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
-| **Pixel Farmings** (`farm.html`) | You farm: till the field, plant seeds, water them and harvest. Raise chickens, cows, sheep and pigs, sell at the market, fill orders for ★, buy more land and upgrades. 8 crops, a day and night, rainy days. |
+| **Pixel Farmings** (`farm.html`) | You farm: buy seeds, plant them, water them, harvest and sell. GOLDEN RAIN turns crops gold (x5 money), RADIOACTIVE RAIN makes them glow (x3). Animals, a market, orders for ★, a daily gift, a book to fill. |
 
 ## Pixel Wings
 
@@ -285,15 +286,23 @@ house, the MARKET stall, the well, the field, the pen with the barn, the pond an
 - **Farming:** one button does the right thing on the tile in front of you: on grass in your field it **tills**, on
   soil it **plants** the seeds you picked, on a dry plant it **waters**, on a ripe plant it **harvests**. A blue drop
   over a plant means it is thirsty: crops only grow while the soil is wet (45 s after watering). The watering can is
-  filled at the WELL or the POND. Some days it **rains** and the rain waters everything.
+  filled at the WELL or the POND.
+- **Rain:** showers come every minute or so and water everything. **GOLDEN RAIN** turns crops gold (they sell for
+  5 times as much); **RADIOACTIVE RAIN** makes them glow green (3 times as much) and grow 3 times as fast. The first
+  shower after your first harvest is always golden.
+- **Buy, plant, sell:** the SHOP and SELL buttons in the corner work from anywhere on the farm; SELL sells everything
+  you carry and the coins fly into your money. Every day one crop is **HOT** and sells for double.
+- **More to come back for:** a **DAILY GIFT** (cash, seeds and ★, more for days in a row, ★3 on day 7), **LUCKY**
+  harvests (x2), harvest **COMBOS** for extra XP, and the **BOOK**: 28 things to find (every crop in normal, golden
+  and radioactive, and the 4 animal products), ★1 each.
 - **8 crops:** CARROT and WHEAT, then TOMATO (regrows), CORN, STRAWBERRY (regrows), PUMPKIN, SUNFLOWER and MELON, one
-  after another as you level up. The first harvest of each is ★1.
+  after another as you level up.
 - **Animals** (in the pen, from level 2): CHICKEN, COW, SHEEP and PIG. Feed one (HAY from the market, or your WHEAT),
   wait, and collect its EGG, MILK, WOOL or TRUFFLE. A bubble over an animal shows what it wants.
-- **The MARKET** (walk up to the stall, or to the barn for the animals): SELL, SEEDS (and hay and SPRINKLERS, which
+- **The MARKET** (walk up to the stall, tap SHOP, or walk to the barn for the animals): SELL, SEEDS (and hay and SPRINKLERS, which
   keep the 8 tiles around them wet), ANIMALS, UPGRADES (WATERING CAN: holds more and waters 3 or 9 tiles at once;
-  MORE LAND: the field grows from 6 x 4 up to 16 x 10; BIGGER PEN; FAST BOOTS; AUTO FEEDER) and ORDERS: three orders
-  at a time, each pays cash, XP and ★1.
+  MORE LAND: the field grows from 6 x 4 up to 16 x 10; BIGGER PEN; FAST BOOTS; AUTO FEEDER), ORDERS (three at a
+  time, each pays cash, XP and ★1) and the BOOK.
 - **Levels:** harvests, animal products and orders give XP; every level is ★2 and unlocks new crops and animals.
 - **Days:** a day lasts 2.5 minutes, then night falls; sleep at home in the evening to start the next day. The farm is
   saved all the time and keeps growing while you are away (up to 2 hours; only wet soil grows).

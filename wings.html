@@ -2647,9 +2647,8 @@ function drawIntro(t, dt) {
       ctx.fillStyle = '#0d0b18'; ctx.fillRect(px, py, 11, 2); ctx.fillRect(px + 4, py - 3, 2, 8); ctx.fillRect(px, py - 1, 1, 4); ctx.fillRect(px + 10, py, 2, 1);
     }
     ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(0, 0, W, H);
-    T('PIXEL', W / 2, H / 2 - 62, '#ffd23f', 3, 'center', '#000');
-    T('WINGS', W / 2 + 2, H / 2 - 40, '#0a1a3a', 6, 'center');
-    T('WINGS', W / 2, H / 2 - 42, '#fff', 6, 'center', '#2a7fd4');
+    PX.drawLogo(ctx, 'PIXEL', W / 2, H / 2 - 62, 3);
+    PX.drawLogo(ctx, 'WINGS', W / 2, H / 2 - 42, 6);
     if (it.phase === 'wait') {
       if (Math.floor(t * 2) % 2) T('TAP TO BEGIN', W / 2, H / 2 + 4, '#fff', 2, 'center', '#000');
       T('(TURN THE SOUND ON)', W / 2, H / 2 + 22, '#c8c0e0', 1, 'center', '#000');
@@ -2707,8 +2706,8 @@ function drawIntro(t, dt) {
   if (l && l.title) {                                           // the title flies in
     const a = now - (it.end - l.dur), sz = Math.min(6, 1 + Math.floor(a * 9));
     ctx.fillStyle = `rgba(13,11,19,${Math.min(0.55, a * 0.6)})`; ctx.fillRect(0, bar, W, H - 2 * bar);
-    T('PIXEL', W / 2, H / 2 - 30, '#7ac8ff', Math.max(1, Math.round(sz / 2)), 'center', '#000');
-    T('WINGS', W / 2, H / 2 - 12, '#fff', sz, 'center', '#2a7fd4');
+    PX.drawLogo(ctx, 'PIXEL', W / 2, H / 2 - 30, Math.max(1, Math.round(sz / 2)));
+    PX.drawLogo(ctx, 'WINGS', W / 2, H / 2 - 12, sz);
     if (a > 1 && Math.floor(t * 2) % 2) T('TAP TO START', W / 2, H - bar + 9, '#ffd23f', 1, 'center');
   }
   if (UI.button('iskip', W - 52, 5, 46, 16, l && l.title ? 'START' : 'SKIP', { size: 1 }) || UI.back || introTap) { introTap = false; introEnd(); }
@@ -2765,7 +2764,7 @@ function drawTitle(t, dt) {
   const W = S.W;
   drawBackdrop(t, dt);
   if (!save.schoolAsked) {                                           // the very first time: offer flight school
-    T('PIXEL', W / 2, 36, '#7ac8ff', 3, 'center', '#000'); T('WINGS', W / 2, 54, '#fff', 6, 'center', '#2a7fd4');
+    PX.drawLogo(ctx, 'PIXEL', W / 2, 36, 3); PX.drawLogo(ctx, 'WINGS', W / 2, 54, 6);
     const { y } = panel(280, 104, 102), bx = Math.round(W / 2 - 128);
     T('NEW PILOT?', W / 2, y + 10, '#ffd23f', 2, 'center');
     T('THE INSTRUCTOR CAN TEACH YOU TO FLY, IN 7 SHORT LESSONS.', W / 2, y + 32, '#efe9ff', 1, 'center');

@@ -642,9 +642,8 @@ function title(t) {
   T('★ ' + PX.Wallet.get(), W - 36, 10, '#ffd23f', 2, 'right', '#000');
   T(fmtMoney(save.money), W - 36, 30, '#5ad43f', 1, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
-  T('PIXEL', W / 2, 30, '#ffd23f', 3, 'center', '#000');
-  T('BIKE RUN', W / 2 + 2, 52, '#1a0e2a', 6, 'center');
-  T('BIKE RUN', W / 2, 50, '#fff', 6, 'center', '#e07a5a');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 30, 3);
+  PX.drawLogo(ctx, 'BIKE RUN', W / 2, 50, 6);
   T('RIDE, FLIP, EARN, UPGRADE.', W / 2, 86, '#fff', 1, 'center', '#000');
   const bw = 180, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('play', bx, 98, bw, 24, 'TRAILS', { accent: '#5ad43f', size: 3 })) { sfx('click'); state = 'trails'; }

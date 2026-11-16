@@ -1134,7 +1134,7 @@ function drawTitle() {
   drawProfileTag();
   T('★ ' + PX.Wallet.get(), W - 58, 9, '#ffd23f', 1, 'right', '#000');
   soundButtons(W - 52, 3);
-  T('PIXEL DEFENSE', W / 2 + 2, 46, '#2a7fd4', 5, 'center'); T('PIXEL DEFENSE', W / 2, 44, '#fff', 5, 'center');
+  PX.drawLogo(ctx, 'PIXEL DEFENSE', W / 2, 44, 5);
   T('BUILD TOWERS. STOP THE BLOBS!', W / 2, 76, '#ffd23f', 1, 'center', '#000');
   if (UI.button('play', bx, 92, bw, 28, 'PLAY', { accent: '#5ad43f' })) toMenu('maps');
   if (UI.button('shop', bx, 126, bw, 26, 'WORKSHOP', { accent: '#ffd23f' })) { shopFrom = 'title'; toMenu('shop'); }

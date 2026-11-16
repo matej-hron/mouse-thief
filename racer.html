@@ -933,8 +933,7 @@ function drawTitle() {
   drawWorld({ p: attract, cars: [] }, W);
   ctx.fillStyle = 'rgba(8,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
   drawProfileTag();
-  T('PIXEL GP', W / 2 + 3, 20, '#e01e1e', 6, 'center');
-  T('PIXEL GP', W / 2, 17, '#fff', 6, 'center');
+  PX.drawLogo(ctx, 'PIXEL GP', W / 2, 17, 6);
   T('★ ' + PX.Wallet.get(), W - 62, 12, '#ffd23f', 2, 'right', '#000');
   engineButton(W - 56, 8);
   musicButton(W - 30, 8);

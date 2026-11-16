@@ -1394,8 +1394,8 @@ function drawMax(x, y, s = 2) {
 function drawTitle() {
   const W = S.W;
   ctx.fillStyle = 'rgba(13,11,19,0.35)'; ctx.fillRect(0, 0, W, H);
-  T('PIXEL', W / 2, 18, '#ffd23f', 4, 'center', '#000');
-  T('HEIST', W / 2, 42, '#ffffff', 6, 'center', '#e01e1e');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 18, 4);
+  PX.drawLogo(ctx, 'HEIST', W / 2, 42, 6);
   T("JOIN MAX'S CREW. ROB THE CITY.", W / 2, 80, '#efe9ff', 1, 'center');
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2);
   T(profile.name, 40, 16, '#fff', 2, 'left', '#000');

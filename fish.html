@@ -599,8 +599,8 @@ function drawTitle(t) {
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('exchange', W - 92, 30, 86, 16, '★ EXCHANGE', { size: 1, accent: '#ffd23f' })) { sfx('click'); shopBack = 'title'; state = 'exchange'; }
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
-  T('DEEP', W / 2, 36, '#7af0ff', 4, 'center', '#000');
-  T('CATCH', W / 2, 60, '#ffd23f', 6, 'center', '#a05a1a');
+  PX.drawLogo(ctx, 'DEEP', W / 2, 34, 4);
+  PX.drawLogo(ctx, 'CATCH', W / 2, 58, 6);
   const gold = SPECIES.find(s => s.id === 'gold');
   drawSprite(fishSprite(gold, false), W / 2 + 150 + Math.sin(t) * 4, 70 + Math.sin(t * 2) * 3, 2);
   const bw = 244, bx = Math.round(W / 2 - bw / 2);

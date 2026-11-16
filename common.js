@@ -51,6 +51,18 @@ window.PX = (() => {
     ctx.fillStyle = color; rawText(ctx, str, x, y, size);
   }
 
+  // --- a game's big title, in the PIXEL FARMINGS style: white letters, a thick dark outline, a drop shadow,
+  // and a pale blue lower half. Same arguments as drawText (always centered on x).
+  function drawLogo(ctx, str, x, y, size = 4, o = {}) {
+    str = String(str).toUpperCase();
+    const tw = textWidth(str, size), lx = Math.round(x - tw / 2), ly = Math.round(y), t = size >= 3 ? 2 : 1;
+    ctx.fillStyle = o.outline || '#1a1020';
+    for (const [dx, dy] of [[-t, 0], [t, 0], [0, -t], [0, t], [-t, -t], [t, t], [-t, t], [t, -t], [0, t + 2], [t, t + 2], [-t, t + 2]]) rawText(ctx, str, lx + dx, ly + dy, size);
+    ctx.fillStyle = o.color || '#ffffff'; rawText(ctx, str, lx, ly, size);
+    ctx.save(); ctx.beginPath(); ctx.rect(lx - 1, ly + Math.round(size * 3), tw + 2, size * 2); ctx.clip();
+    ctx.fillStyle = o.shade || '#cfe6ff'; rawText(ctx, str, lx, ly, size); ctx.restore();
+  }
+
   // --- avatars: 12x12 pixel faces in your color ---------------------------------------
   // '#' your color, 'd' a darker shade, 'w' white, 'k' black, 'p' pink
   const AVATARS = {
@@ -1111,6 +1123,6 @@ window.PX = (() => {
   };
   if (location.protocol.startsWith('http')) window.addEventListener('load', () => setTimeout(() => Push.sync(), 2000));
 
-  return { Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
+  return { Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
            CODE_CHARS, ICE_SERVERS, loadPeer, makeScreen, makeUI, Sound };
 })();

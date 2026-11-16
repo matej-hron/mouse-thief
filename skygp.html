@@ -1033,8 +1033,7 @@ function drawTitle() {
   drawWorld({ p: attract, cars: [] }, W);
   ctx.fillStyle = 'rgba(8,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
   drawProfileTag();
-  T('PIXEL SKY GP', W / 2 + 2, 21, '#9a3ae0', 5, 'center');
-  T('PIXEL SKY GP', W / 2, 19, '#fff', 5, 'center');
+  PX.drawLogo(ctx, 'PIXEL SKY GP', W / 2, 19, 5);
   T('★ ' + PX.Wallet.get(), W - 62, 4, '#ffd23f', 1, 'right', '#000');
   engineButton(W - 56, 2);
   musicButton(W - 30, 2);

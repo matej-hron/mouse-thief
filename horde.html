@@ -627,8 +627,8 @@ function drawTitle(t) {
   drawMenuBack(t);
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   topBar();
-  T('PIXEL', W / 2, 34, '#fff', 3, 'center', '#000');
-  T('HORDE', W / 2 + 2, 54, '#3a0a14', 6, 'center'); T('HORDE', W / 2, 52, '#ff4a4a', 6, 'center');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'HORDE', W / 2, 52, 6);
   const bw = 200, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('play', bx, 98, bw, 28, 'PLAY', { accent: '#ff4a4a' })) { sfx('click'); state = 'pick'; }
   if (UI.button('shop', bx, 132, 98, 22, 'UPGRADES', { size: 1, accent: '#ffd23f' })) { sfx('click'); state = 'shop'; }

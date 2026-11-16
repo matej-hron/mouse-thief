@@ -674,8 +674,8 @@ function drawTitle(t) {
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, sfxOn ? 'SND' : 'OFF', { size: 1, on: sfxOn })) { sfxOn = !sfxOn; try { localStorage.setItem('pixelMiner.sfx', sfxOn ? '1' : '0'); } catch (e) { /* private */ } }
-  T('PIXEL', W / 2, 34, '#fff', 3, 'center', '#000');
-  T('MINER', W / 2 + 2, 54, '#3a1c0a', 6, 'center'); T('MINER', W / 2, 52, '#ffc81e', 6, 'center');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'MINER', W / 2, 52, 6);
   const bw = 180, bx = Math.round(W / 2 - bw / 2), fresh = !save.maxDepth && !save.cash;
   if (UI.button('play', bx, 100, bw, 28, fresh ? 'START DIGGING' : 'CONTINUE', { accent: '#ffc81e' })) { sfx('click'); start(); }
   T(fresh ? 'DIG DOWN, FIND ORES AND GEMS, SELL THEM, UPGRADE, GO DEEPER' : 'RECORD ' + save.maxDepth + ' M   ' + money(save.cash) + '   GOALS ' + save.goal + '/' + GOALS.length + '   ARTIFACTS ' + save.arts.length + '/' + ARTS.length, W / 2, 136, '#fff', 1, 'center', '#000');
