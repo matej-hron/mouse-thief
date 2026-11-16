@@ -4612,8 +4612,7 @@ function drawMenu() {
   const floorY = 214;
   ctx.fillStyle = PAL.floor; ctx.fillRect(0, floorY, W, H - floorY);
   menuChase(floorY);
-  drawText('MOUSE THIEF', W / 2 + 3, 21, '#e01e1e', 6, 'center');
-  drawText('MOUSE THIEF', W / 2, 18, PAL.ink, 6, 'center');
+  PX.drawLogo(ctx, 'MOUSE THIEF', W / 2, 18, 6);
   drawText('SHE WANTS IT BACK.', W / 2, 58, '#e01e1e', 1, 'center');
   wallet();
   const bw = 160, bx = Math.round(W / 2 - bw / 2);

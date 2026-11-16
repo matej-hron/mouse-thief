@@ -680,9 +680,8 @@ function drawTitle(t) {
   ctx.fillStyle = 'rgba(13,11,19,0.25)'; ctx.fillRect(0, 0, W, H);
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   topBar(false);
-  T('PIXEL', W / 2, 36, '#ffd23f', 3, 'center', '#000');
-  T('HOOK', W / 2 + 2, 56, '#000', 7, 'center');
-  T('HOOK', W / 2, 54, '#ff3a3a', 7, 'center');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 36, 3);
+  PX.drawLogo(ctx, 'HOOK', W / 2, 54, 7);
   const bw = 180, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('levels', bx, 104, bw, 26, 'LEVELS  ★' + totalStars() + '/' + (3 * WPL * 3), { accent: '#ff3a3a' })) { sfx('click'); state = 'levels'; }
   if (UI.button('endless', bx, 136, bw, 26, 'ENDLESS', { accent: '#7af0ff' })) { sfx('click'); start('endless'); }

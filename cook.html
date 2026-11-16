@@ -1079,8 +1079,8 @@ function drawTitle(t) {
   T('★ ' + PX.Wallet.get(), W - 38, 8, '#ffd23f', 2, 'right', '#000');
   if (iconButton('sfx', W - 30, 4, 26, 18, { on: save.sfx }, (x, y, c) => { R(x + 6, y + 7, 3, 4, c); R(x + 9, y + 6, 2, 6, c); R(x + 11, y + 4, 2, 10, c); if (save.sfx) { R(x + 15, y + 7, 1, 4, c); R(x + 17, y + 5, 1, 8, c); R(x + 19, y + 3, 1, 12, c); } else { for (let i = 0; i < 5; i++) { R(x + 15 + i, y + 6 + i, 1, 2, '#ff6a5a'); R(x + 19 - i, y + 6 + i, 1, 2, '#ff6a5a'); } } })) { save.sfx = !save.sfx; store(); sfx('click'); }
   const bobY = Math.round(Math.sin(t * 2) * 2);
-  T('PIXEL', W / 2, 30 + bobY, '#ffd23f', 3, 'center', '#000');
-  T('COOK', W / 2, 48 + bobY, '#fff', 6, 'center', '#e8402a');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 30 + bobY, 3);
+  PX.drawLogo(ctx, 'COOK', W / 2, 48 + bobY, 6);
   T('$' + save.money, W / 2, 88, '#ffd23f', 2, 'center', '#000');
   const bw = 210, bx = Math.round(W / 2 - bw / 2), hw = (bw - 4) / 2;
   if (UI.button('play', bx, 104, bw, 28, save.tut ? 'OPEN THE ' + (rest.short === 'CAFE' ? 'CAFE' : rest.name) : 'START COOKING', { accent: '#5ad43f', on: true })) { sfx('click'); newShift(!save.tut); }

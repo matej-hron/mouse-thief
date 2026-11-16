@@ -687,8 +687,8 @@ function drawTitle(now) {
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 62, 12, '#ffd23f', 2, 'right', '#000');
   soundButtons(W - 56, 8);
-  T('PIXEL', W / 2, 30, '#ffe23a', 3, 'center', '#000');
-  T('BOX FIGHT', W / 2, 48, '#fff', 5, 'center', '#e01e1e');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 30, 3);
+  PX.drawLogo(ctx, 'BOX FIGHT', W / 2, 48, 5);
   const bw = 210, bx = Math.round(W / 2 - bw / 2);
   if (menu === 'main') {
     if (UI.button('bot', bx, 96, bw, 24, 'FIGHT A BOT', { accent: '#3fd45a' })) { sfx('click'); menu = 'bot'; }

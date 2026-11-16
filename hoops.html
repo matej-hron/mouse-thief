@@ -498,8 +498,8 @@ function drawTitle(t) {
   PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
   T('★ ' + PX.Wallet.get(), W - 36, 12, '#ffd23f', 2, 'right', '#000');
   if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
-  T('PIXEL', W / 2, 40, '#ffd23f', 3, 'center', '#000');
-  T('HOOPS', W / 2, 58, '#fff', 6, 'center', '#ff6a1a');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 40, 3);
+  PX.drawLogo(ctx, 'HOOPS', W / 2, 58, 6);
   const bw = 200, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('timed', bx, 104, bw, 26, 'TIME ATTACK (60S)', { accent: '#ffd23f' })) { sfx('click'); newGame('timed'); }
   if (UI.button('free', bx, 136, bw, 26, 'FREE SHOOT', { accent: '#5ad43f' })) { sfx('click'); newGame('free'); }

@@ -581,8 +581,8 @@ function drawTitle(t) {
   coinAt(W - 44, 34, t); T(String(save.coins), W - 52, 30, '#ffd23f', 2, 'right', '#000');
   const by = Math.round(Math.sin(t * 2) * 2);
   input.jump = input.slide = false;
-  T('PIXEL', W / 2, 22 + by, '#ffd23f', 3, 'center', '#000');
-  T('RUNS', W / 2, 40 + by, '#fff', 6, 'center', '#e8402a');
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 22 + by, 3);
+  PX.drawLogo(ctx, 'RUNS', W / 2, 40 + by, 6);
   const mw = Math.min(300, W - 40), mx = Math.round(W / 2 - mw / 2);
   R(mx - 7, 77, mw + 14, 73, '#0b0912'); R(mx - 6, 78, mw + 12, 71, 'rgba(37,31,58,0.92)'); R(mx - 6, 78, mw + 12, 2, '#ffd23f');
   T('MISSIONS', mx, 83, '#ffd23f', 1, 'left', '#000'); T('RANK ' + (rankOf() + 1) + ': ' + (3 - save.done % 3) + ' TO GO', mx + mw, 83, '#9a92b8', 1, 'right', '#000');
