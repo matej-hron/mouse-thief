@@ -42,7 +42,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 const SAVE_KEY = 'pixelSki.save';
 const save = { best: {}, done: {}, sfx: true, seenHelp: false, coins: 0, up: {}, skis: 'green', helmet: 'yellow', owned: { green: 1, yellow: 1 }, runStars: {}, daily: '' };
 try {
@@ -1187,7 +1187,7 @@ const codeInput = document.getElementById('code');
 codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().split('').filter(c => PX.CODE_CHARS.includes(c)).join('').slice(0, 4); });
 const Net = {
   peer: null, conn: null, live: false, isHost: false, code: '', screen: 'pick', msg: '', friend: null, sendT: 0, pm: 0, pl: 0,
-  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); },
+  reset() { try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ } this.peer = null; this.conn = null; this.live = false; this.code = ''; this.friend = null; this.screen = 'pick'; this.msg = ''; PX.Bet.reset(); PX.Voice.reset(); },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
   async host() {
@@ -1214,7 +1214,7 @@ const Net = {
   joinTyped() { if (codeInput.value.length === 4) { codeInput.blur(); this.join(codeInput.value); } },
   bind(c) {
     this.conn = c;
-    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
+    c.on('open', () => { this.live = true; this.screen = 'lobby'; PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); this.send({ t: 'me', name: profile.name, av: profile.avatar, color: MY_COLOR, v: VERSION }); sfx('click'); });
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
   },
@@ -1229,6 +1229,7 @@ const Net = {
   start(m, l) { this.pm = m; this.pl = l; this.send({ t: 'go', m, l }); startRun(m, l, true); },
   onData(m) {
     if (!m || typeof m !== 'object') return;
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) return;
     switch (m.t) {
       case 'me':

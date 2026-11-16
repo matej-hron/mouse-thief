@@ -41,7 +41,7 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const SAVE_KEY = 'pixelFootball.save.v1';
 const profile = PX.Profile.get();
 const canvas = document.getElementById('screen');
@@ -935,7 +935,7 @@ const Net = {
     try { if (this.peer) this.peer.destroy(); } catch (e) { /* gone */ }
     Object.assign(this, { peer: null, conn: null, live: false, code: '', friend: null, screen: 'home', msg: '', random: false, search: this.search + 1,
       meReady: false, friendReady: false, offer: null, pending: null, tradeMsg: '', sel: { mine: [], theirs: [], pay: 0 }, snap: null });
-    PX.Bet.reset();
+    PX.Bet.reset(); PX.Voice.reset();
   },
   fail(msg) { this.reset(); this.screen = 'error'; this.msg = msg; },
   opts() { return { debug: 0, config: { iceServers: PX.ICE_SERVERS } }; },
@@ -997,7 +997,7 @@ const Net = {
   },
   bind(c, opened) {
     this.conn = c;
-    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, v: VERSION, club: clubPacket() }); PX.Bet.connect(m => this.send(m), this.isHost); sfx('click'); };
+    const go = () => { this.live = true; this.screen = 'lobby'; this.send({ t: 'me', name: profile.name, av: profile.avatar, v: VERSION, club: clubPacket() }); PX.Bet.connect(m => this.send(m), this.isHost); PX.Voice.connect(c); sfx('click'); };
     if (opened) go(); else c.on('open', go);
     c.on('data', m => this.onData(m));
     c.on('close', () => this.lost());
@@ -1055,6 +1055,7 @@ const Net = {
   onData(m) {
     if (!m || typeof m !== 'object') return;
     const bet = PX.Bet.amount;
+    if (PX.Voice.onData(m)) return;                          // voice chat
     if (PX.Bet.onData(m)) { if (bet !== PX.Bet.amount) this.meReady = this.friendReady = false; return; }   // a new bet: both say PLAY again
     switch (m.t) {
       case 'me': {
