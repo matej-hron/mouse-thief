@@ -323,7 +323,7 @@ window.PX = (() => {
   const BOUNDS = {
     stars: ['hi', 0, 10e6], thief: ['hi', 0, 36000], racer: ['lo', 5, 600], skygp: ['lo', 5, 600], bike: ['lo', 3, 3600], 'bike:free': ['hi', 0, 1e6],
     moto: ['lo', 3, 3600], 'moto:free': ['hi', 0, 1e6], ski: ['lo', 3, 3600], heist: ['lo', 5, 7200], skate: ['hi', 0, 10e6], horde: ['hi', 0, 600],
-    defense: ['hi', 0, 10000], hook: ['hi', 0, 1e6], slice: ['hi', 0, 100000], runs: ['hi', 0, 10e6], miner: ['hi', 0, 1e6], snake: ['hi', 0, 1e6], hoops: ['hi', 0, 100000],
+    defense: ['hi', 0, 10000], hook: ['hi', 0, 1e6], slice: ['hi', 0, 100000], party: ['hi', 0, 1e6], runs: ['hi', 0, 10e6], miner: ['hi', 0, 1e6], snake: ['hi', 0, 1e6], hoops: ['hi', 0, 100000],
     cook: ['hi', 0, 100e6], fish: ['hi', 0, 100e6], pong: ['hi', 0, 1e6], boxfight: ['hi', 0, 1e6], wings: ['hi', 0, 1e6], football: ['hi', 0, 10000],
   };
   const SENT_KEY = 'pixelArcade.sentScores';
@@ -384,6 +384,7 @@ window.PX = (() => {
     G('miner', 'PIXEL MINER', 'pixelMiner.save', 'm', s => one('miner', s.maxDepth)),
     G('hook', 'PIXEL HOOK', 'pixelHook.save', 'm', s => one('hook', num(s.endless) === null ? null : Math.floor(s.endless / 10))),
     G('slice', 'PIXEL SLICE', 'pixelSlice.save', 'pts', s => perTrack('slice', s.best, SLICE_TRACKS), SLICE_TRACKS),
+    G('party', 'PIXEL PARTY: TROPHIES', 'pixelParty.save', 'pts', s => one('party', s.points)),
   ];
   const spaced = n => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const lowerBetter = b => BOUNDS[b] ? BOUNDS[b][0] === 'lo' : BOUNDS[b.split(':')[0]][0] === 'lo';

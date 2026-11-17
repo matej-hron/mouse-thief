@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Party: a tournament of quick mini-games for 2 to 4 players on one phone. Pick the games, the rounds and the trophy you play for.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Party</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a0f2e; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  #pname { position: fixed; display: none; box-sizing: border-box; text-align: center; text-transform: uppercase;
+          font: bold 22px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.15em;
+          color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<input id="pname" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Player name">
+<script src="common.js"></script>
+<script src="cs.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL PARTY: a tournament of quick mini-games for 2 to 4 players (part of the PIXEL ARCADE).
+   ONE PHONE: the players take turns, passing the phone. Every round is one mini-game: everybody plays the same one
+   (the same fruit, the same rocks: it is built from the round's seed), and the best score wins the round.
+   Points for a round: 1st 3, 2nd 2, 3rd 1. After the last round the most points wins the tournament's TROPHY.
+     Setup: 2-4 players (names), the PLAYLIST (RANDOM, or pick the mini-games), ROUNDS (3, 5 or 7) and the TROPHY
+     (BRONZE: 3+ rounds, SILVER: 5+, GOLD: 7). When the phone's own player (player 1) wins, the trophy goes on
+     their shelf and on the TROPHIES leaderboard (gold 3, silver 2, bronze 1), and ★ into the arcade's wallet.
+   Mini-games: SLICE, TAP RACE, DODGE, CATCH, REACTION, TARGETS, MEMORY, HOP.
+     1. Setup   2. Mini-games   3. The tournament   4. Screens   5. Sound   6. Input   7. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelParty.save';
+const save = { sfx: true, names: ['', 'PLAYER 2', 'PLAYER 3', 'PLAYER 4'], n: 2, rounds: 5, trophy: 'silver', random: true, pick: [],
+               shelf: { gold: 0, silver: 0, bronze: 0 }, points: 0, played: 0, days: {} };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+save.names[0] = profile.name;
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const raw = (...a) => PX.Lang.raw(() => T(...a));   // (names the players typed: never translated)
+PX.Lang.page('party');                             // Czech when SETTINGS → LANGUAGE says so (cs.js)
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const nameInput = document.getElementById('pname');
+nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
+
+const COLS = ['#ff5a5a', '#4aa8ff', '#5ad43f', '#ffd23f'];            // player 1..4
+const TROPHIES = [
+  { id: 'bronze', name: 'BRONZE', min: 3, pts: 1, stars: 3, col: '#d08a4a', dark: '#8a5424' },
+  { id: 'silver', name: 'SILVER', min: 5, pts: 2, stars: 6, col: '#d8dce8', dark: '#8a90a4' },
+  { id: 'gold', name: 'GOLD', min: 7, pts: 3, stars: 10, col: '#ffd23f', dark: '#c88a10' },
+];
+const trophyOf = id => TROPHIES.find(t => t.id === id) || TROPHIES[1];
+const DAY_MAX = 5;           // at most 5 trophies a day count on the leaderboard (the shelf keeps them all)
+
+// a seeded random: every player of a round gets the same one
+function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+/* --- 2. MINI-GAMES ----------------------------------------------------------------- */
+// Each one: name, how (one line), dur (seconds, or the most), low (true: a lower score is better), unit, and
+//   start(r): a fresh game from the random r; step(g, dt); draw(g, t); down(g, x, y) / move(g, x, y) / up(g);
+//   g.score; g.done (it can end before the time is up).
+const ball = (x, y, r, c, d) => { for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy))); ctx.fillStyle = d && dy > r * 0.35 ? d : c; ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1); } };
+const GAMES = {
+  slice: {
+    name: 'SLICE', how: 'SWIPE ACROSS THE FRUIT. NOT THE BOMBS!', dur: 20, unit: 'FRUIT', bg: '#3a2214',
+    start(r) { return { r, fruit: [], spawn: 0.4, blade: null, trail: [], bits: [] }; },
+    step(g, dt) {
+      const W = S.W;
+      if ((g.spawn -= dt) <= 0) {
+        g.spawn = 0.7 - Math.min(0.35, g.t * 0.015);
+        const n = 1 + Math.floor(g.r() * 3);
+        for (let i = 0; i < n; i++) { const x = W * (0.15 + g.r() * 0.7); g.fruit.push({ x, y: H + 16, vx: (W / 2 - x) * (0.2 + g.r() * 0.4), vy: -(260 + g.r() * 70), bomb: g.r() < 0.15, c: ['#e8303a', '#ff9a1e', '#ffe03a', '#3aa83a', '#8a3ac8'][Math.floor(g.r() * 5)] }); }
+      }
+      for (const f of g.fruit) { f.vy += 330 * dt; f.x += f.vx * dt; f.y += f.vy * dt; }
+      g.fruit = g.fruit.filter(f => f.y < H + 30 && !f.cut);
+      for (const b of g.bits) { b.vy += 300 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.l -= dt; }
+      g.bits = g.bits.filter(b => b.l > 0);
+    },
+    draw(g, t) {
+      const W = S.W;
+      for (let i = 0; i * 22 < W; i++) { ctx.fillStyle = i & 1 ? '#3a2214' : '#43281a'; ctx.fillRect(i * 22, 0, 22, H); }
+      for (const f of g.fruit) {
+        if (f.bomb) { ball(f.x, f.y, 11, '#2a2a34', '#111118'); ctx.fillStyle = Math.sin(t * 20) > 0 ? '#ffe03a' : '#ff6a1e'; ctx.fillRect(Math.round(f.x) + 2, Math.round(f.y) - 15, 3, 3); }
+        else { ball(f.x, f.y, 11, f.c, '#0006'); ctx.fillStyle = '#ffffff88'; ctx.fillRect(Math.round(f.x) - 5, Math.round(f.y) - 6, 3, 3); }
+      }
+      for (const b of g.bits) { ctx.fillStyle = b.c; ctx.fillRect(Math.round(b.x), Math.round(b.y), 3, 3); }
+      const now = performance.now() / 1000; g.trail = g.trail.filter(p => now - p.t < 0.15);
+      ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round';
+      for (let i = 1; i < g.trail.length; i++) { if (g.trail[i].gap) continue; ctx.lineWidth = 1 + i / g.trail.length * 4; ctx.beginPath(); ctx.moveTo(g.trail[i - 1].x, g.trail[i - 1].y); ctx.lineTo(g.trail[i].x, g.trail[i].y); ctx.stroke(); }
+    },
+    down(g, x, y) { g.blade = { x, y, at: performance.now() }; g.trail.push({ x, y, t: performance.now() / 1000, gap: true }); },
+    move(g, x, y) {
+      if (!g.blade) return;
+      const now = performance.now(), dt = Math.max(4, now - g.blade.at) / 1000, dx = x - g.blade.x, dy = y - g.blade.y, len = Math.hypot(dx, dy);
+      if (len / dt > 240 && len > 1) for (const f of g.fruit) {
+        if (f.cut) continue;
+        const k = clamp(((f.x - g.blade.x) * dx + (f.y - g.blade.y) * dy) / (len * len), 0, 1);
+        if (Math.hypot(f.x - g.blade.x - dx * k, f.y - g.blade.y - dy * k) < 15) {
+          f.cut = true; g.score = Math.max(0, g.score + (f.bomb ? -3 : 1)); sfx(f.bomb ? 'bad' : 'cut');
+          for (let i = 0; i < 10; i++) g.bits.push({ x: f.x, y: f.y, vx: (Math.random() - 0.5) * 220, vy: (Math.random() - 0.7) * 200, l: 0.6, c: f.bomb ? '#ff8a1e' : f.c });
+        }
+      }
+      g.blade = { x, y, at: now }; g.trail.push({ x, y, t: now / 1000 });
+    },
+    up(g) { g.blade = null; },
+  },
+  tap: {
+    name: 'TAP RACE', how: 'TAP AS FAST AS YOU CAN!', dur: 10, unit: 'TAPS', bg: '#2a1050',
+    start(r) { return { r, pops: [] }; },
+    step(g, dt) { for (const p of g.pops) p.l -= dt; g.pops = g.pops.filter(p => p.l > 0); },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = '#2a1050'; ctx.fillRect(0, 0, W, H);
+      const s = 1 + Math.min(0.3, g.pops.length * 0.03);
+      ball(W / 2, H / 2 + 10, Math.round(40 * s), '#ff5a8a', '#c83a6a');
+      T(String(g.score), W / 2, H / 2, '#fff', 4, 'center', '#000');
+      for (const p of g.pops) T('+1', p.x, p.y - (0.5 - p.l) * 40, '#ffd23f', 1, 'center', '#000');
+    },
+    down(g, x, y) { g.score++; g.pops.push({ x, y, l: 0.5 }); sfx('tap'); },
+  },
+  dodge: {
+    name: 'DODGE', how: 'MOVE YOUR FINGER. DON\'T GET HIT!', dur: 30, unit: 'S', bg: '#0b1a2e', tenths: true,
+    start(r) { return { r, x: S.W / 2, rocks: [], spawn: 0.5 }; },
+    step(g, dt) {
+      const W = S.W;
+      if ((g.spawn -= dt) <= 0) { g.spawn = Math.max(0.12, 0.55 - g.t * 0.02); g.rocks.push({ x: g.r() * W, y: -10, v: 90 + g.r() * 60 + g.t * 6, s: 5 + Math.floor(g.r() * 6) }); }
+      for (const k of g.rocks) k.y += k.v * dt;
+      g.rocks = g.rocks.filter(k => k.y < H + 20);
+      g.score = Math.round(g.t * 10) / 10;
+      if (g.rocks.some(k => Math.abs(k.x - g.x) < k.s + 6 && Math.abs(k.y - (H - 24)) < k.s + 6)) { g.done = true; sfx('bad'); }
+    },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = '#0b1a2e'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#1e3a5a'; ctx.fillRect(0, H - 14, W, 14);
+      for (const k of g.rocks) { ctx.fillStyle = '#111'; ctx.fillRect(Math.round(k.x - k.s - 1), Math.round(k.y - k.s - 1), k.s * 2 + 2, k.s * 2 + 2); ctx.fillStyle = '#8a7a6a'; ctx.fillRect(Math.round(k.x - k.s), Math.round(k.y - k.s), k.s * 2, k.s * 2); }
+      ctx.fillStyle = '#111'; ctx.fillRect(Math.round(g.x) - 7, H - 31, 14, 16); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(Math.round(g.x) - 6, H - 30, 12, 14);
+      ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(g.x) - 3, H - 26, 2, 2); ctx.fillRect(Math.round(g.x) + 1, H - 26, 2, 2);
+    },
+    down(g, x) { g.x = x; }, move(g, x) { g.x = clamp(x, 6, S.W - 6); },
+  },
+  catch: {
+    name: 'CATCH', how: 'CATCH THE STARS. NOT THE SKULLS!', dur: 20, unit: '★', bg: '#10203a',
+    start(r) { return { r, x: S.W / 2, stuff: [], spawn: 0.3 }; },
+    step(g, dt) {
+      const W = S.W;
+      if ((g.spawn -= dt) <= 0) { g.spawn = 0.45; g.stuff.push({ x: 12 + g.r() * (W - 24), y: -8, v: 100 + g.r() * 80 + g.t * 4, bad: g.r() < 0.22 }); }
+      for (const s of g.stuff) {
+        s.y += s.v * dt;
+        if (!s.got && s.y > H - 30 && s.y < H - 14 && Math.abs(s.x - g.x) < 20) { s.got = true; g.score = Math.max(0, g.score + (s.bad ? -2 : 1)); sfx(s.bad ? 'bad' : 'coin'); }
+      }
+      g.stuff = g.stuff.filter(s => !s.got && s.y < H + 10);
+    },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = '#10203a'; ctx.fillRect(0, 0, W, H);
+      for (const s of g.stuff) { if (s.bad) T('X', s.x, s.y - 4, '#ff5a5a', 2, 'center', '#000'); else T('★', s.x, s.y - 4, '#ffd23f', 2, 'center', '#000'); }
+      const x = Math.round(g.x); ctx.fillStyle = '#111'; ctx.fillRect(x - 21, H - 23, 42, 12); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(x - 20, H - 22, 40, 10); ctx.fillStyle = '#0006'; ctx.fillRect(x - 16, H - 22, 32, 3);
+    },
+    down(g, x) { g.x = x; }, move(g, x) { g.x = clamp(x, 20, S.W - 20); },
+  },
+  react: {
+    name: 'REACTION', how: 'WAIT FOR GREEN, THEN TAP. 5 TIMES.', dur: 40, unit: 'MS', low: true, bg: '#3a0a10',
+    start(r) { return { r, tries: [], wait: 1.2 + r() * 2.2, green: false, gt: 0, early: 0, msg: '' }; },
+    step(g, dt) {
+      if (g.tries.length >= 5) { g.done = true; return; }
+      if (!g.green && (g.wait -= dt) <= 0) { g.green = true; g.gt = performance.now(); sfx('go'); }
+      g.score = g.tries.length ? Math.round(g.tries.reduce((a, b) => a + b, 0) / g.tries.length) : 9999;
+    },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = g.green ? '#1ea83a' : '#a8141e'; ctx.fillRect(0, 0, W, H);
+      T(g.green ? 'TAP!' : 'WAIT...', W / 2, H / 2 - 20, '#fff', 4, 'center', '#000');
+      T(g.msg, W / 2, H / 2 + 20, '#fff', 2, 'center', '#000');
+      T(g.tries.length + ' / 5', W / 2, H - 30, '#fff', 1, 'center', '#000');
+    },
+    down(g) {
+      if (g.tries.length >= 5) return;
+      if (g.green) { const ms = Math.round(performance.now() - g.gt); g.tries.push(ms); g.msg = ms + ' MS'; g.green = false; g.wait = 1 + g.r() * 2.4; sfx('tap'); }
+      else { g.tries.push(1000); g.msg = 'TOO EARLY! +1000 MS'; g.wait = 1 + g.r() * 2.4; sfx('bad'); }
+    },
+  },
+  targets: {
+    name: 'TARGETS', how: 'TAP THE TARGETS BEFORE THEY GO!', dur: 20, unit: 'HITS', bg: '#123a20',
+    start(r) { return { r, list: [], spawn: 0.2, fx: [] }; },
+    step(g, dt) {
+      const W = S.W;
+      if ((g.spawn -= dt) <= 0) { g.spawn = Math.max(0.35, 0.75 - g.t * 0.02); g.list.push({ x: 24 + g.r() * (W - 48), y: 40 + g.r() * (H - 70), l: 1.3, r: 13 }); }
+      for (const o of g.list) o.l -= dt;
+      g.list = g.list.filter(o => o.l > 0 && !o.hit);
+      for (const f of g.fx) f.l -= dt; g.fx = g.fx.filter(f => f.l > 0);
+    },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = '#123a20'; ctx.fillRect(0, 0, W, H);
+      for (const o of g.list) { const r = Math.round(o.r * Math.min(1, o.l * 3)); ball(o.x, o.y, r + 1, '#111'); ball(o.x, o.y, r, '#ffffff'); ball(o.x, o.y, Math.round(r * 0.66), '#e8303a'); ball(o.x, o.y, Math.round(r * 0.33), '#ffffff'); }
+      for (const f of g.fx) T('+1', f.x, f.y - (0.5 - f.l) * 30, '#ffd23f', 1, 'center', '#000');
+    },
+    down(g, x, y) {
+      const o = g.list.find(o => !o.hit && Math.hypot(o.x - x, o.y - y) < o.r + 6);
+      if (o) { o.hit = true; g.score++; g.fx.push({ x: o.x, y: o.y, l: 0.5 }); sfx('coin'); }
+    },
+  },
+  memory: {
+    name: 'MEMORY', how: 'WATCH THE COLORS, THEN TAP THEM IN ORDER.', dur: 60, unit: 'LONG', bg: '#1a1030',
+    start(r) { const seq = []; for (let i = 0; i < 30; i++) seq.push(Math.floor(r() * 4)); return { r, seq, len: 3, show: 0.8, i: 0, input: [], lit: -1, litT: 0 }; },
+    pads() { const W = S.W, s = 64, gx = W / 2 - s - 4, gy = 54; return [0, 1, 2, 3].map(k => ({ x: gx + (k % 2) * (s + 8), y: gy + Math.floor(k / 2) * (s + 8), s })); },
+    step(g, dt) {
+      if (g.litT > 0 && (g.litT -= dt) <= 0) g.lit = -1;
+      if (g.show !== null && g.show !== undefined && g.show > -1) {      // showing the colors one by one
+        if ((g.show -= dt) <= 0) {
+          if (g.i < g.len) { g.lit = g.seq[g.i]; g.litT = 0.45; g.i++; g.show = 0.65; sfx('note', g.lit); }
+          else { g.show = -1; g.input = []; }
+        }
+      }
+    },
+    draw(g, t) {
+      const W = S.W; ctx.fillStyle = '#1a1030'; ctx.fillRect(0, 0, W, H);
+      const cols = [['#e8303a', '#ff8a8a'], ['#2a7ad8', '#8ac8ff'], ['#3aa83a', '#a8ff8a'], ['#e0a820', '#fff08a']];
+      this.pads().forEach((p, k) => { ctx.fillStyle = '#111'; ctx.fillRect(p.x - 2, p.y - 2, p.s + 4, p.s + 4); ctx.fillStyle = cols[k][g.lit === k ? 1 : 0]; ctx.fillRect(p.x, p.y, p.s, p.s); });
+      T(g.show > -1 ? 'WATCH...' : 'YOUR TURN: ' + g.input.length + ' / ' + g.len, W / 2, 34, '#fff', 1, 'center', '#000');
+    },
+    down(g, x, y) {
+      if (g.show > -1 || g.done) return;
+      const k = this.pads().findIndex(p => x >= p.x && x < p.x + p.s && y >= p.y && y < p.y + p.s); if (k < 0) return;
+      g.lit = k; g.litT = 0.2; sfx('note', k);
+      if (g.seq[g.input.length] !== k) { g.done = true; sfx('bad'); return; }
+      g.input.push(k);
+      if (g.input.length === g.len) { g.score = g.len; g.len++; g.i = 0; g.show = 0.9; if (g.len > 30) g.done = true; }
+    },
+  },
+  hop: {
+    name: 'HOP', how: 'TAP TO JUMP OVER THE GAPS.', dur: 40, unit: 'M', bg: '#5ab4f0',
+    start(r) {
+      const gaps = []; let x = 220;
+      for (let i = 0; i < 120; i++) { x += 70 + r() * 90; gaps.push({ x, w: 22 + r() * 22 }); }
+      return { r, x: 0, y: 0, vy: 0, on: true, gaps, speed: 120 };
+    },
+    step(g, dt) {
+      g.speed = Math.min(260, 120 + g.t * 6); g.x += g.speed * dt;
+      g.vy += 900 * dt; g.y = Math.min(0, g.y + g.vy * dt);
+      const px = g.x + 60, over = g.gaps.find(gp => px > gp.x && px < gp.x + gp.w);
+      if (g.y >= 0) { if (over) { g.y = 1; g.done = true; sfx('bad'); } else { g.vy = 0; g.on = true; } }
+      g.score = Math.floor(g.x / 10);
+    },
+    draw(g, t) {
+      const W = S.W, gy = H - 50; ctx.fillStyle = '#5ab4f0'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#3aa83a'; ctx.fillRect(0, gy, W, H - gy); ctx.fillStyle = '#7a4c2a'; ctx.fillRect(0, gy + 6, W, H - gy);
+      for (const gp of g.gaps) { const sx = gp.x - g.x; if (sx > W || sx + gp.w < 0) continue; ctx.fillStyle = '#5ab4f0'; ctx.fillRect(Math.round(sx), gy, Math.round(gp.w), H - gy); }
+      const y = gy - 12 + g.y; ctx.fillStyle = '#111'; ctx.fillRect(59, Math.round(y) - 1, 12, 13); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(60, Math.round(y), 10, 11);
+      ctx.fillStyle = '#fff'; ctx.fillRect(66, Math.round(y) + 2, 2, 2);
+    },
+    down(g) { if (g.on && g.y >= 0) { g.vy = -330; g.on = false; sfx('jump'); } },
+  },
+};
+const GAME_IDS = Object.keys(GAMES);
+const fmt = (id, v) => (GAMES[id].tenths ? v.toFixed(1) : String(v)) + ' ' + GAMES[id].unit;
+
+/* --- 3. THE TOURNAMENT ----------------------------------------------------------- */
+// Party: the tournament being played. players [{ name, col, pts }], list: the mini-game of each round,
+// round, turn: whose turn it is, scores: this round's scores
+const Party = {
+  players: [], list: [], round: 0, turn: 0, scores: [], seed: 0, phase: 'intro', mg: null, count: 0, trophy: 'silver', results: null,
+  start() {
+    const n = clamp(save.n | 0, 2, 4), tr = trophyOf(save.trophy), rounds = Math.max(save.rounds, tr.min);
+    this.players = [...Array(n)].map((_, i) => ({ name: (i === 0 ? profile.name : save.names[i]) || 'PLAYER ' + (i + 1), col: COLS[i], pts: 0 }));
+    const pool = save.random || !save.pick.length ? GAME_IDS : save.pick.filter(id => GAMES[id]);
+    this.list = [];
+    let last = '';
+    for (let i = 0; i < rounds; i++) { let id; do { id = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && id === last); this.list.push(id); last = id; }
+    this.round = 0; this.trophy = tr.id; this.newRound();
+    state = 'party'; sfx('click');
+  },
+  newRound() { this.turn = 0; this.scores = []; this.seed = Math.floor(Math.random() * 1e9); this.phase = 'intro'; },
+  id() { return this.list[this.round]; },
+  go() {                                         // this player's turn starts: 3, 2, 1
+    const M = GAMES[this.id()];
+    this.mg = Object.assign(M.start(rng(this.seed)), { t: 0, score: 0, done: false });
+    this.phase = 'count'; this.count = 3;
+  },
+  step(dt) {
+    if (this.phase === 'count') { const was = Math.ceil(this.count); this.count -= dt; if (Math.ceil(this.count) !== was && this.count > 0) sfx('beep'); if (this.count <= 0) { this.phase = 'play'; sfx('go'); } }
+    else if (this.phase === 'play') {
+      const M = GAMES[this.id()], g = this.mg;
+      g.t += dt; M.step(g, dt);
+      if (g.t >= M.dur || g.done) { this.scores[this.turn] = g.score; this.phase = 'done'; this.doneT = 0; sfx('end'); }
+    } else if (this.phase === 'done') this.doneT += dt;
+  },
+  next() {                                       // the next player, or the round's results
+    if (this.turn < this.players.length - 1) { this.turn++; this.phase = 'intro'; return; }
+    // places: equal scores share a place
+    const M = GAMES[this.id()], order = this.players.map((p, i) => i).sort((a, b) => (M.low ? this.scores[a] - this.scores[b] : this.scores[b] - this.scores[a]));
+    const place = []; order.forEach((i, k) => { place[i] = k > 0 && this.scores[i] === this.scores[order[k - 1]] ? place[order[k - 1]] : k; });
+    this.places = place;
+    this.players.forEach((p, i) => { p.got = [3, 2, 1, 0][place[i]] || 0; p.pts += p.got; });
+    this.phase = 'results'; sfx('win');
+  },
+  afterResults() {
+    if (this.round < this.list.length - 1) { this.round++; this.newRound(); return; }
+    this.finish();
+  },
+  finish() {
+    const best = Math.max(...this.players.map(p => p.pts)), winners = this.players.filter(p => p.pts === best);
+    const tr = trophyOf(this.trophy), meWon = this.players[0].pts === best;
+    this.results = { winners, tr, meWon };
+    save.played = (save.played | 0) + 1;
+    if (meWon) {
+      save.shelf[tr.id] = (save.shelf[tr.id] | 0) + 1;
+      const day = new Date().toISOString().slice(0, 10);
+      save.days = { [day]: ((save.days || {})[day] | 0) + 1 };          // (only today is kept)
+      if (save.days[day] <= DAY_MAX) save.points = (save.points | 0) + tr.pts;
+      else this.results.capped = true;
+      PX.Wallet.add(tr.stars);
+    }
+    store();
+    this.phase = 'final'; sfx(meWon ? 'trophy' : 'end');
+  },
+};
+
+/* --- 4. SCREENS --------------------------------------------------------------------- */
+let state = 'title';          // title | setup | names | party | shelf
+let paused = false, editing = -1, msg = null;
+function panel(w, h, y, col = '#ff7ab8') {
+  const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = col; ctx.fillRect(x, y, w, 2);
+  return { x, y };
+}
+function confetti(t) {
+  const W = S.W;
+  for (let i = 0; i < 40; i++) { ctx.fillStyle = COLS[i % 4]; ctx.fillRect(Math.round((i * 53 + Math.sin(t + i) * 20) % W), Math.round((i * 37 + t * (20 + i % 5 * 8)) % H), 2, 3); }
+}
+function background(t) {
+  const W = S.W;
+  ctx.fillStyle = '#1a0f2e'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 12; i++) { ctx.fillStyle = i & 1 ? '#22143a' : '#1e1234'; ctx.fillRect(0, i * 20, W, 20); }
+  confetti(t);
+}
+function trophyIcon(x, y, tr, s = 2) {
+  PX.drawIcon(ctx, ['#######', '#######', '.#####.', '..###..', '...#...', '..###..', '.#####.'], { '#': tr.col }, x, y, s);
+  ctx.fillStyle = tr.dark; ctx.fillRect(Math.round(x - 3.5 * s), Math.round(y - 3.5 * s + s), s, s * 2);
+}
+function topBar(back) {
+  const W = S.W;
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T('★ ' + PX.Wallet.get(), W - 38, 12, '#ffd23f', 2, 'right', '#000');
+  if (back && (UI.button('back', 6, 6, 56, 20, '< BACK', { size: 1 }) || UI.back)) { sfx('click'); nameInput.blur(); state = 'title'; }
+}
+function drawTitle(t) {
+  const W = S.W;
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); raw(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  topBar(false);
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'PARTY', W / 2, 52, 7);
+  const bw = 200, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('one', bx, 104, bw, 28, 'ONE PHONE', { accent: '#ff7ab8' })) { sfx('click'); state = 'setup'; }
+  T('2 TO 4 PLAYERS TAKE TURNS ON THIS PHONE', W / 2, 136, '#c8b8ff', 1, 'center', '#000');
+  if (UI.button('shelf', bx, 150, bw, 22, 'MY TROPHIES', { size: 1, accent: '#ffd23f' })) { sfx('click'); state = 'shelf'; }
+  T('ONLINE TOURNAMENTS ARE COMING SOON!', W / 2, 180, '#7a6a9a', 1, 'center', '#000');
+  if (UI.button('games', bx, 196, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#c8b8ff', 1, 'right');
+}
+function drawSetup(t) {
+  const W = S.W, cx = Math.round(W / 2);
+  topBar(true);
+  T('NEW TOURNAMENT', cx, 10, '#fff', 2, 'center', '#000');
+  // players: how many, and their names (tap one to change it)
+  T('PLAYERS', 16, 38, '#9a92b8', 1);
+  [2, 3, 4].forEach((n, i) => { if (UI.button('n' + n, 70 + i * 32, 32, 28, 18, String(n), { size: 1, on: save.n === n, accent: '#ff7ab8' })) { save.n = n; store(); } });
+  const pw = Math.floor((W - 32 - 18) / 4);
+  for (let i = 0; i < save.n; i++) {
+    const x = 16 + i * (pw + 6), nm = i === 0 ? profile.name : save.names[i] || 'PLAYER ' + (i + 1);
+    if (editing === i) { S.placeInput(nameInput, x, 56, pw, 20); nameInput.placed = true; continue; }
+    if (UI.button('pn' + i, x, 56, pw, 20, '', { size: 1, accent: COLS[i], disabled: i === 0 })) startEdit(i);
+    raw(nm, x + pw / 2, 63, i === 0 ? '#9a92b8' : '#fff', 1, 'center');
+  }
+  T('TAP A NAME TO CHANGE IT', cx, 80, '#5b5275', 1, 'center');
+  // the playlist
+  T('PLAYLIST', 16, 96, '#9a92b8', 1);
+  if (UI.button('rand', 70, 90, 70, 18, 'RANDOM', { size: 1, on: save.random, accent: '#7af0ff' })) { save.random = true; store(); }
+  if (UI.button('pickm', 144, 90, 70, 18, 'PICK', { size: 1, on: !save.random, accent: '#7af0ff' })) { save.random = false; if (!save.pick.length) save.pick = GAME_IDS.slice(); store(); }
+  const gw = Math.floor((W - 32 - 18) / 4);
+  GAME_IDS.forEach((id, i) => {
+    const x = 16 + (i % 4) * (gw + 6), y = 112 + Math.floor(i / 4) * 22, on = save.random || save.pick.includes(id);
+    if (UI.button('g' + id, x, y, gw, 19, GAMES[id].name, { size: 1, on, accent: '#7af0ff', disabled: save.random })) {
+      if (on) { if (save.pick.length > 1) save.pick = save.pick.filter(k => k !== id); else msg = { txt: 'PICK AT LEAST ONE GAME', t: 1.5 }; }
+      else save.pick.push(id);
+      store();
+    }
+  });
+  // rounds and the trophy (a bigger trophy needs more rounds)
+  T('ROUNDS', 16, 166, '#9a92b8', 1);
+  [3, 5, 7].forEach((n, i) => {
+    const tooFew = n < trophyOf(save.trophy).min;
+    if (UI.button('r' + n, 70 + i * 32, 160, 28, 18, String(n), { size: 1, on: save.rounds === n, accent: '#5ad43f', disabled: tooFew })) { save.rounds = n; store(); }
+  });
+  T('TROPHY', W / 2 + 14, 166, '#9a92b8', 1);
+  TROPHIES.forEach((tr, i) => {
+    const x = W / 2 + 60 + i * 44;
+    if (UI.button('t' + tr.id, x, 158, 40, 22, '', { size: 1, on: save.trophy === tr.id, accent: tr.col })) { save.trophy = tr.id; if (save.rounds < tr.min) save.rounds = tr.min; store(); }
+    trophyIcon(x + 20, 169, tr, 2);
+  });
+  const tr = trophyOf(save.trophy);
+  T(tr.name + ' TROPHY: ' + tr.min + '+ ROUNDS. THE WINNER GETS IT.', cx, 186, tr.col, 1, 'center', '#000');
+  if (UI.button('go', cx - 80, 200, 160, 26, 'START!', { accent: '#5ad43f' })) { nameInput.blur(); editing = -1; Party.start(); }
+}
+function startEdit(i) { editing = i; nameInput.value = save.names[i] || ''; setTimeout(() => nameInput.focus(), 0); }
+function endEdit() { if (editing > 0) { save.names[editing] = PX.cleanName(nameInput.value) || 'PLAYER ' + (editing + 1); store(); } editing = -1; nameInput.blur(); }
+nameInput.addEventListener('blur', () => { if (editing > 0) endEdit(); });
+function drawShelf(t) {
+  const W = S.W, cx = Math.round(W / 2);
+  topBar(true);
+  T('MY TROPHIES', cx, 34, '#fff', 3, 'center', '#000');
+  // the shelf: a wooden board with the trophies on it
+  ctx.fillStyle = '#5a3a1e'; ctx.fillRect(cx - 170, 132, 340, 8); ctx.fillStyle = '#7a4c2a'; ctx.fillRect(cx - 170, 132, 340, 2);
+  TROPHIES.slice().reverse().forEach((tr, i) => {
+    const x = cx - 110 + i * 110;
+    trophyIcon(x, 108, tr, 4);
+    T('X ' + (save.shelf[tr.id] | 0), x, 146, tr.col, 2, 'center', '#000');
+    T(tr.name, x, 164, '#c8b8ff', 1, 'center');
+  });
+  T('LEADERBOARD POINTS: ' + (save.points | 0) + '  (GOLD 3, SILVER 2, BRONZE 1)', cx, 186, '#ffd23f', 1, 'center', '#000');
+  T('TOURNAMENTS PLAYED: ' + (save.played | 0), cx, 198, '#9a92b8', 1, 'center', '#000');
+}
+// the tournament
+function standings(x, y, w, showGot) {
+  const P = Party, order = P.players.map((p, i) => i).sort((a, b) => P.players[b].pts - P.players[a].pts);
+  order.forEach((i, k) => {
+    const p = P.players[i], yy = y + k * 18;
+    ctx.fillStyle = '#16121f'; ctx.fillRect(x, yy, w, 16); ctx.fillStyle = p.col; ctx.fillRect(x, yy, 3, 16);
+    raw(p.name, x + 10, yy + 5, '#fff', 1);
+    if (showGot && P.scores[i] !== undefined) T(fmt(P.id(), P.scores[i]), x + w * 0.5, yy + 5, '#c8b8ff', 1, 'center');
+    if (showGot) T('+' + (p.got | 0), x + w - 50, yy + 5, '#5ad43f', 1, 'right');
+    T(p.pts + ' PTS', x + w - 6, yy + 5, '#ffd23f', 1, 'right');
+  });
+}
+function drawParty(t) {
+  const W = S.W, cx = Math.round(W / 2), P = Party, M = GAMES[P.id()], p = P.players[P.turn];
+  if (P.phase === 'count' || P.phase === 'play' || P.phase === 'done') {
+    M.draw(P.mg, t);
+    // the top bar: whose turn, the score, the time
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, 22);
+    ctx.fillStyle = p.col; ctx.fillRect(0, 0, 4, 22);
+    raw(p.name, 10, 8, '#fff', 1);
+    T(M.name, cx, 8, '#c8b8ff', 1, 'center');
+    if (!M.low) T(fmt(P.id(), P.mg.score), W - 64, 8, '#ffd23f', 1, 'right');
+    if (M.id !== 'react') T(String(Math.max(0, Math.ceil(M.dur - P.mg.t))), W - 40, 6, '#fff', 2, 'right', '#000');
+    if (UI.button('pause', W - 30, 1, 26, 20, 'II', { size: 1 })) paused = true;
+    if (P.phase === 'count') T(String(Math.ceil(P.count)), cx, H / 2 - 20, '#fff', 8, 'center', '#000');
+    if (P.phase === 'done') {
+      const { y } = panel(220, 96, undefined, p.col);
+      raw(p.name, cx, y + 12, p.col, 2, 'center', '#000');
+      T(fmt(P.id(), P.scores[P.turn]), cx, y + 34, '#fff', 3, 'center', '#000');
+      if (P.doneT > 0.6 && (UI.button('ok', cx - 60, y + 64, 120, 24, P.turn < P.players.length - 1 ? 'NEXT PLAYER' : 'RESULTS', { size: 1, accent: '#5ad43f' }))) P.next();
+    }
+    return;
+  }
+  background(t);
+  T('ROUND ' + (P.round + 1) + ' / ' + P.list.length, cx, 10, '#c8b8ff', 1, 'center', '#000');
+  if (P.phase === 'intro') {
+    T(M.name, cx, 30, '#fff', 4, 'center', '#000');
+    T(M.how, cx, 66, '#efe9ff', 1, 'center', '#000');
+    T(M.low ? 'THE LOWEST WINS' : 'THE HIGHEST WINS', cx, 78, '#7a6a9a', 1, 'center', '#000');
+    const { y } = panel(240, 96, 96, p.col);
+    raw(p.name, cx, y + 14, p.col, 3, 'center', '#000');
+    T(P.players.length > 1 && P.turn > 0 ? 'PASS THE PHONE. YOUR TURN!' : 'YOUR TURN!', cx, y + 42, '#fff', 1, 'center', '#000');
+    if (UI.button('ready', cx - 70, y + 60, 140, 26, 'READY!', { accent: '#5ad43f' })) P.go();
+    if (UI.button('quitp', 6, 6, 56, 20, 'QUIT', { size: 1 }) || UI.back) paused = true;
+  } else if (P.phase === 'results') {
+    T(M.name + ': RESULTS', cx, 26, '#fff', 2, 'center', '#000');
+    standings(cx - 160, 50, 320, true);
+    T('1ST +3   2ND +2   3RD +1', cx, 132, '#7a6a9a', 1, 'center', '#000');
+    if (UI.button('nextr', cx - 80, 196, 160, 26, P.round < P.list.length - 1 ? 'NEXT ROUND' : 'THE WINNER IS...', { accent: '#5ad43f' })) P.afterResults();
+  } else if (P.phase === 'final') {
+    const R0 = P.results, names = R0.winners.map(w => w.name).join(' & ');
+    trophyIcon(cx, 48, R0.tr, 4);
+    PX.Lang.raw(() => T(names, cx, 82, '#fff', R0.winners.length > 1 ? 2 : 3, 'center', '#000'));
+    T(R0.winners.length > 1 ? 'SHARE THE ' + R0.tr.name + ' TROPHY!' : 'WINS THE ' + R0.tr.name + ' TROPHY!', cx, 108, R0.tr.col, 2, 'center', '#000');
+    standings(cx - 160, 126, 320, false);
+    const y = 126 + P.players.length * 18 + 4;
+    if (R0.meWon) T(R0.capped ? 'ON YOUR SHELF. (5 TROPHIES A DAY COUNT ON THE LEADERBOARD.)' : 'ON YOUR SHELF AND ON THE LEADERBOARD!  ★ +' + R0.tr.stars, cx, y, '#ffd23f', 1, 'center', '#000');
+    if (UI.button('again', cx - 152, 214, 148, 22, 'PLAY AGAIN', { size: 1, accent: '#5ad43f' })) Party.start();
+    if (UI.button('menu', cx + 4, 214, 148, 22, 'MENU', { size: 1 }) || UI.back) state = 'title';
+  }
+}
+function drawPause() {
+  const W = S.W, { y } = panel(220, 110), bw = 170, bx = Math.round(W / 2 - bw / 2);
+  T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) paused = false;
+  if (UI.button('quit', bx, y + 72, bw, 22, 'END THE TOURNAMENT', { size: 1, accent: '#ff5a5a' })) { paused = false; state = 'title'; }
+}
+
+/* --- 5. SOUND --------------------------------------------------------------------- */
+function sfx(k, n = 0) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.1, { vol: 0.1 });
+  else if (k === 'tap') s.tone(880 + Math.random() * 200, 0.04, { vol: 0.07, type: 'square' });
+  else if (k === 'cut') s.noise(0.08, { freq: 3200, vol: 0.08, filter: 'highpass' });
+  else if (k === 'coin') s.tone([1320, 1760], 0.06, { vol: 0.06 });
+  else if (k === 'bad') s.tone([300, 90], 0.3, { vol: 0.12, type: 'sawtooth' });
+  else if (k === 'jump') s.tone([400, 800], 0.1, { vol: 0.07, type: 'triangle' });
+  else if (k === 'note') s.tone([392, 494, 587, 698][n], 0.2, { vol: 0.09, type: 'triangle' });
+  else if (k === 'beep') s.tone(660, 0.08, { vol: 0.09 });
+  else if (k === 'go') s.tone(1320, 0.15, { vol: 0.1 });
+  else if (k === 'end') s.tone([784, 523], 0.25, { vol: 0.1 });
+  else if (k === 'win') [523, 659, 784].forEach((f, i) => s.tone(f, 0.12, { vol: 0.09, delay: i * 0.08 }));
+  else if (k === 'trophy') [523, 659, 784, 1047, 1319].forEach((f, i) => s.tone(f, 0.2, { vol: 0.1, delay: i * 0.1 }));
+}
+
+/* --- 6. INPUT: taps and swipes go to the mini-game being played -------------------------- */
+const playing = () => state === 'party' && !paused && Party.phase === 'play';
+UI.onDown = (e, x, y) => { PX.Sound.unlock(); if (playing() && UI.downId === null) { const M = GAMES[Party.id()]; if (M.down) M.down(Party.mg, x, y); } };
+UI.onMove = (e, x, y) => { if (playing()) { const M = GAMES[Party.id()]; if (M.move) M.move(Party.mg, x, y); } };
+UI.onUp = () => { if (playing()) { const M = GAMES[Party.id()]; if (M.up) M.up(Party.mg); } };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.target === nameInput) { if (e.key === 'Enter' || e.key === 'Escape') endEdit(); return; }
+  if (playing() && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); if (!e.repeat) { const M = GAMES[Party.id()]; if (M.down) M.down(Party.mg, S.W / 2, H / 2); } return; }
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (state === 'party' && Party.phase === 'play') paused = !paused; else UI.back = true; }
+});
+window.addEventListener('blur', () => { if (playing()) paused = true; });
+document.addEventListener('visibilitychange', () => { if (document.hidden && playing()) paused = true; });
+
+/* --- 7. MAIN LOOP ---------------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'party') { if (!paused) Party.step(dt); drawParty(t); if (paused) drawPause(); }
+  else {
+    background(t);
+    if (state === 'title') drawTitle(t); else if (state === 'setup') drawSetup(t); else if (state === 'shelf') drawShelf(t);
+  }
+  if (!nameInput.placed) nameInput.style.display = 'none';
+  nameInput.placed = false;
+  if (msg) { T(msg.txt, S.W / 2, H - 14, '#fff', 1, 'center', '#000'); if ((msg.t -= dt) <= 0) msg = null; }
+  UI.end();
+  S.blit('#1a0f2e');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Party: controller', ui: UI, menu: () => !playing(),
+  phone: { buttons: [['A', 'TAP']] },
+  keys: () => ({ A: 'Space', START: 'KeyP' }),
+  help: [['A', 'TAP (TAP RACE, REACTION, HOP)'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>
