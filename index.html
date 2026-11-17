@@ -43,10 +43,11 @@
 <textarea id="ideabody" maxlength="200" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="More about your idea"></textarea>
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
+<script src="cs.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.63.0';
+const VERSION = '2.64.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -136,6 +137,12 @@ function play(g) { PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(()
 // arcade opens the game in a frame over itself instead: the call and its bar go on above the game, and < ALL GAMES
 // (or the phone's back button) closes the frame (common.js catches the game going back to './'). While a game is in
 // the frame the arcade stops drawing and lets go of the controller. Without a call, games open as always.
+// LANGUAGE: the arcade is translated (cs.js); the boxes you type in get their hint text in the language too
+function applyLang() {
+  searchInput.placeholder = PX.tr('TYPE A GAME...'); chatInput.placeholder = PX.tr('TYPE A MESSAGE...');
+  ideaTitleInput.placeholder = PX.tr('MORE TRACKS IN PIXEL SKI');
+}
+PX.Lang.page();
 const Shell = window.ArcadeShell = {
   frame: null, popping: false,
   wanted() { return !!(PX.Voice.direct && PX.Voice.phase !== 'off'); },
@@ -779,6 +786,11 @@ function drawSettings(t) {
   T('CHAT IN THE GAMES', x + 18 + half, 184, '#9a92b8', 1);
   if (UI.button('chatpop', x + 18 + half, 196, half, 22, set.chatPop ? 'CHAT POP-UPS: ON' : 'CHAT POP-UPS: OFF', { size: 1, accent: '#ffd23f', on: set.chatPop })) {
     PX.Settings.save({ ...set, chatPop: !set.chatPop }); PX.Sound.tone(set.chatPop ? 300 : 660, 0.08, { vol: 0.08 });
+  }
+  // LANGUAGE: ENGLISH / ČEŠTINA (PX.Lang in common.js, the Czech text in cs.js), top right
+  const langs = PX.Lang.LANGS, li = Math.max(0, langs.findIndex(l => l[0] === set.lang)), lw = 66, lx = W - 8 - lw - (COFFEE_URL ? 32 : 0);
+  if (UI.button('lang', lx, 8, lw, 22, langs[li][1], { size: 1, accent: '#7af0ff' })) {
+    PX.Settings.save({ ...set, lang: langs[(li + 1) % langs.length][0] }); applyLang(); PX.Sound.tone([523, 784], 0.12, { vol: 0.1 });
   }
   // BUY ME A COFFEE: the cup at the top right
   if (COFFEE_URL && UI.button('coffee', W - 34, 8, 26, 22, '', { size: 1, accent: '#c8843a' })) openCoffee();
@@ -1859,7 +1871,7 @@ const Leaders = {
     return null;
   },
 };
-function fitText(str, size, maxW) { while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
+function fitText(str, size, maxW) { str = PX.tr(str); while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
 function drawLeaders(t) {
   const W = S.W, cx = Math.round(W / 2), L = Leaders, g = L.g(), board = L.board(), e = L.current(), res = e && e.res;
   background(t);
@@ -2017,7 +2029,7 @@ function ideaVote(r, id, x, y, w, h) {
 // lines of a text in the pixel font, at a size, at most maxW wide (a word longer than that is cut)
 function wrapSized(str, size, maxW) {
   const out = []; let line = '';
-  for (const w of String(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, size) > maxW) { out.push(line); line = fitText(w, size, maxW); } else line = fitText(next, size, maxW); }
+  for (const w of PX.tr(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, size) > maxW) { out.push(line); line = fitText(w, size, maxW); } else line = fitText(next, size, maxW); }
   if (line) out.push(line);
   return out;
 }
@@ -2538,7 +2550,7 @@ if (Account.locked()) { screen = 'account'; Account.go('pick'); }               
 Account.refresh();
 function wrapText(str, maxW) {
   const out = []; let line = '';
-  for (const w of str.split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
+  for (const w of PX.tr(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
   if (line) out.push(line);
   return out;
 }
@@ -2742,6 +2754,8 @@ function frame(now) {
   S.blit('#0d0b13');
   requestAnimationFrame(frame);
 }
+applyLang();
+addEventListener('storage', e => { if (e.key === 'pixelArcade.settings') applyLang(); });
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
   title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders' || screen === 'ideas', ui: UI,

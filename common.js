@@ -33,15 +33,70 @@ window.PX = (() => {
 };
   const GLYPHS = {};
   for (const ch in FONT) { const rows = FONT[ch].split(','); GLYPHS[ch] = { w: rows[0].length, rows }; }
+  // CZECH LETTERS: the letter itself with its mark in the two rows above it (Á É Í Ó Ú Ý, Č Ď Ě Ň Ř Š Ť Ž, Ů)
+  const MARKS = { '\u0301': ['001', '010'], '\u030C': ['101', '010'], '\u030A': ['010', '101'] };
+  for (const ch of 'ÁÉÍÓÚÝČĎĚŇŘŠŤŽŮ') {
+    const [base, mark] = ch.normalize('NFD'), g = GLYPHS[base], m = MARKS[mark];
+    if (!g || !m) continue;
+    const pad = Math.floor((g.w - 3) / 2), row = r => ('0'.repeat(pad) + r).padEnd(g.w, '0');
+    GLYPHS[ch] = { w: g.w, rows: g.rows, above: m.map(row) };
+  }
+  // --- LANGUAGE: ENGLISH or ČEŠTINA (SETTINGS → LANGUAGE) ------------------------------------------------------------
+  // The text stays English in the code. A translated page loads a table (cs.js: PX.Lang.add({ 'ENGLISH': 'ČESKY' }))
+  // and calls PX.Lang.page(); from then on drawText and textWidth draw and measure the Czech text of every string that
+  // is in the table. A key with {0}, {1}... is a pattern for text put together from pieces ('{0} IS YOUR FRIEND NOW!'):
+  // the pieces are translated too. Pages without page() (the games, for now) stay English. Lang.t() translates
+  // anyway (for our own boxes, like the chat in the games). The choice is Settings.lang; the first time it is Czech on
+  // a phone set to Czech or Slovak, English everywhere else.
+  const Lang = {
+    LANGS: [['en', 'ENGLISH'], ['cs', 'ČEŠTINA']],
+    dict: new Map(), pats: [], cache: new Map(), on: false, cur: null,
+    code() {
+      if (this.cur) return this.cur;
+      let d = null; try { d = JSON.parse(localStorage.getItem('pixelArcade.settings')); } catch (e) { d = null; }
+      const nav = String((typeof navigator !== 'undefined' && (navigator.language || '')) || '').toLowerCase();
+      return (this.cur = d && (d.lang === 'cs' || d.lang === 'en') ? d.lang : /^(cs|sk)\b/.test(nav) ? 'cs' : 'en');
+    },
+    changed() { this.cur = null; this.cache.clear(); try { document.documentElement.lang = this.code(); } catch (e) { /* fine */ } },
+    page() { this.on = true; this.changed(); },
+    add(table) {
+      for (const k in table) {
+        if (!/\{\d\}/.test(k)) { this.dict.set(k, table[k]); continue; }
+        const src = '^' + k.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\?\{(\d)\}/g, (m, n) => '(?<p' + n + '>.+?)') + '$';
+        try { this.pats.push([new RegExp(src, 's'), table[k]]); } catch (e) { /* a bad key */ }
+      }
+      this.cache.clear();
+    },
+    t(s, depth = 0) {                                 // translate (whatever the page)
+      s = String(s);
+      if (s.length < 2 || this.code() !== 'cs') return s;
+      const hit = this.cache.get(s); if (hit !== undefined) return hit;
+      let out = this.dict.get(s);
+      if (out === undefined) {
+        out = s;
+        for (const [re, to] of this.pats) {
+          const m = re.exec(s); if (!m) continue;
+          out = to.replace(/\{(\d)\}/g, (x, n) => { const v = m.groups['p' + n]; return v === undefined ? '' : depth < 2 ? this.t(v, depth + 1) : v; });
+          break;
+        }
+      }
+      if (this.cache.size > 3000) this.cache.clear();
+      this.cache.set(s, out);
+      return out;
+    },
+    tr(s) { return this.on ? this.t(s) : String(s); },    // translate on a translated page
+  };
+  if (typeof addEventListener !== 'undefined') addEventListener('storage', e => { if (e.key === 'pixelArcade.settings') Lang.changed(); });
   function textWidth(str, size = 1) {
     let w = 0;
-    for (const ch of String(str).toUpperCase()) w += ((GLYPHS[ch] || GLYPHS['?']).w + 1) * size;
+    for (const ch of Lang.tr(str).toUpperCase()) w += ((GLYPHS[ch] || GLYPHS['?']).w + 1) * size;
     return Math.max(0, w - size);
   }
   function rawText(ctx, str, x, y, size) {
     let cx = x;
     for (const ch of str) {
       const g = GLYPHS[ch] || GLYPHS['?'];
+      if (g.above) for (let r = 0; r < 2; r++) for (let c = 0; c < g.w; c++) if (g.above[r][c] === '1') ctx.fillRect(cx + c * size, y + (r - 2) * size, size, size);
       for (let r = 0; r < 5; r++) {
         const row = g.rows[r];
         for (let c = 0; c < g.w;) {
@@ -53,7 +108,7 @@ window.PX = (() => {
     }
   }
   function drawText(ctx, str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) {
-    str = String(str).toUpperCase();
+    str = Lang.tr(str).toUpperCase();
     if (align !== 'left') { const tw = textWidth(str, size); x -= align === 'center' ? Math.floor(tw / 2) : tw; }
     x = Math.round(x); y = Math.round(y);
     if (shadow) { const o = Math.max(1, size >> 1); ctx.fillStyle = shadow; rawText(ctx, str, x + o, y + o, size); }
@@ -549,9 +604,10 @@ window.PX = (() => {
   const VOLUMES = [['OFF', 0], ['LOW', 0.3], ['MEDIUM', 0.6], ['HIGH', 1]];
   const Settings = {
     // voice: VOICE CHAT in the online games (PX.Voice), on unless turned off in SETTINGS
+    // lang: 'en' or 'cs' (Lang: SETTINGS → LANGUAGE)
     // chatPop: CHAT POP-UPS, a friend's chat message pops up in the games (PX.ChatPop), on unless turned off
-    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false, chatPop: d.chatPop !== false }; },
-    save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Sound.apply(); },
+    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false, chatPop: d.chatPop !== false, lang: Lang.code() }; },
+    save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Lang.changed(); Sound.apply(); },
     volume() { return VOLUMES[this.load().volume][1]; },
     VOLUMES,
   };
@@ -1661,6 +1717,8 @@ window.PX = (() => {
       if (this.on || !g || !location.protocol.startsWith('http') || !document.body) return;
       if (!/^[1-9][0-9]{5}$/.test(this.me()) || !Invite.friends().length || !Settings.load().chatPop) return;
       this.on = true;
+      // the box speaks Czech too: a game doesn't load cs.js itself (it isn't translated yet), so load it here
+      if (Lang.code() === 'cs' && !Lang.dict.size) { const sc = document.createElement('script'); sc.src = 'cs.js'; document.head.appendChild(sc); }
       // games pause on document.hidden: let it read true while the chat box is open
       const real = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
       if (real && real.get) {
@@ -1729,7 +1787,7 @@ window.PX = (() => {
         const txt = document.createElement('span'); Object.assign(txt.style, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 });
         const x = this.btn('✕', '#9a92b8', () => this.hideToast());
         x.addEventListener('click', e => e.stopPropagation());
-        el.append(txt, this.btn('REPLY', '#ffd23f', () => this.openFrom()), x);
+        el.append(txt, this.btn(Lang.t('REPLY'), '#ffd23f', () => this.openFrom()), x);
         el.addEventListener('click', () => this.openFrom());
         this.keep(el); document.body.appendChild(el); this.toastEl = el; this.toastTxt = txt;
       }
@@ -1763,11 +1821,11 @@ window.PX = (() => {
         Object.assign(this.list.style, { display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', minHeight: '60px', maxHeight: '40vh', padding: '6px', background: '#0d0b13' });
         const row = document.createElement('div'); Object.assign(row.style, { display: 'flex', gap: '6px' });
         this.input = document.createElement('input');
-        Object.assign(this.input, { maxLength: 80, autocomplete: 'off', placeholder: 'YOUR MESSAGE' });
+        Object.assign(this.input, { maxLength: 80, autocomplete: 'off' });
         Object.assign(this.input.style, this.css, { flex: '1', minWidth: 0, fontSize: '16px', background: '#efe9ff', color: '#111', border: '2px solid #000', padding: '4px 6px' });
         this.input.addEventListener('input', () => { const v = chatClean(this.input.value); if (v !== this.input.value) this.input.value = v; });
         this.input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.send(); } });
-        this.sendBtn = this.btn('SEND', '#5ad43f', () => this.send());
+        this.sendBtn = this.btn(Lang.t('SEND'), '#5ad43f', () => this.send());
         row.append(this.input, this.sendBtn);
         const emo = document.createElement('div'); Object.assign(emo.style, { display: 'flex', flexWrap: 'wrap', gap: '2px' });
         for (const ch of CHAT_EMOJIS) {
@@ -1786,7 +1844,7 @@ window.PX = (() => {
         this.keep(box); document.body.appendChild(box); this.box = box;
       }
       this.title.textContent = '💬 ' + f.name;
-      this.info.textContent = 'THE GAME IS PAUSED. ✕ GOES BACK TO IT.';
+      this.info.textContent = Lang.t('THE GAME IS PAUSED. ✕ GOES BACK TO IT.'); this.input.placeholder = Lang.t('YOUR MESSAGE');
       this.info.style.color = '#9a92b8';
       this.input.value = '';
       this.box.style.display = 'flex';
@@ -1799,7 +1857,7 @@ window.PX = (() => {
       if (!this.f || !this.list) return;
       const c = this.load()[this.f.id], ms = c && Array.isArray(c.m) ? c.m.slice(-12) : [];
       this.list.textContent = '';
-      if (!ms.length) { const e = document.createElement('div'); e.textContent = 'NO MESSAGES YET.'; e.style.color = '#5b5275'; this.list.appendChild(e); }
+      if (!ms.length) { const e = document.createElement('div'); e.textContent = Lang.t('NO MESSAGES YET.'); e.style.color = '#5b5275'; this.list.appendChild(e); }
       for (const m of ms) {
         const e = document.createElement('div'); e.textContent = this.show(m.x);
         Object.assign(e.style, { alignSelf: m.me ? 'flex-end' : 'flex-start', maxWidth: '85%', overflowWrap: 'anywhere', padding: '2px 6px',
@@ -1818,7 +1876,7 @@ window.PX = (() => {
     async send() {
       const f = this.f, raw = chatClean(this.input.value).trim();
       if (!f || this.busy || !raw) return;
-      if (!this.friend(f.id)) { this.say(f.name + ' IS NOT YOUR FRIEND ANY MORE.'); return; }
+      if (!this.friend(f.id)) { this.say(Lang.t(f.name + ' IS NOT YOUR FRIEND ANY MORE.')); return; }
       const x = censor(raw), p = Profile.load();
       const tx = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
       this.busy = true; this.sendBtn.disabled = true;
@@ -1830,9 +1888,9 @@ window.PX = (() => {
         fetch(RELAY + 'pixel-arcade-typing-' + f.id + '?cache=no', { method: 'POST', body: JSON.stringify({ v: 1, fid: p.id, sent: 1 }) }).catch(() => { /* never mind */ });
         const now = Date.now(); if (!this.noteAt[f.id] || now - this.noteAt[f.id] > 60e3) { this.noteAt[f.id] = now; Push.tell(f.id, 'chat'); }
         if (this.f === f) { this.input.value = ''; this.draw(); }
-        this.say(x !== raw ? 'NO SWEARING! THOSE WORDS WERE SENT AS #####.' : 'SENT! ✕ GOES BACK TO THE GAME.', x !== raw ? '#ff6a5a' : '#5ad43f');
+        this.say(Lang.t(x !== raw ? 'NO SWEARING! THOSE WORDS WERE SENT AS #####.' : 'SENT! ✕ GOES BACK TO THE GAME.'), x !== raw ? '#ff6a5a' : '#5ad43f');
         Sound.tone(880, 0.05, { vol: 0.06 });
-      } catch (e) { this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN.", '#ff6a5a'); Sound.tone(150, 0.2); }
+      } catch (e) { this.say(Lang.t("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."), '#ff6a5a'); Sound.tone(150, 0.2); }
       this.busy = false; this.sendBtn.disabled = false;
     },
     show: s => String(s || '').replace(/❤/g, '❤\uFE0F'),             // (the red heart, not a black one)
@@ -1841,5 +1899,5 @@ window.PX = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => ChatPop.start()); else setTimeout(() => ChatPop.start(), 0);
 
   return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
-           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, chatClean, CHAT_EMOJIS };
+           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, chatClean, CHAT_EMOJIS, Lang, tr: s => Lang.tr(s) };
 })();
