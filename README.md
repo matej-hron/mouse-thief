@@ -38,6 +38,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOIC
 | **Pixel Moto** (`moto.html`) | Pixel Bike Run with a motorbike: motocross over desert canyons, faster and heavier, with an engine you hear. Flips, wheelies and a SUPERMAN trick earn money for new motorbikes and abilities. 8 tracks, free ride, race a friend online. |
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, a shop of runners and ropes, and online RACE and TAG with a friend. |
+| **Pixel Slice** (`slice.html`) | Fruit flies up: swipe to slice it. Combos, ICE that slows time, CHILI that sets your blade on fire, GOLD and STAR fruit, and bombs you must not touch. 3 LIVES or 60 SECONDS, a shop of blades and places. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -422,6 +423,25 @@ A rope-swinging game. Your red pixel stick figure hangs from a hook; **hold anyw
   - Each phone runs its own runner and sends where it is 20 times a second; the friend is drawn 0.1 s late and
     smoothed. In TAG the runner's phone decides whether you were caught, so the two phones never disagree.
     X (top right) or START: KEEP PLAYING or LEAVE (the game doesn't stop).
+
+## Pixel Slice
+
+Fruit is tossed up from the bottom of the screen: **swipe across it** to slice it in two (a mouse: drag; a controller:
+the stick moves the blade, hold A or RT to cut). The blade only cuts when it moves fast, so tapping doesn't work.
+
+- **9 fruits:** apple, orange, lemon, plum, kiwi, melon, pineapple, coconut and banana. Each one is 1 point.
+- **COMBO:** 3 or more fruits in one swipe (cuts less than 0.3 s apart): a bonus of as many points as fruits.
+- **Specials:** **ICE** slows everything down for 4 seconds; **CHILI** sets the blade on fire for 6 seconds (a wider
+  blade, and every fruit counts twice); **GOLD** gives 5 coins; a **STAR** gives ★1 for the arcade (up to 3 a run).
+- **BOMBS** (black, with a burning fuse): in 3 LIVES slicing one ends the run; in 60 SECONDS it costs 10 points.
+- **3 LIVES:** a fruit that falls back down uncut costs a life (bombs and specials don't). It gets faster and busier.
+- **60 SECONDS:** no lives: slice as many as you can.
+- **After a run:** every 4 points is a coin, every 40 points ★1 for the arcade (up to ★10, plus the STARs).
+  The best of each mode goes on the leaderboard (TOP: PIXEL SLICE, 3 LIVES and 60 SECONDS).
+- **SHOP:** coins buy blades (STEEL, FIRE, FROST, LASER, GOLD, RAINBOW: the color of the trail) and places to play in
+  (DOJO, NIGHT, BEACH, SPACE).
+- On the title screen fruit flies by too: slice it for fun.
+- In Czech too (SETTINGS → LANGUAGE in the arcade).
 
 ## Pixel Defense
 
@@ -894,7 +914,7 @@ The arcade speaks **English** and **Czech (ČEŠTINA)**: the button at the top r
 The first time, a phone set to Czech or Slovak gets Czech and every other phone English. (An idea from a player, on the IDEAS board.)
 
 - **What is translated:** the whole arcade (`index.html`: the games list, search, settings, friends, chat, calls, stars,
-  TOP, IDEAS, accounts...), the chat box in the games, and these games: **Pixel Hook**. The other games are still in
+  TOP, IDEAS, accounts...), the chat box in the games, and these games: **Pixel Hook**, **Pixel Slice**. The other games are still in
   English; they come one by one. Names of games, players and ideas stay as they are.
 - **Czech letters:** the pixel font draws Á É Í Ó Ú Ý Č Ď Ě Ň Ř Š Ť Ž Ů: the letter, with its mark in the two pixel
   rows above it (`MARKS` in `common.js`). What players type (names, chat, ideas) still loses its accents, as before.

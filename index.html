@@ -47,7 +47,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.65.0';
+const VERSION = '2.66.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -116,6 +116,7 @@ const GAMES = [
   { id: 'horde', name: 'PIXEL HORDE', sub: 'SURVIVE THE HORDE!', url: 'horde.html', color: '#ff4a4a', cats: ['ACTION'], tags: 'HORDE SURVIVE SURVIVOR SURVIVORS MONSTERS ARENA WAVES ROGUELITE LEVEL UP UPGRADES WEAPONS EVOLVE EVOLUTION BOSS HEROES KNIGHT MAGE MAGIC WHIP BOMBS LIGHTNING' },
   { id: 'miner', name: 'PIXEL MINER', sub: 'DIG DEEP, GET RICH!', url: 'miner.html', color: '#ffc81e', cats: ['ACTION'], tags: 'MINER MINING MINE DIG DIGGING DRILL ORE ORES GOLD DIAMOND GEMS UPGRADE UPGRADES CAVE LAVA CORE MONEY ARTIFACTS DEEP' },
   { id: 'hook', name: 'PIXEL HOOK', sub: 'SWING, FLY, FLIP!', url: 'hook.html', color: '#ff3a3a', cats: ['ACTION', 'ONLINE'], tags: 'HOOK GRAPPLE GRAPPLING ROPE SWING STICKMAN STICK FLY FLIP JUMP BOUNCE LEVELS ENDLESS PHYSICS LASER SAW NEON LAVA SKINS RACE TAG CHASE CATCH MULTIPLAYER FRIEND' },
+  { id: 'slice', name: 'PIXEL SLICE', sub: 'SWIPE AND SLICE!', url: 'slice.html', color: '#ff5a8a', cats: ['ACTION'], tags: 'SLICE SLASH CUT FRUIT SWIPE BLADE SWORD KATANA BOMB BOMBS COMBO JUICE WATERMELON MELON APPLE BANANA PINEAPPLE CHILI ICE' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -371,6 +372,24 @@ function previewMiner(x, y, w, h, t) {            // a digger drills down throug
   const dark = ctx.createLinearGradient(0, y + 20, 0, y + h); dark.addColorStop(0, 'rgba(8,4,12,0)'); dark.addColorStop(1, 'rgba(8,4,12,0.7)'); ctx.fillStyle = dark; ctx.fillRect(x, y + 20, w, h - 20);
   ctx.restore();
 }
+function previewSlice(x, y, w, h, t) {            // fruit flies up over wooden boards; a blade slashes through and cuts it in two
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  for (let i = 0; i * 14 < w; i++) { ctx.fillStyle = i & 1 ? '#3a2214' : '#43281a'; ctx.fillRect(x + i * 14, y, 14, h); }
+  const ph = (t * 0.7) % 1, fx = x + w * 0.5 + Math.sin(t * 0.7) * 10, fy = y + h - 4 - Math.sin(ph * Math.PI) * (h - 14);
+  const cut = ph > 0.5, ball = (cx, cy, r, c, d) => { for (let dy = -r; dy <= r; dy++) { const ww = Math.round(Math.sqrt(r * r - dy * dy)); ctx.fillStyle = dy > r * 0.4 ? d : c; ctx.fillRect(Math.round(cx - ww), Math.round(cy + dy), ww * 2, 1); } };
+  if (!cut) { ball(fx, fy, 9, '#3aa83a', '#1e6e24'); ctx.fillStyle = '#1e6e24'; for (let k = -1; k <= 1; k++) ctx.fillRect(Math.round(fx + k * 4), Math.round(fy - 8), 1, 16); }
+  else {
+    const s = (ph - 0.5) * 40;
+    for (const side of [-1, 1]) { const cx = fx + side * (4 + s), cy = fy + s * 0.6; ctx.fillStyle = '#ff4a5a'; ctx.fillRect(Math.round(cx - 6), Math.round(cy - 2), 12, 5); ctx.fillStyle = '#3aa83a'; ctx.fillRect(Math.round(cx - 7), Math.round(cy + (side > 0 ? 3 : -4)), 14, 2); }
+    ctx.fillStyle = '#ff4a5a'; for (let k = 0; k < 6; k++) ctx.fillRect(Math.round(fx + Math.sin(k * 2.1) * s * 1.4), Math.round(fy + Math.cos(k * 1.7) * s), 2, 2);
+  }
+  const ax = x + w * 0.5 - 2, k = clamp01((ph - 0.42) / 0.12);                       // the slash
+  if (k > 0 && k < 1.6) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax - 30, y + h * 0.15); ctx.lineTo(ax - 30 + 70 * Math.min(1, k), y + h * 0.15 + 40 * Math.min(1, k)); ctx.stroke(); }
+  ball(x + 18, y + h - 10 - Math.abs(Math.sin(t * 1.3)) * 30, 6, '#e8303a', '#a81c28');
+  ball(x + w - 20, y + h - 8 - Math.abs(Math.sin(t * 1.1 + 1)) * 26, 6, '#ff9a1e', '#d06a10');
+  ctx.restore();
+}
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 function previewHook(x, y, w, h, t) {             // a red stick figure swings on a striped rope under purple clouds, lets go, flies
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ['#2a0ca8', '#3a12c4', '#4a18dc', '#5e20ee', '#7a2cf0'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + i * 13, w, 14); });
@@ -672,7 +691,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;

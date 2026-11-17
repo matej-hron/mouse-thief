@@ -19,6 +19,7 @@ export const BOARDS: Record<string, BoardRule> = {
   horde: hi(600, true),
   defense: hi(10_000, true),
   hook: hi(1_000_000),
+  slice: hi(100_000, true),
   runs: hi(10_000_000),
   miner: hi(1_000_000),
   snake: hi(1_000_000),

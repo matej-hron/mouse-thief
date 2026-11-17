@@ -29,6 +29,7 @@ PX.Lang.add({
   'SURVIVE THE HORDE!': 'PŘEŽIJ HORDU!',
   'DIG DEEP, GET RICH!': 'KOPEJ HLUBOKO, ZBOHATNI!',
   'SWING, FLY, FLIP!': 'HOUPEJ SE, LEŤ, SALTUJ!',
+  'SWIPE AND SLICE!': 'SEKEJ TAHEM PRSTU!',
   'ALL': 'VŠE',
   'ACTION': 'AKCE',
   'RACING': 'ZÁVODY',
@@ -644,3 +645,42 @@ PX.Lang.add({
   '{0} LAVA PEAKS': '{0} LÁVOVÉ ŠTÍTY',
   '{0}!': '{0}!',                                   // (a runner or a rope you just bought; patterns are tried in order, so last)
 }, 'hook');
+
+// --- PIXEL SLICE (slice.html) ---
+PX.Lang.add({
+  '3 LIVES': '3 ŽIVOTY',
+  '60 SECONDS': '60 SEKUND',
+}); // (also the names of its two leaderboards in the arcade)
+PX.Lang.add({
+  'ON': 'NASAZENO',
+  'BEST {0}': 'REKORD {0}',
+  'BEST: {0}': 'REKORD: {0}',
+  "SWIPE TO SLICE. DON'T TOUCH THE BOMBS!": 'SEKEJ TAHEM PRSTU. NESAHEJ NA BOMBY!',
+  'BLADES': 'ČEPELE',
+  'PLACES': 'MÍSTA',
+  'STEEL': 'OCEL',
+  'FIRE': 'OHEŇ',
+  'FROST': 'MRÁZ',
+  'LASER': 'LASER',
+  'GOLD': 'ZLATO',
+  'RAINBOW': 'DUHA',
+  'DOJO': 'DOJO',
+  'NIGHT': 'NOC',
+  'BEACH': 'PLÁŽ',
+  'SPACE': 'VESMÍR',
+  'EVERY 4 POINTS IS A COIN. GOLD FRUIT GIVES 5 MORE.': 'KAŽDÉ 4 BODY JSOU MINCE. ZLATÉ OVOCE DÁ 5 NAVÍC.',
+  'ICE!': 'LED!',
+  'FIRE BLADE!': 'OHNIVÁ ČEPEL!',
+  '+5 COINS': '+5 MINCÍ',
+  'ICE {0}': 'LED {0}',
+  'FIRE BLADE {0}': 'OHNIVÁ ČEPEL {0}',
+  'COMBO X{0}  +{1}': 'KOMBO X{0}  +{1}',
+  "SLICE EVERY FRUIT. DON'T LET ONE FALL!": 'ROZSEKEJ KAŽDÉ OVOCE. ŽÁDNÉ NESMÍ SPADNOUT!',
+  'SLICE AS MANY AS YOU CAN IN 60 SECONDS!': 'ROZSEKEJ JICH CO NEJVÍC ZA 60 SEKUND!',
+  'BOOM!': 'BUM!',
+  "TIME'S UP!": 'ČAS VYPRŠEL!',
+  'GAME OVER': 'KONEC HRY',
+  'FRUIT {0}   BEST COMBO {1}': 'OVOCE {0}   NEJLEPŠÍ KOMBO {1}',
+  'EVERY 40 POINTS = ★1': 'KAŽDÝCH 40 BODŮ = ★1',
+  '{0}!': '{0}!',                                   // (a blade or a place you just bought; patterns go in order, so last)
+}, 'slice');

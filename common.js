@@ -323,7 +323,7 @@ window.PX = (() => {
   const BOUNDS = {
     stars: ['hi', 0, 10e6], thief: ['hi', 0, 36000], racer: ['lo', 5, 600], skygp: ['lo', 5, 600], bike: ['lo', 3, 3600], 'bike:free': ['hi', 0, 1e6],
     moto: ['lo', 3, 3600], 'moto:free': ['hi', 0, 1e6], ski: ['lo', 3, 3600], heist: ['lo', 5, 7200], skate: ['hi', 0, 10e6], horde: ['hi', 0, 600],
-    defense: ['hi', 0, 10000], hook: ['hi', 0, 1e6], runs: ['hi', 0, 10e6], miner: ['hi', 0, 1e6], snake: ['hi', 0, 1e6], hoops: ['hi', 0, 100000],
+    defense: ['hi', 0, 10000], hook: ['hi', 0, 1e6], slice: ['hi', 0, 100000], runs: ['hi', 0, 10e6], miner: ['hi', 0, 1e6], snake: ['hi', 0, 1e6], hoops: ['hi', 0, 100000],
     cook: ['hi', 0, 100e6], fish: ['hi', 0, 100e6], pong: ['hi', 0, 1e6], boxfight: ['hi', 0, 1e6], wings: ['hi', 0, 1e6], football: ['hi', 0, 10000],
   };
   const SENT_KEY = 'pixelArcade.sentScores';
@@ -356,6 +356,7 @@ window.PX = (() => {
   const SKI_TRACKS = SKI_MAPS.flatMap(([m, mn]) => SKI_LEVELS.map(([l, ln]) => tr(m + '_' + l, mn + ' ' + ln)));
   const SKYGP_TRACKS = [tr('cloud', 'CLOUD CITY'), tr('neon', 'NEON NIGHT'), tr('bay', 'SUNRISE BAY')];
   const HEIST_TRACKS = ['CORNER SHOP', 'JEWELRY STORE', 'ART MUSEUM', 'GOLD SHOP', 'CITY BANK'].map((n, i) => tr(String(i + 1), n));
+  const SLICE_TRACKS = [tr('lives', '3 LIVES'), tr('timed', '60 SECONDS')];
   const HORDE_TRACKS = ['GREEN MEADOW', 'HAUNTED GRAVEYARD', 'LAVA LANDS'].map((n, i) => tr(String(i), n));
   const DEFENSE_TRACKS = [['meadow', 'GREEN MEADOW'], ['dunes', 'DRY DUNES'], ['frost', 'FROZEN FORK'], ['swamp', 'CROSSROAD SWAMP'], ['lava', 'LAVA CAVE'], ['crystal', 'CRYSTAL MINE'], ['sky', 'CLOUD BRIDGES'], ['core', 'THE CORE']].map(([k, l]) => tr(k, l));
   // in arcade order (the stars wallet first); save = the game's localStorage key
@@ -382,6 +383,7 @@ window.PX = (() => {
     G('horde', 'PIXEL HORDE', 'pixelHorde.save', 'time', s => perTrack('horde', s.best, HORDE_TRACKS), HORDE_TRACKS),
     G('miner', 'PIXEL MINER', 'pixelMiner.save', 'm', s => one('miner', s.maxDepth)),
     G('hook', 'PIXEL HOOK', 'pixelHook.save', 'm', s => one('hook', num(s.endless) === null ? null : Math.floor(s.endless / 10))),
+    G('slice', 'PIXEL SLICE', 'pixelSlice.save', 'pts', s => perTrack('slice', s.best, SLICE_TRACKS), SLICE_TRACKS),
   ];
   const spaced = n => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const lowerBetter = b => BOUNDS[b] ? BOUNDS[b][0] === 'lo' : BOUNDS[b.split(':')[0]][0] === 'lo';
