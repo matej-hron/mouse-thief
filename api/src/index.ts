@@ -19,7 +19,7 @@ export type Env = {
   TURN_KEY_API_TOKEN?: string;
 };
 
-const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
+const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|https:\/\/(www\.)?pixelgames\.online|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
 
 /** Returns the origin when it may call the API, otherwise '' (no CORS header). Shared by all routes. */
 export const checkOrigin = (origin: string): string => (ALLOWED_ORIGIN.test(origin) ? origin : '');
