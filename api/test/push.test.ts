@@ -166,13 +166,14 @@ describe('push routes', () => {
     const mia = await register();
     const tom = await register({ id: '222222', name: 'TOM' });
     const { b } = await subscribe(mia);
-    await subscribe(tom);
+    await subscribe(tom, FCM + '-tom'); // (a phone of its own: the same endpoint would move MIA's subscription to TOM)
     const got = pushService();
     const r = await call('POST', '/v1/push/send', { to: ['123456', '222222', '333333'], t: 'gchat', gn: 'the gang!', gid: 'abcdefgh1234' }, tom);
     expect(r.status).toBe(204);
     await until(() => got.length > 0);
     await new Promise((res) => setTimeout(res, 50));
     expect(got).toHaveLength(1); // MIA's phone: TOM sent it, and 333333 has no phone
+    expect(got[0]!.url).toBe(FCM);
     const note = JSON.parse(await decrypt(b, new Uint8Array(got[0]!.init.body as Uint8Array)));
     expect(note).toEqual({ title: 'NEW MESSAGE IN THE GANG', body: 'FROM TOM. TAP TO READ IT IN THE ARCADE.', url: 'index.html', tag: 'gchat-abcdefgh1234' });
   });
