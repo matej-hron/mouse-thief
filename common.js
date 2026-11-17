@@ -50,7 +50,7 @@ window.PX = (() => {
   // a phone set to Czech or Slovak, English everywhere else.
   const Lang = {
     LANGS: [['en', 'ENGLISH'], ['cs', 'ČEŠTINA']],
-    dict: new Map(), pats: [], cache: new Map(), on: false, cur: null,
+    dict: new Map(), pats: [], cache: new Map(), on: false, cur: null, scope: '', scoped: {},
     code() {
       if (this.cur) return this.cur;
       let d = null; try { d = JSON.parse(localStorage.getItem('pixelArcade.settings')); } catch (e) { d = null; }
@@ -58,12 +58,15 @@ window.PX = (() => {
       return (this.cur = d && (d.lang === 'cs' || d.lang === 'en') ? d.lang : /^(cs|sk)\b/.test(nav) ? 'cs' : 'en');
     },
     changed() { this.cur = null; this.cache.clear(); try { document.documentElement.lang = this.code(); } catch (e) { /* fine */ } },
-    page() { this.on = true; this.changed(); },
-    add(table) {
+    // page('hook'): this page is translated, and the 'hook' part of the table comes first (a game's own words:
+    // in Pixel Hook's shop, ON means "you have it on", not "switched on")
+    page(scope = '') { this.on = true; this.scope = scope; this.changed(); },
+    add(table, scope = '') {
+      const into = scope ? (this.scoped[scope] = this.scoped[scope] || { dict: new Map(), pats: [] }) : this;
       for (const k in table) {
-        if (!/\{\d\}/.test(k)) { this.dict.set(k, table[k]); continue; }
+        if (!/\{\d\}/.test(k)) { into.dict.set(k, table[k]); continue; }
         const src = '^' + k.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\?\{(\d)\}/g, (m, n) => '(?<p' + n + '>.+?)') + '$';
-        try { this.pats.push([new RegExp(src, 's'), table[k]]); } catch (e) { /* a bad key */ }
+        try { into.pats.push([new RegExp(src, 's'), table[k]]); } catch (e) { /* a bad key */ }
       }
       this.cache.clear();
     },
@@ -71,10 +74,12 @@ window.PX = (() => {
       s = String(s);
       if (s.length < 2 || this.code() !== 'cs') return s;
       const hit = this.cache.get(s); if (hit !== undefined) return hit;
-      let out = this.dict.get(s);
+      const own = this.scope && this.scoped[this.scope];
+      let out = own ? own.dict.get(s) : undefined;
+      if (out === undefined) out = this.dict.get(s);
       if (out === undefined) {
         out = s;
-        for (const [re, to] of this.pats) {
+        for (const [re, to] of own ? [...own.pats, ...this.pats] : this.pats) {
           const m = re.exec(s); if (!m) continue;
           out = to.replace(/\{(\d)\}/g, (x, n) => { const v = m.groups['p' + n]; return v === undefined ? '' : depth < 2 ? this.t(v, depth + 1) : v; });
           break;

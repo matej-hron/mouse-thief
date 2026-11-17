@@ -869,8 +869,8 @@ The arcade speaks **English** and **Czech (ČEŠTINA)**: the button at the top r
 The first time, a phone set to Czech or Slovak gets Czech and every other phone English. (An idea from a player, on the IDEAS board.)
 
 - **What is translated:** the whole arcade (`index.html`: the games list, search, settings, friends, chat, calls, stars,
-  TOP, IDEAS, accounts...) and the chat box in the games. **The games themselves are still in English**; they come
-  next, one by one. Names of games, players and ideas stay as they are.
+  TOP, IDEAS, accounts...), the chat box in the games, and these games: **Pixel Hook**. The other games are still in
+  English; they come one by one. Names of games, players and ideas stay as they are.
 - **Czech letters:** the pixel font draws Á É Í Ó Ú Ý Č Ď Ě Ň Ř Š Ť Ž Ů: the letter, with its mark in the two pixel
   rows above it (`MARKS` in `common.js`). What players type (names, chat, ideas) still loses its accents, as before.
 - **How it works:** the code keeps writing English. `cs.js` is a table: the English text exactly as the code writes it,
@@ -881,8 +881,10 @@ The first time, a phone set to Czech or Slovak gets Czech and every other phone 
   (`wrapText`, `wrapSized`, `fitText`) translate first, then wrap. Pages without `page()` (the games) draw English;
   `PX.Lang.t()` translates anyway, for boxes of our own like the chat in the games (it loads `cs.js` itself).
   The choice is `lang` in `localStorage['pixelArcade.settings']` (`PX.Settings`).
-- **Translating a game:** load `cs.js` after `common.js`, call `PX.Lang.page()`, add the game's text to `cs.js` and
-  check every screen: Czech is often longer than English.
+- **Translating a game:** load `cs.js` after `common.js`, call `PX.Lang.page('hook')` (the game's name), add the game's
+  text to `cs.js` in its own part (`PX.Lang.add({ ... }, 'hook')`: it comes first, so a word can mean something else
+  in that game, like ON for the runner you have on), and check every screen: Czech is often longer than English.
+  Words many games share (PAUSED, RESUME, MENU, NEW BEST!...) are in the part without a name.
 
 ## Buy me a coffee
 
