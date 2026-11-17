@@ -1,6 +1,6 @@
 # Pixel Games
 
-Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
+Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://pixelgames.online/
 
 The arcade (`index.html`) is the start screen: swipe (or scroll, or drag the slider on the right) through the games and pick one, and set **your name and avatar** (EDIT): all the games use them.
 Every player also has an **ID**: 6 digits (like 716367), picked at random the first time the arcade or a game is opened
@@ -1220,7 +1220,7 @@ climb and dive. The skyway floats above a sea of clouds, with city towers poking
 
 A tiny pixel-art endless runner. You stole the cat's mouse "just for fun". She did not find it funny.
 
-**Play:** https://matej-hron.github.io/mouse-thief/
+**Play:** https://pixelgames.online/
 
 - Space / ↑ / tap: jump (again in the air: double jump, against a wall: wall-jump)
 - ↓ / swipe down: slide
