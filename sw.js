@@ -1,9 +1,9 @@
-// Pixel Arcade service worker: makes the arcade installable and playable offline.
+// Pixel Games service worker: makes the arcade installable and playable offline.
 // Pages and the games' own scripts are fetched network-first, skipping the browser's HTTP cache (GitHub Pages
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.118.0';
+const CACHE = 'pixel-arcade-v2.119.0';
 const ASSETS = [
   './',
   './index.html',
@@ -100,7 +100,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let n = null;
   try { n = e.data && e.data.json(); } catch (x) { n = null; }
-  if (!n || typeof n.title !== 'string') n = { title: 'PIXEL ARCADE', body: 'SOMETHING NEW IS WAITING FOR YOU.', url: 'index.html', tag: 'arcade' };
+  if (!n || typeof n.title !== 'string') n = { title: 'PIXEL GAMES', body: 'SOMETHING NEW IS WAITING FOR YOU.', url: 'index.html', tag: 'arcade' };
   e.waitUntil(self.registration.showNotification(n.title, {
     body: n.body || '',
     tag: n.tag || 'arcade',

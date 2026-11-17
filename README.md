@@ -1,4 +1,4 @@
-# Pixel Arcade
+# Pixel Games
 
 Pixel-art games to play alone or with a friend, on a phone or a computer. **Play:** https://matej-hron.github.io/mouse-thief/
 
@@ -9,7 +9,7 @@ on the phone, so two players could get the same ID by chance: about 1 in a milli
 refuses a second account with an ID it already has.)
 **SEARCH** finds a game by name or word ("ball", "plane"...) and filters by category: ACTION, RACING, SPORTS, RUNNING,
 PLANES, ONLINE, 2 PLAYERS (keys: `/` opens it; controller: X, LB / RB change the category). Installed, the app is called
-**Pixel Arcade**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
+**Pixel Games**, with a blue cat on black as its icon. The browser tab's icon is **your avatar** (and so is the icon
 when you add the arcade to an iPhone's home screen after setting your avatar).
 The **controller button** next to the ★ counter turns phones into game controllers for a big screen (see below).
 Every game's title is drawn the same way: white letters with a thick dark outline, a drop shadow and a pale blue lower half (`PX.drawLogo` in `common.js`).
@@ -952,7 +952,7 @@ leaderboard).
   vote back. One vote per player, not for your own idea, and only while the idea is WAITING or ACCEPTED.
 - **Statuses:** WAITING (untriaged: nobody has answered yet), ACCEPTED (we want to make it), DONE (implemented) and
   REJECTED. The tabs show each, with how many, and MINE shows yours. Sort by MOST VOTES or NEWEST. Opening an idea
-  shows all of it and our answer (PIXEL ARCADE SAYS: ...).
+  shows all of it and our answer (PIXEL GAMES SAYS: ...).
 - **Take it back:** your own idea can be deleted (TAKE IT BACK, tap twice) while it is still WAITING.
 - **The maker answers** on the stats page (`/stats`, section Ideas): a status and a short reply (for example why
   not, or which version has it) for each idea, or DELETE for one that doesn't belong there.

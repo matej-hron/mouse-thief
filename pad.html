@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: use your phone as a game controller for the arcade on an Xbox, a TV or a computer.">
+<meta name="description" content="Pixel Games: use your phone as a game controller for the arcade on an Xbox, a TV or a computer.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pixel Arcade">
+<meta name="apple-mobile-web-app-title" content="Pixel Games">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>Pixel Arcade: phone controller</title>
+<title>Pixel Games: phone controller</title>
 <style>
   :root { --bg: #0d0b13; --panel: #1d1830; --line: #efe9ff; --dim: #9a92b8; --gold: #ffd23f; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--line); }
@@ -93,7 +93,7 @@
   <button id="home">◀ ARCADE</button>
   <h1>BE A CONTROLLER</h1>
   <div id="me"><img id="meImg" alt=""><span id="meName"></span></div>
-  <div class="how">On the Xbox, TV or computer: open Pixel Arcade, press the controller button next to the ★ and SHOW CODE. Type that code here:</div>
+  <div class="how">On the Xbox, TV or computer: open Pixel Games, press the controller button next to the ★ and SHOW CODE. Type that code here:</div>
   <input id="code" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go" placeholder="CODE" aria-label="Code from the big screen">
   <button id="go">CONNECT</button>
   <div id="joinMsg"></div>
@@ -124,7 +124,7 @@
 <script src="common.js"></script>
 <script>
 'use strict';
-/* PIXEL ARCADE: the phone controller. Connects to a big screen (index.html, the controller button: SHOW CODE)
+/* PIXEL GAMES: the phone controller. Connects to a big screen (index.html, the controller button: SHOW CODE)
    and works as one more game controller there. The screen tells it which buttons the game uses. */
 const $ = id => document.getElementById(id);
 PX.Remote.stop();                                   // if this tab was a big screen, it isn't any more
@@ -263,7 +263,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // --- what the game wants: the stick (or a d-pad) and its buttons, with what each one does -------
-let L = { stick: 'PICK', dpad: true, buttons: [['A', 'OK'], ['B', 'BACK']], mode: 'menu', title: 'PIXEL ARCADE' };
+let L = { stick: 'PICK', dpad: true, buttons: [['A', 'OK'], ['B', 'BACK']], mode: 'menu', title: 'PIXEL GAMES' };
 function show(d) {
   L = d;
   $('title').innerHTML = '';

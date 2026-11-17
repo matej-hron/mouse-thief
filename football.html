@@ -30,7 +30,7 @@
 <script>
 'use strict';
 /* ==========================================================================
-   PIXEL FOOTBALL: a retro side-on football game (part of the PIXEL ARCADE).
+   PIXEL FOOTBALL: a retro side-on football game (part of the PIXEL GAMES).
    Six a side. You control the player nearest the ball: PASS and SHOOT
    (hold to shoot harder). Run your own club: an 8-club league, a squad of
    players with stats who improve as they play, training, a transfer market.
@@ -734,7 +734,7 @@ const camS = () => (M.mirror ? L - M.cam : M.cam);
 const sxAt = (x, k) => S.W / 2 + ((M.mirror ? L - x : x) - camS()) * PZ * (0.8 + 0.2 * k);
 function proj(x, y, z = 0) { const k = y / WD; return [sxAt(x, k), PY0 + (PY1 - PY0) * k - z * PZ * 0.85]; }
 const CROWD = ['#e01e1e', '#2a7fd4', '#f2f2f2', '#ffd23f', '#3fae4a', '#ff8ad0', '#e0a878', '#7a3fc4', '#ff8a2a', '#9b9b9b'];
-const BOARDS = [['PIXEL ARCADE', '#e01e1e'], ['GOAL!', '#2a7fd4'], ['★ ★ ★', '#3a2f5c'], ['PLAY FAIR', '#3fae4a'], ['PIXEL GP', '#ff8a2a'], ['PIXEL PONG', '#1ec8e0']];
+const BOARDS = [['PIXEL GAMES', '#e01e1e'], ['GOAL!', '#2a7fd4'], ['★ ★ ★', '#3a2f5c'], ['PLAY FAIR', '#3fae4a'], ['PIXEL GP', '#ff8a2a'], ['PIXEL PONG', '#1ec8e0']];
 function drawStands(now) {
   const W = S.W, off = camS() * PZ * 0.6, cheer = M.phase === 'goal';
   ctx.fillStyle = '#141024'; ctx.fillRect(0, 0, W, PY0);
