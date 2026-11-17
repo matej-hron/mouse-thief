@@ -15,7 +15,8 @@ The **controller button** next to the ★ counter turns phones into game control
 Every game's title is drawn the same way: white letters with a thick dark outline, a drop shadow and a pale blue lower half (`PX.drawLogo` in `common.js`).
 In every game the pause button is two thick bars and the sound button a speaker (a red cross when the sound is off).
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
-MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, and **VOICE CHAT** on or off (see Voice chat).
+MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat),
+**CHAT POP-UPS** on or off (see Chat in the games), and the **LANGUAGE** (top right: ENGLISH or ČEŠTINA, see Languages).
 
 | Game | |
 |---|---|
@@ -664,6 +665,29 @@ button show how many new messages are waiting.
 - The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).
 - **CALL** (top right in the chat) calls your friend: see **Call a friend from the chat** under Voice chat.
 
+### Chat in the games
+
+You don't have to leave a game to see a message or answer it. (An idea from a player, on the IDEAS board.)
+
+1. A new message from a friend pops up at the top of the game: **💬 NAME: MESSAGE**, with **REPLY** and ✕. It goes
+   by itself after 8 seconds.
+2. **REPLY** (or a tap on the message) **pauses the game** and opens a small chat over it: the last messages with that
+   friend, the emojis, a line to type in and **SEND** (or Enter). Swear words become ##### as in the arcade.
+3. **✕** (or Esc, or a tap next to the box) goes back to the game. It stays paused: press the game's own resume.
+   An online game can't pause (your friend plays on), so it goes on behind the box.
+
+- Messages come as in the arcade: the game checks every 20 seconds, and at once when the friend's chat says it just
+  sent one. What you read and send in a game is in the arcade's chat too.
+- **CHAT POP-UPS: ON / OFF** in SETTINGS turns it off for every game (on by default). Only with friends, and only in
+  the games (the arcade has its own chat).
+- With a controller: the box needs a touch or a keyboard (type and Enter).
+- How it works: `PX.ChatPop` in `common.js`. It reads the same ntfy.sh topic as the arcade's `Inbox` (only the chat
+  messages, the rest waits for the arcade) and listens to the typing topic for "sent". The game pauses the way it does
+  when you switch away: `document.hidden` reads true while the box is open and a `visibilitychange` goes out; every
+  game already pauses on that. While the box is open the game gets no keys. Both write `localStorage['pixelArcade.chat']`,
+  and the arcade reads it again when a game changes it (a `storage` event, e.g. a game in the frame during a call).
+  `PX.chatClean` and `PX.CHAT_EMOJIS` are shared by both.
+
 **Online / offline:** next to every friend: a green dot and **ONLINE** (the arcade is open), **PLAYING** and the
 game, or a grey ring and **OFFLINE**. Friends who are online are at the top of the list; the chat shows it under the
 name too. While the arcade or a game is open and on the screen, it says "I'm online" on ntfy.sh every 4 minutes, and
@@ -839,9 +863,30 @@ while nobody is logged in, a game opened by its own address plays as a nameless 
 and clearing the browser's data removes all the accounts from the phone (the ones on the server stay there, and
 LOG IN FROM ANOTHER PHONE brings them back, without the progress).
 
+## Languages
+
+The arcade speaks **English** and **Czech (ČEŠTINA)**: the button at the top right of SETTINGS switches between them.
+The first time, a phone set to Czech or Slovak gets Czech and every other phone English. (An idea from a player, on the IDEAS board.)
+
+- **What is translated:** the whole arcade (`index.html`: the games list, search, settings, friends, chat, calls, stars,
+  TOP, IDEAS, accounts...) and the chat box in the games. **The games themselves are still in English**; they come
+  next, one by one. Names of games, players and ideas stay as they are.
+- **Czech letters:** the pixel font draws Á É Í Ó Ú Ý Č Ď Ě Ň Ř Š Ť Ž Ů: the letter, with its mark in the two pixel
+  rows above it (`MARKS` in `common.js`). What players type (names, chat, ideas) still loses its accents, as before.
+- **How it works:** the code keeps writing English. `cs.js` is a table: the English text exactly as the code writes it,
+  and its Czech (`'BACK': 'ZPĚT'`). A key with `{0}`, `{1}`... is a pattern for text put together from pieces
+  (`'{0} IS YOUR FRIEND NOW!': 'S {0} JSTE TEĎ KAMARÁDI!'`); the pieces are looked up too. A page that is translated
+  loads `cs.js` and calls `PX.Lang.page()`; from then on `PX.drawText` and `PX.textWidth` draw and measure the Czech
+  (so centering and fitting work as before). Text missing from the table stays English. The arcade's wrapping helpers
+  (`wrapText`, `wrapSized`, `fitText`) translate first, then wrap. Pages without `page()` (the games) draw English;
+  `PX.Lang.t()` translates anyway, for boxes of our own like the chat in the games (it loads `cs.js` itself).
+  The choice is `lang` in `localStorage['pixelArcade.settings']` (`PX.Settings`).
+- **Translating a game:** load `cs.js` after `common.js`, call `PX.Lang.page()`, add the game's text to `cs.js` and
+  check every screen: Czech is often longer than English.
+
 ## Buy me a coffee
 
-SETTINGS has a **BUY ME A COFFEE** button (brown, under PHONE CONTROLLERS). It is behind a grown-ups gate: it opens
+SETTINGS has a **BUY ME A COFFEE** button (a brown cup, top right). It is behind a grown-ups gate: it opens
 **FOR GROWN-UPS**, which asks a times-table question (`a X b`, with a and b from 6 to 9) with four answers. The right
 answer opens the maker's page in a new tab; a wrong one says NOT QUITE. ASK A GROWN-UP! and asks a new question.
 

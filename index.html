@@ -43,10 +43,11 @@
 <textarea id="ideabody" maxlength="200" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="send" aria-label="More about your idea"></textarea>
 <input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Your name">
 <script src="common.js"></script>
+<script src="cs.js"></script>
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.63.0';
+const VERSION = '2.65.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -136,6 +137,12 @@ function play(g) { PX.Sound.tone([523, 784], 0.15, { vol: 0.12 }); setTimeout(()
 // arcade opens the game in a frame over itself instead: the call and its bar go on above the game, and < ALL GAMES
 // (or the phone's back button) closes the frame (common.js catches the game going back to './'). While a game is in
 // the frame the arcade stops drawing and lets go of the controller. Without a call, games open as always.
+// LANGUAGE: the arcade is translated (cs.js); the boxes you type in get their hint text in the language too
+function applyLang() {
+  searchInput.placeholder = PX.tr('TYPE A GAME...'); chatInput.placeholder = PX.tr('TYPE A MESSAGE...');
+  ideaTitleInput.placeholder = PX.tr('MORE TRACKS IN PIXEL SKI');
+}
+PX.Lang.page();
 const Shell = window.ArcadeShell = {
   frame: null, popping: false,
   wanted() { return !!(PX.Voice.direct && PX.Voice.phase !== 'off'); },
@@ -775,8 +782,19 @@ function drawSettings(t) {
   if (UI.button('voice', x + 12, 196, half, 22, set.voice ? 'VOICE CHAT: ON' : 'VOICE CHAT: OFF', { size: 1, accent: '#4aa8ff', on: set.voice })) {
     PX.Settings.save({ ...set, voice: !set.voice }); PX.Sound.tone(set.voice ? 300 : 660, 0.08, { vol: 0.08 });
   }
-  if (COFFEE_URL && UI.button('coffee', x + 18 + half, 196, half, 22, '   BUY ME A COFFEE', { size: 1, accent: '#c8843a' })) openCoffee();
-  if (COFFEE_URL) cupIcon(x + 30 + half, 207);
+  // CHAT POP-UPS: a friend's message pops up in the games, and you answer there (PX.ChatPop in common.js)
+  T('CHAT IN THE GAMES', x + 18 + half, 184, '#9a92b8', 1);
+  if (UI.button('chatpop', x + 18 + half, 196, half, 22, set.chatPop ? 'CHAT POP-UPS: ON' : 'CHAT POP-UPS: OFF', { size: 1, accent: '#ffd23f', on: set.chatPop })) {
+    PX.Settings.save({ ...set, chatPop: !set.chatPop }); PX.Sound.tone(set.chatPop ? 300 : 660, 0.08, { vol: 0.08 });
+  }
+  // LANGUAGE: ENGLISH / ČEŠTINA (PX.Lang in common.js, the Czech text in cs.js), top right
+  const langs = PX.Lang.LANGS, li = Math.max(0, langs.findIndex(l => l[0] === set.lang)), lw = 66, lx = W - 8 - lw - (COFFEE_URL ? 32 : 0);
+  if (UI.button('lang', lx, 8, lw, 22, langs[li][1], { size: 1, accent: '#7af0ff' })) {
+    PX.Settings.save({ ...set, lang: langs[(li + 1) % langs.length][0] }); applyLang(); PX.Sound.tone([523, 784], 0.12, { vol: 0.1 });
+  }
+  // BUY ME A COFFEE: the cup at the top right
+  if (COFFEE_URL && UI.button('coffee', W - 34, 8, 26, 22, '', { size: 1, accent: '#c8843a' })) openCoffee();
+  if (COFFEE_URL) cupIcon(W - 21, 19);
   T('PIXEL ARCADE ' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
 }
 function cupIcon(cx, cy) {
@@ -1585,7 +1603,7 @@ const typingTopic = id => 'pixel-arcade-typing-' + id;
 const CHAT_KEY = 'pixelArcade.chat', CHAT_MAX = 60, CHAT_KEEP = 40;
 const chatInput = document.getElementById('chatmsg');
 // EMOJIS: 15 of them, drawn as pixel art (7 wide) in the chat. In a message they are the real emoji characters, so the
-// ones from a phone's emoji keyboard work too (a few look-alikes become one of these, see EMOJI_ALIAS).
+// ones from a phone's emoji keyboard work too (a few look-alikes become one of these, see CHAT_ALIAS in common.js).
 const EMOJI_PAL = { y: '#ffd23f', k: '#3a2a10', w: '#ffffff', r: '#ff4a4a', b: '#4aa8ff', o: '#ff9a3c', p: '#ff7ab8', g: '#efe9ff', d: '#3a2f5c', x: '#5ad43f' };
 const EMOJIS = [
   ['\u{1F600}', ['.yyyyy.', 'yyyyyyy', 'yykykyy', 'yyyyyyy', 'ykwwwky', 'yykkkyy', '.yyyyy.']],      // grin
@@ -1605,14 +1623,9 @@ const EMOJIS = [
   ['\u{1F431}', ['o.....o', 'oo...oo', 'ooooooo', 'okoooko', 'ooopooo', 'oowowoo', '.ooooo.']],      // cat
 ];
 const EMOJI = new Map(EMOJIS);
-const EMOJI_ALIAS = { '\u{1F603}': '\u{1F600}', '\u{1F604}': '\u{1F600}', '\u{1F601}': '\u{1F600}', '\u{1F642}': '\u{1F600}', '\u{1F60A}': '\u{1F600}',
-  '\u{1F923}': '\u{1F602}', '\u{1F970}': '\u{1F60D}', '\u{1F62D}': '\u{1F622}', '☹': '\u{1F622}', '\u{1F641}': '\u{1F622}', '\u{1F620}': '\u{1F621}',
-  '\u{1F92C}': '\u{1F621}', '\u{1F62F}': '\u{1F62E}', '\u{1F632}': '\u{1F62E}', '\u{1F631}': '\u{1F62E}', '♥': '❤', '\u{1F9E1}': '❤',
-  '\u{1F49B}': '❤', '\u{1F49A}': '❤', '\u{1F499}': '❤', '\u{1F49C}': '❤', '\u{1F496}': '❤', '\u{1F497}': '❤',
-  '\u{1F579}': '\u{1F3AE}', '\u{1F947}': '\u{1F3C6}', '\u{1F408}': '\u{1F431}', '\u{1F63A}': '\u{1F431}', '\u{1F638}': '\u{1F431}' };
-// only what the arcade can draw: capitals without accents, digits, a few signs and the emojis (at most CHAT_MAX)
-const chatClean = v => Array.from(String(v || '').replace(/[\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())
-  .map(ch => EMOJI_ALIAS[ch] || ch).filter(ch => EMOJI.has(ch) || /^[A-Z0-9 .,!?:\-+/'%()<>=*#"_$★]$/.test(ch)).slice(0, CHAT_MAX).join('');
+// only what the arcade can draw (PX.chatClean in common.js: the games' chat box uses it too)
+const chatClean = PX.chatClean;
+if (EMOJIS.some(([ch]) => !PX.CHAT_EMOJIS.includes(ch)) || EMOJIS.length !== PX.CHAT_EMOJIS.length) console.warn('EMOJIS and PX.CHAT_EMOJIS differ');
 chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; if (v.trim()) Chat.typing(); });
 // a chat line's width and drawing: letters in the pixel font, emojis as their pixel art
 const chatW = str => { let w = 0; for (const ch of str) w += EMOJI.has(ch) ? 9 : PX.textWidth(ch, 1) + 1; return w - 1; };   // (textWidth leaves out the gap after the last letter)
@@ -1716,6 +1729,8 @@ const Chat = {
   },
 };
 Chat.load();
+// a game (in another tab, or in the frame during a call) writes chat messages too (PX.ChatPop): read them again
+addEventListener('storage', e => { if (e.key === CHAT_KEY) Chat.load(); });
 // a message's lines, at most maxW wide (a very long word is cut into pieces)
 function chatLines(str, maxW) {
   const words = [];
@@ -1856,7 +1871,7 @@ const Leaders = {
     return null;
   },
 };
-function fitText(str, size, maxW) { while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
+function fitText(str, size, maxW) { str = PX.tr(str); while (str.length > 1 && PX.textWidth(str, size) > maxW) str = str.slice(0, -1); return str; }
 function drawLeaders(t) {
   const W = S.W, cx = Math.round(W / 2), L = Leaders, g = L.g(), board = L.board(), e = L.current(), res = e && e.res;
   background(t);
@@ -2014,7 +2029,7 @@ function ideaVote(r, id, x, y, w, h) {
 // lines of a text in the pixel font, at a size, at most maxW wide (a word longer than that is cut)
 function wrapSized(str, size, maxW) {
   const out = []; let line = '';
-  for (const w of String(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, size) > maxW) { out.push(line); line = fitText(w, size, maxW); } else line = fitText(next, size, maxW); }
+  for (const w of PX.tr(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, size) > maxW) { out.push(line); line = fitText(w, size, maxW); } else line = fitText(next, size, maxW); }
   if (line) out.push(line);
   return out;
 }
@@ -2535,7 +2550,7 @@ if (Account.locked()) { screen = 'account'; Account.go('pick'); }               
 Account.refresh();
 function wrapText(str, maxW) {
   const out = []; let line = '';
-  for (const w of str.split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
+  for (const w of PX.tr(str).split(' ')) { const next = line ? line + ' ' + w : w; if (line && PX.textWidth(next, 1) > maxW) { out.push(line); line = w; } else line = next; }
   if (line) out.push(line);
   return out;
 }
@@ -2739,6 +2754,8 @@ function frame(now) {
   S.blit('#0d0b13');
   requestAnimationFrame(frame);
 }
+applyLang();
+addEventListener('storage', e => { if (e.key === 'pixelArcade.settings') applyLang(); });
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
   title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders' || screen === 'ideas', ui: UI,
