@@ -81,10 +81,11 @@ describe('accounts', () => {
     const locked = await login();
     expect(locked.status).toBe(429);
     expect(await code(locked)).toBe('LOCKED');
-    // the lock started at the 10th failure and lasts 15 minutes
-    await env.DB.prepare('UPDATE login_fail SET since = since - 899, locked_until = locked_until - 899').run();
+    // the lock started at the 10th failure and lasts 15 minutes (10 s short of that it still holds: a margin, so a
+    // slow test run crossing a second or two can't end the lock early)
+    await env.DB.prepare('UPDATE login_fail SET since = since - 890, locked_until = locked_until - 890').run();
     expect((await login()).status).toBe(429);
-    await env.DB.prepare('UPDATE login_fail SET since = since - 2, locked_until = locked_until - 2').run();
+    await env.DB.prepare('UPDATE login_fail SET since = since - 12, locked_until = locked_until - 12').run();
     expect((await login()).status).toBe(200);
     // a success reset the counter: 9 more failures do not lock
     for (let i = 0; i < 9; i++) await login('MIA', H('c'));
