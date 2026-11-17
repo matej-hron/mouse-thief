@@ -46,7 +46,7 @@ export type PushKind = z.infer<typeof sendBody>['t'] | 'test';
 const GAME_NAMES: Record<string, string> = {
   thief: 'MOUSE THIEF', racer: 'PIXEL GP', pong: 'PIXEL PONG', football: 'PIXEL FOOTBALL', wings: 'PIXEL WINGS',
   skate: 'PIXEL SKATE', ski: 'PIXEL SKI', boxfight: 'PIXEL BOX FIGHT', bike: 'PIXEL BIKE RUN', skygp: 'PIXEL SKY GP',
-  moto: 'PIXEL MOTO', snake: 'PIXEL SNAKE',
+  moto: 'PIXEL MOTO', snake: 'PIXEL SNAKE', hook: 'PIXEL HOOK', party: 'PIXEL PARTY',
 };
 
 export type Note = { title: string; body: string; url: string; tag: string; call?: true };   // call: the phone rings (vibrates long, stays on)

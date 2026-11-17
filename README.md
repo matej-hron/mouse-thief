@@ -39,7 +39,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOIC
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, a shop of runners and ropes, and online RACE and TAG with a friend. |
 | **Pixel Slice** (`slice.html`) | Fruit flies up: swipe to slice it. Combos, ICE that slows time, CHILI that sets your blade on fire, GOLD and STAR fruit, and bombs you must not touch. 3 LIVES or 60 SECONDS, a shop of blades and places. |
-| **Pixel Party** (`party.html`) | A tournament of quick mini-games for 2 to 4 players on one phone: pick the games, the rounds and the trophy you play for. The winner's trophy goes on the TROPHIES leaderboard. |
+| **Pixel Party** (`party.html`) | A tournament of quick mini-games for 2 to 4 players, online (each on their own phone) or taking turns on one phone: pick the games, the rounds and the trophy you play for. The winner's trophy goes on the TROPHIES leaderboard. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -461,7 +461,15 @@ A tournament of quick mini-games for **2 to 4 players**. (An idea from the arcad
   (move under the falling rocks: how long you last), **CATCH** (stars into your bucket, not the X's), **REACTION**
   (tap when it turns green, 5 times: the lowest average wins; too early costs 1000 ms), **TARGETS** (tap them before
   they go), **MEMORY** (repeat the colors: the longest row) and **HOP** (tap to jump the gaps: how far).
-- **Online tournaments** (2 to 4 phones) are next.
+- **ONLINE** (2 to 4 phones, each player on their own): CREATE GAME gives a 4-letter code (and INVITE A FRIEND, like
+  the other online games); friends JOIN WITH A CODE. The host sets the tournament up (the players are the ones who
+  joined) and starts it. Every round everybody taps READY (the host can START WITHOUT THEM after 15 seconds), then all
+  play the same mini-game at the same time; the host's phone collects the scores and sends the results, and moves on
+  with NEXT ROUND. A phone that leaves is last from then on; when the host leaves, the tournament ends. Everyone's own
+  win counts on their own phone (shelf, ★, leaderboard). Pausing doesn't stop the clock online. After the final the
+  host can start a NEW TOURNAMENT with whoever is still there.
+  How: PeerJS like the other games; the host is the room `pixel-party-room-<code>`, up to 3 friends connect to it
+  (messages: `me`, `lobby`, `start` with the list and the seeds, `ready`, `go`, `score`, `res`, `next`, `gone`, `bye`).
 - In Czech too.
 
 ## Pixel Defense
