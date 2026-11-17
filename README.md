@@ -39,7 +39,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOIC
 | **Pixel Defense** (`defense.html`) | A tower defense: build and upgrade 8 kinds of towers next to the road and stop waves of blobs, bugs and bosses on 8 maps. Win stars for the workshop, then try ENDLESS. |
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, a shop of runners and ropes, and online RACE and TAG with a friend. |
 | **Pixel Slice** (`slice.html`) | Fruit flies up: swipe to slice it. Combos, ICE that slows time, CHILI that sets your blade on fire, GOLD and STAR fruit, and bombs you must not touch. 3 LIVES or 60 SECONDS, a shop of blades and places. |
-| **Pixel Party** (`party.html`) | A tournament of quick mini-games for 2 to 4 players, online (each on their own phone) or taking turns on one phone: pick the games, the rounds and the trophy you play for. The winner's trophy goes on the TROPHIES leaderboard. |
+| **Pixel Party** (`party.html`) | A tournament of the arcade's own games for 2 to 4 players, online (each on their own phone) or taking turns on one phone: every round is a short challenge in one of the games (Slice, Hook, Runs, Snake, Hoops, Bike Run, Ski, Mouse Thief). Pick the games, the rounds and the trophy; the winner's trophy goes on the TROPHIES leaderboard. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -446,30 +446,45 @@ the stick moves the blade, hold A or RT to cut). The blade only cuts when it mov
 
 ## Pixel Party
 
-A tournament of quick mini-games for **2 to 4 players**. (An idea from the arcade's players.)
+A tournament of **the arcade's own games** for **2 to 4 players**. (An idea from the arcade's players.)
 
-- **ONE PHONE:** the players take turns, passing the phone (READY! starts your turn, 3-2-1, go). Player 1 is the
-  phone's own player; tap the other names to change them.
-- **Setup:** how many players; the **PLAYLIST** (RANDOM, or PICK the mini-games you want); the **ROUNDS** (3, 5 or 7)
-  and the **TROPHY** you play for: BRONZE (3 rounds or more), SILVER (5 or more) or GOLD (7).
-- **A round** is one mini-game. Everybody plays the very same one (the same fruit, rocks and gaps: it is built from
-  the round's seed), and the best score wins: **1st +3, 2nd +2, 3rd +1** (equal scores share a place).
-- **The winner** (the most points after the last round; a tie shares it) gets the trophy. When player 1 wins, it goes
-  on **MY TROPHIES** (the shelf), ★ into the wallet (BRONZE 3, SILVER 6, GOLD 10) and points on the **TROPHIES**
-  leaderboard (TOP: PIXEL PARTY: TROPHIES; GOLD 3, SILVER 2, BRONZE 1; at most 5 trophies a day count there).
-- **The mini-games** (8): **SLICE** (swipe the fruit, not the bombs, 20 s), **TAP RACE** (taps in 10 s), **DODGE**
-  (move under the falling rocks: how long you last), **CATCH** (stars into your bucket, not the X's), **REACTION**
-  (tap when it turns green, 5 times: the lowest average wins; too early costs 1000 ms), **TARGETS** (tap them before
-  they go), **MEMORY** (repeat the colors: the longest row) and **HOP** (tap to jump the gaps: how far).
+- **A round is one of the games, played as a short CHALLENGE:** Pixel Party opens the game in a frame over itself,
+  the game starts its challenge right away, and its score comes back when it is over. The challenges:
+
+  | Game | The challenge | Wins |
+  |---|---|---|
+  | Pixel Slice | 60 SECONDS: as much fruit as you can | most points |
+  | Pixel Hook | ENDLESS: as far as you can, one fall ends it | farthest |
+  | Pixel Runs | one run, as far as you can | farthest |
+  | Pixel Snake | 90 seconds with the bots: as long as you can grow | longest |
+  | Pixel Hoops | TIME ATTACK, 60 seconds | most points |
+  | Pixel Bike Run | the first trail (SUNSET HILLS) against the clock; a crash costs time | fastest |
+  | Pixel Ski | SNOWY MEADOW, GREEN, against the clock; a crash is DNF | fastest |
+  | Mouse Thief | run from the cat as long as you can | longest |
+
+  Everybody in a round plays the same challenge, with the same random numbers (the round's seed). Leaving the game
+  (< ALL GAMES, the phone's back button, GIVE UP) gives up the round: last place for it.
+- **Points for a round:** 1st +3, 2nd +2, 3rd +1 (equal scores share a place). After the last round the most points
+  wins the **trophy** (a tie shares it).
+- **Setup:** the **PLAYLIST** (RANDOM, or PICK the games), the **ROUNDS** (3, 5 or 7) and the **TROPHY**: BRONZE
+  (3 rounds or more), SILVER (5 or more) or GOLD (7).
 - **ONLINE** (2 to 4 phones, each player on their own): CREATE GAME gives a 4-letter code (and INVITE A FRIEND, like
-  the other online games); friends JOIN WITH A CODE. The host sets the tournament up (the players are the ones who
-  joined) and starts it. Every round everybody taps READY (the host can START WITHOUT THEM after 15 seconds), then all
-  play the same mini-game at the same time; the host's phone collects the scores and sends the results, and moves on
-  with NEXT ROUND. A phone that leaves is last from then on; when the host leaves, the tournament ends. Everyone's own
-  win counts on their own phone (shelf, ★, leaderboard). Pausing doesn't stop the clock online. After the final the
-  host can start a NEW TOURNAMENT with whoever is still there.
-  How: PeerJS like the other games; the host is the room `pixel-party-room-<code>`, up to 3 friends connect to it
-  (messages: `me`, `lobby`, `start` with the list and the seeds, `ready`, `go`, `score`, `res`, `next`, `gone`, `bye`).
+  the other online games); friends JOIN WITH A CODE. The host sets the tournament up and starts it. Every round
+  everybody taps READY (the host can START WITHOUT THEM after 15 seconds), then all play the same challenge at the same
+  time; the host's phone collects the scores and sends the results, and moves on with NEXT ROUND. A phone that leaves
+  is last from then on; when the host leaves, the tournament ends. After the final the host can start a NEW
+  TOURNAMENT with whoever is still there. (PeerJS like the other games: the host is the room
+  `pixel-party-room-<code>`, up to 3 friends connect to it; the connection stays open while a game plays in the frame.)
+- **ONE PHONE:** the players take turns, passing the phone. Player 1 is the phone's own player; tap the others' names
+  to change them.
+- **The trophy** goes on **MY TROPHIES** (the shelf), ★ into the wallet (BRONZE 3, SILVER 6, GOLD 10) and points on
+  the **TROPHIES** leaderboard (TOP: PIXEL PARTY: TROPHIES; GOLD 3, SILVER 2, BRONZE 1; at most 5 trophies a day count):
+  online, each winner on their own phone; on one phone, when player 1 wins.
+- **How a game does it** (`PX.Challenge` in `common.js`): the frame's address has `?challenge={"id":"slice","seed":N}`;
+  `Math.random` follows the seed; the game skips its menus, plays the one challenge and calls
+  `PX.Challenge.report(score, '1:04.0')` (no second run, no way to its menus in between). A game leaving to the
+  arcade closes the frame (Pixel Party is its `ArcadeShell`). The list of challenges is `PX.Challenge.GAMES`. A
+  challenge run still counts in the game itself (bests, coins, stars), like any run.
 - In Czech too.
 
 ## Pixel Defense

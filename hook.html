@@ -37,6 +37,9 @@
      LEVELS: 3 worlds x 8 levels, 3 stars each (finish, no falls, beat the par time).
      ENDLESS: how far can you swing? The world changes every 600 m.
      SHOP: coins buy runners and ropes.
+     CHALLENGE (Pixel Party opens this page with ?challenge={"id":"hook","seed":N}): straight into ENDLESS on the
+     round's course, no menus. One fall (or 230 s) ends it; after the result shows for a second the distance goes to
+     the tournament as the score (meters, '123 M'). No AGAIN / MENU / RESTART: one run only.
      ONLINE (a friend, with a 4-letter code): RACE on any level (first to the FINISH), or TAG: one runs, the other
      chases, best of 3 rounds. The runner wins by lasting 45 s, the chaser by touching the runner.
    The levels are built from a seed, so every level is always the same.
@@ -44,7 +47,10 @@
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
+const CH = PX.Challenge.on && PX.Challenge.spec.id === 'hook';   // CHALLENGE: one ENDLESS run for Pixel Party
+const CH_MAX = 230;                                            // CHALLENGE: the longest a run may go (seconds)
+let chStart = 0;
 const SAVE_KEY = 'pixelHook.save';
 const save = { sfx: true, music: true, stars: {}, times: {}, endless: 0, coins: 0, skin: 'red', rope: 'classic', owned: { red: 1, classic: 1 }, played: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -223,7 +229,7 @@ function newRun(mode, w = 0, li = 0, seed = 0) {
   else if (mode === 'tag') { R.gen = tagCourse(seed); R.L = R.gen.L; R.gen.extend(1200); }
   else {
     const endless = mode === 'endless';
-    R.gen = makeGen(endless ? (Date.now() & 0xffffff) : 7, {
+    R.gen = makeGen(endless ? (CH ? PX.Challenge.spec.seed & 0xffffff : Date.now() & 0xffffff) : 7, {
       diff: x => (endless ? Math.min(1, x / 16000) : 0.15),
       feats: x => (endless ? { pad: x > 500, ring: x > 1400, wall: x > 2400, saw: x > 3400, mover: x > 4200, laser: x > 5200, sawMove: x > 9000 } : { pad: true, ring: true }),
     });
@@ -804,6 +810,7 @@ function drawPause() {
   const W = S.W, { y } = panel(200, 140), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (CH) return;                                // CHALLENGE: RESUME only
   if (UI.button('restart', bx, y + 70, bw, 22, 'RESTART', { accent: '#ffd23f' })) { paused = false; start(G.mode, G.w, G.li); }
   if (UI.button('quit', bx, y + 100, bw, 22, 'MENU')) toMenu();
 }
@@ -856,6 +863,7 @@ function drawOver(t) {
     coinIcon(W / 2 - 40, y + 79); T('+' + R.coins, W / 2 - 28, y + 80, '#ffe27a', 2, 'left', '#000');
     if (R.stars) T('★ +' + R.stars, W / 2 + 30, y + 80, '#ffd23f', 2, 'left', '#000');
     T('EVERY 250 M = ★1', W / 2, y + 100, '#9a92b8', 1, 'center');
+    if (CH) { T('CHALLENGE OVER!', W / 2, y + 124, '#ffd23f', 2, 'center', '#000'); return; }   // CHALLENGE: one run, no AGAIN
     if (UI.button('menu', Math.round(W / 2 - 112), y + 118, 108, 24, 'MENU') || UI.back) toMenu();
     if (UI.button('again', Math.round(W / 2 + 4), y + 118, 108, 24, 'AGAIN', { accent: '#5ad43f' })) start('endless');
   }
@@ -1324,7 +1332,9 @@ function frame(now) {
     if (G.mp) { if (G.over && state === 'play' && G.overT > 1.2) state = 'over'; }
     else {
       if (G.won && !G.over && G.wonT > 1.0) { G.over = true; G.overT = 0; finishLevel(G); }
+      if (CH && !G.over && performance.now() - chStart > CH_MAX * 1000) { G.over = true; paused = false; }   // CHALLENGE: the time cap
       if (G.over && state === 'play') { if (G.mode === 'endless' && G.dist === undefined) { finishEndless(G); G.overT = 0; } state = 'over'; }
+      if (CH && state === 'over' && G.dist !== undefined && G.overT > 1) PX.Challenge.report(G.dist, G.dist + ' M');   // reports once
     }
     if (paused) drawPause(); else if (state === 'over') { if (G.mp) drawMpOver(t); else drawOver(t); } else if (Net.menu) drawMpMenu();
   }
@@ -1347,6 +1357,8 @@ PX.Pad.setup({
 });
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
 PX.Invite.auto(code => { state = 'online'; Net.join(code); });
+// CHALLENGE: no title screen, straight into ENDLESS
+if (CH) { start('endless'); chStart = performance.now(); }
 </script>
 </body>
 </html>

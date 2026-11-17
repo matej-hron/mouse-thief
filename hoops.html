@@ -32,11 +32,14 @@
    Pull further for a harder throw, sideways to aim the other way. Every basket is +2 points.
      TIME ATTACK: 60 seconds, as many baskets as you can. Late in the game the hoop moves.
      FREE SHOOT: no clock, just shoot.
+   CHALLENGE (?challenge={"id":"hoops",...}, from Pixel Party): no menus, a TIME ATTACK starts at once.
+     When the 60 s run out the TIME! screen shows ~1 s, then PX.Challenge.report(points, 'N PTS').
+     No MENU / PLAY AGAIN (pause can only RESUME); hard cap: whatever happens, it reports after 110 s.
      1. Setup   2. The game   3. Physics   4. Drawing   5. Screens   6. Input   7. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const SAVE_KEY = 'pixelHoops.save';
 const save = { best: 0, made: 0, shots: 0, sfx: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -66,6 +69,7 @@ const SWEET_LO = 0.32, SWEET_HI = 0.68;          // pull this much (of the longe
 const F = 340, HOR = 80, CAM_Y = 3.2, CAM_BACK = 3.6, CAM_SIDE = 0.7, NEAR = 0.3;
 const GAME_TIME = 60;
 const POINTS = 2;
+const CH = PX.Challenge.on && PX.Challenge.spec && PX.Challenge.spec.id === 'hoops';   // a Pixel Party round
 
 /* --- 2. THE GAME --------------------------------------------------------------- */
 let state = 'title';            // title | play | over
@@ -512,6 +516,7 @@ function drawPause() {
   const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (CH) return;                                  // a challenge round: RESUME only
   if (UI.button('quit', bx, y + 70, bw, 22, G.mode === 'free' ? 'DONE' : 'MENU')) { if (G.mode === 'free') { paused = false; endGame(); } else toTitle(); }
 }
 function drawOver(t) {
@@ -523,11 +528,12 @@ function drawOver(t) {
   if (G.newBest) T('NEW BEST!', W / 2, y + 82, '#9be36b', 2, 'center', '#000');
   else T('BEST: ' + save.best, W / 2, y + 84, '#9a92b8', 1, 'center');
   if (G.stars) T('★ +' + G.stars, W / 2, y + 100, '#ffd23f', 2, 'center', '#000');
+  if (CH) { T('ROUND OVER!', W / 2, y + 132, '#9be36b', 2, 'center', '#000'); return; }   // no MENU / PLAY AGAIN in a challenge
   if (UI.button('menu', Math.round(W / 2 - 112), y + 126, 108, 24, 'MENU') || UI.back) toTitle();
   if (UI.button('again', Math.round(W / 2 + 4), y + 126, 108, 24, 'PLAY AGAIN', { accent: '#5ad43f' })) newGame(G.mode);
 }
 function setPause(v) { if (state !== 'play') return; paused = v; aim = null; }
-function toTitle() { G = null; state = 'title'; paused = false; aim = null; }
+function toTitle() { if (CH) return; G = null; state = 'title'; paused = false; aim = null; }
 
 /* --- sound --- */
 function sfx(k) {
@@ -587,8 +593,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) setPa
 /* --- 7. MAIN LOOP ----------------------------------------------------------------- */
 const STEP = 1 / 120;
 let last = performance.now(), acc = 0;
+// CHALLENGE: the round is one TIME ATTACK; report ~1 s after its TIME!, or at 110 s whatever happens
+let chStart = 0, chOverAt = 0, chSent = false;
+function challengeTick(now) {
+  if (!chStart) chStart = now;
+  if (state === 'over' && !chOverAt) chOverAt = now;
+  const capped = now - chStart >= 110000;
+  if (capped && state === 'play') { paused = false; G.time = 0; endGame(); chOverAt = chOverAt || now; }
+  if (!chSent && (capped || (chOverAt && now - chOverAt >= 1000))) { chSent = true; PX.Challenge.report(G.score, G.score + ' PTS'); }
+}
+if (CH) newGame('timed');
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  if (CH) challengeTick(now);
   UI.begin();
   if (state === 'title') drawTitle(t);
   else {

@@ -31,12 +31,17 @@
    COMBO. The city changes every 500 m: sunset, neon night, snow, storm, dawn.
    To keep you running: 3 MISSIONS at a time (done ones pay coins and raise
    your RANK), coins buy UPGRADES and RUNNERS, power-ups on the roofs.
+   CHALLENGE mode (?challenge={"id":"runs",...} from a Pixel Party tournament): no title or shop,
+   one run starts at once (no tutorial, no KEEP RUNNING?), ends at the first fall or after 230 s,
+   and its distance in meters goes to the tournament (PX.Challenge.report) 1 s after the results show.
      1. Setup   2. Districts, shop, missions   3. Building the city
      4. The run   5. Drawing   6. Screens   7. Input and the main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
+const CH = !!(PX.Challenge && PX.Challenge.on && PX.Challenge.spec.id === 'runs');   // a tournament round: one run, then report
+const CH_MAX = 230;             // challenge: the longest run (seconds)
 const SAVE_KEY = 'pixelRuns.save';
 const save = { coins: 0, best: 0, bestScore: 0, runs: 0, tut: false, up: { dj: 0, power: 0, shield: 0, magnet: 0 }, skins: [true], skin: 0,
                missions: [], tiers: {}, done: 0, sfx: true };
@@ -192,9 +197,9 @@ function newRun(demo = false) {
         pops: [], parts: [], trail: [], shake: 0, shield: !demo && save.up.shield > 0, inv: 0, magnetT: 0, x2T: 0, theme: 0, themeK: 1, themeFrom: 0, banner: 0,
         freeze: 0, squash: 0, stepT: 0, coinN: 0, coinT: 0, bump: 0, dead: false, deadT: 0, revived: false, askT: 0, missionsDone: [], toasts: [], hint: null, slow: 1, stars: 0, newBest: false, t: 0, flash: 0 };
   addBuilding('start');
-  if (!demo && !save.tut) for (const s of ['flat', 'box', 'sign', 'wall']) addBuilding(s);
+  if (!demo && !save.tut && !CH) for (const s of ['flat', 'box', 'sign', 'wall']) addBuilding(s);
   G.on = G.blds[0]; G.y = G.on.y;
-  if (!demo) { G.pops.push({ text: 'GO!', color: '#9be36b', x: GX + 20, y: 120, t: 0, big: true }); state = 'play'; fade = 1; paused = false; save.runs++; for (const m of save.missions) if (MISSIONS[m.type].kind === 'run') m.prog = 0; store(); }
+  if (!demo) { G.pops.push({ text: 'GO!', color: '#9be36b', x: GX + 20, y: 120, t: 0, big: true }); state = 'play'; fade = 1; paused = false; save.runs++; for (const m of save.missions) if (MISSIONS[m.type].kind === 'run') m.prog = 0; store(); if (CH) G.chT0 = performance.now(); }
 }
 const score = () => Math.floor(G.dist) + G.tricks;
 const powerTime = () => 7 + save.up.power * 2.5;
@@ -239,7 +244,13 @@ function endRun() {
   if (G.stars) PX.Wallet.add(G.stars);
   if (!save.tut && d > 60) save.tut = true;
   store(); sfx(G.newBest ? 'best' : 'over');
+  if (CH) setTimeout(() => PX.Challenge.report(d, d + ' M'), 1000);   // the results show for a second, then the round's result goes out
 }
+function chCheck() {                             // challenge: the run stops after CH_MAX seconds
+  if (!CH || state !== 'play' || !G || G.demo || G.dead || !G.chT0 || performance.now() - G.chT0 < CH_MAX * 1000) return;
+  paused = false; G.why = 'time'; G.dead = true; G.askT = 9; endRun();
+}
+if (CH) setInterval(chCheck, 250);
 function auto() {                                // a simple robot runner
   const v = G.v; input.slide = false;
   if (G.st === 'run' || G.st === 'slide') {
@@ -263,13 +274,13 @@ function step(dt) {
     G.deadT += dt; G.vy += GRAV * dt; G.y += G.vy * dt; G.shake = Math.max(0, G.shake - dt);
     stepFx(dt);
     if (G.demo) { if (G.deadT > 1) newRun(true); return; }
-    if (G.deadT > 0.9 && !G.askT) { if (!G.revived && save.coins + 0 >= reviveCost() && G.dist > 40) G.askT = 0.001; else endRun(); }
+    if (G.deadT > 0.9 && !G.askT) { if (!CH && !G.revived && save.coins + 0 >= reviveCost() && G.dist > 40) G.askT = 0.001; else endRun(); }
     if (G.askT) { G.askT += dt; if (G.askT > 4.5) endRun(); }
     return;
   }
   // the first run teaches by doing: the next thing is named, and time runs slower near it
   G.hint = null; G.slow = 1;
-  if (!save.tut && !G.demo) {
+  if (!save.tut && !G.demo && !CH) {
     const b = G.on || G.blds.find(q => q.x + q.w > G.x), nb = G.blds[G.blds.indexOf(b) + 1];
     const o = b && b.obs.find(q => q.x > G.x - 4 && q.x - G.x < 130);
     if (o) G.hint = o.type === 'box' ? 'jump' : 'slide';
@@ -642,7 +653,7 @@ function drawAsk(t) {                              // crashed: keep running for 
 function drawOver(t) {
   const W = S.W, n = G.missionsDone.length, h = 162 + n * 19 + (n ? 12 : 0), { y } = panel(290, h, Math.max(4, Math.round((H - h) / 2)), '#e8402a'), k = clamp((1 - fade) * 1.3, 0, 1);
   if (G.newBest) for (let i = 0; i < 24; i++) { const q = t + i; R((i * 47 + q * 30) % W, (q * (40 + i * 3)) % H, 3, 3, ['#ffd23f', '#ff6bd0', '#7af0ff', '#9be36b'][i % 4]); }
-  T(G.newBest ? 'NEW BEST!' : G.why === 'fall' ? 'YOU FELL!' : 'CRASH!', W / 2, y + 9, '#ffd23f', 3, 'center', '#000');
+  T(G.newBest ? 'NEW BEST!' : G.why === 'time' ? 'TIME UP!' : G.why === 'fall' ? 'YOU FELL!' : 'CRASH!', W / 2, y + 9, '#ffd23f', 3, 'center', '#000');
   T(Math.round(Math.floor(G.dist) * k) + ' M', W / 2, y + 34, '#fff', 4, 'center', '#000');
   const cx = W / 2;
   T('SCORE', cx - 96, y + 66, '#9a92b8', 1, 'center'); T(String(score()), cx - 96, y + 76, '#fff', 2, 'center', '#000');
@@ -652,6 +663,7 @@ function drawOver(t) {
   T({ fall: 'TIP: HOLD JUMP LONGER TO FLY FURTHER', wall: 'TIP: JUMP AT A WALL A LITTLE EARLIER', box: 'TIP: LAND ON TOP OF A BOX TO STOMP IT', sign: 'TIP: KEEP SLIDING UNTIL YOU ARE PAST THE SIGN' }[G.why] || 'TIP: MOVES IN A ROW MAKE A COMBO', cx, y + 108, '#7ac8ff', 1, 'center');
   let yy = y + 120;
   if (n) { T(G.rankUp ? 'MISSIONS DONE: YOU ARE NOW A ' + RANKS[rankOf()] + '!' : 'MISSIONS DONE', cx, yy, '#9be36b', 1, 'center'); missionRows(cx - 130, yy + 9, 260, G.missionsDone); yy += 12 + n * 19; }
+  if (CH) { T('RESULT SENT TO THE TOURNAMENT', cx, yy + 16, '#9be36b', 1, 'center', '#000'); return; }   // challenge: no second run, no menus
   if (UI.button('menu', Math.round(cx - 138), yy + 10, 84, 24, 'MENU', { size: 1 }) || UI.back) { G = null; state = 'title'; fade = 1; return; }
   if (UI.button('shop', Math.round(cx - 50), yy + 10, 84, 24, 'SHOP', { size: 1, accent: '#ffd23f' })) { G = null; state = 'shop'; fade = 1; return; }
   if (UI.button('again', Math.round(cx + 38), yy + 10, 100, 24, 'RUN AGAIN', { size: 1, accent: '#5ad43f', on: true })) newRun();
@@ -715,11 +727,13 @@ function frame(now) {
     if (state === 'play') { if (G.askT && G.askT < 9) drawAsk(t); else if (paused) drawPause(); else drawHud(t); }
     else drawOver(t);
   }
+  chCheck();
   if (fade > 0) { ctx.fillStyle = 'rgba(13,11,19,' + (fade * 0.9).toFixed(2) + ')'; ctx.fillRect(0, 0, S.W, H); }
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);
 }
+if (CH) newRun();                // challenge: straight into the run
 requestAnimationFrame(frame);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

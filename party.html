@@ -33,21 +33,23 @@
 <script>
 'use strict';
 /* ==========================================================================
-   PIXEL PARTY: a tournament of quick mini-games for 2 to 4 players (part of the PIXEL ARCADE).
+   PIXEL PARTY: a tournament of the arcade's own games, for 2 to 4 players (part of the PIXEL ARCADE).
+   Every round is one of the arcade's games, played as a short CHALLENGE: Pixel Party opens the game in a frame over
+   itself (PX.Challenge in common.js), the game starts its challenge right away (SLICE: 60 SECONDS, HOOK: as far as you
+   can, BIKE RUN: the first trail against the clock...) and sends the score back when it is over. Everybody of a round
+   plays the same challenge (the same seed). Points for a round: 1st 3, 2nd 2, 3rd 1. After the last round the most
+   points wins the tournament's TROPHY.
    ONLINE: 2-4 phones, each player on their own (a 4-letter code or an invite). The host sets the tournament up;
    everybody plays every round at the same time, and the host's phone collects the scores.
-   ONE PHONE: the players take turns, passing the phone. Every round is one mini-game: everybody plays the same one
-   (the same fruit, the same rocks: it is built from the round's seed), and the best score wins the round.
-   Points for a round: 1st 3, 2nd 2, 3rd 1. After the last round the most points wins the tournament's TROPHY.
-     Setup: 2-4 players (names), the PLAYLIST (RANDOM, or pick the mini-games), ROUNDS (3, 5 or 7) and the TROPHY
-     (BRONZE: 3+ rounds, SILVER: 5+, GOLD: 7). When the phone's own player (player 1) wins, the trophy goes on
-     their shelf and on the TROPHIES leaderboard (gold 3, silver 2, bronze 1), and ★ into the arcade's wallet.
-   Mini-games: SLICE, TAP RACE, DODGE, CATCH, REACTION, TARGETS, MEMORY, HOP.
-     1. Setup   2. Mini-games   3. The tournament   4. Screens   5. Sound   6. Input   7. Main loop
+   ONE PHONE: the players take turns, passing the phone.
+     Setup: the PLAYLIST (RANDOM, or pick the games), ROUNDS (3, 5 or 7) and the TROPHY (BRONZE: 3+ rounds, SILVER: 5+,
+     GOLD: 7). A trophy won goes on the winner's shelf, on the TROPHIES leaderboard (gold 3, silver 2, bronze 1) and
+     ★ into the arcade's wallet (on each player's own phone online; for player 1 on one phone).
+     1. Setup   2. Rounds in a frame   3. The tournament   4. Screens   5. Online   6. Sound   7. Input   8. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.1.0';
+const VERSION = '2.0.0';
 const SAVE_KEY = 'pixelParty.save';
 const save = { sfx: true, names: ['', 'PLAYER 2', 'PLAYER 3', 'PLAYER 4'], n: 2, rounds: 5, trophy: 'silver', random: true, pick: [],
                shelf: { gold: 0, silver: 0, bronze: 0 }, points: 0, played: 0, days: {} };
@@ -55,6 +57,7 @@ try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } c
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
 save.names[0] = profile.name;
+save.pick = (Array.isArray(save.pick) ? save.pick : []).filter(id => PX.Challenge.GAMES[id]);   // (version 1's mini-games are gone)
 
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -76,210 +79,39 @@ const TROPHIES = [
 const trophyOf = id => TROPHIES.find(t => t.id === id) || TROPHIES[1];
 const DAY_MAX = 5;           // at most 5 trophies a day count on the leaderboard (the shelf keeps them all)
 
-// a seeded random: every player of a round gets the same one
-function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
-/* --- 2. MINI-GAMES ----------------------------------------------------------------- */
-// Each one: name, how (one line), dur (seconds, or the most), low (true: a lower score is better), unit, and
-//   start(r): a fresh game from the random r; step(g, dt); draw(g, t); down(g, x, y) / move(g, x, y) / up(g);
-//   g.score; g.done (it can end before the time is up).
-const ball = (x, y, r, c, d) => { for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy))); ctx.fillStyle = d && dy > r * 0.35 ? d : c; ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1); } };
-const GAMES = {
-  slice: {
-    name: 'SLICE', how: 'SWIPE ACROSS THE FRUIT. NOT THE BOMBS!', dur: 20, unit: 'FRUIT', bg: '#3a2214',
-    start(r) { return { r, fruit: [], spawn: 0.4, blade: null, trail: [], bits: [] }; },
-    step(g, dt) {
-      const W = S.W;
-      if ((g.spawn -= dt) <= 0) {
-        g.spawn = 0.7 - Math.min(0.35, g.t * 0.015);
-        const n = 1 + Math.floor(g.r() * 3);
-        for (let i = 0; i < n; i++) { const x = W * (0.15 + g.r() * 0.7); g.fruit.push({ x, y: H + 16, vx: (W / 2 - x) * (0.2 + g.r() * 0.4), vy: -(260 + g.r() * 70), bomb: g.r() < 0.15, c: ['#e8303a', '#ff9a1e', '#ffe03a', '#3aa83a', '#8a3ac8'][Math.floor(g.r() * 5)] }); }
-      }
-      for (const f of g.fruit) { f.vy += 330 * dt; f.x += f.vx * dt; f.y += f.vy * dt; }
-      g.fruit = g.fruit.filter(f => f.y < H + 30 && !f.cut);
-      for (const b of g.bits) { b.vy += 300 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.l -= dt; }
-      g.bits = g.bits.filter(b => b.l > 0);
-    },
-    draw(g, t) {
-      const W = S.W;
-      for (let i = 0; i * 22 < W; i++) { ctx.fillStyle = i & 1 ? '#3a2214' : '#43281a'; ctx.fillRect(i * 22, 0, 22, H); }
-      for (const f of g.fruit) {
-        if (f.bomb) { ball(f.x, f.y, 11, '#2a2a34', '#111118'); ctx.fillStyle = Math.sin(t * 20) > 0 ? '#ffe03a' : '#ff6a1e'; ctx.fillRect(Math.round(f.x) + 2, Math.round(f.y) - 15, 3, 3); }
-        else { ball(f.x, f.y, 11, f.c, '#0006'); ctx.fillStyle = '#ffffff88'; ctx.fillRect(Math.round(f.x) - 5, Math.round(f.y) - 6, 3, 3); }
-      }
-      for (const b of g.bits) { ctx.fillStyle = b.c; ctx.fillRect(Math.round(b.x), Math.round(b.y), 3, 3); }
-      const now = performance.now() / 1000; g.trail = g.trail.filter(p => now - p.t < 0.15);
-      ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round';
-      for (let i = 1; i < g.trail.length; i++) { if (g.trail[i].gap) continue; ctx.lineWidth = 1 + i / g.trail.length * 4; ctx.beginPath(); ctx.moveTo(g.trail[i - 1].x, g.trail[i - 1].y); ctx.lineTo(g.trail[i].x, g.trail[i].y); ctx.stroke(); }
-    },
-    down(g, x, y) { g.blade = { x, y, at: performance.now() }; g.trail.push({ x, y, t: performance.now() / 1000, gap: true }); },
-    move(g, x, y) {
-      if (!g.blade) return;
-      const now = performance.now(), dt = Math.max(4, now - g.blade.at) / 1000, dx = x - g.blade.x, dy = y - g.blade.y, len = Math.hypot(dx, dy);
-      if (len / dt > 240 && len > 1) for (const f of g.fruit) {
-        if (f.cut) continue;
-        const k = clamp(((f.x - g.blade.x) * dx + (f.y - g.blade.y) * dy) / (len * len), 0, 1);
-        if (Math.hypot(f.x - g.blade.x - dx * k, f.y - g.blade.y - dy * k) < 15) {
-          f.cut = true; g.score = Math.max(0, g.score + (f.bomb ? -3 : 1)); sfx(f.bomb ? 'bad' : 'cut');
-          for (let i = 0; i < 10; i++) g.bits.push({ x: f.x, y: f.y, vx: (Math.random() - 0.5) * 220, vy: (Math.random() - 0.7) * 200, l: 0.6, c: f.bomb ? '#ff8a1e' : f.c });
-        }
-      }
-      g.blade = { x, y, at: now }; g.trail.push({ x, y, t: now / 1000 });
-    },
-    up(g) { g.blade = null; },
-  },
-  tap: {
-    name: 'TAP RACE', how: 'TAP AS FAST AS YOU CAN!', dur: 10, unit: 'TAPS', bg: '#2a1050',
-    start(r) { return { r, pops: [] }; },
-    step(g, dt) { for (const p of g.pops) p.l -= dt; g.pops = g.pops.filter(p => p.l > 0); },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = '#2a1050'; ctx.fillRect(0, 0, W, H);
-      const s = 1 + Math.min(0.3, g.pops.length * 0.03);
-      ball(W / 2, H / 2 + 10, Math.round(40 * s), '#ff5a8a', '#c83a6a');
-      T(String(g.score), W / 2, H / 2, '#fff', 4, 'center', '#000');
-      for (const p of g.pops) T('+1', p.x, p.y - (0.5 - p.l) * 40, '#ffd23f', 1, 'center', '#000');
-    },
-    down(g, x, y) { g.score++; g.pops.push({ x, y, l: 0.5 }); sfx('tap'); },
-  },
-  dodge: {
-    name: 'DODGE', how: 'MOVE YOUR FINGER. DON\'T GET HIT!', dur: 30, unit: 'S', bg: '#0b1a2e', tenths: true,
-    start(r) { return { r, x: S.W / 2, rocks: [], spawn: 0.5 }; },
-    step(g, dt) {
-      const W = S.W;
-      if ((g.spawn -= dt) <= 0) { g.spawn = Math.max(0.12, 0.55 - g.t * 0.02); g.rocks.push({ x: g.r() * W, y: -10, v: 90 + g.r() * 60 + g.t * 6, s: 5 + Math.floor(g.r() * 6) }); }
-      for (const k of g.rocks) k.y += k.v * dt;
-      g.rocks = g.rocks.filter(k => k.y < H + 20);
-      g.score = Math.round(g.t * 10) / 10;
-      if (g.rocks.some(k => Math.abs(k.x - g.x) < k.s + 6 && Math.abs(k.y - (H - 24)) < k.s + 6)) { g.done = true; sfx('bad'); }
-    },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = '#0b1a2e'; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#1e3a5a'; ctx.fillRect(0, H - 14, W, 14);
-      for (const k of g.rocks) { ctx.fillStyle = '#111'; ctx.fillRect(Math.round(k.x - k.s - 1), Math.round(k.y - k.s - 1), k.s * 2 + 2, k.s * 2 + 2); ctx.fillStyle = '#8a7a6a'; ctx.fillRect(Math.round(k.x - k.s), Math.round(k.y - k.s), k.s * 2, k.s * 2); }
-      ctx.fillStyle = '#111'; ctx.fillRect(Math.round(g.x) - 7, H - 31, 14, 16); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(Math.round(g.x) - 6, H - 30, 12, 14);
-      ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(g.x) - 3, H - 26, 2, 2); ctx.fillRect(Math.round(g.x) + 1, H - 26, 2, 2);
-    },
-    down(g, x) { g.x = x; }, move(g, x) { g.x = clamp(x, 6, S.W - 6); },
-  },
-  catch: {
-    name: 'CATCH', how: 'CATCH THE STARS. NOT THE SKULLS!', dur: 20, unit: '★', bg: '#10203a',
-    start(r) { return { r, x: S.W / 2, stuff: [], spawn: 0.3 }; },
-    step(g, dt) {
-      const W = S.W;
-      if ((g.spawn -= dt) <= 0) { g.spawn = 0.45; g.stuff.push({ x: 12 + g.r() * (W - 24), y: -8, v: 100 + g.r() * 80 + g.t * 4, bad: g.r() < 0.22 }); }
-      for (const s of g.stuff) {
-        s.y += s.v * dt;
-        if (!s.got && s.y > H - 30 && s.y < H - 14 && Math.abs(s.x - g.x) < 20) { s.got = true; g.score = Math.max(0, g.score + (s.bad ? -2 : 1)); sfx(s.bad ? 'bad' : 'coin'); }
-      }
-      g.stuff = g.stuff.filter(s => !s.got && s.y < H + 10);
-    },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = '#10203a'; ctx.fillRect(0, 0, W, H);
-      for (const s of g.stuff) { if (s.bad) T('X', s.x, s.y - 4, '#ff5a5a', 2, 'center', '#000'); else T('★', s.x, s.y - 4, '#ffd23f', 2, 'center', '#000'); }
-      const x = Math.round(g.x); ctx.fillStyle = '#111'; ctx.fillRect(x - 21, H - 23, 42, 12); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(x - 20, H - 22, 40, 10); ctx.fillStyle = '#0006'; ctx.fillRect(x - 16, H - 22, 32, 3);
-    },
-    down(g, x) { g.x = x; }, move(g, x) { g.x = clamp(x, 20, S.W - 20); },
-  },
-  react: {
-    name: 'REACTION', how: 'WAIT FOR GREEN, THEN TAP. 5 TIMES.', dur: 40, unit: 'MS', low: true, bg: '#3a0a10',
-    start(r) { return { r, tries: [], wait: 1.2 + r() * 2.2, green: false, gt: 0, early: 0, msg: '' }; },
-    step(g, dt) {
-      if (g.tries.length >= 5) { g.done = true; return; }
-      if (!g.green && (g.wait -= dt) <= 0) { g.green = true; g.gt = performance.now(); sfx('go'); }
-      g.score = g.tries.length ? Math.round(g.tries.reduce((a, b) => a + b, 0) / g.tries.length) : 9999;
-    },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = g.green ? '#1ea83a' : '#a8141e'; ctx.fillRect(0, 0, W, H);
-      T(g.green ? 'TAP!' : 'WAIT...', W / 2, H / 2 - 20, '#fff', 4, 'center', '#000');
-      T(g.msg, W / 2, H / 2 + 20, '#fff', 2, 'center', '#000');
-      T(g.tries.length + ' / 5', W / 2, H - 30, '#fff', 1, 'center', '#000');
-    },
-    down(g) {
-      if (g.tries.length >= 5) return;
-      if (g.green) { const ms = Math.round(performance.now() - g.gt); g.tries.push(ms); g.msg = ms + ' MS'; g.green = false; g.wait = 1 + g.r() * 2.4; sfx('tap'); }
-      else { g.tries.push(1000); g.msg = 'TOO EARLY! +1000 MS'; g.wait = 1 + g.r() * 2.4; sfx('bad'); }
-    },
-  },
-  targets: {
-    name: 'TARGETS', how: 'TAP THE TARGETS BEFORE THEY GO!', dur: 20, unit: 'HITS', bg: '#123a20',
-    start(r) { return { r, list: [], spawn: 0.2, fx: [] }; },
-    step(g, dt) {
-      const W = S.W;
-      if ((g.spawn -= dt) <= 0) { g.spawn = Math.max(0.35, 0.75 - g.t * 0.02); g.list.push({ x: 24 + g.r() * (W - 48), y: 40 + g.r() * (H - 70), l: 1.3, r: 13 }); }
-      for (const o of g.list) o.l -= dt;
-      g.list = g.list.filter(o => o.l > 0 && !o.hit);
-      for (const f of g.fx) f.l -= dt; g.fx = g.fx.filter(f => f.l > 0);
-    },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = '#123a20'; ctx.fillRect(0, 0, W, H);
-      for (const o of g.list) { const r = Math.round(o.r * Math.min(1, o.l * 3)); ball(o.x, o.y, r + 1, '#111'); ball(o.x, o.y, r, '#ffffff'); ball(o.x, o.y, Math.round(r * 0.66), '#e8303a'); ball(o.x, o.y, Math.round(r * 0.33), '#ffffff'); }
-      for (const f of g.fx) T('+1', f.x, f.y - (0.5 - f.l) * 30, '#ffd23f', 1, 'center', '#000');
-    },
-    down(g, x, y) {
-      const o = g.list.find(o => !o.hit && Math.hypot(o.x - x, o.y - y) < o.r + 6);
-      if (o) { o.hit = true; g.score++; g.fx.push({ x: o.x, y: o.y, l: 0.5 }); sfx('coin'); }
-    },
-  },
-  memory: {
-    name: 'MEMORY', how: 'WATCH THE COLORS, THEN TAP THEM IN ORDER.', dur: 60, unit: 'LONG', bg: '#1a1030',
-    start(r) { const seq = []; for (let i = 0; i < 30; i++) seq.push(Math.floor(r() * 4)); return { r, seq, len: 3, show: 0.8, i: 0, input: [], lit: -1, litT: 0 }; },
-    pads() { const W = S.W, s = 64, gx = W / 2 - s - 4, gy = 54; return [0, 1, 2, 3].map(k => ({ x: gx + (k % 2) * (s + 8), y: gy + Math.floor(k / 2) * (s + 8), s })); },
-    step(g, dt) {
-      if (g.litT > 0 && (g.litT -= dt) <= 0) g.lit = -1;
-      if (g.show !== null && g.show !== undefined && g.show > -1) {      // showing the colors one by one
-        if ((g.show -= dt) <= 0) {
-          if (g.i < g.len) { g.lit = g.seq[g.i]; g.litT = 0.45; g.i++; g.show = 0.65; sfx('note', g.lit); }
-          else { g.show = -1; g.input = []; }
-        }
-      }
-    },
-    draw(g, t) {
-      const W = S.W; ctx.fillStyle = '#1a1030'; ctx.fillRect(0, 0, W, H);
-      const cols = [['#e8303a', '#ff8a8a'], ['#2a7ad8', '#8ac8ff'], ['#3aa83a', '#a8ff8a'], ['#e0a820', '#fff08a']];
-      this.pads().forEach((p, k) => { ctx.fillStyle = '#111'; ctx.fillRect(p.x - 2, p.y - 2, p.s + 4, p.s + 4); ctx.fillStyle = cols[k][g.lit === k ? 1 : 0]; ctx.fillRect(p.x, p.y, p.s, p.s); });
-      T(g.show > -1 ? 'WATCH...' : 'YOUR TURN: ' + g.input.length + ' / ' + g.len, W / 2, 34, '#fff', 1, 'center', '#000');
-    },
-    down(g, x, y) {
-      if (g.show > -1 || g.done) return;
-      const k = this.pads().findIndex(p => x >= p.x && x < p.x + p.s && y >= p.y && y < p.y + p.s); if (k < 0) return;
-      g.lit = k; g.litT = 0.2; sfx('note', k);
-      if (g.seq[g.input.length] !== k) { g.done = true; sfx('bad'); return; }
-      g.input.push(k);
-      if (g.input.length === g.len) { g.score = g.len; g.len++; g.i = 0; g.show = 0.9; if (g.len > 30) g.done = true; }
-    },
-  },
-  hop: {
-    name: 'HOP', how: 'TAP TO JUMP OVER THE GAPS.', dur: 40, unit: 'M', bg: '#5ab4f0',
-    start(r) {
-      const gaps = []; let x = 220;
-      for (let i = 0; i < 120; i++) { x += 70 + r() * 90; gaps.push({ x, w: 22 + r() * 22 }); }
-      return { r, x: 0, y: 0, vy: 0, on: true, gaps, speed: 120 };
-    },
-    step(g, dt) {
-      g.speed = Math.min(260, 120 + g.t * 6); g.x += g.speed * dt;
-      g.vy += 900 * dt; g.y = Math.min(0, g.y + g.vy * dt);
-      const px = g.x + 60, over = g.gaps.find(gp => px > gp.x && px < gp.x + gp.w);
-      if (g.y >= 0) { if (over) { g.y = 1; g.done = true; sfx('bad'); } else { g.vy = 0; g.on = true; } }
-      g.score = Math.floor(g.x / 10);
-    },
-    draw(g, t) {
-      const W = S.W, gy = H - 50; ctx.fillStyle = '#5ab4f0'; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#3aa83a'; ctx.fillRect(0, gy, W, H - gy); ctx.fillStyle = '#7a4c2a'; ctx.fillRect(0, gy + 6, W, H - gy);
-      for (const gp of g.gaps) { const sx = gp.x - g.x; if (sx > W || sx + gp.w < 0) continue; ctx.fillStyle = '#5ab4f0'; ctx.fillRect(Math.round(sx), gy, Math.round(gp.w), H - gy); }
-      const y = gy - 12 + g.y; ctx.fillStyle = '#111'; ctx.fillRect(59, Math.round(y) - 1, 12, 13); ctx.fillStyle = COLS[Party.turn % 4]; ctx.fillRect(60, Math.round(y), 10, 11);
-      ctx.fillStyle = '#fff'; ctx.fillRect(66, Math.round(y) + 2, 2, 2);
-    },
-    down(g) { if (g.on && g.y >= 0) { g.vy = -330; g.on = false; sfx('jump'); } },
-  },
-};
+/* --- 2. ROUNDS IN A FRAME: the arcade's games, as challenges (PX.Challenge.GAMES in common.js) ------------------ */
+const GAMES = PX.Challenge.GAMES;
 const GAME_IDS = Object.keys(GAMES);
-const fmt = (id, v) => (GAMES[id].tenths ? v.toFixed(1) : String(v)) + ' ' + GAMES[id].unit;
+const ball = (x, y, r, c, d) => { for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy))); ctx.fillStyle = d && dy > r * 0.35 ? d : c; ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1); } };
+// the game's frame: the game is a page of its own; while it plays, this page only waits for its score
+// (window.ArcadeShell: what a game in a frame calls when it leaves, see common.js: then the round is given up)
+const Frame = {
+  el: null, at: 0,
+  open(id, seed) {
+    this.close();
+    const f = document.createElement('iframe');
+    f.src = GAMES[id].url + '?challenge=' + encodeURIComponent(JSON.stringify({ id, seed }));
+    f.title = 'game'; f.allow = 'autoplay; fullscreen; gamepad';
+    f.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;border:0;margin:0;z-index:50;background:#000;display:block;';
+    f.addEventListener('load', () => { try { f.contentWindow.focus(); } catch (e) { /* fine */ } });
+    document.body.appendChild(f); this.el = f; this.at = performance.now(); PX.Pad.off = true;
+  },
+  close() { const f = this.el; this.el = null; PX.Pad.off = false; if (f) setTimeout(() => f.remove(), 0); },
+};
+window.ArcadeShell = { back() { if (Frame.el) Party.result(null); } };
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.t !== 'px-challenge' || !Frame.el || e.source !== Frame.el.contentWindow) return;
+  Party.result(e.data.quit ? null : { score: Number(e.data.score) || 0, text: String(e.data.text || e.data.score).slice(0, 20) });
+});
+const worst = id => (GAMES[id].low ? 99999 : -1);
+const show = (i, P) => { const v = P.texts[i] !== undefined ? P.texts[i] : P.scores[i] === undefined ? '' : P.scores[i] === worst(P.id()) ? 'GAVE UP' : String(P.scores[i]); return v === 'GAVE UP' || v === 'DNF' ? PX.tr(v) : v; };
 
 /* --- 3. THE TOURNAMENT ----------------------------------------------------------- */
 // Party: the tournament being played. players [{ name, col, pts }], list: the mini-game of each round,
 // round, turn: whose turn it is, scores: this round's scores
 const Party = {
-  players: [], list: [], round: 0, turn: 0, scores: [], seed: 0, phase: 'intro', mg: null, count: 0, trophy: 'silver', results: null,
+  players: [], list: [], round: 0, turn: 0, scores: [], texts: [], seed: 0, phase: 'intro', count: 0, trophy: 'silver', results: null,
   online: false, me: 0, seeds: [], ready: new Set(), gone: new Set(), introT: 0, waitT: 0,
   // the playlist of a tournament: rounds mini-games, never the same one twice in a row
   makeList(rounds) {
@@ -304,7 +136,7 @@ const Party = {
     state = 'party'; sfx('click');
   },
   newRound() {
-    this.turn = this.online ? this.me : 0; this.scores = []; this.ready = new Set(); this.introT = 0; this.waitT = 0; this.phase = 'intro';
+    this.turn = this.online ? this.me : 0; this.scores = []; this.texts = []; this.ready = new Set(); this.introT = 0; this.waitT = 0; this.phase = 'intro';
     this.seed = this.online ? this.seeds[this.round] >>> 0 : Math.floor(Math.random() * 1e9);
   },
   // ONLINE: I'm ready (the host starts the round when everybody is)
@@ -315,43 +147,41 @@ const Party = {
     if (force || this.present().every(i => this.ready.has(i))) { Net.broadcast({ t: 'go', round: this.round }); this.go(); }
   },
   // ONLINE (the host): a score came in; with everybody's, the results go out
-  gotScore(i, round, v) {
+  gotScore(i, round, v, text) {
     if (round !== this.round || !Number.isFinite(v)) return;
-    this.scores[i] = v; this.checkScores(false);
+    this.scores[i] = v; this.texts[i] = String(text || v).slice(0, 20); this.checkScores(false);
   },
   checkScores(force) {
     if (!Net.isHost || this.phase === 'results' || this.phase === 'final') return;
     const M = GAMES[this.id()], miss = this.present().filter(i => this.scores[i] === undefined);
     if (miss.length && !force) return;
-    const worst = M.low ? 99999 : -1;
-    const scores = this.players.map((p, i) => (this.scores[i] === undefined ? worst : this.scores[i]));
-    Net.broadcast({ t: 'res', round: this.round, scores }); this.applyResults(scores);
+    const scores = this.players.map((p, i) => (this.scores[i] === undefined ? worst(this.id()) : this.scores[i]));
+    const texts = this.players.map((p, i) => (this.scores[i] === undefined ? 'GAVE UP' : this.texts[i]));
+    Net.broadcast({ t: 'res', round: this.round, scores, texts }); this.applyResults(scores, texts);
   },
   id() { return this.list[this.round]; },
-  go() {                                         // this player's turn starts: 3, 2, 1
-    const M = GAMES[this.id()];
-    this.mg = Object.assign(M.start(rng(this.seed)), { t: 0, score: 0, done: false });
-    this.phase = 'count'; this.count = 3;
+  go() { this.phase = 'count'; this.count = 3; },   // this player's turn starts: 3, 2, 1, then the game
+  // the game in the frame is over: its score (null: given up)
+  result(r) {
+    if (this.phase !== 'play') return;
+    Frame.close();
+    const sc = r ? r.score : worst(this.id()), tx = r ? r.text : 'GAVE UP';
+    this.scores[this.turn] = sc; this.texts[this.turn] = tx; this.phase = 'done'; this.doneT = 0; sfx('end');
+    if (this.online) { this.phase = 'wait'; this.waitT = 0; if (Net.isHost) this.checkScores(false); else Net.send({ t: 'score', round: this.round, v: sc, text: tx }); }
   },
   step(dt) {
-    if (this.phase === 'count') { const was = Math.ceil(this.count); this.count -= dt; if (Math.ceil(this.count) !== was && this.count > 0) sfx('beep'); if (this.count <= 0) { this.phase = 'play'; sfx('go'); } }
-    else if (this.phase === 'play') {
-      const M = GAMES[this.id()], g = this.mg;
-      g.t += dt; M.step(g, dt);
-      if (g.t >= M.dur || g.done) {
-        this.scores[this.turn] = g.score; this.phase = 'done'; this.doneT = 0; sfx('end');
-        if (this.online) { this.phase = 'wait'; this.waitT = 0; if (Net.isHost) this.checkScores(false); else Net.send({ t: 'score', round: this.round, v: g.score }); }
-      }
-    } else if (this.phase === 'done') this.doneT += dt;
-    else if (this.phase === 'wait') { this.waitT += dt; if (Net.isHost && this.waitT > 25) this.checkScores(true); }   // (a phone that went quiet: last place)
+    if (this.phase === 'count') { const was = Math.ceil(this.count); this.count -= dt; if (Math.ceil(this.count) !== was && this.count > 0) sfx('beep'); if (this.count <= 0) { this.phase = 'play'; sfx('go'); Frame.open(this.id(), this.seed); } }
+    else if (this.phase === 'play') { if (performance.now() - Frame.at > (GAMES[this.id()].max + 60) * 1000) this.result(null); }   // (a game that never answers)
+    else if (this.phase === 'done') this.doneT += dt;
+    else if (this.phase === 'wait') { this.waitT += dt; if (Net.isHost && this.waitT > 60) this.checkScores(true); }   // (a phone that went quiet: last place)
     else if (this.phase === 'intro') this.introT += dt;
   },
   next() {                                       // the next player, or the round's results
     if (this.turn < this.players.length - 1) { this.turn++; this.phase = 'intro'; return; }
-    this.applyResults(this.scores);
+    this.applyResults(this.scores, this.texts);
   },
-  applyResults(scores) {                         // places: equal scores share a place
-    this.scores = scores;
+  applyResults(scores, texts) {                  // places: equal scores share a place
+    this.scores = scores; this.texts = texts || this.texts;
     const M = GAMES[this.id()], order = this.players.map((p, i) => i).sort((a, b) => (M.low ? this.scores[a] - this.scores[b] : this.scores[b] - this.scores[a]));
     const place = []; order.forEach((i, k) => { place[i] = k > 0 && this.scores[i] === this.scores[order[k - 1]] ? place[order[k - 1]] : k; });
     this.places = place;
@@ -461,7 +291,7 @@ function drawSetup(t, online) {
   const gw = Math.floor((W - 32 - 18) / 4);
   GAME_IDS.forEach((id, i) => {
     const x = 16 + (i % 4) * (gw + 6), y = 112 + Math.floor(i / 4) * 22, on = save.random || save.pick.includes(id);
-    if (UI.button('g' + id, x, y, gw, 19, GAMES[id].name, { size: 1, on, accent: '#7af0ff', disabled: save.random })) {
+    if (UI.button('g' + id, x, y, gw, 19, GAMES[id].name.replace(/^PIXEL /, ''), { size: 1, on, accent: '#7af0ff', disabled: save.random })) {
       if (on) { if (save.pick.length > 1) save.pick = save.pick.filter(k => k !== id); else msg = { txt: 'PICK AT LEAST ONE GAME', t: 1.5 }; }
       else save.pick.push(id);
       store();
@@ -515,46 +345,31 @@ function standings(x, y, w, showGot) {
     const p = P.players[i], yy = y + k * 18;
     ctx.fillStyle = '#16121f'; ctx.fillRect(x, yy, w, 16); ctx.fillStyle = p.col; ctx.fillRect(x, yy, 3, 16);
     raw(p.name, x + 10, yy + 5, '#fff', 1);
-    if (showGot && P.scores[i] !== undefined) T(fmt(P.id(), P.scores[i]), x + w * 0.5, yy + 5, '#c8b8ff', 1, 'center');
+    if (showGot && P.scores[i] !== undefined) PX.Lang.raw(() => T(show(i, P), x + w * 0.5, yy + 5, '#c8b8ff', 1, 'center'));
     if (showGot) T('+' + (p.got | 0), x + w - 50, yy + 5, '#5ad43f', 1, 'right');
     T(p.pts + ' PTS', x + w - 6, yy + 5, '#ffd23f', 1, 'right');
   });
 }
 function drawParty(t) {
   const W = S.W, cx = Math.round(W / 2), P = Party, M = GAMES[P.id()], p = P.players[P.turn];
-  if (P.phase === 'count' || P.phase === 'play' || P.phase === 'done') {
-    M.draw(P.mg, t);
-    // the top bar: whose turn, the score, the time
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, 22);
-    ctx.fillStyle = p.col; ctx.fillRect(0, 0, 4, 22);
-    raw(p.name, 10, 8, '#fff', 1);
-    T(M.name, cx, 8, '#c8b8ff', 1, 'center');
-    if (!M.low) T(fmt(P.id(), P.mg.score), W - 64, 8, '#ffd23f', 1, 'right');
-    if (M.id !== 'react') T(String(Math.max(0, Math.ceil(M.dur - P.mg.t))), W - 40, 6, '#fff', 2, 'right', '#000');
-    if (UI.button('pause', W - 30, 1, 26, 20, 'II', { size: 1 })) paused = true;
-    if (P.phase === 'count') T(String(Math.ceil(P.count)), cx, H / 2 - 20, '#fff', 8, 'center', '#000');
-    if (P.phase === 'wait') {
-      const { y } = panel(240, 96, undefined, p.col);
-      raw(p.name, cx, y + 12, p.col, 2, 'center', '#000');
-      T(fmt(P.id(), P.scores[P.me]), cx, y + 34, '#fff', 3, 'center', '#000');
-      T('WAITING FOR THE OTHERS' + '.'.repeat(1 + Math.floor(t * 3) % 3), cx, y + 68, '#c8b8ff', 1, 'center', '#000');
-    }
-    if (P.phase === 'done') {
-      const { y } = panel(220, 96, undefined, p.col);
-      raw(p.name, cx, y + 12, p.col, 2, 'center', '#000');
-      T(fmt(P.id(), P.scores[P.turn]), cx, y + 34, '#fff', 3, 'center', '#000');
-      if (P.doneT > 0.6 && (UI.button('ok', cx - 60, y + 64, 120, 24, P.turn < P.players.length - 1 ? 'NEXT PLAYER' : 'RESULTS', { size: 1, accent: '#5ad43f' }))) P.next();
-    }
+  if (P.phase === 'play') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); return; }        // (the game's frame covers it)
+  if (P.phase === 'count' || P.phase === 'done' || P.phase === 'wait') {
+    background(t);
+    if (P.phase === 'count') { T(M.name, cx, 20, '#fff', 3, 'center', '#000'); raw(p.name, cx, 60, p.col, 2, 'center', '#000'); T(String(Math.ceil(P.count)), cx, H / 2 - 10, '#fff', 8, 'center', '#000'); return; }
+    const { y } = panel(240, 100, undefined, p.col);
+    T(M.name, cx, 20, '#fff', 3, 'center', '#000');
+    raw(p.name, cx, y + 12, p.col, 2, 'center', '#000');
+    PX.Lang.raw(() => T(show(P.turn, P), cx, y + 34, '#fff', 3, 'center', '#000'));
+    if (P.phase === 'wait') T('WAITING FOR THE OTHERS' + '.'.repeat(1 + Math.floor(t * 3) % 3), cx, y + 70, '#c8b8ff', 1, 'center', '#000');
+    else if (P.doneT > 0.6 && (UI.button('ok', cx - 60, y + 66, 120, 24, P.turn < P.players.length - 1 ? 'NEXT PLAYER' : 'RESULTS', { size: 1, accent: '#5ad43f' }))) P.next();
     return;
   }
   background(t);
   T('ROUND ' + (P.round + 1) + ' / ' + P.list.length, cx, 10, '#c8b8ff', 1, 'center', '#000');
   if (P.phase === 'intro') {
-    T(M.name, cx, 30, '#fff', 4, 'center', '#000');
-    T(M.how, cx, 66, '#efe9ff', 1, 'center', '#000');
-    T(M.low ? 'THE LOWEST WINS' : 'THE HIGHEST WINS', cx, 78, '#7a6a9a', 1, 'center', '#000');
+    const intro = () => { T(M.name, cx, 30, '#fff', 3, 'center', '#000'); T(M.how, cx, 62, '#efe9ff', 1, 'center', '#000'); T(M.low ? 'THE LOWEST WINS' : 'THE HIGHEST WINS', cx, 76, '#9a92b8', 1, 'center', '#000'); };
     if (P.online) {                                // everybody at once: who is ready
-      const { y } = panel(300, 120, 92, '#5ad43f');
+      const { y } = panel(300, 120, 92, '#5ad43f'); intro();
       P.players.forEach((q, i) => {
         const x = cx - 140 + i * 72, ok = P.ready.has(i), gone = P.gone.has(i);
         ctx.fillStyle = q.col; ctx.fillRect(x, y + 10, 64, 3);
@@ -565,7 +380,7 @@ function drawParty(t) {
       else T('WAITING FOR THE OTHERS' + '.'.repeat(1 + Math.floor(t * 3) % 3), cx, y + 60, '#c8b8ff', 1, 'center', '#000');
       if (Net.isHost && P.introT > 15 && P.ready.has(P.me) && UI.button('force', cx - 70, y + 86, 140, 22, 'START WITHOUT THEM', { size: 1, accent: '#ffd23f' })) P.checkReady(true);
     } else {
-      const { y } = panel(240, 96, 96, p.col);
+      const { y } = panel(240, 96, 96, p.col); intro();
       raw(p.name, cx, y + 14, p.col, 3, 'center', '#000');
       T(P.players.length > 1 && P.turn > 0 ? 'PASS THE PHONE. YOUR TURN!' : 'YOUR TURN!', cx, y + 42, '#fff', 1, 'center', '#000');
       if (UI.button('ready', cx - 70, y + 60, 140, 26, 'READY!', { accent: '#5ad43f' })) P.go();
@@ -652,7 +467,7 @@ const Net = {
       if (m.v !== VERSION) { try { c.send({ t: 'old', v: VERSION }); } catch (e) { /* closing */ } setTimeout(() => c.close(), 300); return; }
       c.player = { name: PX.cleanName(m.name) || 'FRIEND', av: m.av }; this.lobbySync(); sfx('join');
     } else if (m.t === 'ready' && c.idx !== undefined && m.round === Party.round) { Party.ready.add(c.idx); Net.broadcast({ t: 'rdy', i: c.idx }); Party.checkReady(); }
-    else if (m.t === 'score' && c.idx !== undefined) Party.gotScore(c.idx, m.round, +m.v);
+    else if (m.t === 'score' && c.idx !== undefined) Party.gotScore(c.idx, m.round, +m.v, m.text);
     else if (m.t === 'bye') this.guestLeft(c);
   },
   guestLeft(c) {
@@ -704,7 +519,7 @@ const Net = {
       case 'start': if (Array.isArray(m.players) && Array.isArray(m.list) && Array.isArray(m.seeds)) Party.startOnline(m); break;
       case 'go': if (m.round === Party.round && Party.phase === 'intro') Party.go(); break;
       case 'rdy': Party.ready.add(m.i | 0); break;
-      case 'res': if (m.round === Party.round && Array.isArray(m.scores)) Party.applyResults(m.scores.map(Number)); break;
+      case 'res': if (m.round === Party.round && Array.isArray(m.scores)) Party.applyResults(m.scores.map(Number), Array.isArray(m.texts) ? m.texts.map(x => String(x).slice(0, 20)) : null); break;
       case 'next': if (m.round === Party.round && Party.phase === 'results') Party.afterResults(); break;
       case 'gone': Party.gone.add(m.i | 0); break;
       case 'lobby2': state = 'online'; this.screen = 'lobby'; Party.online = false; break;
@@ -776,27 +591,21 @@ function sfx(k, n = 0) {
   else if (k === 'trophy') [523, 659, 784, 1047, 1319].forEach((f, i) => s.tone(f, 0.2, { vol: 0.1, delay: i * 0.1 }));
 }
 
-/* --- 6. INPUT: taps and swipes go to the mini-game being played -------------------------- */
-const playing = () => state === 'party' && !paused && Party.phase === 'play';
-UI.onDown = (e, x, y) => { PX.Sound.unlock(); if (playing() && UI.downId === null) { const M = GAMES[Party.id()]; if (M.down) M.down(Party.mg, x, y); } };
-UI.onMove = (e, x, y) => { if (playing()) { const M = GAMES[Party.id()]; if (M.move) M.move(Party.mg, x, y); } };
-UI.onUp = () => { if (playing()) { const M = GAMES[Party.id()]; if (M.up) M.up(Party.mg); } };
+/* --- 7. INPUT ----------------------------------------------------------------------------------- */
+UI.onDown = () => { PX.Sound.unlock(); };
 window.addEventListener('keydown', e => {
   PX.Sound.unlock();
   if (e.target === nameInput) { if (e.key === 'Enter' || e.key === 'Escape') endEdit(); return; }
   if (e.target === codeInput) { if (e.key === 'Enter') Net.joinTyped(); else if (e.key === 'Escape') { codeInput.blur(); UI.back = true; } return; }
-  if (playing() && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); if (!e.repeat) { const M = GAMES[Party.id()]; if (M.down) M.down(Party.mg, S.W / 2, H / 2); } return; }
-  if (e.code === 'Escape' || e.code === 'KeyP') { if (state === 'party' && Party.phase === 'play') paused = !paused; else UI.back = true; }
+  if (e.code === 'Escape') UI.back = true;
 });
-window.addEventListener('blur', () => { if (playing()) paused = true; });
-document.addEventListener('visibilitychange', () => { if (document.hidden && playing()) paused = true; });
 
-/* --- 7. MAIN LOOP ---------------------------------------------------------------------- */
+/* --- 8. MAIN LOOP ---------------------------------------------------------------------- */
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
   UI.begin();
-  if (state === 'party') { if (!paused || Party.online) Party.step(dt); drawParty(t); if (paused) drawPause(); }
+  if (state === 'party') { if (!paused || Party.online) Party.step(dt); if (Frame.el) { UI.end(); requestAnimationFrame(frame); return; } drawParty(t); if (paused) drawPause(); }
   else {
     background(t);
     if (state === 'title') drawTitle(t); else if (state === 'setup') drawSetup(t, false); else if (state === 'shelf') drawShelf(t); else if (state === 'online') drawOnline(t);
@@ -815,10 +624,8 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
 }
 PX.Pad.setup({
-  title: 'Pixel Party: controller', ui: UI, menu: () => !playing(),
-  phone: { buttons: [['A', 'TAP']] },
-  keys: () => ({ A: 'Space', START: 'KeyP' }),
-  help: [['A', 'TAP (TAP RACE, REACTION, HOP)'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+  title: 'Pixel Party: controller', ui: UI, menu: () => true,
+  help: [['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that tournament right away
 PX.Invite.auto(code => { state = 'online'; Net.join(code); });

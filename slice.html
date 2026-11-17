@@ -33,11 +33,14 @@
    Specials: ICE slows time for 4 s, CHILI sets the blade on fire for 6 s (every cut counts twice),
    GOLD gives 5 coins, a STAR gives ★1 for the arcade.
    Coins buy blades and places in the SHOP. Every 40 points is ★1 for the arcade (up to ★10 a run).
+   CHALLENGE (a round of a PIXEL PARTY tournament, PX.Challenge): straight into 60 SECONDS; the score goes to the
+   tournament when the time is up (a bomb costs 10 points, as always in 60 SECONDS). No menus in between.
      1. Setup   2. Fruit   3. The run   4. Drawing   5. Screens   6. Sound   7. Input   8. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+const CHALLENGE = PX.Challenge.on && PX.Challenge.spec.id === 'slice';
 const SAVE_KEY = 'pixelSlice.save';
 const save = { sfx: true, music: true, best: {}, coins: 0, blade: 'white', place: 'dojo', owned: { white: 1, dojo: 1 }, played: 0, cut: 0, bestCombo: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -444,6 +447,7 @@ function drawPause() {
   const W = S.W, { y } = panel(200, 140), bw = 150, bx = Math.round(W / 2 - bw / 2);
   T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
   if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (CHALLENGE) { if (UI.button('quit', bx, y + 100, bw, 22, 'GIVE UP', { size: 1 })) location.href = './'; return; }
   if (UI.button('restart', bx, y + 70, bw, 22, 'RESTART', { accent: '#ffd23f' })) start(G.mode);
   if (UI.button('quit', bx, y + 100, bw, 22, 'MENU')) toMenu();
 }
@@ -457,6 +461,7 @@ function drawOver(t) {
   coinIcon(W / 2 - 50, y + 91); T('+' + R0.coins, W / 2 - 38, y + 92, '#ffe27a', 2, 'left', '#000');
   if (R0.arcade) T('★ +' + R0.arcade, W / 2 + 14, y + 92, '#ffd23f', 2, 'left', '#000');
   T('EVERY 40 POINTS = ★1', W / 2, y + 114, '#9a92b8', 1, 'center');
+  if (CHALLENGE) { T('BACK TO THE TOURNAMENT...', W / 2, y + 140, '#5ad43f', 1, 'center', '#000'); return; }
   if (UI.button('menu', Math.round(W / 2 - 112), y + 134, 108, 24, 'MENU') || UI.back) toMenu();
   if (UI.button('again', Math.round(W / 2 + 4), y + 134, 108, 24, 'AGAIN', { accent: '#5ad43f' })) start(R0.mode);
 }
@@ -546,7 +551,7 @@ function frame(now) {
   } else {
     if (!paused) step(G, dt);
     drawWorld(G, t);
-    if (G.over && !G.done && G.overT > (G.dead === 'bomb' ? 1.0 : 0.6)) { finish(G); state = 'over'; blade = null; }
+    if (G.over && !G.done && G.overT > (G.dead === 'bomb' ? 1.0 : 0.6)) { finish(G); state = 'over'; blade = null; if (CHALLENGE) { const sc = G.score; setTimeout(() => PX.Challenge.report(sc, sc + ' PTS'), 1200); } }
     if (state === 'play') drawHUD(t);
     if (paused) drawPause(); else if (state === 'over') drawOver(t);
   }
@@ -580,6 +585,7 @@ PX.Pad.setup({
   help: [['STICK', 'MOVE THE BLADE'], ['A|RT', 'HOLD: SLICE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 window.addEventListener('pointerdown', () => { padBlade.on = false; });
+if (CHALLENGE) start('timed');                     // a tournament round: straight into 60 SECONDS
 </script>
 </body>
 </html>

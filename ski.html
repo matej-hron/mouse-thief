@@ -37,12 +37,18 @@
    right sets the speed (up: tuck, faster; down: brake), and a JUMP button (in the air: flips).
    Every mountain has its own downhill things: big ramps, boost pads, cliff drops, ice sheets,
    rolling snowballs, an avalanche behind you. 3 stars per run, a daily bonus, a shop with abilities.
+   CHALLENGE (a round of a PIXEL PARTY tournament, PX.Challenge): straight into a solo time trial on the first
+   mountain's GREEN run, with your own shop upgrades. Reaching the finish reports the time in seconds (lower wins,
+   shown m:ss.s); a crash, or no finish after 230 s, reports 240 'DNF'. No retry, no menus: pause can only RESUME.
      1. Setup   2. Maps and runs   3. Building a run   4. Sprites   5. Skiing
      6. Drawing   7. Screens   8. Input   9. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
+const CHALLENGE = PX.Challenge.on && PX.Challenge.spec.id === 'ski';   // a PIXEL PARTY round: one time trial, then back
+let chStart = 0;                                       // (challenge) when the run started, for the 230 s limit
+const chTime = s => Math.floor(s / 60) + ':' + (s % 60).toFixed(1).padStart(4, '0');
 const SAVE_KEY = 'pixelSki.save';
 const save = { best: {}, done: {}, sfx: true, seenHelp: false, coins: 0, up: {}, skis: 'green', helmet: 'yellow', owned: { green: 1, yellow: 1 }, runStars: {}, daily: '' };
 try {
@@ -401,11 +407,13 @@ function bankCoins() { save.coins += P.coins + P.bonus; store(); }
 function crash(cause) {
   if (P.done) return;
   P.done = true; P.crashT = 0.001; P.cause = cause; state = 'crashed'; sfx('crash'); bankCoins(); P.shake = 0.6;
+  if (CHALLENGE) setTimeout(() => PX.Challenge.report(240, 'DNF'), 1200);   // a crash ends the run: did not finish
   if (R.mp) { Net.send({ t: 'out', pr: progress() }); if (FR.out) PX.Bet.settle(!(FR.prog > progress())); }   // (the bet: we both crashed, so it's decided now)
   for (let i = 0; i < 30; i++) P.spray.push({ x: 0, y: 0, vx: (Math.random() - 0.5) * 140, vy: -40 - Math.random() * 90, t: 0.8 + Math.random() * 0.6 });
 }
 function finish() {
   P.done = true; state = 'finished'; sfx('finish');
+  if (CHALLENGE) { const sec = Math.round(P.t * 10) / 10; setTimeout(() => PX.Challenge.report(sec, chTime(sec)), 1000); }
   for (let i = 0; i < 80; i++) P.confetti.push({ x: Math.random() * S.W, y: -Math.random() * 120, vy: 30 + Math.random() * 50, vx: (Math.random() - 0.5) * 30, c: ['#ffd23f', '#e8303a', '#5ad43f', '#4aa8ff', '#ff6bd0'][i % 5] });
   if (R.mp) {                                          // online: first to the bottom wins
     P.win = !FR.fin; PX.Bet.settle(P.win); Net.send({ t: 'fin', tm: P.t });
@@ -1096,9 +1104,10 @@ function arrowV(cx, cy, d) { PX.drawIcon(ctx, d < 0 ? ['..#..', '.###.', '#####'
 function drawPause() {
   const W = S.W, pw = 200, x = Math.round(W / 2 - pw / 2), y = 60;
   ctx.fillStyle = 'rgba(13,11,19,0.5)'; ctx.fillRect(0, 0, W, H);
-  panel(x, y, pw, 118);
+  panel(x, y, pw, CHALLENGE ? 68 : 118);
   T('PAUSED', W / 2, y + 10, '#fff', 3, 'center', '#000');
   if (UI.button('resume', x + 16, y + 38, pw - 32, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (CHALLENGE) return;                               // a tournament round: no second run, no menus
   if (UI.button('restart', x + 16, y + 64, pw - 32, 20, 'START AGAIN', { size: 1, accent: '#ffd23f' })) startRun(R.m, R.l);
   if (UI.button('quit', x + 16, y + 88, pw - 32, 20, 'PICK ANOTHER RUN', { size: 1 })) toMaps();
 }
@@ -1132,6 +1141,14 @@ function drawEnd(t) {
   if (R.mp) { if (state === 'finished' || P.crashT > 0.9) drawEndOnline(t); return; }
   const W = S.W, pw = Math.min(300, W - 20), x = Math.round(W / 2 - pw / 2), y = 54, ok = state === 'finished';
   if (!ok && P.crashT < 0.9) return;
+  if (CHALLENGE) {                                     // a tournament round: the result, no buttons
+    ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
+    glass(x - 4, y - 4, pw + 8, 90, ok ? '#5ad43f' : '#e8303a');
+    T(ok ? 'FINISHED!' : 'DNF', W / 2, y + 8, ok ? '#5ad43f' : '#e8303a', 3, 'center', '#000');
+    T(ok ? chTime(Math.round(P.t * 10) / 10) : P.cause, W / 2, y + 40, ok ? '#ffd23f' : '#fff', ok ? 2 : 1, 'center', '#000');
+    T('BACK TO THE TOURNAMENT...', W / 2, y + 68, '#5ad43f', 1, 'center', '#000');
+    return;
+  }
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
   glass(x - 4, y - 4, pw + 8, 158, ok ? '#5ad43f' : '#e8303a'); ctx.fillStyle = ok ? '#5ad43f' : '#e8303a'; ctx.fillRect(x - 2, y - 3, pw + 4, 2);
   if (ok) {
@@ -1378,7 +1395,7 @@ window.addEventListener('keydown', e => {
     if (e.code === 'KeyE' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') { useTurbo(); touchUI = false; }
     if (e.code === 'KeyQ') { useSlow(); touchUI = false; }
   }
-  if ((e.code === 'Enter' || e.code === 'Space') && (state === 'crashed' || state === 'finished') && (state === 'finished' || P.crashT > 0.9)) {
+  if (!CHALLENGE && (e.code === 'Enter' || e.code === 'Space') && (state === 'crashed' || state === 'finished') && (state === 'finished' || P.crashT > 0.9)) {
     const nx = state === 'finished' ? nextRun() : null; if (nx) startRun(nx[0], nx[1]); else startRun(R.m, R.l);
   }
 });
@@ -1399,6 +1416,7 @@ function frame(now) {
     if (P.slowT > 0 && state === 'play' && !paused) { P.slowT -= dt; gdt = dt * 0.45; }
     const sub = Math.max(2, Math.ceil(gdt / 0.006)); for (let k = 0; k < sub; k++) step(gdt / sub);
     if (R.mp) friendStep(dt);
+    if (CHALLENGE && state === 'play' && !P.done && (performance.now() - chStart > 230000 || P.t > 230)) { paused = false; crash('TIME IS UP!'); }   // 230 s: DNF
     const sh = P.shake > 0 ? Math.min(3, P.shake * 12) : 0;
     if (sh) { ctx.save(); ctx.translate(Math.round((Math.random() - 0.5) * sh * 2), Math.round((Math.random() - 0.5) * sh * 2)); }
     drawWorld(t);
@@ -1433,7 +1451,8 @@ PX.Pad.setup({
   help: [['LEFT|RIGHT', 'STEER (LEFT STICK)'], ['A', 'JUMP (IN THE AIR: FLIP)'], ['RT|UP', 'TUCK: GO FASTER'], ['LT|B|DOWN', 'BRAKE'], ['X|RB', 'TURBO (FROM THE SHOP)'], ['Y|LB', 'SLOW-MO (FROM THE SHOP)'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
-PX.Invite.auto(code => { state = 'online'; Net.join(code); });
+if (CHALLENGE) { startRun(0, 0); chStart = performance.now(); }   // a tournament round: the first mountain's GREEN run, solo
+else PX.Invite.auto(code => { state = 'online'; Net.join(code); });
 </script>
 </body>
 </html>
