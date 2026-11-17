@@ -549,7 +549,8 @@ window.PX = (() => {
   const VOLUMES = [['OFF', 0], ['LOW', 0.3], ['MEDIUM', 0.6], ['HIGH', 1]];
   const Settings = {
     // voice: VOICE CHAT in the online games (PX.Voice), on unless turned off in SETTINGS
-    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false }; },
+    // chatPop: CHAT POP-UPS, a friend's chat message pops up in the games (PX.ChatPop), on unless turned off
+    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false, chatPop: d.chatPop !== false }; },
     save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Sound.apply(); },
     volume() { return VOLUMES[this.load().volume][1]; },
     VOLUMES,
@@ -1625,6 +1626,220 @@ window.PX = (() => {
     with(id) { return !!(Voice.direct && Voice.friend && Voice.friend.id === id && Voice.phase !== 'off'); },
   };
 
+  // --- CHAT IN THE GAMES: a friend's message pops up while you play, and you can answer without leaving --------------
+  // The chat itself is the arcade's (Chat in index.html): messages travel through ntfy.sh, to the topic
+  // pixel-arcade-stars-<your ID>, and every phone keeps the last 40 with each friend in localStorage['pixelArcade.chat'].
+  // In a game, this checks that topic every 20 seconds (and at once when the friend's chat pings "sent" on
+  // pixel-arcade-typing-<your ID>). A new message from a friend shows at the top: NAME: TEXT and REPLY. REPLY (or a tap
+  // on it) pauses the game and opens a small chat box over it: the last messages, a line to type in, SEND, and X
+  // (back to the game, still paused). The game pauses the way it does when you switch away from it: document.hidden
+  // reads true for a moment and a visibilitychange goes out, so an online game, which can't pause, goes on.
+  // The messages it reads and sends go into the same localStorage as the arcade's, so the arcade has them too.
+  // CHAT POP-UPS in SETTINGS (Settings.chatPop) turns it off.
+  const CHAT_KEY = 'pixelArcade.chat', CHAT_MAX = 60, CHAT_KEEP = 40, RELAY = 'https://ntfy.sh/';
+  // The emojis the chat can draw (the pixel art is EMOJIS in index.html), and look-alikes that become one of them.
+  const CHAT_EMOJIS = ['\u{1F600}', '\u{1F602}', '\u{1F60D}', '\u{1F60E}', '\u{1F622}', '\u{1F621}', '\u{1F62E}', '\u{1F44D}', '\u{1F44E}', '❤', '\u{1F525}', '\u{1F3AE}', '\u{1F3C6}', '\u{1F44B}', '\u{1F431}'];
+  const CHAT_ALIAS = { '\u{1F603}': '\u{1F600}', '\u{1F604}': '\u{1F600}', '\u{1F601}': '\u{1F600}', '\u{1F642}': '\u{1F600}', '\u{1F60A}': '\u{1F600}',
+    '\u{1F923}': '\u{1F602}', '\u{1F970}': '\u{1F60D}', '\u{1F62D}': '\u{1F622}', '☹': '\u{1F622}', '\u{1F641}': '\u{1F622}', '\u{1F620}': '\u{1F621}',
+    '\u{1F92C}': '\u{1F621}', '\u{1F62F}': '\u{1F62E}', '\u{1F632}': '\u{1F62E}', '\u{1F631}': '\u{1F62E}', '♥': '❤', '\u{1F9E1}': '❤',
+    '\u{1F49B}': '❤', '\u{1F49A}': '❤', '\u{1F499}': '❤', '\u{1F49C}': '❤', '\u{1F496}': '❤', '\u{1F497}': '❤',
+    '\u{1F579}': '\u{1F3AE}', '\u{1F947}': '\u{1F3C6}', '\u{1F408}': '\u{1F431}', '\u{1F63A}': '\u{1F431}', '\u{1F638}': '\u{1F431}' };
+  // only what the chat can draw: capitals without accents, digits, a few signs and the emojis (at most CHAT_MAX)
+  const chatClean = v => Array.from(String(v || '').replace(/[\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())
+    .map(ch => CHAT_ALIAS[ch] || ch).filter(ch => CHAT_EMOJIS.includes(ch) || /^[A-Z0-9 .,!?:\-+/'%()<>=*#"_$★]$/.test(ch)).slice(0, CHAT_MAX).join('');
+
+  const ChatPop = {
+    on: false, el: null, toastEl: null, box: null, list: null, input: null, sendBtn: null, info: null,
+    f: null, busy: false, es: null, timer: 0, toastT: 0, fakeHidden: false, noteAt: {},
+    me() { return Profile.load().id; },
+    // the chats, always read fresh (the arcade, in another tab or around this game's frame, writes them too)
+    load() { try { const d = JSON.parse(localStorage.getItem(CHAT_KEY)); return d && typeof d === 'object' ? d : {}; } catch (e) { return {}; } },
+    save(d) { try { localStorage.setItem(CHAT_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } },
+    friend(id) { return Invite.friends().find(f => f.id === id) || null; },
+    start() {
+      const g = Presence.game();
+      if (this.on || !g || !location.protocol.startsWith('http') || !document.body) return;
+      if (!/^[1-9][0-9]{5}$/.test(this.me()) || !Invite.friends().length || !Settings.load().chatPop) return;
+      this.on = true;
+      // games pause on document.hidden: let it read true while the chat box is open
+      const real = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
+      if (real && real.get) {
+        try { Object.defineProperty(document, 'hidden', { configurable: true, get: () => this.fakeHidden || real.get.call(document) }); } catch (e) { /* the game won't pause */ }
+      }
+      this.listen(); setTimeout(() => this.check(), 2500);
+      this.timer = setInterval(() => { if (!document.hidden || this.fakeHidden) this.check(); }, 20e3);
+      document.addEventListener('visibilitychange', () => { if (!this.fakeHidden && !document.hidden) { this.listen(); this.check(); } });
+    },
+    // "a message is on its way": the friend's chat pings our typing topic right after sending (cache=no, live only)
+    listen() {
+      if (typeof EventSource === 'undefined' || (this.es && this.es.readyState !== 2)) return;
+      try {
+        this.es = new EventSource(RELAY + 'pixel-arcade-typing-' + this.me() + '/sse');
+        this.es.onmessage = e => {
+          let m = null; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
+          if (m && m.v === 1 && m.sent && this.friend(m.fid)) this.check();
+        };
+      } catch (e) { this.es = null; }
+    },
+    checking: false,
+    async check() {
+      if (this.checking) return; this.checking = true;
+      try {
+        const res = await fetch(RELAY + 'pixel-arcade-stars-' + this.me() + '/json?poll=1&since=all', { cache: 'no-store' });
+        if (!res.ok) return;
+        let seen = []; try { const a = JSON.parse(localStorage.getItem('pixelArcade.giftsSeen')); if (Array.isArray(a)) seen = a; } catch (e) { /* none */ }
+        const d = this.load(), fresh = [];
+        for (const row of (await res.text()).split('\n')) {
+          let m = null; try { const ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { continue; }
+          if (!m || m.v !== 1 || m.t !== 'chat' || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40 || typeof m.text !== 'string') continue;
+          const f = this.friend(m.fid); if (!f || seen.includes(m.tx)) continue;
+          const x = censor(chatClean(m.text)).trim(); if (!x) continue;
+          const c = d[f.id] && Array.isArray(d[f.id].m) ? d[f.id] : (d[f.id] = { m: [], un: 0 });
+          if (c.m.some(y => y && y.tx === m.tx)) continue;
+          c.m.push({ me: false, x, tx: m.tx }); c.m = c.m.slice(-CHAT_KEEP);
+          if (this.f && this.f.id === f.id) c.un = 0; else c.un = Math.min(CHAT_KEEP, (c.un | 0) + 1);
+          fresh.push([f, x]);
+        }
+        if (!fresh.length) return;
+        this.save(d);
+        const [f, x] = fresh[fresh.length - 1];
+        if (this.f && this.f.id === f.id) { this.draw(); Sound.tone(1047, 0.06, { vol: 0.06 }); }
+        else { this.toast(f, x); Sound.tone([784, 1047], 0.12, { vol: 0.07 }); }
+      } catch (e) { /* offline: next time */ } finally { this.checking = false; }
+    },
+    // the pop-up: NAME: TEXT, with REPLY and a small X; it goes by itself after 8 seconds
+    css: { font: 'bold 14px/1.4 ui-monospace, Menlo, Consolas, monospace', textTransform: 'uppercase' },
+    keep(el) {                       // keys and taps in our boxes are not the game's
+      for (const k of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click', 'wheel'])
+        el.addEventListener(k, e => e.stopPropagation());
+    },
+    btn(label, bg, fn) {
+      const b = document.createElement('button'); b.textContent = label;
+      Object.assign(b.style, this.css, { background: bg, color: '#111', border: '2px solid #000', boxShadow: '2px 2px 0 #000', padding: '4px 10px', cursor: 'pointer', flex: 'none' });
+      b.addEventListener('click', e => { e.preventDefault(); fn(); });
+      return b;
+    },
+    toast(f, x) {
+      if (this.f) return;
+      if (!this.toastEl) {
+        const el = document.createElement('div');
+        Object.assign(el.style, this.css, { position: 'fixed', left: '50%', top: '34px', transform: 'translateX(-50%)', zIndex: 70, display: 'none',
+          alignItems: 'center', gap: '8px', maxWidth: 'min(92vw, 520px)', background: '#1d1830', color: '#efe9ff', border: '2px solid #ffd23f',
+          boxShadow: '4px 4px 0 #000', padding: '6px 8px 6px 12px', cursor: 'pointer' });
+        const txt = document.createElement('span'); Object.assign(txt.style, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 });
+        const x = this.btn('✕', '#9a92b8', () => this.hideToast());
+        x.addEventListener('click', e => e.stopPropagation());
+        el.append(txt, this.btn('REPLY', '#ffd23f', () => this.openFrom()), x);
+        el.addEventListener('click', () => this.openFrom());
+        this.keep(el); document.body.appendChild(el); this.toastEl = el; this.toastTxt = txt;
+      }
+      this.toastFriend = f;
+      this.toastTxt.textContent = '💬 ' + f.name + ': ' + this.show(x);
+      this.toastEl.style.display = 'flex';
+      clearTimeout(this.toastT); this.toastT = setTimeout(() => this.hideToast(), 8000);
+    },
+    hideToast() { clearTimeout(this.toastT); if (this.toastEl) this.toastEl.style.display = 'none'; },
+    openFrom() { const f = this.toastFriend; this.hideToast(); if (f) this.open(f); },
+    pause(on) {
+      if (this.fakeHidden === on) return;
+      this.fakeHidden = on;
+      try { document.dispatchEvent(new Event('visibilitychange')); } catch (e) { /* old browser */ }
+    },
+    // the chat box over the game
+    open(f) {
+      this.f = f; this.busy = false;
+      const d = this.load(); if (d[f.id]) { d[f.id].un = 0; this.save(d); }
+      this.pause(true);
+      if (!this.box) {
+        const box = document.createElement('div');
+        Object.assign(box.style, this.css, { position: 'fixed', inset: '0', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11,9,18,0.6)' });
+        const p = document.createElement('div');
+        Object.assign(p.style, { width: 'min(94vw, 460px)', maxHeight: '92vh', display: 'flex', flexDirection: 'column', gap: '8px', background: '#1d1830',
+          color: '#efe9ff', border: '2px solid #ffd23f', boxShadow: '4px 4px 0 #000', padding: '10px' });
+        const head = document.createElement('div'); Object.assign(head.style, { display: 'flex', alignItems: 'center', gap: '8px' });
+        this.title = document.createElement('div'); Object.assign(this.title.style, { flex: '1', color: '#ffd23f', fontSize: '16px' });
+        head.append(this.title, this.btn('✕', '#9a92b8', () => this.close()));
+        this.list = document.createElement('div');
+        Object.assign(this.list.style, { display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', minHeight: '60px', maxHeight: '40vh', padding: '6px', background: '#0d0b13' });
+        const row = document.createElement('div'); Object.assign(row.style, { display: 'flex', gap: '6px' });
+        this.input = document.createElement('input');
+        Object.assign(this.input, { maxLength: 80, autocomplete: 'off', placeholder: 'YOUR MESSAGE' });
+        Object.assign(this.input.style, this.css, { flex: '1', minWidth: 0, fontSize: '16px', background: '#efe9ff', color: '#111', border: '2px solid #000', padding: '4px 6px' });
+        this.input.addEventListener('input', () => { const v = chatClean(this.input.value); if (v !== this.input.value) this.input.value = v; });
+        this.input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.send(); } });
+        this.sendBtn = this.btn('SEND', '#5ad43f', () => this.send());
+        row.append(this.input, this.sendBtn);
+        const emo = document.createElement('div'); Object.assign(emo.style, { display: 'flex', flexWrap: 'wrap', gap: '2px' });
+        for (const ch of CHAT_EMOJIS) {
+          const b = document.createElement('button'); b.textContent = this.show(ch);
+          Object.assign(b.style, { background: 'none', border: '0', fontSize: '18px', padding: '0 2px', cursor: 'pointer' });
+          b.addEventListener('click', e => { e.preventDefault(); this.input.value = chatClean(this.input.value + ch); });
+          emo.appendChild(b);
+        }
+        this.info = document.createElement('div'); Object.assign(this.info.style, { color: '#9a92b8', fontSize: '12px' });
+        p.append(head, this.list, emo, row, this.info);
+        box.appendChild(p);
+        box.addEventListener('click', e => { if (e.target === box) this.close(); });
+        box.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); this.close(); } });
+        // while the box is open, the game gets no keys at all (they would steer, jump or leave the game)
+        for (const k of ['keydown', 'keyup', 'keypress']) addEventListener(k, e => { if (this.f && !box.contains(e.target)) { e.stopImmediatePropagation(); if (e.key === 'Escape' && k === 'keydown') this.close(); } }, true);
+        this.keep(box); document.body.appendChild(box); this.box = box;
+      }
+      this.title.textContent = '💬 ' + f.name;
+      this.info.textContent = 'THE GAME IS PAUSED. ✕ GOES BACK TO IT.';
+      this.info.style.color = '#9a92b8';
+      this.input.value = '';
+      this.box.style.display = 'flex';
+      this.draw();
+      try { this.input.focus(); } catch (e) { /* fine */ }
+      setTimeout(() => { try { if (this.f) this.input.focus(); } catch (e) { /* fine */ } }, 50);
+      clearInterval(this.fast); this.fast = setInterval(() => this.check(), 5000);   // (like the arcade's open chat)
+    },
+    draw() {
+      if (!this.f || !this.list) return;
+      const c = this.load()[this.f.id], ms = c && Array.isArray(c.m) ? c.m.slice(-12) : [];
+      this.list.textContent = '';
+      if (!ms.length) { const e = document.createElement('div'); e.textContent = 'NO MESSAGES YET.'; e.style.color = '#5b5275'; this.list.appendChild(e); }
+      for (const m of ms) {
+        const e = document.createElement('div'); e.textContent = this.show(m.x);
+        Object.assign(e.style, { alignSelf: m.me ? 'flex-end' : 'flex-start', maxWidth: '85%', overflowWrap: 'anywhere', padding: '2px 6px',
+          background: m.me ? '#ffd23f' : '#3a2f5c', color: m.me ? '#111' : '#efe9ff' });
+        this.list.appendChild(e);
+      }
+      this.list.scrollTop = this.list.scrollHeight;
+    },
+    close() {
+      if (!this.f) return;
+      clearInterval(this.fast); this.f = null;
+      try { this.input.blur(); } catch (e) { /* fine */ }
+      if (this.box) this.box.style.display = 'none';
+      this.pause(false);
+    },
+    async send() {
+      const f = this.f, raw = chatClean(this.input.value).trim();
+      if (!f || this.busy || !raw) return;
+      if (!this.friend(f.id)) { this.say(f.name + ' IS NOT YOUR FRIEND ANY MORE.'); return; }
+      const x = censor(raw), p = Profile.load();
+      const tx = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      this.busy = true; this.sendBtn.disabled = true;
+      try {
+        const res = await fetch(RELAY + 'pixel-arcade-stars-' + f.id, { method: 'POST', body: JSON.stringify({ v: 1, t: 'chat', tx, from: p.name, fid: p.id, text: x }) });
+        if (!res.ok) throw new Error('relay ' + res.status);
+        const d = this.load(), c = d[f.id] && Array.isArray(d[f.id].m) ? d[f.id] : (d[f.id] = { m: [], un: 0 });
+        c.m.push({ me: true, x, tx }); c.m = c.m.slice(-CHAT_KEEP); c.un = 0; this.save(d);
+        fetch(RELAY + 'pixel-arcade-typing-' + f.id + '?cache=no', { method: 'POST', body: JSON.stringify({ v: 1, fid: p.id, sent: 1 }) }).catch(() => { /* never mind */ });
+        const now = Date.now(); if (!this.noteAt[f.id] || now - this.noteAt[f.id] > 60e3) { this.noteAt[f.id] = now; Push.tell(f.id, 'chat'); }
+        if (this.f === f) { this.input.value = ''; this.draw(); }
+        this.say(x !== raw ? 'NO SWEARING! THOSE WORDS WERE SENT AS #####.' : 'SENT! ✕ GOES BACK TO THE GAME.', x !== raw ? '#ff6a5a' : '#5ad43f');
+        Sound.tone(880, 0.05, { vol: 0.06 });
+      } catch (e) { this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN.", '#ff6a5a'); Sound.tone(150, 0.2); }
+      this.busy = false; this.sendBtn.disabled = false;
+    },
+    show: s => String(s || '').replace(/❤/g, '❤\uFE0F'),             // (the red heart, not a black one)
+    say(text, col = '#ff6a5a') { if (this.info) { this.info.textContent = text; this.info.style.color = col; } },
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => ChatPop.start()); else setTimeout(() => ChatPop.start(), 0);
+
   return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
-           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound };
+           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, chatClean, CHAT_EMOJIS };
 })();
