@@ -90,6 +90,8 @@ window.PX = (() => {
       return out;
     },
     tr(s) { return this.on ? this.t(s) : String(s); },    // translate on a translated page
+    // what players wrote (chat messages, names) is drawn as it is: raw(() => drawText(...))
+    raw(fn) { const was = this.on; this.on = false; try { return fn(); } finally { this.on = was; } },
   };
   if (typeof addEventListener !== 'undefined') addEventListener('storage', e => { if (e.key === 'pixelArcade.settings') Lang.changed(); });
   function textWidth(str, size = 1) {
@@ -1217,6 +1219,15 @@ window.PX = (() => {
       const r = await Api.call('POST', '/v1/push/test', undefined, me.tok);
       return r.ok && r.data ? r.data.sent : null;
     },
+    // Tell several players' phones at once (a group: gchat, gadd), in one request. Never throws.
+    tellMany(to, t, extra = {}) {
+      try {
+        const ids = to.filter(id => /^[1-9][0-9]{5}$/.test(id)).slice(0, 8);
+        if (!ids.length || navigator.onLine === false) return;
+        const p = Profile.load(), me = Api.session();
+        Api.call('POST', '/v1/push/send', { to: ids, t, from: p.name, fid: p.id, ...extra }, me && me.id === p.id ? me.tok : undefined);
+      } catch (e) { /* a notification must never break sending */ }
+    },
     // Tell a player's phones that you just sent them something. t: gift, back, freq, fyes, inv, chat. Never throws.
     tell(to, t, extra = {}) {
       try {
@@ -1709,6 +1720,156 @@ window.PX = (() => {
   const chatClean = v => Array.from(String(v || '').replace(/[\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())
     .map(ch => CHAT_ALIAS[ch] || ch).filter(ch => CHAT_EMOJIS.includes(ch) || /^[A-Z0-9 .,!?:\-+/'%()<>=*#"_$★]$/.test(ch)).slice(0, CHAT_MAX).join('');
 
+  // --- GROUP CHATS: a chat with up to 8 players (FRIENDS → GROUPS in the arcade) ------------------------------------
+  // A group has a random ID (12 letters and digits) and its own ntfy.sh topic, pixel-arcade-grp-<ID>: a message goes
+  // there once and every member's arcade (and the chat box in the games) reads it, like the chat with one friend
+  // (kept 12 hours). Every phone keeps the group in localStorage['pixelArcade.groups']: its name, who made it (the
+  // owner), the members and the last 40 messages. What happens in a group is a message on its topic:
+  //   { v: 1, t: 'g', k: 'msg', tx, fid, from, text }       a message (only from a member)
+  //   { ..., k: 'add', who: [{ id, name }] }                  a member added a friend (or a few)
+  //   { ..., k: 'rm', who: ID }                               the owner took someone out
+  //   { ..., k: 'leave' }                                     someone left
+  // Phones apply them in the order ntfy.sh keeps them. Someone who is added gets an invite on their own topic
+  // (pixel-arcade-stars-<ID>, t: 'ginv', from a friend), with the group as it is then, and reads the group from there on.
+  // Good to know: anybody who knows a group's ID can read its topic. It is made for friends, not for secrets.
+  const GROUPS_KEY = 'pixelArcade.groups', GROUP_MAX = 8, GROUP_KEEP = 40;
+  const Groups = {
+    MAX: GROUP_MAX, d: null, open: '', checking: false, noteAt: {},
+    topic: gid => 'pixel-arcade-grp-' + gid,
+    okGid: g => typeof g === 'string' && /^[a-z0-9]{12}$/.test(g),
+    okId: id => typeof id === 'string' && /^[1-9][0-9]{5}$/.test(id),
+    me() { return Profile.load().id; },
+    tx() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); },
+    all() {
+      if (!this.d) { let d = null; try { d = JSON.parse(localStorage.getItem(GROUPS_KEY)); } catch (e) { d = null; } this.d = d && typeof d === 'object' ? d : {}; }
+      return this.d;
+    },
+    save() { try { localStorage.setItem(GROUPS_KEY, JSON.stringify(this.d || {})); } catch (e) { /* private mode */ } },
+    get(gid) { const g = this.all()[gid]; return g && g.self === this.me() ? g : null; },
+    // the groups of the player on this phone, the newest message first
+    list() {
+      const me = this.me(), d = this.all();
+      return Object.keys(d).filter(k => d[k].self === me).map(k => ({ gid: k, ...d[k] })).sort((a, b) => (b.at || 0) - (a.at || 0));
+    },
+    unread(gid) { if (gid) { const g = this.get(gid); return g ? g.un | 0 : 0; } return this.list().reduce((n, g) => n + (g.un | 0), 0); },
+    members(g) { return (g && Array.isArray(g.members) ? g.members : []); },
+    isMember(g, id) { return this.members(g).some(p => p.id === id); },
+    nameOf(g, id) { const p = this.members(g).find(q => q.id === id); return p ? p.name : 'PLAYER'; },
+    cleanMembers(list) {
+      const out = [];
+      for (const p of Array.isArray(list) ? list : []) if (p && this.okId(p.id) && !out.some(q => q.id === p.id)) out.push({ id: p.id, name: cleanName(p.name) || 'PLAYER' });
+      return out.slice(0, GROUP_MAX);
+    },
+    async post(topic, obj) {
+      const res = await fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify({ v: 1, tx: this.tx(), fid: this.me(), from: Profile.load().name, ...obj }) });
+      if (!res.ok) throw new Error('relay ' + res.status);
+    },
+    // invite players to a group (on their own topics): the group as it is now
+    async invite(gid, people) {
+      const g = this.get(gid); if (!g) return;
+      const snap = { t: 'ginv', gid, name: g.name, owner: g.owner, members: g.members };
+      await Promise.all(people.map(p => this.post('pixel-arcade-stars-' + p.id, snap)));
+      Push.tellMany(people.map(p => p.id), 'gadd', { gn: g.name, gid });
+    },
+    // NEW GROUP: you and some friends
+    async create(name, friends) {
+      const me = Profile.load(), gid = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+      const members = this.cleanMembers([{ id: me.id, name: me.name }, ...friends]);
+      this.all()[gid] = { self: me.id, name: cleanName(name) || 'GROUP', owner: me.id, members, m: [], un: 0, seen: [], since: Math.floor(Date.now() / 1000) - 5, at: Date.now() };
+      this.save();
+      await this.invite(gid, members.filter(p => p.id !== me.id));
+      return gid;
+    },
+    // an invite came (from a friend): the group, as the friend sees it
+    invited(m, at) {
+      const me = this.me();
+      if (!m || !this.okGid(m.gid) || !this.okId(m.fid)) return false;
+      const members = this.cleanMembers(m.members);
+      if (!members.some(p => p.id === me) || !members.some(p => p.id === m.fid)) return false;
+      const d = this.all(), old = d[m.gid];
+      if (old && old.self === me && !old.out) return false;                    // (in it already)
+      d[m.gid] = { self: me, name: cleanName(m.name) || 'GROUP', owner: this.okId(m.owner) ? m.owner : m.fid, members, m: old && old.self === me ? old.m : [],
+                   un: 0, seen: [], since: (at || Math.floor(Date.now() / 1000)) - 1, at: Date.now(), by: cleanName(m.from) || 'A FRIEND' };
+      this.save(); return true;
+    },
+    // read every group's topic at once; what is new is applied. The new messages from others: [{ gid, g, who, x }]
+    async check() {
+      const groups = this.list().filter(g => !g.out);
+      if (!groups.length || this.checking) return [];
+      this.checking = true;
+      const fresh = [];
+      try {
+        const res = await fetch('https://ntfy.sh/' + groups.map(g => this.topic(g.gid)).join(',') + '/json?poll=1&since=all', { cache: 'no-store' });
+        if (!res.ok) return [];
+        const me = this.me();
+        for (const row of (await res.text()).split('\n')) {
+          let ev = null, m = null; try { ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { continue; }
+          if (!m || m.v !== 1 || m.t !== 'g' || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40 || !this.okId(m.fid)) continue;
+          const gid = String(ev.topic || '').replace('pixel-arcade-grp-', ''), g = this.get(gid);
+          if (!g || g.out || (+ev.time || 0) < (g.since || 0) || g.seen.includes(m.tx) || g.m.some(y => y.tx === m.tx)) continue;
+          g.seen = [...g.seen, m.tx].slice(-300);
+          if (!this.isMember(g, m.fid)) continue;                               // only members say anything
+          if (m.k === 'msg' && typeof m.text === 'string') {
+            const x = censor(chatClean(m.text)).trim(); if (!x) continue;
+            const mine = m.fid === me;
+            g.m = [...g.m, { me: mine, x, tx: m.tx, fid: m.fid }].slice(-GROUP_KEEP); g.at = Date.now();
+            if (!mine && this.open !== gid) g.un = Math.min(GROUP_KEEP, (g.un | 0) + 1);
+            if (!mine) fresh.push({ gid, g, who: this.nameOf(g, m.fid), x });
+          } else if (m.k === 'add') {
+            for (const p of this.cleanMembers(m.who)) if (!this.isMember(g, p.id) && g.members.length < GROUP_MAX) g.members.push(p);
+          } else if (m.k === 'rm' && m.fid === g.owner && this.okId(m.who) && m.who !== g.owner) {
+            g.members = g.members.filter(p => p.id !== m.who);
+            if (m.who === me) g.out = 'removed';
+          } else if (m.k === 'leave') {
+            g.members = g.members.filter(p => p.id !== m.fid);
+            if (m.fid === g.owner && g.members.length) g.owner = g.members[0].id;    // (someone has to be the owner)
+          }
+        }
+        this.save();
+      } catch (e) { /* offline: next time */ } finally { this.checking = false; }
+      return fresh;
+    },
+    // something I do in a group: on its topic, and right away here
+    async act(gid, obj) {
+      const g = this.get(gid); if (!g) throw new Error('no group');
+      const tx = this.tx();
+      const res = await fetch('https://ntfy.sh/' + this.topic(gid), { method: 'POST', body: JSON.stringify({ v: 1, t: 'g', tx, fid: this.me(), from: Profile.load().name, ...obj }) });
+      if (!res.ok) throw new Error('relay ' + res.status);
+      g.seen = [...(g.seen || []), tx].slice(-300);
+      return { g, tx };
+    },
+    async send(gid, text) {
+      const x = censor(chatClean(text)).trim(); if (!x) return '';
+      const { g, tx } = await this.act(gid, { k: 'msg', text: x });
+      g.m = [...g.m, { me: true, x, tx, fid: this.me() }].slice(-GROUP_KEEP); g.at = Date.now(); g.un = 0; this.save();
+      const others = g.members.filter(p => p.id !== this.me());
+      // "sent": the others' open chats fetch it at once
+      for (const p of others) fetch('https://ntfy.sh/pixel-arcade-typing-' + p.id + '?cache=no', { method: 'POST', body: JSON.stringify({ v: 1, fid: this.me(), g: gid, sent: 1 }) }).catch(() => { /* never mind */ });
+      const now = Date.now(); if (!this.noteAt[gid] || now - this.noteAt[gid] > 60e3) { this.noteAt[gid] = now; Push.tellMany(others.map(p => p.id), 'gchat', { gn: g.name, gid }); }
+      return x;
+    },
+    async add(gid, friends) {
+      const g = this.get(gid); if (!g) return;
+      const who = this.cleanMembers(friends).filter(p => !this.isMember(g, p.id)).slice(0, GROUP_MAX - g.members.length);
+      if (!who.length) return;
+      await this.act(gid, { k: 'add', who });
+      g.members.push(...who); this.save();
+      await this.invite(gid, who);
+    },
+    async remove(gid, id) {
+      const g = this.get(gid); if (!g || g.owner !== this.me() || id === g.owner) return;
+      await this.act(gid, { k: 'rm', who: id });
+      g.members = g.members.filter(p => p.id !== id); this.save();
+    },
+    async leave(gid) {
+      const g = this.get(gid); if (!g) return;
+      if (!g.out) await this.act(gid, { k: 'leave' });
+      delete this.all()[gid]; this.save();
+    },
+    read(gid) { const g = this.get(gid); if (g && g.un) { g.un = 0; this.save(); } },
+  };
+  if (typeof addEventListener !== 'undefined') addEventListener('storage', e => { if (e.key === GROUPS_KEY) Groups.d = null; });
+
   const ChatPop = {
     on: false, el: null, toastEl: null, box: null, list: null, input: null, sendBtn: null, info: null,
     f: null, busy: false, es: null, timer: 0, toastT: 0, fakeHidden: false, noteAt: {},
@@ -1740,7 +1901,7 @@ window.PX = (() => {
         this.es = new EventSource(RELAY + 'pixel-arcade-typing-' + this.me() + '/sse');
         this.es.onmessage = e => {
           let m = null; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
-          if (m && m.v === 1 && m.sent && this.friend(m.fid)) this.check();
+          if (m && m.v === 1 && m.sent && (this.friend(m.fid) || Groups.okGid(m.g))) this.check();
         };
       } catch (e) { this.es = null; }
     },
@@ -1753,7 +1914,8 @@ window.PX = (() => {
         let seen = []; try { const a = JSON.parse(localStorage.getItem('pixelArcade.giftsSeen')); if (Array.isArray(a)) seen = a; } catch (e) { /* none */ }
         const d = this.load(), fresh = [];
         for (const row of (await res.text()).split('\n')) {
-          let m = null; try { const ev = JSON.parse(row); if (ev.event === 'message') m = JSON.parse(ev.message); } catch (e) { continue; }
+          let m = null, at = 0; try { const ev = JSON.parse(row); if (ev.event === 'message') { m = JSON.parse(ev.message); at = +ev.time || 0; } } catch (e) { continue; }
+          if (m && m.v === 1 && m.t === 'ginv' && this.friend(m.fid)) { Groups.invited(m, at); continue; }   // (added to a group: the arcade sees it too, that's fine)
           if (!m || m.v !== 1 || m.t !== 'chat' || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40 || typeof m.text !== 'string') continue;
           const f = this.friend(m.fid); if (!f || seen.includes(m.tx)) continue;
           const x = censor(chatClean(m.text)).trim(); if (!x) continue;
@@ -1763,10 +1925,11 @@ window.PX = (() => {
           if (this.f && this.f.id === f.id) c.un = 0; else c.un = Math.min(CHAT_KEEP, (c.un | 0) + 1);
           fresh.push([f, x]);
         }
+        if (fresh.length) this.save(d);
+        for (const n of await Groups.check()) fresh.push([{ gid: n.gid, name: n.g.name, who: n.who }, n.x]);   // the group chats
         if (!fresh.length) return;
-        this.save(d);
         const [f, x] = fresh[fresh.length - 1];
-        if (this.f && this.f.id === f.id) { this.draw(); Sound.tone(1047, 0.06, { vol: 0.06 }); }
+        if (this.f && (f.gid ? this.f.gid === f.gid : this.f.id === f.id)) { this.draw(); Sound.tone(1047, 0.06, { vol: 0.06 }); }
         else { this.toast(f, x); Sound.tone([784, 1047], 0.12, { vol: 0.07 }); }
       } catch (e) { /* offline: next time */ } finally { this.checking = false; }
     },
@@ -1797,7 +1960,7 @@ window.PX = (() => {
         this.keep(el); document.body.appendChild(el); this.toastEl = el; this.toastTxt = txt;
       }
       this.toastFriend = f;
-      this.toastTxt.textContent = '💬 ' + f.name + ': ' + this.show(x);
+      this.toastTxt.textContent = '💬 ' + f.name + ': ' + (f.who ? f.who + ': ' : '') + this.show(x);
       this.toastEl.style.display = 'flex';
       clearTimeout(this.toastT); this.toastT = setTimeout(() => this.hideToast(), 8000);
     },
@@ -1811,7 +1974,7 @@ window.PX = (() => {
     // the chat box over the game
     open(f) {
       this.f = f; this.busy = false;
-      const d = this.load(); if (d[f.id]) { d[f.id].un = 0; this.save(d); }
+      if (f.gid) { Groups.open = f.gid; Groups.read(f.gid); } else { const d = this.load(); if (d[f.id]) { d[f.id].un = 0; this.save(d); } }
       this.pause(true);
       if (!this.box) {
         const box = document.createElement('div');
@@ -1860,11 +2023,12 @@ window.PX = (() => {
     },
     draw() {
       if (!this.f || !this.list) return;
-      const c = this.load()[this.f.id], ms = c && Array.isArray(c.m) ? c.m.slice(-12) : [];
+      const g = this.f.gid && Groups.get(this.f.gid);
+      const c = this.f.gid ? g : this.load()[this.f.id], ms = c && Array.isArray(c.m) ? c.m.slice(-12) : [];
       this.list.textContent = '';
       if (!ms.length) { const e = document.createElement('div'); e.textContent = Lang.t('NO MESSAGES YET.'); e.style.color = '#5b5275'; this.list.appendChild(e); }
       for (const m of ms) {
-        const e = document.createElement('div'); e.textContent = this.show(m.x);
+        const e = document.createElement('div'); e.textContent = (g && !m.me ? Groups.nameOf(g, m.fid) + ': ' : '') + this.show(m.x);
         Object.assign(e.style, { alignSelf: m.me ? 'flex-end' : 'flex-start', maxWidth: '85%', overflowWrap: 'anywhere', padding: '2px 6px',
           background: m.me ? '#ffd23f' : '#3a2f5c', color: m.me ? '#111' : '#efe9ff' });
         this.list.appendChild(e);
@@ -1873,7 +2037,7 @@ window.PX = (() => {
     },
     close() {
       if (!this.f) return;
-      clearInterval(this.fast); this.f = null;
+      clearInterval(this.fast); this.f = null; Groups.open = '';
       try { this.input.blur(); } catch (e) { /* fine */ }
       if (this.box) this.box.style.display = 'none';
       this.pause(false);
@@ -1881,6 +2045,17 @@ window.PX = (() => {
     async send() {
       const f = this.f, raw = chatClean(this.input.value).trim();
       if (!f || this.busy || !raw) return;
+      if (f.gid) {                                   // a group chat (PX.Groups)
+        this.busy = true; this.sendBtn.disabled = true;
+        try {
+          await Groups.send(f.gid, raw);
+          if (this.f === f) { this.input.value = ''; this.draw(); }
+          const swore = censor(raw) !== raw;
+          this.say(Lang.t(swore ? 'NO SWEARING! THOSE WORDS WERE SENT AS #####.' : 'SENT! ✕ GOES BACK TO THE GAME.'), swore ? '#ff6a5a' : '#5ad43f');
+          Sound.tone(880, 0.05, { vol: 0.06 });
+        } catch (e) { this.say(Lang.t("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."), '#ff6a5a'); Sound.tone(150, 0.2); }
+        this.busy = false; this.sendBtn.disabled = false; return;
+      }
       if (!this.friend(f.id)) { this.say(Lang.t(f.name + ' IS NOT YOUR FRIEND ANY MORE.')); return; }
       const x = censor(raw), p = Profile.load();
       const tx = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -1904,5 +2079,5 @@ window.PX = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => ChatPop.start()); else setTimeout(() => ChatPop.start(), 0);
 
   return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
-           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, chatClean, CHAT_EMOJIS, Lang, tr: s => Lang.tr(s) };
+           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, Groups, chatClean, CHAT_EMOJIS, Lang, tr: s => Lang.tr(s) };
 })();

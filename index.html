@@ -63,7 +63,9 @@ const searchInput = document.getElementById('search');
 searchInput.addEventListener('input', () => { searchInput.value = searchInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 20); search.q = searchInput.value; scrollTo(0); pad.focus = 0; });
 nameInput.addEventListener('input', () => { nameInput.value = nameInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10); });
 window.addEventListener('keydown', e => {
+  if (e.target === chatInput && screen === 'gchat') { if (e.key === 'Enter') GroupsUI.send(); else if (e.key === 'Escape') GroupsUI.leaveChat(); return; }
   if (e.target === chatInput) { if (e.key === 'Enter') Chat.send(); else if (e.key === 'Escape') Chat.leave(); return; }
+  if (e.target === nameInput && screen === 'gnew') { if (e.key === 'Enter') GroupsUI.create(); else if (e.key === 'Escape') GroupsUI.back(); return; }
   if (e.target === giveInput && screen === 'friends') { if (e.key === 'Enter') Friends.request(); else if (e.key === 'Escape') Friends.leave(); return; }
   if (e.target === giveInput) { if (e.key === 'Enter') Give.send(); else if (e.key === 'Escape') Give.leave(); return; }
   if (e.target === pw1 || e.target === pw2 || e.target === codeInput) { if (e.key === 'Enter') Account.enter(); else if (e.key === 'Escape') Account.back(); return; }
@@ -724,7 +726,7 @@ function drawHome(t) {
   if (UI.button('search', 8, 38, 72, 20, '', { size: 1, accent: '#1ec8e0' })) openSearch();
   magnifier(20, 48, 1); T('SEARCH', 30, 45, '#fff', 1);
   // your friends (with how many players are waiting for your answer, and how many chats have new messages)
-  const fx = W - 80, asks = Friends.d.inc.length + Chat.unread();
+  const fx = W - 80, asks = Friends.d.inc.length + Chat.unread() + PX.Groups.unread();
   if (UI.button('friends', fx, 38, 72, 20, '', { size: 1, accent: '#ff7ab8' })) Friends.open();
   friendsIcon(fx + 14, 48); T('FRIENDS', fx + 28, 45, '#fff', 1);
   if (asks) { ctx.fillStyle = '#111'; ctx.fillRect(fx + 63, 33, 11, 11); ctx.fillStyle = '#ff7ab8'; ctx.fillRect(fx + 64, 34, 9, 9); T(String(Math.min(9, asks)), fx + 69, 36, '#111', 1, 'center'); }
@@ -1327,7 +1329,7 @@ const Inbox = {
   },
   async check() {
     this.last = performance.now();
-    Who.beat();
+    Who.beat(); GroupsUI.poll();
     try {
       const res = await fetch(RELAY + relayTopic(profile.id) + '/json?poll=1&since=all', { cache: 'no-store' });
       if (!res.ok) return;
@@ -1336,7 +1338,7 @@ const Inbox = {
         let m = null, at = 0;
         try { const ev = JSON.parse(row); if (ev.event === 'message') { m = JSON.parse(ev.message); at = +ev.time || 0; } } catch (e) { /* not a gift */ }
         if (m && m.v === 1 && typeof m.t === 'string' && typeof m.tx === 'string' && m.tx && m.tx.length <= 40) {      // about friends: a request, an answer to yours, an invite to a game, or a chat message
-          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-1000))); } catch (e) { /* private mode */ } if (m.t === 'inv') gotInvite(m, at); else if (m.t === 'chat') Chat.got(m, at); else Friends.got(m); }
+          if (!seen.includes(m.tx)) { seen.push(m.tx); try { localStorage.setItem(this.KEY, JSON.stringify(seen.slice(-1000))); } catch (e) { /* private mode */ } if (m.t === 'inv') gotInvite(m, at); else if (m.t === 'chat') Chat.got(m, at); else if (m.t === 'ginv') GroupsUI.invited(m, at); else Friends.got(m); }
           continue;
         }
         if (!m || m.v !== 1 || !Number.isInteger(m.n) || m.n < 1 || m.n > 1000 || typeof m.tx !== 'string' || !m.tx || m.tx.length > 40) continue;
@@ -1549,6 +1551,9 @@ function drawFriends(t) {
   });
   if (pages > 1 && UI.button('fmore', cx + 56, 214, 90, 20, 'MORE ' + (F.page + 1) + '/' + pages, { size: 1 })) F.page = (F.page + 1) % pages;
   if (UI.button('fback', cx - 50, 214, 100, 20, 'BACK', { disabled: busy }) || (UI.back && !busy)) F.leave();
+  // GROUP CHATS (GroupsUI below)
+  if (UI.button('fgroups', cx - 156, 214, 100, 20, 'GROUPS', { size: 1, accent: '#7af0ff', disabled: busy })) GroupsUI.open();
+  badge(cx - 60, 211, PX.Groups.unread());
 }
 
 // --- ONLINE / OFFLINE: which friends are playing right now --------------------------------------------------------
@@ -1628,8 +1633,9 @@ const chatClean = PX.chatClean;
 if (EMOJIS.some(([ch]) => !PX.CHAT_EMOJIS.includes(ch)) || EMOJIS.length !== PX.CHAT_EMOJIS.length) console.warn('EMOJIS and PX.CHAT_EMOJIS differ');
 chatInput.addEventListener('input', () => { const v = chatClean(chatInput.value); if (v !== chatInput.value) chatInput.value = v; if (v.trim()) Chat.typing(); });
 // a chat line's width and drawing: letters in the pixel font, emojis as their pixel art
-const chatW = str => { let w = 0; for (const ch of str) w += EMOJI.has(ch) ? 9 : PX.textWidth(ch, 1) + 1; return w - 1; };   // (textWidth leaves out the gap after the last letter)
-function chatText(str, x, y, color) {
+const chatW = str => PX.Lang.raw(() => { let w = 0; for (const ch of str) w += EMOJI.has(ch) ? 9 : PX.textWidth(ch, 1) + 1; return w - 1; });   // (textWidth leaves out the gap after the last letter)
+function chatText(str, x, y, color) { PX.Lang.raw(() => chatTextRaw(str, x, y, color)); }   // (what players wrote: never translated)
+function chatTextRaw(str, x, y, color) {
   let run = '';
   const flush = () => { if (run) { T(run, x, y, color, 1); x += PX.textWidth(run, 1) + 1; run = ''; } };
   for (const ch of str) {
@@ -1685,6 +1691,7 @@ const Chat = {
       this.es = new EventSource(RELAY + typingTopic(profile.id) + '/sse');
       this.es.onmessage = e => {
         let m = null; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
+        if (m && m.v === 1 && m.sent && PX.Groups.okGid(m.g)) { GroupsUI.poll(); return; }         // (a group chat: PX.Groups)
         if (!m || m.v !== 1 || !validId(m.fid) || !Friends.find(m.fid)) return;
         this.heardAt[m.fid] = performance.now();
         if (m.sent) { delete this.typAt[m.fid]; Inbox.check(); } else this.typAt[m.fid] = performance.now();
@@ -1833,6 +1840,194 @@ function drawChat(t) {
   if (!Chat.msg && callNote) T(callNote, cx, 214, '#ffd23f', 1, 'center', '#000'); else
   T(Chat.msg || (o.text.startsWith('PLAYING') ? f.name + ' IS IN A GAME: THEY SEE IT BACK IN THE ARCADE.' : 'YOUR FRIEND SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).'), cx, 214, Chat.msg ? '#ff8a8a' : '#5b5275', 1, 'center', '#000');
   if (UI.button('cback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) Chat.leave();
+}
+
+// --- GROUP CHATS: FRIENDS → GROUPS. A chat with up to 8 players (PX.Groups in common.js does the sending and reading) ---
+function badge(x, y, n) {                          // a pink square with how many are new
+  if (!n) return;
+  ctx.fillStyle = '#111'; ctx.fillRect(x, y, 11, 11); ctx.fillStyle = '#ff7ab8'; ctx.fillRect(x + 1, y + 1, 9, 9); T(String(Math.min(9, n)), x + 6, y + 3, '#111', 1, 'center');
+}
+const GroupsUI = {
+  gid: '', page: 0, pick: [], mode: 'new', msg: '', col: '#9a92b8', busy: false, sure: '',
+  g() { return PX.Groups.get(this.gid); },
+  say(text, col = '#ff8a8a') { this.msg = text; this.col = col; },
+  open() { screen = 'groups'; this.page = 0; this.msg = ''; this.sure = ''; PX.Sound.tone(660, 0.05, { vol: 0.06 }); Inbox.check(); },
+  back() { nameInput.blur(); this.msg = ''; this.sure = ''; if (screen === 'gnew' && this.mode === 'add') screen = 'ginfo'; else if (screen === 'ginfo') this.chat(this.gid); else screen = 'groups'; },
+  async poll() {
+    const fresh = await PX.Groups.check();
+    if (!fresh.length) return;
+    if (screen === 'gchat' && fresh.every(n => n.gid === this.gid)) PX.Sound.tone(1047, 0.06, { vol: 0.06 });
+    else PX.Sound.tone([784, 1047], 0.12, { vol: 0.07 });
+  },
+  invited(m, at) { if (Friends.find(m.fid) && PX.Groups.invited(m, at)) { PX.Sound.tone([659, 880], 0.15, { vol: 0.08 }); GroupsUI.poll(); } },
+  // NEW GROUP (or ADD FRIENDS to this one): a name and some friends
+  newGroup() { this.mode = 'new'; this.pick = []; this.page = 0; this.msg = ''; nameInput.value = ''; screen = 'gnew'; },
+  addPeople() { this.mode = 'add'; this.pick = []; this.page = 0; this.msg = ''; screen = 'gnew'; },
+  room() { const g = this.mode === 'add' && this.g(); return PX.Groups.MAX - (g ? g.members.length : 1); },
+  toggle(f) {
+    const i = this.pick.findIndex(p => p.id === f.id);
+    if (i >= 0) this.pick.splice(i, 1); else if (this.pick.length < this.room()) this.pick.push(f); else { this.say('A GROUP HAS UP TO 8 PLAYERS.'); return; }
+    this.msg = ''; PX.Sound.tone(700, 0.04, { vol: 0.06 });
+  },
+  async create() {
+    if (this.busy) return;
+    const name = PX.cleanName(nameInput.value);
+    if (this.mode === 'new' && !name) { this.say('GIVE THE GROUP A NAME.'); return; }
+    if (this.mode === 'new' && PX.censor(name) !== name) { this.say('PICK ANOTHER NAME.'); return; }
+    if (!this.pick.length) { this.say('PICK AT LEAST ONE FRIEND.'); return; }
+    this.busy = true; this.say('SENDING...', '#9a92b8');
+    try {
+      if (this.mode === 'new') { const gid = await PX.Groups.create(name, this.pick); nameInput.blur(); this.busy = false; this.chat(gid); this.say('THE GROUP IS READY! YOUR FRIENDS SEE IT WHEN THEIR ARCADE IS OPEN.', '#5ad43f'); }
+      else { await PX.Groups.add(this.gid, this.pick); this.busy = false; screen = 'ginfo'; this.say('ADDED! THEY SEE THE GROUP WHEN THEIR ARCADE IS OPEN.', '#5ad43f'); }
+      PX.Sound.tone([523, 659, 784], 0.25, { vol: 0.12 });
+    } catch (e) { this.busy = false; this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."); PX.Sound.tone(150, 0.2); }
+  },
+  // the group's chat
+  chat(gid) {
+    this.gid = gid; this.msg = ''; this.sure = ''; PX.Groups.open = gid; PX.Groups.read(gid);
+    chatInput.value = ''; screen = 'gchat'; PX.Sound.unlock(); Chat.listen();
+    if (performance.now() - Inbox.last > 3000) Inbox.check();
+  },
+  leaveChat() { chatInput.blur(); PX.Groups.open = ''; screen = 'groups'; Chat.hush(); },
+  async send() {
+    const g = this.g(), raw = chatClean(chatInput.value).trim();
+    if (!g || g.out || this.busy || !raw) return;
+    this.busy = true; this.msg = '';
+    try {
+      await PX.Groups.send(this.gid, raw); chatInput.value = '';
+      if (PX.censor(raw) !== raw) this.say('NO SWEARING! THOSE WORDS WERE SENT AS #####.');
+      PX.Sound.tone(880, 0.05, { vol: 0.06 });
+    } catch (e) { this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."); PX.Sound.tone(150, 0.2); }
+    this.busy = false;
+  },
+  // MEMBERS: who is in it; the owner can take someone out; ADD FRIENDS; LEAVE GROUP
+  info() { chatInput.blur(); this.msg = ''; this.sure = ''; screen = 'ginfo'; },
+  async remove(p) {
+    if (this.busy) return;
+    if (this.sure !== 'rm' + p.id) { this.sure = 'rm' + p.id; return; }
+    this.busy = true; this.sure = '';
+    try { await PX.Groups.remove(this.gid, p.id); this.say(p.name + ' IS OUT OF THE GROUP.', '#9a92b8'); } catch (e) { this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."); }
+    this.busy = false;
+  },
+  async leave() {
+    if (this.busy) return;
+    if (this.sure !== 'leave') { this.sure = 'leave'; return; }
+    this.busy = true; this.sure = '';
+    try { await PX.Groups.leave(this.gid); this.busy = false; PX.Groups.open = ''; screen = 'groups'; this.say('YOU LEFT THE GROUP.', '#9a92b8'); PX.Sound.tone(300, 0.1, { vol: 0.08 }); }
+    catch (e) { this.busy = false; this.say("COULDN'T SEND IT. CHECK YOUR INTERNET AND TRY AGAIN."); }
+  },
+};
+function drawGroups(t) {
+  const W = S.W, cx = Math.round(W / 2), G = GroupsUI, list = PX.Groups.list();
+  background(t);
+  T('GROUPS', cx, 8, '#fff', 3, 'center', '#000');
+  if (UI.button('gnew', W - 8 - 110, 8, 110, 20, '+ NEW GROUP', { size: 1, accent: '#5ad43f', disabled: !Friends.d.list.length })) G.newGroup();
+  T(G.msg || 'A CHAT WITH UP TO 8 PLAYERS. ONLY THE MEMBERS SEE IT.', cx, 32, G.msg ? G.col : '#9a92b8', 1, 'center', '#000');
+  const per = 7, pages = Math.max(1, Math.ceil(list.length / per)); if (G.page >= pages) G.page = 0;
+  const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
+  if (!list.length) {
+    T('NO GROUPS YET.', cx, 100, '#5b5275', 2, 'center', '#000');
+    T(Friends.d.list.length ? 'MAKE ONE: + NEW GROUP, THEN PICK YOUR FRIENDS.' : 'ADD FRIENDS FIRST, THEN MAKE A GROUP WITH THEM.', cx, 124, '#5b5275', 1, 'center', '#000');
+  }
+  list.slice(G.page * per, G.page * per + per).forEach((g, i) => {
+    const y = 44 + i * 23;
+    if (UI.button('grow' + g.gid, x, y, rw, 21, '', { size: 1, accent: g.un ? '#ff7ab8' : '#7af0ff' })) G.chat(g.gid);
+    T(g.name, x + 8, y + 4, '#fff', 1); T(g.members.length + (g.members.length === 1 ? ' MEMBER' : ' MEMBERS'), x + rw - 8, y + 4, '#9a92b8', 1, 'right');
+    const last = g.m[g.m.length - 1];
+    const line = g.out ? PX.tr('YOU ARE NOT IN THIS GROUP ANY MORE.') : last ? (last.me ? PX.tr('YOU') : PX.Groups.nameOf(g, last.fid)) + ': ' + last.x : PX.tr(g.by ? g.by + ' ADDED YOU. SAY HI!' : 'SAY HI!');
+    chatText(fitChat(line, rw - 30), x + 8, y + 12, g.out ? '#ff8a8a' : '#9a92b8');
+    badge(x + rw - 14, y + 11, g.un | 0);
+  });
+  if (pages > 1 && UI.button('gmore', cx + 56, 214, 90, 20, 'MORE ' + (G.page + 1) + '/' + pages, { size: 1 })) G.page = (G.page + 1) % pages;
+  if (UI.button('gback', cx - 50, 214, 100, 20, 'BACK') || UI.back) { G.msg = ''; screen = 'friends'; }
+}
+// a chat line cut to a width (letters and emojis)
+function fitChat(str, maxW) { let a = Array.from(String(str)); if (chatW(a.join('')) <= maxW) return a.join(''); while (a.length > 1 && chatW(a.join('') + '...') > maxW) a.pop(); return a.join('') + '...'; }
+function drawGroupNew(t) {
+  const W = S.W, cx = Math.round(W / 2), G = GroupsUI, add = G.mode === 'add', g = G.g();
+  if (add && !g) { screen = 'groups'; return; }
+  background(t);
+  T(add ? 'ADD FRIENDS' : 'NEW GROUP', cx, 8, '#fff', 3, 'center', '#000');
+  let y = 34;
+  if (!add) { T('GROUP NAME', cx - 78, y + 9, '#efe9ff', 1, 'right', '#000'); S.placeInput(nameInput, cx - 70, y, 140, 24); nameInput.placed = true; y += 30; }
+  else { T(g.name, cx, y, '#7af0ff', 2, 'center', '#000'); y += 18; }
+  const room = G.room();
+  T('PICK YOUR FRIENDS: ' + G.pick.length + ' / ' + room, cx, y + 2, '#9a92b8', 1, 'center', '#000');
+  const friends = Friends.d.list.filter(f => !add || !PX.Groups.isMember(g, f.id));
+  const per = 10, pages = Math.max(1, Math.ceil(friends.length / per)); if (G.page >= pages) G.page = 0;
+  const bw = 150, x0 = Math.round(cx - bw - 4);
+  if (!friends.length) T(add ? 'ALL YOUR FRIENDS ARE IN IT ALREADY.' : 'NO FRIENDS YET.', cx, y + 40, '#5b5275', 1, 'center', '#000');
+  friends.slice(G.page * per, G.page * per + per).forEach((f, i) => {
+    const on = G.pick.some(p => p.id === f.id), bx = x0 + (i % 2) * (bw + 8), by = y + 14 + Math.floor(i / 2) * 22;
+    if (UI.button('gp' + f.id, bx, by, bw, 19, (on ? '* ' : '') + f.name, { size: 1, accent: '#5ad43f', on })) G.toggle(f);
+  });
+  T(G.msg, cx, 182, G.col, 1, 'center', '#000');
+  if (pages > 1 && UI.button('gpmore', cx + 112, 214, 70, 20, 'MORE ' + (G.page + 1) + '/' + pages, { size: 1 })) G.page = (G.page + 1) % pages;
+  if (UI.button('gcreate', cx - 4, 192, 130, 20, G.busy ? 'SENDING...' : add ? 'ADD' : 'MAKE THE GROUP', { size: 1, accent: '#5ad43f', disabled: G.busy || !G.pick.length || (!add && !PX.cleanName(nameInput.value)) })) G.create();
+  if (UI.button('gnback', cx - 106, 192, 96, 20, 'BACK', { size: 1, disabled: G.busy }) || (UI.back && !G.busy)) G.back();
+}
+function drawGroupChat(t) {
+  const W = S.W, cx = Math.round(W / 2), G = GroupsUI, g = G.g();
+  if (!g) { screen = 'groups'; return; }
+  if (g.un) PX.Groups.read(G.gid);
+  background(t);
+  const rw = Math.min(W - 16, 440), x = Math.round(cx - rw / 2);
+  T(g.name, cx, 8, '#fff', 2, 'center', '#000');
+  T(g.members.length + (g.members.length === 1 ? ' MEMBER' : ' MEMBERS'), cx, 22, '#9a92b8', 1, 'center', '#000');
+  if (UI.button('gmembers', Math.round(cx + rw / 2 - 70), 4, 70, 22, 'MEMBERS', { size: 1, accent: '#7af0ff' })) G.info();
+  // the messages, newest at the bottom: mine on the right, the others' on the left with their name
+  const top = 34, bottom = 160, bw = Math.round(rw * 0.72);
+  ctx.fillStyle = '#0a0810'; ctx.fillRect(x, top, rw, bottom - top);
+  if (!g.m.length) { T('SAY HI TO THE GROUP!', cx, 80, '#5b5275', 2, 'center'); T('SWEAR WORDS TURN INTO #####.', cx, 102, '#5b5275', 1, 'center'); }
+  let y = bottom - 3;
+  for (let i = g.m.length - 1; i >= 0 && y > top + 4; i--) {
+    const m = g.m[i], who = m.me ? '' : PX.Groups.nameOf(g, m.fid), lines = chatLines(m.x, bw - 8);
+    const h = lines.length * 10 + 2 + (who ? 9 : 0), w = Math.max(...lines.map(chatW), who ? PX.textWidth(who, 1) : 0) + 8, bx = m.me ? x + rw - 4 - w : x + 4;
+    y -= h;
+    if (y < top + 2) break;
+    ctx.fillStyle = m.me ? '#3a2f10' : '#221c33'; ctx.fillRect(bx, y, w, h);
+    ctx.fillStyle = m.me ? '#ffd23f' : '#7af0ff'; ctx.fillRect(m.me ? bx + w - 2 : bx, y, 2, h);
+    if (who) T(who, bx + 4, y + 3, '#7af0ff', 1);
+    lines.forEach((l, k) => chatText(l, bx + 4, y + 3 + (who ? 9 : 0) + k * 10, m.me ? '#ffe9a0' : '#fff'));
+    y -= 3;
+  }
+  if (g.out) {
+    chatInput.style.display = 'none';
+    T('YOU ARE NOT IN THIS GROUP ANY MORE.', cx, 176, '#ff8a8a', 1, 'center', '#000');
+    if (UI.button('gdel', cx - 60, 190, 120, 20, 'DELETE IT', { size: 1, accent: '#ff5a5a' })) { PX.Groups.leave(G.gid); screen = 'groups'; }
+  } else {
+    const n = EMOJIS.length, ew = Math.floor((rw + 2) / n) - 2, ex = Math.round(cx - (n * (ew + 2) - 2) / 2);
+    EMOJIS.forEach(([ch, rows], i) => {
+      const bx = ex + i * (ew + 2);
+      if (UI.button('gemo' + i, bx, 164, ew, 20, '', { size: 1, accent: '#3a2f5c' })) Chat.emoji(ch);
+      PX.drawIcon(ctx, rows, EMOJI_PAL, bx + ew / 2, 173, 2);
+    });
+    S.placeInput(chatInput, x, 188, rw - 64, 22);
+    const ready = !!chatClean(chatInput.value).trim() && !G.busy;
+    if (UI.button('gsend', x + rw - 60, 188, 60, 22, G.busy ? '...' : 'SEND', { accent: '#5ad43f', disabled: !ready })) G.send();
+    T(G.msg || 'EVERYBODY IN THE GROUP SEES IT WHEN THEIR ARCADE IS OPEN (WITHIN 12 HOURS).', cx, 214, G.msg ? G.col : '#5b5275', 1, 'center', '#000');
+  }
+  if (UI.button('gcback', cx - 50, 224, 100, 14, 'BACK', { size: 1 }) || UI.back) G.leaveChat();
+}
+function drawGroupInfo(t) {
+  const W = S.W, cx = Math.round(W / 2), G = GroupsUI, g = G.g(), me = profile.id;
+  if (!g) { screen = 'groups'; return; }
+  background(t);
+  T(g.name, cx, 8, '#fff', 3, 'center', '#000');
+  T('MEMBERS: ' + g.members.length + ' / ' + PX.Groups.MAX, cx, 32, '#9a92b8', 1, 'center', '#000');
+  const rw = Math.min(W - 16, 360), x = Math.round(cx - rw / 2), owner = g.owner === me;
+  g.members.forEach((p, i) => {
+    const y = 44 + i * 19;
+    ctx.fillStyle = '#16121f'; ctx.fillRect(x, y, rw, 17); ctx.fillStyle = p.id === g.owner ? '#ffd23f' : '#7af0ff'; ctx.fillRect(x, y, 3, 17);
+    T(p.name, x + 8, y + 3, '#fff', 1); T('ID ' + p.id, x + 8, y + 10, '#9a92b8', 1);
+    T(p.id === me ? 'YOU' : p.id === g.owner ? 'OWNER' : Friends.find(p.id) ? 'FRIEND' : '', x + 110, y + 6, p.id === g.owner ? '#ffd23f' : '#9a92b8', 1);
+    if (p.id === me && p.id === g.owner) T('OWNER', x + 140, y + 6, '#ffd23f', 1);
+    if (owner && p.id !== me && !g.out && UI.button('grm' + p.id, x + rw - 62, y + 1, 60, 15, G.sure === 'rm' + p.id ? 'SURE?' : 'REMOVE', { size: 1, accent: '#ff5a5a', on: G.sure === 'rm' + p.id, disabled: G.busy })) G.remove(p);
+  });
+  T(G.msg || (owner ? 'YOU MADE THIS GROUP: YOU CAN TAKE PLAYERS OUT.' : 'EVERY MEMBER CAN ADD THEIR FRIENDS.'), cx, 200, G.msg ? G.col : '#5b5275', 1, 'center', '#000');
+  if (!g.out && UI.button('gadd', cx - 156, 214, 100, 20, 'ADD FRIENDS', { size: 1, accent: '#5ad43f', disabled: G.busy || g.members.length >= PX.Groups.MAX })) G.addPeople();
+  if (UI.button('gleave', cx + 56, 214, 100, 20, G.sure === 'leave' ? 'SURE?' : 'LEAVE GROUP', { size: 1, accent: '#ff5a5a', on: G.sure === 'leave', disabled: G.busy })) G.leave();
+  if (UI.button('giback', cx - 50, 214, 100, 20, 'BACK', { size: 1, disabled: G.busy }) || (UI.back && !G.busy)) G.back();
 }
 
 // --- TOP: the global leaderboards ---------------------------------------------------------------------------------
@@ -2738,18 +2933,19 @@ function frame(now) {
   scrollStep(Math.min(0.05, (now - tPrev) / 1000)); tPrev = now;
   UI.begin();
   if ((screen === 'home' || screen === 'friends') && performance.now() - Inbox.last > 20000) Inbox.check();      // (every 20 seconds: an invite to a game shouldn't wait long)
-  if (screen === 'chat' && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
+  if ((screen === 'chat' || screen === 'gchat') && performance.now() - Inbox.last > 5000) Inbox.check();       // (every 5 seconds while you chat)
+  if ((screen === 'groups' || screen === 'ginfo') && performance.now() - Inbox.last > 20000) Inbox.check();
   if ((screen === 'friends' || screen === 'chat') && performance.now() - Online.last > 20000) Online.poll();
   if (now - callCheck > 10000) { callCheck = now; PX.Call.start(); }               // wait for friends' calls (PX.Call)
   if (now - Update.at > 600e3) Update.check();
   Update.step();
   if (screen === 'home' && starGiftDue()) screen = 'stars';
   if (screen === 'home' && invite) screen = 'invite';
-  if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'ideas') drawIdeas(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
+  if (screen === 'groups') drawGroups(t); else if (screen === 'gnew') drawGroupNew(t); else if (screen === 'gchat') drawGroupChat(t); else if (screen === 'ginfo') drawGroupInfo(t); else if (screen === 'gift') drawGift(t); else if (screen === 'stars') drawStars(t); else if (screen === 'invite') drawInvite(t); else if (screen === 'give') drawGive(t); else if (screen === 'friends') drawFriends(t); else if (screen === 'chat') drawChat(t); else if (screen === 'leaders') drawLeaders(t); else if (screen === 'ideas') drawIdeas(t); else if (screen === 'account') drawAccount(t); else if (screen === 'home') drawHome(t); else if (screen === 'search') drawSearch(t); else if (screen === 'remote') drawRemote(t); else if (screen === 'settings') drawSettings(t); else if (screen === 'coffee') drawCoffee(t); else if (screen === 'notify') drawNotify(t); else drawProfile(t);
   if (screen !== 'give' && screen !== 'friends') giveInput.style.display = 'none';
   for (const el of [pw1, pw2, codeInput, nameInput, ideaTitleInput, ideaBodyInput]) { if (!el.placed) el.style.display = 'none'; el.placed = false; }
   if (screen !== 'search') searchInput.style.display = 'none';
-  if (screen !== 'chat') chatInput.style.display = 'none';
+  if (screen !== 'chat' && screen !== 'gchat') chatInput.style.display = 'none';
   UI.end();
   S.blit('#0d0b13');
   requestAnimationFrame(frame);

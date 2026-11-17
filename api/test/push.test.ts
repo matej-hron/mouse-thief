@@ -93,6 +93,9 @@ describe('notes', () => {
     expect(noteFor({ t: 'inv', name: 'MIA', g: 'nope', code: 'ABCD' })).toBeNull();
     expect(noteFor({ t: 'gift', name: 'MIA' })).toBeNull();
     expect(noteFor({ t: 'chat', name: 'MIA', fid: '222222' })).toMatchObject({ title: 'NEW MESSAGE FROM MIA', tag: 'chat-222222' });
+    expect(noteFor({ t: 'gchat', name: 'MIA', gn: 'GANG', gid: 'abcdefgh1234' })).toMatchObject({ title: 'NEW MESSAGE IN GANG', body: 'FROM MIA. TAP TO READ IT IN THE ARCADE.', tag: 'gchat-abcdefgh1234' });
+    expect(noteFor({ t: 'gadd', name: 'MIA', gn: 'GANG', gid: 'abcdefgh1234' })).toMatchObject({ title: 'MIA ADDED YOU TO GANG', tag: 'gchat-abcdefgh1234' });
+    expect(noteFor({ t: 'gchat', name: 'MIA' })).toBeNull();
     expect(noteFor({ t: 'call', name: 'TOM', fid: '222222' })).toEqual({ title: 'TOM IS CALLING YOU!', body: 'OPEN THE ARCADE TO ANSWER.', url: 'index.html', tag: 'call-222222', call: true });
   });
 });
@@ -159,8 +162,34 @@ describe('push routes', () => {
     expect(titles.sort()).toEqual(['A FRIEND IS YOUR FRIEND NOW!', 'TOM WANTS TO BE YOUR FRIEND']);
   });
 
+  it('tells every member of a group at once, never the sender', async () => {
+    const mia = await register();
+    const tom = await register({ id: '222222', name: 'TOM' });
+    const { b } = await subscribe(mia);
+    await subscribe(tom);
+    const got = pushService();
+    const r = await call('POST', '/v1/push/send', { to: ['123456', '222222', '333333'], t: 'gchat', gn: 'the gang!', gid: 'abcdefgh1234' }, tom);
+    expect(r.status).toBe(204);
+    await until(() => got.length > 0);
+    await new Promise((res) => setTimeout(res, 50));
+    expect(got).toHaveLength(1); // MIA's phone: TOM sent it, and 333333 has no phone
+    const note = JSON.parse(await decrypt(b, new Uint8Array(got[0]!.init.body as Uint8Array)));
+    expect(note).toEqual({ title: 'NEW MESSAGE IN THE GANG', body: 'FROM TOM. TAP TO READ IT IN THE ARCADE.', url: 'index.html', tag: 'gchat-abcdefgh1234' });
+  });
+
+  it('hides a rude group name', async () => {
+    const mia = await register();
+    const { b } = await subscribe(mia);
+    const got = pushService();
+    await call('POST', '/v1/push/send', { to: ['123456'], t: 'gadd', from: 'TOM', fid: '222222', gn: 'KURVA', gid: 'abcdefgh1234' });
+    await until(() => got.length > 0);
+    expect(JSON.parse(await decrypt(b, new Uint8Array(got[0]!.init.body as Uint8Array))).title).toBe('TOM ADDED YOU TO A GROUP');
+  });
+
   it('refuses bad messages', async () => {
-    for (const body of [{ to: '12345', t: 'gift', n: 5 }, { to: '123456', t: 'hello' }, { to: '123456', t: 'gift' }, { to: '123456', t: 'inv', g: 'racer' }]) {
+    for (const body of [{ to: '12345', t: 'gift', n: 5 }, { to: '123456', t: 'hello' }, { to: '123456', t: 'gift' }, { to: '123456', t: 'inv', g: 'racer' },
+      { to: ['123456', '222222'], t: 'chat' }, { to: [], t: 'gchat', gn: 'X', gid: 'abcdefgh1234' }, { to: Array(9).fill('123456'), t: 'gchat', gn: 'X', gid: 'abcdefgh1234' },
+      { to: ['123456'], t: 'gchat', gn: 'X', gid: 'BAD' }]) {
       expect((await call('POST', '/v1/push/send', body)).status).toBe(400);
     }
   });

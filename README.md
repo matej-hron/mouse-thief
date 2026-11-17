@@ -665,6 +665,31 @@ button show how many new messages are waiting.
 - The chats are kept on each phone: the last 40 messages with each friend (`Chat` in `index.html`).
 - **CALL** (top right in the chat) calls your friend: see **Call a friend from the chat** under Voice chat.
 
+### Group chats
+
+**GROUPS** (bottom left in FRIENDS) are chats with up to **8 players**. (An idea from a player, on the IDEAS board.)
+
+1. **+ NEW GROUP:** a name (up to 10 letters) and the friends you want in it (tap them), then MAKE THE GROUP. They get
+   it the next time their arcade is open (within 12 hours), with a notification **(NAME) ADDED YOU TO (GROUP)**.
+2. The group's chat is like the chat with one friend (emojis, ##### for swear words), with each player's name above
+   their messages. The GROUPS list shows the last message and how many are new; the FRIENDS button counts them too.
+3. **MEMBERS** (top right in the chat): who is in it. Every member can **ADD FRIENDS** (their own friends); the one who
+   made the group (OWNER) can **REMOVE** a player; anyone can **LEAVE GROUP** (tap twice). A player who was taken out
+   sees YOU ARE NOT IN THIS GROUP ANY MORE and can delete it. When the owner leaves, the next member is the owner.
+- A message pops up in the games too (see Chat in the games), as **GROUP: NAME: MESSAGE**, and REPLY answers the group.
+- Notifications (if on): **NEW MESSAGE IN (GROUP)**, at most one a minute for each group, never what it says.
+- Players in a group who aren't your friends are shown with their name; you can read and write with them there.
+- How it works: `PX.Groups` in `common.js` (the arcade's screens: `GroupsUI` in `index.html`). A group has a random ID
+  (12 letters and digits) and its own ntfy.sh topic, `pixel-arcade-grp-<ID>`: a message is sent once and every member
+  reads it (every 20 seconds, 5 while the chat is open, and at once after a "sent" ping on the typing topic). What
+  happens in a group is a message on that topic: `msg`, `add` (a member added friends), `rm` (only from the owner),
+  `leave`; every phone applies them in order and keeps the group in `localStorage['pixelArcade.groups']` (members and
+  the last 40 messages). Someone who is added gets an invite (`t: 'ginv'`, only from a friend) on their own topic,
+  with the group as it is then. The notifications are one `POST /v1/push/send` with `to` as a list of IDs
+  (`t: 'gchat'` or `'gadd'`, with the group's name `gn`, checked like a player's name, and its ID `gid`).
+- **Good to know:** anybody who knows a group's ID could read its topic. Like the rest of the chat, it is made for
+  friends, not for secrets.
+
 ### Chat in the games
 
 You don't have to leave a game to see a message or answer it. (An idea from a player, on the IDEAS board.)
