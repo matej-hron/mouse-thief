@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Tanks: turn-based artillery for 2 to 4 tanks on hills that break apart. Aim, mind the wind, pick a weapon, fire. Against bots or friends on one phone.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Tanks</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #3a6ab8; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script src="cs.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL TANKS: turn-based artillery for 2 to 4 tanks (part of the PIXEL ARCADE).
+   The tanks take turns. On your turn: drag anywhere to aim (the direction from your tank, and how far you drag is the
+   power), drive a little with < > (fuel), pick a WEAPON and FIRE. The wind changes every turn. Explosions dig craters,
+   and a tank on the edge falls in (a long fall hurts). The last tank standing wins the battle; win the most battles of
+   the match (1, 3 or 5).
+     VS BOTS: you against 1-3 bots (EASY, NORMAL, HARD). ONE PHONE: 2-4 players take turns on this phone.
+   Weapons: SHELL (always), BIG SHOT, TRIPLE, CLUSTER (splits in the air), ROLLER (rolls down the hill, then goes off),
+   DIRT (makes a hill: cover). Each battle starts with the same ammo.
+   Wins against bots pay coins and ★; coins buy tank styles in the SHOP. TOP: PIXEL TANKS, the wins against bots.
+     1. Setup   2. The land   3. Shots   4. Bots   5. The battle   6. Drawing   7. Screens   8. Sound   9. Input   10. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelTanks.save';
+const save = { sfx: true, music: true, coins: 0, wins: 0, played: 0, style: 'classic', owned: { classic: 1 }, bots: 2, level: 'normal', battles: 3, n: 2, names: ['', 'PLAYER 2', 'PLAYER 3', 'PLAYER 4'] };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const raw = (...a) => PX.Lang.raw(() => T(...a));
+PX.Lang.page('tanks');                             // Czech when SETTINGS → LANGUAGE says so (cs.js)
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+const GRAV = 160;            // px/s² for shells
+const WIND_ACC = 7;          // px/s² per point of wind
+const POWER_MAX = 330;       // px/s at full power
+const FUEL = 50;             // px a tank can drive in a turn
+const DT = 1 / 120;          // shots fly in fixed steps
+const HP = 100;
+const COLS = ['#e8303a', '#2a7ad8', '#3aa83a', '#e0a820'];
+const LEVELS = { easy: { err: 0.16, name: 'EASY' }, normal: { err: 0.07, name: 'NORMAL' }, hard: { err: 0.025, name: 'HARD' } };
+const WEAPONS = [
+  { id: 'shell', name: 'SHELL', ammo: Infinity, r: 16, dmg: 34 },
+  { id: 'big', name: 'BIG SHOT', ammo: 2, r: 26, dmg: 50 },
+  { id: 'triple', name: 'TRIPLE', ammo: 2, r: 13, dmg: 24, n: 3 },
+  { id: 'cluster', name: 'CLUSTER', ammo: 1, r: 12, dmg: 22, split: 5 },
+  { id: 'roller', name: 'ROLLER', ammo: 2, r: 18, dmg: 38, roll: true },
+  { id: 'dirt', name: 'DIRT', ammo: 2, r: 22, dmg: 0, dirt: true },
+];
+const STYLES = [
+  { id: 'classic', name: 'CLASSIC', price: 0 },
+  { id: 'camo', name: 'CAMO', price: 200 },
+  { id: 'stripes', name: 'STRIPES', price: 300 },
+  { id: 'robot', name: 'ROBOT', price: 500 },
+  { id: 'gold', name: 'GOLD', price: 1000 },
+];
+const styleOf = id => STYLES.find(s => s.id === id) || STYLES[0];
+const rng = seed => { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+
+/* --- 2. THE LAND: one height per pixel column (the ground's top); craters lower it, DIRT raises it -------- */
+const THEMES = [
+  { name: 'GREEN HILLS', sky: ['#3a6ab8', '#5a8ad0', '#7aa8e0', '#9ac4ec'], top: '#5ad43f', ground: '#7a4c2a', deep: '#5a3418' },
+  { name: 'DESERT', sky: ['#e88a4a', '#f0a868', '#f8c890', '#ffe0b0'], top: '#f0d080', ground: '#c8904a', deep: '#a06a30' },
+  { name: 'SNOW', sky: ['#5a7ab8', '#7a9ad0', '#a8c0e8', '#d8e4f8'], top: '#ffffff', ground: '#8a9ab0', deep: '#5a6a80' },
+  { name: 'MOON', sky: ['#05030c', '#0b0a1e', '#141230', '#1e1a44'], top: '#c8c8d0', ground: '#7a7a88', deep: '#4a4a58' },
+];
+function makeLand(seed, W) {
+  const r = rng(seed), h = new Float32Array(W), a = [r() * 6, r() * 6, r() * 6], f = [0.008 + r() * 0.006, 0.02 + r() * 0.02, 0.05 + r() * 0.03], amp = [38, 16, 5];
+  for (let x = 0; x < W; x++) h[x] = 150 + amp.reduce((s, A, i) => s + A * Math.sin(x * f[i] + a[i]), 0);
+  return h;
+}
+const groundAt = (B, x) => B.land[clamp(Math.round(x), 0, B.land.length - 1)];
+function crater(B, x, y, r, dirt) {
+  const L = B.land;
+  for (let i = Math.max(0, Math.floor(x - r)); i <= Math.min(L.length - 1, Math.ceil(x + r)); i++) {
+    const dx = i - x, half = Math.sqrt(Math.max(0, r * r - dx * dx));
+    if (dirt) { const top = y - half; if (L[i] > top) L[i] = Math.max(20, top); }
+    else if (L[i] < y + half) L[i] = Math.min(H + 30, y + half);
+  }
+}
+
+/* --- 3. SHOTS: a shell flies in fixed steps; it goes off on the ground, on a tank, or leaves the screen ----------- */
+function launch(B, t, w) {
+  const a = t.ang * Math.PI / 180, v = t.pow * POWER_MAX, x = t.x + Math.cos(a) * 10, y = t.y - 8 - Math.sin(a) * 10;
+  const list = [];
+  if (w.n) for (let k = -1; k <= 1; k++) { const b = a + k * 0.07; list.push({ x, y, vx: Math.cos(b) * v, vy: -Math.sin(b) * v, w }); }
+  else list.push({ x, y, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, w });
+  for (const s of list) { s.by = t; s.trail = []; s.n = 0; s.top = false; }
+  return list;
+}
+// one step of a shell; returns null while it flies, or what happened
+function stepShell(B, s, W) {
+  if (s.rolling) {                                  // ROLLER: on the ground, down the slope
+    const dir = s.vx >= 0 ? 1 : -1, here = groundAt(B, s.x), ahead = groundAt(B, s.x + dir * 2);
+    if (ahead < here - 1.5 || (s.rollT += DT) > 2.5) return { boom: true };
+    s.x += dir * 70 * DT; s.y = groundAt(B, s.x) - 3;
+    if (s.x < 0 || s.x >= W) return { gone: true };
+    for (const t of B.tanks) if (t.hp > 0 && Math.abs(t.x - s.x) < 9 && Math.abs(t.y - 4 - s.y) < 10) return { boom: true };
+    return null;
+  }
+  s.vy += GRAV * DT; s.vx += B.wind * WIND_ACC * DT;
+  s.x += s.vx * DT; s.y += s.vy * DT;
+  if (s.vy > 0 && !s.top) { s.top = true; if (s.w.split) return { split: true }; }
+  if (s.x < -40 || s.x > W + 40 || s.y > H + 40) return { gone: true };
+  if (s.x >= 0 && s.x < W && s.y >= groundAt(B, s.x)) {
+    if (s.w.roll) { s.rolling = true; s.rollT = 0; s.vx = s.vx === 0 ? 1 : s.vx; s.y = groundAt(B, s.x) - 3; return null; }
+    return { boom: true };
+  }
+  for (const t of B.tanks) if (t.hp > 0 && t !== s.by && Math.abs(t.x - s.x) < 9 && s.y > t.y - 12 && s.y < t.y + 1) return { boom: true };
+  if (s.by && s.n > 40 && Math.abs(s.by.x - s.x) < 9 && s.y > s.by.y - 12 && s.y < s.by.y + 1) return { boom: true };
+  return null;
+}
+// an explosion: the crater, and damage by distance
+function explode(B, x, y, w, fx) {
+  crater(B, x, y, w.r, w.dirt);
+  if (fx) { B.booms.push({ x, y, r: w.r, t: 0, dirt: w.dirt }); B.shake = Math.max(B.shake, w.r / 60); }
+  if (w.dirt) return;
+  for (const t of B.tanks) {
+    if (t.hp <= 0) continue;
+    const d = Math.hypot(t.x - x, t.y - 5 - y);
+    if (d < w.r + 8) { const hit = Math.round(w.dmg * (1 - Math.max(0, d - 4) / (w.r + 8))); if (hit > 0) { t.hp = Math.max(0, t.hp - hit); if (fx) B.pops.push({ x: t.x, y: t.y - 22, txt: '-' + hit, col: '#ff5a5a', t: 0 }); } }
+  }
+}
+// where a shot would land, without touching the battle (for the bots): the land is copied
+function simulate(B, t, ang, pow, w) {
+  const C = { land: B.land, tanks: B.tanks, wind: B.wind, booms: [], pops: [] };
+  const s = launch(C, { x: t.x, y: t.y, ang, pow }, w)[0]; s.by = t;
+  const W = B.land.length;
+  for (let i = 0; i < 1500; i++) { const r = stepShell(C, s, W); if (r && !r.split) return r.gone ? null : { x: s.x, y: s.y }; }
+  return null;
+}
+
+/* --- 4. BOTS: try many shots, keep the one landing nearest an enemy, then miss a little (the level) ------------- */
+function botAim(B, t) {
+  const foes = B.tanks.filter(o => o !== t && o.hp > 0);
+  if (!foes.length) return { ang: 60, pow: 0.5, wi: 0 };
+  const target = foes.reduce((a, b) => (Math.abs(a.x - t.x) < Math.abs(b.x - t.x) ? a : b));
+  const lv = LEVELS[t.level || 'normal'];
+  // the weapon: a bigger one now and then
+  let wi = 0;
+  const has = id => { const i = WEAPONS.findIndex(w => w.id === id); return t.ammo[i] > 0 ? i : -1; };
+  if (Math.random() < 0.35) { const pick = ['big', 'triple', 'cluster', 'roller'].map(has).filter(i => i >= 0); if (pick.length) wi = pick[Math.floor(Math.random() * pick.length)]; }
+  let best = null;
+  const dir = target.x > t.x ? 1 : -1;
+  for (let a = 15; a <= 165; a += 5) {
+    if ((a < 90 && dir < 0) || (a > 90 && dir > 0)) continue;
+    for (let p = 0.25; p <= 1; p += 0.05) {
+      const hit = simulate(B, t, a, p, WEAPONS[0]);
+      if (!hit) continue;
+      const d = Math.hypot(hit.x - target.x, hit.y - target.y);
+      if (!best || d < best.d) best = { ang: a, pow: p, d };
+    }
+  }
+  if (!best) best = { ang: dir > 0 ? 55 : 125, pow: 0.7 };
+  return { ang: clamp(best.ang + (Math.random() - 0.5) * lv.err * 140, 5, 175), pow: clamp(best.pow * (1 + (Math.random() - 0.5) * lv.err * 2), 0.1, 1), wi };
+}
+
+/* --- 5. THE BATTLE ------------------------------------------------------------------------------------------ */
+// Match: the players and how many battles each has won; B: the battle being played
+let Match = null, B = null;
+function newMatch(mode) {
+  const players = [];
+  if (mode === 'bots') {
+    players.push({ name: profile.name, col: COLS[0], human: true, style: save.style });
+    for (let i = 0; i < clamp(save.bots | 0, 1, 3); i++) players.push({ name: ['BOT BLUE', 'BOT GREEN', 'BOT GOLD'][i], col: COLS[i + 1], bot: true, level: save.level, style: ['camo', 'stripes', 'robot'][i] });
+  } else {
+    for (let i = 0; i < clamp(save.n | 0, 2, 4); i++) players.push({ name: i === 0 ? profile.name : save.names[i] || 'PLAYER ' + (i + 1), col: COLS[i], human: true, style: i === 0 ? save.style : 'classic' });
+  }
+  Match = { mode, players, wins: players.map(() => 0), battle: 0, of: save.battles | 0 || 3, over: false };
+  newBattle();
+  state = 'play'; paused = false;
+}
+function newBattle() {
+  const W = S.W, seed = Math.floor(Math.random() * 1e9), n = Match.players.length;
+  B = { land: makeLand(seed, W), theme: THEMES[Match.battle % THEMES.length], tanks: [], turn: 0, wind: 0, shells: [], booms: [], pops: [], shake: 0,
+        phase: 'aim', waitT: 0, over: false, overT: 0, winner: -1, firstTurn: true, msg: '', msgT: 0 };
+  const order = [...Array(n).keys()].sort(() => Math.random() - 0.5);
+  order.forEach((pi, k) => {
+    const p = Match.players[pi], x = Math.round(W * (k + 0.5) / n + (Math.random() - 0.5) * W * 0.12);
+    // a flat little spot for each tank
+    const g = B.land[clamp(x, 0, W - 1)]; for (let i = x - 8; i <= x + 8; i++) if (i >= 0 && i < W) B.land[i] = g;
+    B.tanks.push({ p: pi, name: p.name, col: p.col, bot: !!p.bot, level: p.level, style: p.style, x, y: g, hp: HP, ang: x < W / 2 ? 50 : 130, pow: 0.6, fuel: FUEL, wi: 0, ammo: WEAPONS.map(w => w.ammo), vy: 0, fall: 0 });
+  });
+  B.turn = Math.floor(Math.random() * n);
+  startTurn();
+}
+const cur = () => B.tanks[B.turn];
+function startTurn() {
+  const t = cur();
+  B.wind = Math.round((Math.random() * 2 - 1) * 10);
+  t.fuel = FUEL; B.phase = t.bot ? 'think' : 'aim'; B.waitT = 0;
+  if (t.ammo[t.wi] <= 0) t.wi = 0;
+  if (Match.mode === 'one' && !t.bot && Match.players.filter(p => p.human).length > 1) B.phase = 'pass';
+  sfx('turn');
+}
+function nextTurn() {
+  const alive = B.tanks.filter(t => t.hp > 0);
+  if (alive.length <= 1) return endBattle(alive[0]);
+  let i = B.turn;
+  do { i = (i + 1) % B.tanks.length; } while (B.tanks[i].hp <= 0);
+  B.turn = i; startTurn();
+}
+function fire() {
+  const t = cur(), w = WEAPONS[t.wi];
+  if (B.phase !== 'aim' && B.phase !== 'botfire') return;
+  if (t.ammo[t.wi] !== Infinity) t.ammo[t.wi]--;
+  B.shells = launch(B, t, w); B.phase = 'fly'; sfx('fire');
+}
+function endBattle(winner) {
+  B.over = true; B.overT = 0; B.winner = winner ? winner.p : -1;
+  if (winner) Match.wins[winner.p]++;
+  const need = Math.floor(Match.of / 2) + 1;
+  Match.battle++;
+  if (Match.wins.some(w => w >= need) || Match.battle >= Match.of) finishMatch();
+  sfx(winner && Match.players[winner.p].human ? 'win' : 'lose');
+}
+function finishMatch() {
+  Match.over = true;
+  const best = Math.max(...Match.wins), champs = Match.players.map((p, i) => i).filter(i => Match.wins[i] === best);
+  Match.champs = champs;
+  save.played = (save.played | 0) + 1;
+  if (Match.mode === 'bots' && champs.length === 1 && champs[0] === 0) {
+    const bots = Match.players.length - 1, lv = { easy: 1, normal: 2, hard: 3 }[save.level] || 2;
+    Match.coins = 40 * bots * lv; Match.stars = bots * lv;
+    save.wins = (save.wins | 0) + 1; save.coins = (save.coins | 0) + Match.coins; PX.Wallet.add(Match.stars);
+  }
+  store();
+}
+// tanks fall when the ground under them goes; a long fall hurts
+function settle(dt) {
+  let moving = false;
+  for (const t of B.tanks) {
+    if (t.hp <= 0) { const g = groundAt(B, t.x); if (t.y < g) t.y = Math.min(g, t.y + 120 * dt); continue; }   // (a wreck sinks with the ground)
+    const g = groundAt(B, t.x);
+    if (t.y < g - 0.5) { t.vy += 300 * dt; t.y = Math.min(g, t.y + t.vy * dt); t.fall += t.vy * dt; moving = true; }
+    else { if (t.fall > 20) { const d = Math.round((t.fall - 20) * 0.5); t.hp = Math.max(0, t.hp - d); B.pops.push({ x: t.x, y: t.y - 22, txt: '-' + d, col: '#ff8a5a', t: 0 }); } t.y = g; t.vy = 0; t.fall = 0; }
+    if (t.y > H + 10) t.hp = 0;
+  }
+  return moving;
+}
+function step(dt) {
+  if (!B || B.over) { if (B) { B.overT += dt; for (const b of B.booms) b.t += dt; for (const p of B.pops) p.t += dt; } return; }
+  const W = S.W;
+  if (B.shake > 0) B.shake -= dt;
+  for (const b of B.booms) b.t += dt; B.booms = B.booms.filter(b => b.t < 0.6);
+  for (const p of B.pops) p.t += dt; B.pops = B.pops.filter(p => p.t < 1.2);
+  const t = cur();
+  if (B.phase === 'think') { if ((B.waitT += dt) > 0.6) { const a = botAim(B, t); t.aimTo = a; B.phase = 'botaim'; B.waitT = 0; } }
+  else if (B.phase === 'botaim') {                // the bot turns its gun, then fires
+    B.waitT += dt;
+    t.ang += clamp(t.aimTo.ang - t.ang, -90 * dt, 90 * dt); t.pow += clamp(t.aimTo.pow - t.pow, -1 * dt, 1 * dt); t.wi = t.aimTo.wi;
+    if (Math.abs(t.ang - t.aimTo.ang) < 0.5 && Math.abs(t.pow - t.aimTo.pow) < 0.01 && B.waitT > 0.6) { B.phase = 'botfire'; fire(); }
+  }
+  else if (B.phase === 'fly') {
+    const steps = Math.round(dt / DT);
+    for (let k = 0; k < Math.max(1, steps); k++) {
+      for (const s of [...B.shells]) {
+        const r = stepShell(B, s, W);
+        if (++s.n % 3 === 0) s.trail.push([s.x, s.y]);
+        if (!r) continue;
+        if (r.split) { for (let i = 0; i < s.w.split; i++) B.shells.push({ x: s.x, y: s.y, vx: s.vx + (i - 2) * 30, vy: s.vy * 0.4 - 20, w: { ...s.w, split: 0 }, by: null, trail: [], n: 0, top: true }); B.shells.splice(B.shells.indexOf(s), 1); sfx('split'); continue; }
+        B.shells.splice(B.shells.indexOf(s), 1);
+        if (r.boom) { explode(B, s.x, s.y, s.w, true); sfx(s.w.dirt ? 'dirt' : 'boom', s.w.r); }
+      }
+      if (!B.shells.length) break;
+    }
+    if (!B.shells.length) { B.phase = 'settle'; B.waitT = 0; }
+  }
+  else if (B.phase === 'settle') {
+    const moving = settle(dt);
+    if (!moving && (B.waitT += dt) > 0.7) {
+      for (const tk of B.tanks) if (tk.hp <= 0 && !tk.dead) { tk.dead = true; B.booms.push({ x: tk.x, y: tk.y - 4, r: 20, t: 0 }); crater(B, tk.x, tk.y, 10); sfx('boom', 24); }
+      nextTurn();
+    }
+  }
+  else settle(dt);
+}
+// driving: a few pixels left or right, up gentle slopes only
+function drive(dir, dt) {
+  const t = cur(); if (B.phase !== 'aim' || t.fuel <= 0) return;
+  const nx = clamp(t.x + dir * 30 * dt, 6, S.W - 6), ng = groundAt(B, nx);
+  if (ng < t.y - 3) return;                         // too steep
+  t.fuel -= Math.abs(nx - t.x); t.x = nx; if (ng >= t.y) t.y = ng; else t.y = ng;
+}
+
+/* --- 6. DRAWING --------------------------------------------------------------------------------------------- */
+function drawLand(t) {
+  const W = S.W, th = B.theme;
+  th.sky.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * 40, W, 41); });
+  ctx.fillStyle = th.sky[3]; ctx.fillRect(0, 160, W, H - 160);
+  if (th.name === 'MOON') { for (let i = 0; i < 40; i++) { ctx.fillStyle = '#ffffff'; ctx.fillRect((i * 73) % W, (i * 37) % 120, 1, 1); } ctx.fillStyle = '#2a7ad8'; ctx.fillRect(W - 70, 34, 16, 16); ctx.fillStyle = '#3aa83a'; ctx.fillRect(W - 66, 38, 6, 5); }
+  else { ctx.fillStyle = '#fff6c0'; ctx.fillRect(W - 70, 34, 16, 16); for (let i = 0; i < 4; i++) { const cx = ((i * 140 + t * (6 + B.wind * 2)) % (W + 80) + W + 80) % (W + 80) - 40; ctx.fillStyle = '#ffffffb0'; ctx.fillRect(Math.round(cx), 30 + i * 14, 34, 6); ctx.fillRect(Math.round(cx) + 6, 26 + i * 14, 18, 5); } }
+  for (let x = 0; x < W; x++) {
+    const y = Math.round(B.land[x]); if (y >= H) continue;
+    ctx.fillStyle = th.top; ctx.fillRect(x, y, 1, 3);
+    ctx.fillStyle = th.ground; ctx.fillRect(x, y + 3, 1, 14);
+    ctx.fillStyle = th.deep; ctx.fillRect(x, y + 17, 1, H - y);
+  }
+}
+function drawTank(tk, t, active) {
+  const x = Math.round(tk.x), y = Math.round(tk.y), st = styleOf(tk.style);
+  if (tk.hp <= 0) { ctx.fillStyle = '#2a2a2a'; ctx.fillRect(x - 7, y - 4, 14, 4); ctx.fillStyle = '#555'; ctx.fillRect(x - 3, y - 6, 6, 2); return; }
+  const a = tk.ang * Math.PI / 180;
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x + Math.cos(a) * 11, y - 8 - Math.sin(a) * 11); ctx.stroke();
+  ctx.strokeStyle = st.id === 'gold' ? '#ffd23f' : '#c8c8d0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x + Math.cos(a) * 10, y - 8 - Math.sin(a) * 10); ctx.stroke();
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 9, y - 7, 18, 7); ctx.fillRect(x - 5, y - 11, 10, 5);
+  ctx.fillStyle = st.id === 'gold' ? '#ffd23f' : tk.col; ctx.fillRect(x - 8, y - 6, 16, 4); ctx.fillRect(x - 4, y - 10, 8, 4);
+  if (st.id === 'camo') { ctx.fillStyle = '#0006'; ctx.fillRect(x - 6, y - 6, 3, 2); ctx.fillRect(x + 2, y - 5, 3, 2); ctx.fillRect(x - 2, y - 9, 2, 2); }
+  if (st.id === 'stripes') { ctx.fillStyle = '#ffffffa0'; ctx.fillRect(x - 8, y - 5, 16, 1); ctx.fillRect(x - 4, y - 9, 8, 1); }
+  if (st.id === 'robot') { ctx.fillStyle = '#7af0ff'; ctx.fillRect(x - 2, y - 9, 1, 1); ctx.fillRect(x + 1, y - 9, 1, 1); }
+  if (st.id === 'gold' && Math.sin(t * 5 + tk.x) > 0.7) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 3, y - 9, 1, 1); }
+  ctx.fillStyle = '#3a3a44'; ctx.fillRect(x - 8, y - 2, 16, 2); ctx.fillStyle = '#777'; for (let i = -6; i <= 6; i += 4) ctx.fillRect(x + i, y - 2, 2, 2);
+  // the health bar and the name
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 9, y - 18, 18, 3); ctx.fillStyle = tk.hp > 50 ? '#5ad43f' : tk.hp > 25 ? '#ffd23f' : '#ff3a3a'; ctx.fillRect(x - 8, y - 17, Math.round(16 * tk.hp / HP), 1);
+  if (active) { const b = Math.sin(t * 8) > 0 ? 1 : 0; ctx.fillStyle = '#fff'; ctx.fillRect(x - 1, y - 25 - b, 3, 3); ctx.fillRect(x, y - 22 - b, 1, 1); }
+}
+function drawBattle(t) {
+  const W = S.W;
+  ctx.save();
+  if (B.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * B.shake * 8), Math.round((Math.random() - 0.5) * B.shake * 8));
+  drawLand(t);
+  B.tanks.forEach((tk, i) => drawTank(tk, t, i === B.turn && !B.over && B.phase !== 'fly'));
+  // the aim: a short dotted line, longer with more power (not the whole path: that's the game)
+  const tk = cur();
+  if (!B.over && (B.phase === 'aim' || B.phase === 'botaim') && !tk.bot) {
+    const a = tk.ang * Math.PI / 180;
+    for (let k = 1; k <= 6; k++) { const d = 14 + k * 4 * (0.4 + tk.pow); ctx.fillStyle = k % 2 ? '#ffffff' : '#ffffff80'; ctx.fillRect(Math.round(tk.x + Math.cos(a) * d), Math.round(tk.y - 8 - Math.sin(a) * d), 2, 2); }
+  }
+  for (const s of B.shells) {
+    ctx.fillStyle = '#ffffff60'; for (let i = 0; i < s.trail.length; i += 2) { const p = s.trail[i]; ctx.fillRect(Math.round(p[0]), Math.round(p[1]), 1, 1); }
+    ctx.fillStyle = '#111'; ctx.fillRect(Math.round(s.x) - 2, Math.round(s.y) - 2, 4, 4); ctx.fillStyle = s.w.dirt ? '#a06a30' : '#ffd23f'; ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 2);
+  }
+  for (const b of B.booms) {
+    const k = b.t / 0.6, r = Math.round(b.r * (0.5 + k * 0.6));
+    ctx.globalAlpha = 1 - k;
+    ctx.fillStyle = b.dirt ? '#a06a30' : k < 0.3 ? '#ffffff' : '#ff8a1e'; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, 6.29); ctx.fill();
+    ctx.fillStyle = b.dirt ? '#7a4c2a' : '#ffd23f'; ctx.beginPath(); ctx.arc(b.x, b.y, r * 0.6, 0, 6.29); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  for (const p of B.pops) T(p.txt, p.x, p.y - p.t * 16, p.col, 1, 'center', '#000');
+  ctx.restore();
+}
+function windArrow(x, y) {
+  const w = B.wind, len = Math.abs(w) * 3;
+  T('WIND', x, y - 10, '#fff', 1, 'center', '#000');
+  if (!w) { T('0', x, y, '#fff', 1, 'center', '#000'); return; }
+  ctx.fillStyle = '#111'; ctx.fillRect(Math.round(x - len / 2) - 1, y, len + 2, 4);
+  ctx.fillStyle = '#7af0ff'; ctx.fillRect(Math.round(x - len / 2), y + 1, len, 2);
+  const hx = w > 0 ? Math.round(x + len / 2) : Math.round(x - len / 2);
+  for (let i = 0; i < 3; i++) ctx.fillRect(hx + (w > 0 ? i : -i), y + 2 - (3 - i), 1, (3 - i) * 2);
+  T(String(Math.abs(w)), x, y + 7, '#7af0ff', 1, 'center', '#000');
+}
+
+/* --- 7. SCREENS ---------------------------------------------------------------------------------------------- */
+let state = 'title';          // title | setup | shop | play
+let paused = false, setupMode = 'bots', msg = null;
+function panel(w, h, y, col = '#5ad43f') {
+  const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = col; ctx.fillRect(x, y, w, 2);
+  return { x, y };
+}
+function coinIcon(x, y) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, 8, 10); ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, 6, 8); ctx.fillStyle = '#fff6c0'; ctx.fillRect(x + 1, y + 1, 1, 4); }
+function topBar(back) {
+  const W = S.W, st = '★ ' + PX.Wallet.get();
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T(st, W - 38, 12, '#ffd23f', 2, 'right', '#000');
+  T(String(save.coins | 0), W - 46 - PX.textWidth(st, 2), 12, '#ffe27a', 2, 'right', '#000');
+  coinIcon(W - 46 - PX.textWidth(st, 2) - PX.textWidth(String(save.coins | 0), 2) - 10, 13);
+  if (back && (UI.button('back', 6, 6, 56, 20, '< BACK', { size: 1 }) || UI.back)) { sfx('click'); state = 'title'; }
+}
+// the title screen has a battle of bots going on behind it
+let demo = null;
+function drawTitle(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.3)'; ctx.fillRect(0, 0, W, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); raw(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  topBar(false);
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'TANKS', W / 2, 52, 7);
+  const bw = 200, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('bots', bx, 102, 98, 26, 'VS BOTS', { size: 1, accent: '#5ad43f' })) { sfx('click'); setupMode = 'bots'; state = 'setup'; }
+  if (UI.button('one', bx + 102, 102, 98, 26, 'ONE PHONE', { size: 1, accent: '#ff7ab8' })) { sfx('click'); setupMode = 'one'; state = 'setup'; }
+  if (UI.button('shop', bx, 134, 98, 22, 'SHOP', { size: 1, accent: '#ffd23f' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('music', bx + 102, 134, 98, 22, save.music ? 'MUSIC: ON' : 'MUSIC: OFF', { size: 1, on: save.music })) { save.music = !save.music; store(); }
+  T('WINS AGAINST BOTS: ' + (save.wins | 0), W / 2, 164, '#fff', 1, 'center', '#000');
+  if (UI.button('games', bx, 180, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#c8b8ff', 1, 'right');
+}
+function drawSetup(t) {
+  const W = S.W, cx = Math.round(W / 2);
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  topBar(true);
+  T(setupMode === 'bots' ? 'VS BOTS' : 'ONE PHONE', cx, 10, '#fff', 2, 'center', '#000');
+  let y = 40;
+  if (setupMode === 'bots') {
+    T('BOTS', cx - 150, y + 6, '#9a92b8', 1);
+    [1, 2, 3].forEach((n, i) => { if (UI.button('b' + n, cx - 90 + i * 34, y, 30, 20, String(n), { size: 1, on: save.bots === n, accent: '#5ad43f' })) { save.bots = n; store(); } });
+    y += 28;
+    T('LEVEL', cx - 150, y + 6, '#9a92b8', 1);
+    Object.keys(LEVELS).forEach((k, i) => { if (UI.button('l' + k, cx - 90 + i * 74, y, 70, 20, LEVELS[k].name, { size: 1, on: save.level === k, accent: ['#5ad43f', '#ffd23f', '#ff5a5a'][i] })) { save.level = k; store(); } });
+  } else {
+    T('PLAYERS', cx - 150, y + 6, '#9a92b8', 1);
+    [2, 3, 4].forEach((n, i) => { if (UI.button('p' + n, cx - 90 + i * 34, y, 30, 20, String(n), { size: 1, on: save.n === n, accent: '#ff7ab8' })) { save.n = n; store(); } });
+    y += 28;
+    for (let i = 0; i < save.n; i++) { ctx.fillStyle = COLS[i]; ctx.fillRect(cx - 150 + i * 76, y + 2, 70, 3); raw(i === 0 ? profile.name : save.names[i] || 'PLAYER ' + (i + 1), cx - 115 + i * 76, y + 9, '#fff', 1, 'center'); }
+  }
+  y += 34;
+  T('BATTLES', cx - 150, y + 6, '#9a92b8', 1);
+  [1, 3, 5].forEach((n, i) => { if (UI.button('m' + n, cx - 90 + i * 34, y, 30, 20, String(n), { size: 1, on: save.battles === n, accent: '#7af0ff' })) { save.battles = n; store(); } });
+  T(save.battles === 1 ? 'ONE BATTLE' : 'BEST OF ' + save.battles, cx + 30, y + 6, '#c8b8ff', 1);
+  y += 34;
+  if (setupMode === 'bots') { const lv = { easy: 1, normal: 2, hard: 3 }[save.level]; T('A WIN PAYS ★' + save.bots * lv + ' AND ' + 40 * save.bots * lv + ' COINS', cx, y, '#ffd23f', 1, 'center', '#000'); }
+  else T('PASS THE PHONE ON EVERY TURN', cx, y, '#c8b8ff', 1, 'center', '#000');
+  if (UI.button('go', cx - 80, 196, 160, 28, 'START!', { accent: '#5ad43f' })) { sfx('click'); newMatch(setupMode); }
+}
+function drawShop(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  topBar(true);
+  T('TANK STYLES', W / 2, 36, '#fff', 2, 'center', '#000');
+  const bw = 92, gap = 6, x0 = Math.round(W / 2 - (3 * bw + 2 * gap) / 2);
+  STYLES.forEach((st, i) => {
+    const x = x0 + (i % 3) * (bw + gap), y = 58 + Math.floor(i / 3) * 70, owned = !!save.owned[st.id] || st.price === 0, on = save.style === st.id;
+    if (UI.button('st' + i, x, y, bw, 64, '', { on, accent: on ? '#5ad43f' : '#ffd23f' })) {
+      if (owned) { save.style = st.id; store(); sfx('click'); }
+      else if ((save.coins | 0) >= st.price) { save.coins -= st.price; save.owned[st.id] = 1; save.style = st.id; store(); sfx('buy'); msg = { txt: st.name + '!', t: 1.5 }; }
+      else { sfx('no'); msg = { txt: 'NOT ENOUGH COINS', t: 1.5 }; }
+    }
+    drawTank({ x: x + bw / 2, y: y + 30, ang: 45, hp: HP, col: COLS[0], style: st.id }, t, false);
+    T(st.name, x + bw / 2, y + 38, '#fff', 1, 'center', '#000');
+    if (on) T('ON', x + bw / 2, y + 50, '#5ad43f', 1, 'center', '#000');
+    else if (owned) T('OWNED', x + bw / 2, y + 50, '#c8b8ff', 1, 'center', '#000');
+    else { coinIcon(x + bw / 2 - PX.textWidth(String(st.price), 1) / 2 - 7, y + 49); T(String(st.price), x + bw / 2 + 4, y + 50, (save.coins | 0) >= st.price ? '#ffd23f' : '#8a6a6a', 1, 'center', '#000'); }
+  });
+  T('WIN AGAINST BOTS TO EARN COINS.', W / 2, 210, '#c8b8ff', 1, 'center', '#000');
+}
+function drawHUD(t) {
+  const W = S.W, tk = cur(), human = !tk.bot;
+  // whose turn, the wind, the scores of the match
+  ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, 22);
+  ctx.fillStyle = tk.col; ctx.fillRect(0, 0, 4, 22);
+  raw(tk.name, 10, 4, '#fff', 1); T(tk.bot ? 'THINKING...' : 'YOUR TURN', 10, 13, tk.bot ? '#9a92b8' : '#5ad43f', 1);
+  windArrow(W / 2, 11);
+  if (Match.of > 1) Match.players.forEach((p, i) => { ctx.fillStyle = p.col; ctx.fillRect(W - 120 + i * 18, 6, 4, 10); T(String(Match.wins[i]), W - 114 + i * 18, 8, '#fff', 1); });
+  if (UI.button('pause', W - 28, 1, 24, 20, 'II', { size: 1 })) paused = true;
+  if (!human || B.phase !== 'aim') return;
+  // the controls: < > drive, WEAPON, FIRE; drag anywhere else to aim
+  const by = H - 26;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, by - 4, W, 30);
+  UI.button('left', 6, by, 30, 22, '<', { size: 2, disabled: tk.fuel <= 0 }); UI.button('right', 40, by, 30, 22, '>', { size: 2, disabled: tk.fuel <= 0 });
+  if (UI.pressed && UI.downId === 'left') drive(-1, 1 / 60);       // (held: it drives)
+  if (UI.pressed && UI.downId === 'right') drive(1, 1 / 60);
+  ctx.fillStyle = '#111'; ctx.fillRect(76, by + 8, 34, 6); ctx.fillStyle = '#ffd23f'; ctx.fillRect(77, by + 9, Math.round(32 * tk.fuel / FUEL), 4); T('FUEL', 93, by + 1, '#9a92b8', 1, 'center');
+  const w = WEAPONS[tk.wi], left = tk.ammo[tk.wi] === Infinity ? '' : ' X' + tk.ammo[tk.wi];
+  if (UI.button('weapon', 116, by, 108, 22, w.name + left, { size: 1, accent: '#7af0ff' })) { let i = tk.wi; do { i = (i + 1) % WEAPONS.length; } while (tk.ammo[i] <= 0); tk.wi = i; sfx('click'); }
+  T('ANGLE ' + Math.round(tk.ang > 90 ? 180 - tk.ang : tk.ang) + '  POWER ' + Math.round(tk.pow * 100), W - 59, by - 12, '#fff', 1, 'center', '#000');
+  if (UI.button('fire', W - 112, by, 106, 22, 'FIRE!', { accent: '#ff3a3a' })) fire();
+  if (B.firstTurn && Match.battle === 0) T('DRAG ANYWHERE TO AIM: DIRECTION AND POWER', W / 2, 30, '#fff', 1, 'center', '#000');
+}
+function drawPass(t) {
+  const W = S.W, tk = cur(), { y } = panel(240, 96, undefined, tk.col);
+  raw(tk.name, W / 2, y + 14, tk.col, 3, 'center', '#000');
+  T("IT'S YOUR TURN. PASS THE PHONE!", W / 2, y + 42, '#fff', 1, 'center', '#000');
+  if (UI.button('ready', W / 2 - 70, y + 60, 140, 26, 'READY!', { accent: '#5ad43f' })) { B.phase = 'aim'; sfx('click'); }
+}
+function drawOver(t) {
+  const W = S.W, M = Match, win = B.winner >= 0 ? M.players[B.winner] : null;
+  if (!M.over) {
+    const { y } = panel(240, 110, undefined, win ? win.col : '#9a92b8');
+    PX.Lang.raw(() => T(win ? win.name : '', W / 2, y + 14, win ? win.col : '#fff', 2, 'center', '#000'));
+    T(win ? 'WINS THE BATTLE!' : 'NOBODY IS LEFT!', W / 2, y + 36, '#fff', 2, 'center', '#000');
+    T('BATTLE ' + M.battle + ' OF ' + M.of, W / 2, y + 60, '#c8b8ff', 1, 'center');
+    if (B.overT > 1 && UI.button('next', W / 2 - 80, y + 76, 160, 24, 'NEXT BATTLE', { size: 1, accent: '#5ad43f' })) newBattle();
+    return;
+  }
+  const { y } = panel(280, 170, undefined, '#ffd23f');
+  const names = M.champs.map(i => M.players[i].name).join(' & ');
+  T('THE MATCH', W / 2, y + 10, '#c8b8ff', 1, 'center');
+  PX.Lang.raw(() => T(names, W / 2, y + 24, M.players[M.champs[0]].col, M.champs.length > 1 ? 2 : 3, 'center', '#000'));
+  T(M.champs.length > 1 ? 'SHARE THE WIN!' : 'WINS THE MATCH!', W / 2, y + 52, '#fff', 2, 'center', '#000');
+  M.players.forEach((p, i) => { ctx.fillStyle = p.col; ctx.fillRect(W / 2 - 120 + i * 62, y + 78, 56, 3); raw(p.name, W / 2 - 92 + i * 62, y + 85, '#fff', 1, 'center'); T(String(M.wins[i]), W / 2 - 92 + i * 62, y + 96, '#ffd23f', 2, 'center', '#000'); });
+  if (M.coins) { coinIcon(W / 2 - 60, y + 117); T('+' + M.coins, W / 2 - 48, y + 118, '#ffe27a', 2, 'left', '#000'); T('★ +' + M.stars, W / 2 + 20, y + 118, '#ffd23f', 2, 'left', '#000'); }
+  if (UI.button('menu', W / 2 - 132, y + 140, 128, 24, 'MENU', { size: 1 }) || UI.back) { state = 'title'; Match = null; B = null; }
+  if (UI.button('again', W / 2 + 4, y + 140, 128, 24, 'PLAY AGAIN', { size: 1, accent: '#5ad43f' })) newMatch(M.mode);
+}
+function drawPause() {
+  const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
+  T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) paused = false;
+  if (UI.button('quit', bx, y + 72, bw, 22, 'MENU')) { paused = false; state = 'title'; Match = null; B = null; }
+}
+
+/* --- 8. SOUND --------------------------------------------------------------------------------------------- */
+function sfx(k, n = 16) {
+  if (!save.sfx || (Match && Match.mode === 'demo')) return;      // (the bots' battle behind the menus is quiet)
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.1, { vol: 0.1 });
+  else if (k === 'fire') { s.noise(0.15, { freq: 900, vol: 0.18 }); s.tone([220, 90], 0.2, { vol: 0.1, type: 'square' }); }
+  else if (k === 'boom') { s.noise(0.2 + n / 60, { freq: 260, vol: 0.2 + n / 150 }); s.tone([140, 40], 0.4, { vol: 0.12, type: 'sawtooth' }); }
+  else if (k === 'dirt') s.noise(0.3, { freq: 500, vol: 0.12 });
+  else if (k === 'split') s.tone([880, 1320], 0.08, { vol: 0.07 });
+  else if (k === 'turn') s.tone(660, 0.06, { vol: 0.06 });
+  else if (k === 'win') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.16, { vol: 0.1, delay: i * 0.09 }));
+  else if (k === 'lose') s.tone([440, 220], 0.4, { vol: 0.1, type: 'triangle' });
+  else if (k === 'buy') [784, 988, 1319].forEach((f, i) => s.tone(f, 0.1, { vol: 0.09, delay: i * 0.07 }));
+  else if (k === 'no') s.tone([220, 160], 0.2, { vol: 0.1 });
+}
+
+/* --- 9. INPUT: drag anywhere to aim (not on the buttons); keys: arrows aim, A/D drive, Q/E weapon, Space fire ---- */
+let aiming = null;
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (state !== 'play' || paused || !B || B.over || B.phase !== 'aim' || cur().bot || UI.downId !== null) return;
+  aiming = e.pointerId; aimAt(x, y);
+};
+UI.onMove = (e, x, y) => { if (aiming === e.pointerId) aimAt(x, y); };
+UI.onUp = e => { if (aiming === e.pointerId) aiming = null; };
+function aimAt(x, y) {
+  if (!B || B.phase !== 'aim') return;
+  const tk = cur(), dx = x - tk.x, dy = (tk.y - 8) - y;
+  if (Math.hypot(dx, dy) < 6) return;
+  tk.ang = clamp(Math.atan2(dy, dx) * 180 / Math.PI, 0, 180);
+  tk.pow = clamp(Math.hypot(dx, dy) / 120, 0.08, 1);
+  B.firstTurn = false;
+}
+const keys = new Set();
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (state === 'play' && B && !B.over && !paused && B.phase === 'aim' && !cur().bot) {
+    const tk = cur();
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); fire(); return; }
+    if (e.code === 'KeyQ' || e.code === 'KeyE') { let i = tk.wi; do { i = (i + (e.code === 'KeyE' ? 1 : WEAPONS.length - 1)) % WEAPONS.length; } while (tk.ammo[i] <= 0); tk.wi = i; return; }
+    keys.add(e.code);
+  }
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (state === 'play' && B && !B.over) paused = !paused; else UI.back = true; }
+});
+window.addEventListener('keyup', e => keys.delete(e.code));
+function keyAim(dt) {
+  if (!B || B.phase !== 'aim' || cur().bot || paused) return;
+  const tk = cur();
+  if (keys.has('ArrowLeft')) tk.ang = clamp(tk.ang + 60 * dt, 0, 180);
+  if (keys.has('ArrowRight')) tk.ang = clamp(tk.ang - 60 * dt, 0, 180);
+  if (keys.has('ArrowUp')) tk.pow = clamp(tk.pow + 0.5 * dt, 0.08, 1);
+  if (keys.has('ArrowDown')) tk.pow = clamp(tk.pow - 0.5 * dt, 0.08, 1);
+  if (keys.has('KeyA')) drive(-1, dt);
+  if (keys.has('KeyD')) drive(1, dt);
+}
+window.addEventListener('blur', () => { keys.clear(); if (state === 'play' && B && !B.over) paused = true; });
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play' && B && !B.over) paused = true; });
+
+/* --- 10. MAIN LOOP ------------------------------------------------------------------------------------------ */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'play' && B) {
+    if (!paused) { keyAim(dt); step(dt); }
+    drawBattle(t);
+    if (B.over) { if (B.overT > 0.8) drawOver(t); }
+    else if (B.phase === 'pass') drawPass(t);
+    else drawHUD(t);
+    if (paused) drawPause();
+  } else {
+    // a battle of bots behind the menus
+    if (!demo || demo.over && demo.overT > 2) { const keep = { Match, B }; Match = { mode: 'demo', players: [0, 1, 2].map(i => ({ name: 'BOT', col: COLS[i + 1], bot: true, level: 'normal', style: 'classic' })), wins: [0, 0, 0], battle: Math.floor(Math.random() * 4), of: 99 }; newBattle(); demo = B; demo.match = Match; Match = keep.Match; B = keep.B; }
+    { const keep = { Match, B }; Match = demo.match; B = demo; if (B.phase === 'pass') B.phase = 'think'; step(dt); drawBattle(t); Match = keep.Match; B = keep.B; }
+    if (state === 'title') drawTitle(t); else if (state === 'setup') drawSetup(t); else if (state === 'shop') drawShop(t);
+  }
+  if (msg) { T(msg.txt, S.W / 2, H - 14, '#fff', 1, 'center', '#000'); if ((msg.t -= dt) <= 0) msg = null; }
+  UI.end();
+  S.blit('#3a6ab8');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Tanks: controller', ui: UI, menu: () => state !== 'play' || paused || !B || B.over || B.phase !== 'aim' || cur().bot,
+  phone: { stick: 'AIM', buttons: [['A', 'FIRE'], ['X', 'WEAPON']] },
+  keys: () => ({ A: 'Space', X: 'KeyE', LB: 'KeyA', RB: 'KeyD', START: 'KeyP', left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown' }),
+  help: [['STICK', 'AIM (LEFT/RIGHT) AND POWER (UP/DOWN)'], ['LB|RB', 'DRIVE'], ['X', 'WEAPON'], ['A', 'FIRE'], ['START', 'PAUSE'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>

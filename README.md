@@ -40,6 +40,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOIC
 | **Pixel Hook** (`hook.html`) | Hold to grab a hook, swing, let go to fly: a pixel stick figure on a rope. 24 levels in 3 worlds, flips, PERFECT releases, ENDLESS, a shop of runners and ropes, and online RACE and TAG with a friend. |
 | **Pixel Slice** (`slice.html`) | Fruit flies up: swipe to slice it. Combos, ICE that slows time, CHILI that sets your blade on fire, GOLD and STAR fruit, and bombs you must not touch. 3 LIVES or 60 SECONDS, a shop of blades and places. |
 | **Pixel Party** (`party.html`) | A tournament of the arcade's own games for 2 to 4 players, online (each on their own phone) or taking turns on one phone: every round is a short challenge in one of the games (Slice, Hook, Runs, Snake, Hoops, Bike Run, Ski, Mouse Thief). Pick the games, the rounds and the trophy; the winner's trophy goes on the TROPHIES leaderboard. |
+| **Pixel Tanks** (`tanks.html`) | Turn-based artillery for 2 to 4 tanks on hills that break apart: aim, mind the wind, pick a weapon (SHELL, BIG SHOT, TRIPLE, CLUSTER, ROLLER, DIRT), fire. Against 1-3 bots or friends on one phone. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -486,6 +487,26 @@ A tournament of **the arcade's own games** for **2 to 4 players**. (An idea from
   arcade closes the frame (Pixel Party is its `ArcadeShell`). The list of challenges is `PX.Challenge.GAMES`. A
   challenge run still counts in the game itself (bests, coins, stars), like any run.
 - In Czech too.
+
+## Pixel Tanks
+
+Turn-based artillery for **2 to 4 tanks**. (A new game, made for the arcade's players.)
+
+- **Your turn:** drag anywhere to aim: the direction from your tank, and how far you drag is the power (a short dotted
+  line shows the aim, not the whole path). **< >** drive a little (the FUEL bar), **WEAPON** picks one, **FIRE!**
+  shoots. Keys: arrows aim, A / D drive, Q / E weapon, Space fire; a controller works too.
+- **The WIND** changes every turn (the arrow at the top) and pushes every shell.
+- **The land breaks:** every explosion digs a crater; a tank whose ground is gone falls, and a long fall hurts. The
+  last tank standing wins the battle; a match is 1, 3 or 5 battles (the most wins). Every battle has new hills and
+  one of 4 places (GREEN HILLS, DESERT, SNOW, MOON).
+- **Weapons** (the same ammo every battle): SHELL (always), BIG SHOT (x2), TRIPLE (3 shells, x2), CLUSTER (splits into
+  5 at the top, x1), ROLLER (rolls down the slope, then goes off, x2), DIRT (makes a hill: cover, x2).
+- **VS BOTS:** you against 1-3 bots, EASY, NORMAL or HARD (they try many shots and pick the best, then miss a little:
+  less on HARD). Winning the match pays ★ and coins (more for more bots and a harder level); **TOP: PIXEL TANKS**
+  counts the wins against bots.
+- **ONE PHONE:** 2-4 players take turns (READY! before each turn).
+- **SHOP:** coins buy tank styles (CAMO, STRIPES, ROBOT, GOLD).
+- A battle of bots goes on behind the menus. In Czech too.
 
 ## Pixel Defense
 
