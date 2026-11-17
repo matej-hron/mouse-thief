@@ -31,13 +31,15 @@ const subBody = z.object({ endpoint, keys: z.object({ p256dh: key(80, 100), auth
 const unsubBody = z.object({ endpoint: z.string().max(1000) });
 const playerId = z.string().regex(/^[1-9][0-9]{5}$/);
 const sendBody = z.object({
-  to: playerId,
-  t: z.enum(['gift', 'back', 'freq', 'fyes', 'inv', 'chat', 'call']),
+  to: z.union([playerId, z.array(playerId).min(1).max(8)]),   // several players at once: the members of a group chat
+  t: z.enum(['gift', 'back', 'freq', 'fyes', 'inv', 'chat', 'call', 'gchat', 'gadd']),
   from: z.string().max(40).optional(),
   fid: playerId.optional(),
   n: z.number().int().min(1).max(1000).optional(),
   g: z.string().regex(/^[a-z]{2,12}$/).optional(),
   code: z.string().regex(/^[A-Z0-9]{4}$/).optional(),
+  gn: z.string().max(40).optional(),                          // a group chat's name (checked like a player's name)
+  gid: z.string().regex(/^[a-z0-9]{12}$/).optional(),         // and its ID (for the notification's tag)
 });
 export type PushKind = z.infer<typeof sendBody>['t'] | 'test';
 
@@ -50,7 +52,7 @@ const GAME_NAMES: Record<string, string> = {
 export type Note = { title: string; body: string; url: string; tag: string; call?: true };   // call: the phone rings (vibrates long, stays on)
 
 /** The words of a notification: written here, from the kind and a few checked values, never taken from the sender. */
-export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number; g?: string; code?: string }): Note | null {
+export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number; g?: string; code?: string; gn?: string; gid?: string }): Note | null {
   const who = b.name;
   switch (b.t) {
     case 'gift':
@@ -68,6 +70,10 @@ export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number
     }
     case 'chat':
       return { title: `NEW MESSAGE FROM ${who}`, body: 'TAP TO READ IT IN THE ARCADE.', url: 'index.html', tag: `chat-${b.fid ?? who}` };
+    case 'gchat':                                                 // a message in a group chat (FRIENDS → GROUPS)
+      return b.gn && b.gid ? { title: `NEW MESSAGE IN ${b.gn}`, body: `FROM ${who}. TAP TO READ IT IN THE ARCADE.`, url: 'index.html', tag: `gchat-${b.gid}` } : null;
+    case 'gadd':                                                  // a friend put you in a group chat
+      return b.gn && b.gid ? { title: `${who} ADDED YOU TO ${b.gn}`, body: 'A GROUP CHAT: OPEN FRIENDS, THEN GROUPS, AND SAY HI.', url: 'index.html', tag: `gchat-${b.gid}` } : null;
     case 'call':                                                  // CALL in the arcade's chat, while your arcade isn't open
       return { title: `${who} IS CALLING YOU!`, body: 'OPEN THE ARCADE TO ANSWER.', url: 'index.html', tag: `call-${b.fid ?? who}`, call: true };
     case 'test':
@@ -155,10 +161,16 @@ push.post('/v1/push/send', async (c) => {
   const fid = sender ? sender.player.id : b.fid;
   let name = sender ? sender.player.name : cleanName(b.from ?? '');
   if (!name || badName(name)) name = 'A FRIEND';
-  if (fid === b.to) return c.body(null, 204);
-  const note = noteFor({ ...b, name, fid });
+  let gn: string | undefined;
+  if (b.gn !== undefined) {
+    gn = cleanName(b.gn);
+    if (!gn || badName(gn)) gn = 'A GROUP';
+  }
+  const note = noteFor({ ...b, name, fid, gn });
   if (!note) return bad(c);
-  c.executionCtx.waitUntil(notifyPlayer(c.env.DB, vapid, b.to, note));
+  const to = [...new Set(Array.isArray(b.to) ? b.to : [b.to])].filter((id) => id !== fid);
+  if (to.length > 1 && b.t !== 'gchat' && b.t !== 'gadd') return bad(c);   // (only a group's notes go to several players)
+  if (to.length) c.executionCtx.waitUntil(Promise.all(to.map((id) => notifyPlayer(c.env.DB, vapid, id, note))));
   return c.body(null, 204);
 });
 
