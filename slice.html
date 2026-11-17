@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Slice: fruit flies up, swipe to slice it. Combos, ice that slows time, chili that sets your blade on fire, and bombs you must not touch.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Slice</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #24140c; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script src="cs.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL SLICE: fruit flies up, swipe to slice it (part of the PIXEL ARCADE).
+   Swipe across the screen (or drag the mouse, or a controller's stick with A held): every fruit the blade
+   crosses fast enough is cut in two. Several in one swipe: a COMBO (bonus points).
+     3 LIVES: a fruit that falls back down uncut costs a life; slicing a BOMB ends the run.
+     60 SECONDS: as many as you can; a bomb costs 10 points.
+   Specials: ICE slows time for 4 s, CHILI sets the blade on fire for 6 s (every cut counts twice),
+   GOLD gives 5 coins, a STAR gives ★1 for the arcade.
+   Coins buy blades and places in the SHOP. Every 40 points is ★1 for the arcade (up to ★10 a run).
+     1. Setup   2. Fruit   3. The run   4. Drawing   5. Screens   6. Sound   7. Input   8. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelSlice.save';
+const save = { sfx: true, music: true, best: {}, coins: 0, blade: 'white', place: 'dojo', owned: { white: 1, dojo: 1 }, played: 0, cut: 0, bestCombo: 0 };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+if (!save.best || typeof save.best !== 'object') save.best = {};
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+PX.Lang.page('slice');                             // Czech when SETTINGS → LANGUAGE says so (cs.js)
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const R = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+const GRAV = 330;            // px/s²
+const LIVES = 3;
+const TIME = 60;             // 60 SECONDS mode
+const CUT_SPEED = 260;       // the blade cuts only when it moves at least this fast (px/s)
+const COMBO_GAP = 0.3;       // cuts closer together than this are one swipe
+const SLOW = 0.4, SLOW_T = 4;// ICE: the world at 40 % speed for 4 s
+const FIRE_T = 6;            // CHILI: a burning blade for 6 s
+const STAR_EVERY = 40;       // ★1 for the arcade every 40 points
+const STAR_MAX = 10;
+
+const MODES = { lives: { name: '3 LIVES' }, timed: { name: '60 SECONDS' } };
+const BLADES = [
+  { id: 'white', name: 'STEEL', price: 0, cols: ['#ffffff', '#c8d8ff'] },
+  { id: 'fire', name: 'FIRE', price: 150, cols: ['#fff2a0', '#ff8a1e', '#e8303a'] },
+  { id: 'ice', name: 'FROST', price: 200, cols: ['#ffffff', '#7af0ff', '#3a8aff'] },
+  { id: 'laser', name: 'LASER', price: 400, cols: ['#ffffff', '#5aff6a', '#1ea83a'] },
+  { id: 'gold', name: 'GOLD', price: 800, cols: ['#fff6c0', '#ffd23f', '#c88a10'] },
+  { id: 'rainbow', name: 'RAINBOW', price: 1500, rainbow: true },
+];
+const PLACES = [
+  { id: 'dojo', name: 'DOJO', price: 0, bg: '#24140c' },
+  { id: 'night', name: 'NIGHT', price: 200, bg: '#0b0a1e' },
+  { id: 'beach', name: 'BEACH', price: 300, bg: '#5ab4f0' },
+  { id: 'space', name: 'SPACE', price: 600, bg: '#05030c' },
+];
+const bladeOf = id => BLADES.find(b => b.id === id) || BLADES[0];
+const placeOf = id => PLACES.find(p => p.id === id) || PLACES[0];
+const hue = (t, k = 0) => `hsl(${Math.round((t * 160 + k * 40) % 360)},95%,62%)`;
+
+/* --- 2. FRUIT ---------------------------------------------------------------- */
+// rx, ry: the size; skin, dark: the outside; flesh, core: the inside (when cut); pts: what one is worth
+const FRUITS = {
+  apple: { rx: 7, ry: 7, skin: '#e8303a', dark: '#a81c28', flesh: '#fff2c8', core: '#c8a060', stem: 1 },
+  orange: { rx: 7, ry: 7, skin: '#ff9a1e', dark: '#d06a10', flesh: '#ffc860', core: '#fff0c0', dots: 1 },
+  lemon: { rx: 8, ry: 6, skin: '#ffe03a', dark: '#d8b020', flesh: '#fff6a0', core: '#ffffff' },
+  plum: { rx: 6, ry: 6, skin: '#8a3ac8', dark: '#5a1e8a', flesh: '#ffd27a', core: '#a86a2a', stem: 1 },
+  kiwi: { rx: 7, ry: 6, skin: '#8a5a2a', dark: '#5a3a18', flesh: '#7ad43a', core: '#1a1a10', seeds: 1 },
+  melon: { rx: 12, ry: 10, skin: '#3aa83a', dark: '#1e6e24', flesh: '#ff4a5a', core: '#2a1a10', stripes: 1, seeds: 1 },
+  pine: { rx: 7, ry: 10, skin: '#f0b020', dark: '#a8701a', flesh: '#fff080', core: '#ffd040', crown: 1, grid: 1 },
+  coco: { rx: 8, ry: 8, skin: '#6a4424', dark: '#3e2614', flesh: '#ffffff', core: '#f0f0e8' },
+  banana: { rx: 11, ry: 4, skin: '#ffe03a', dark: '#c8a020', flesh: '#fff6c8', core: '#e8d890', curve: 1 },
+  // specials
+  bomb: { rx: 7, ry: 7, skin: '#2a2a34', dark: '#111118', bomb: 1 },
+  ice: { rx: 7, ry: 7, skin: '#9ae8ff', dark: '#3aa8e0', flesh: '#e8fbff', core: '#ffffff', special: 'ICE!' },
+  chili: { rx: 9, ry: 4, skin: '#ff2a1e', dark: '#a81410', flesh: '#ffd0a0', core: '#ffe8c0', stem: 1, special: 'FIRE BLADE!' },
+  gold: { rx: 7, ry: 7, skin: '#ffd23f', dark: '#c88a10', flesh: '#fff6c0', core: '#ffe27a', shine: 1, special: '+5 COINS' },
+  star: { rx: 8, ry: 8, skin: '#ffe680', dark: '#e0a020', flesh: '#fff8d0', core: '#ffffff', star: 1, special: '★ +1' },
+};
+const Z = 2;                 // fruit is drawn with 2x2 pixels (chunky, and big enough for a thumb)
+const PLAIN = ['apple', 'orange', 'lemon', 'plum', 'kiwi', 'melon', 'pine', 'coco', 'banana'];
+
+// an ellipse of pixels, row by row (only the rows where keep(dy) says so: a half)
+function blob(x, y, rx, ry, col, keep) {
+  ctx.fillStyle = col;
+  for (let dy = -ry; dy <= ry; dy++) {
+    if (keep && !keep(dy)) continue;
+    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy * dy) / (ry * ry + 0.5))));
+    if (w > 0) ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1);
+  }
+}
+const OUT = '#120a06';
+function drawFruit(f, t) {
+  const k = FRUITS[f.kind], x = Math.round(f.x), y = Math.round(f.y);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(f.a); ctx.scale(Z, Z);
+  blob(0, 0, k.rx + 1, k.ry + 1, OUT);
+  blob(0, 0, k.rx, k.ry, k.dark);
+  blob(-1, -1, k.rx - 1, k.ry - 1, k.skin);
+  if (k.stripes) { ctx.fillStyle = k.dark; for (let i = -2; i <= 2; i++) ctx.fillRect(i * 4 - 1, -k.ry + 2, 2, k.ry * 2 - 4); }
+  if (k.grid) { ctx.fillStyle = k.dark; for (let i = -k.ry + 3; i < k.ry - 1; i += 3) for (let j = -k.rx + 2 + (i & 1) * 2; j < k.rx - 1; j += 4) ctx.fillRect(j, i, 1, 1); }
+  if (k.dots) { ctx.fillStyle = k.dark; ctx.fillRect(2, -2, 1, 1); ctx.fillRect(-3, 2, 1, 1); ctx.fillRect(1, 3, 1, 1); }
+  if (k.stem) { ctx.fillStyle = '#5a3a18'; ctx.fillRect(0, -k.ry - 3, 1, 3); ctx.fillStyle = '#3aa83a'; ctx.fillRect(1, -k.ry - 3, 3, 2); }
+  if (k.crown) { ctx.fillStyle = '#3aa83a'; ctx.fillRect(-3, -k.ry - 5, 2, 5); ctx.fillRect(0, -k.ry - 7, 2, 7); ctx.fillRect(3, -k.ry - 5, 2, 5); }
+  if (k.curve) { ctx.fillStyle = '#5a3a18'; ctx.fillRect(k.rx - 1, -2, 2, 2); ctx.fillRect(-k.rx - 1, -1, 2, 2); }
+  if (k.shine || f.kind === 'ice') { const s = Math.sin(t * 8 + f.id) > 0.3; ctx.fillStyle = '#ffffff'; ctx.fillRect(-3, -4, 2, 2); if (s) { ctx.fillRect(-1, -k.ry - 4, 1, 3); ctx.fillRect(-2, -k.ry - 3, 3, 1); } }
+  if (k.star) { ctx.rotate(-f.a); T('★', 0, -2, '#e0a020', 1, 'center'); }
+  if (k.bomb) {
+    ctx.fillStyle = '#6a6a7a'; ctx.fillRect(-1, -k.ry - 2, 3, 2);
+    ctx.fillStyle = '#c8a060'; ctx.fillRect(1, -k.ry - 4, 1, 2); ctx.fillRect(2, -k.ry - 5, 1, 1);
+    const on = Math.sin(t * 20 + f.id) > 0;
+    ctx.fillStyle = on ? '#ffe03a' : '#ff6a1e'; ctx.fillRect(2, -k.ry - 7, 2, 2);
+    ctx.fillStyle = Math.sin(t * 6) > 0 ? '#ff3a3a' : '#5a5a6a'; ctx.fillRect(-2, -1, 4, 3);
+    ctx.fillStyle = '#5a5a6a'; ctx.fillRect(-4, -4, 2, 2);
+  }
+  ctx.restore();
+}
+// half a fruit: side +1 or -1 of its cut, flesh showing along the cut
+function drawHalf(h) {
+  const k = FRUITS[h.kind];
+  ctx.save(); ctx.translate(Math.round(h.x), Math.round(h.y)); ctx.rotate(h.a); ctx.scale(Z, Z);
+  const keep = dy => (h.side > 0 ? dy >= 0 : dy <= 0);
+  blob(0, 0, k.rx + 1, k.ry + 1, OUT, keep);
+  blob(0, 0, k.rx, k.ry, k.dark, keep);
+  blob(0, 0, k.rx - 1, k.ry - 1, k.skin, keep);
+  blob(0, 0, k.rx - 2, k.ry - 2, k.flesh, dy => keep(dy) && Math.abs(dy) <= Math.max(1, Math.floor(k.ry / 3)));
+  ctx.fillStyle = k.core; ctx.fillRect(-Math.ceil(k.rx / 3), h.side > 0 ? 0 : -1, Math.ceil(k.rx / 3) * 2, 1);
+  if (k.seeds) { ctx.fillStyle = k.core; for (let i = -k.rx + 3; i < k.rx - 2; i += 3) ctx.fillRect(i, h.side > 0 ? 1 : -2, 1, 1); }
+  ctx.restore();
+}
+
+/* --- 3. THE RUN --------------------------------------------------------------- */
+// G: the run being played ('lives' or 'timed'); on the title screen a 'demo' run tosses fruit to slice for fun
+let G = null, demo = null, nextId = 1;
+function newRun(mode) {
+  return { mode, t: 0, score: 0, lives: LIVES, left: TIME, fruit: [], halves: [], bits: [], splats: [], pops: [], spawnT: 0.6, waves: 0,
+           slowT: 0, fireT: 0, combo: 0, comboT: 0, best: 0, cut: 0, stars: 0, starFruit: 0, gold: 0, over: false, overT: 0, boomT: 0,
+           shake: 0, misses: [], done: false };
+}
+function launch(R0, kind, x) {
+  const W = S.W, k = FRUITS[kind];
+  x = x === undefined ? R(W * 0.12, W * 0.88) : x;
+  const rise = R(130, 200), vy = -Math.sqrt(2 * GRAV * rise);
+  const vx = (W / 2 - x) * R(0.25, 0.75) / 1.8 + R(-20, 20);
+  R0.fruit.push({ id: nextId++, kind, x, y: H + 26, vx, vy, a: R(0, 6), va: R(-4, 4), r: Math.max(k.rx, k.ry) * Z + 4 });
+}
+function spawnWave(R0) {
+  const t = R0.t, demoRun = R0.mode === 'demo';
+  const n = demoRun ? 1 + Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * Math.min(5, 1 + t / 14));
+  const bombP = demoRun || t < 5 ? 0 : Math.min(R0.mode === 'timed' ? 0.3 : 0.22, 0.06 + t * 0.003);
+  for (let i = 0; i < n; i++) {
+    let kind = pick(PLAIN);
+    const r = Math.random();
+    if (!demoRun) {
+      if (r < bombP) kind = 'bomb';
+      else if (r < bombP + 0.03) kind = 'ice';
+      else if (r < bombP + 0.05) kind = 'chili';
+      else if (r < bombP + 0.08) kind = 'gold';
+      else if (r < bombP + 0.09 && R0.starFruit < 3) { kind = 'star'; R0.starFruit++; }
+    }
+    // a wave comes up together, or one after the other in a burst
+    setTimeout(() => { if (R0 === G || R0 === demo) launch(R0, kind); }, n > 3 && Math.random() < 0.5 ? i * 140 : 0);
+  }
+  R0.waves++;
+  const gap = demoRun ? 1.6 : R0.mode === 'timed' ? Math.max(0.55, 1.4 - t * 0.012) : Math.max(0.75, 2.0 - t * 0.016);
+  R0.spawnT = gap;
+}
+function pop(R0, x, y, txt, col, big) { R0.pops.push({ x, y, txt, col, t: 0, big }); }
+function splash(R0, x, y, k, dx, dy) {
+  for (let i = 0; i < 14; i++) {
+    const a = Math.atan2(dy, dx) + R(-1.2, 1.2) + (i & 1 ? Math.PI : 0), s = R(60, 200);
+    R0.bits.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: R(0.4, 0.8), col: i % 3 ? k.flesh : k.skin });
+  }
+  if (R0.splats.length > 24) R0.splats.shift();
+  R0.splats.push({ x, y, col: k.flesh, r: k.rx * Z + 4, life: 3, seed: Math.random() * 99 });
+}
+// the blade crossed this fruit (dx, dy: the swipe's direction)
+function cutFruit(R0, f, dx, dy) {
+  const k = FRUITS[f.kind];
+  R0.fruit.splice(R0.fruit.indexOf(f), 1);
+  const ang = Math.atan2(dy, dx), nx = -Math.sin(ang), ny = Math.cos(ang);
+  if (k.bomb) {
+    sfx('boom'); R0.shake = 0.5; R0.boomT = 0.6;
+    for (let i = 0; i < 30; i++) { const a = R(0, 6.28), s = R(60, 260); R0.bits.push({ x: f.x, y: f.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: R(0.3, 0.9), col: pick(['#ffe03a', '#ff8a1e', '#ff3a3a', '#5a5a6a']) }); }
+    if (R0.mode === 'lives') { R0.lives = 0; R0.dead = 'bomb'; }
+    else if (R0.mode === 'timed') { R0.score = Math.max(0, R0.score - 10); pop(R0, f.x, f.y, '-10', '#ff5a5a', true); }
+    return;
+  }
+  for (const side of [1, -1]) R0.halves.push({ kind: f.kind, side, x: f.x, y: f.y, vx: f.vx * 0.6 + nx * side * 80, vy: Math.min(f.vy, 0) * 0.3 + ny * side * 80 - 30, a: ang, va: side * R(3, 7), life: 2.5 });
+  splash(R0, f.x, f.y, k, dx, dy);
+  if (R0.mode === 'demo') { sfx('cut', R0); return; }
+  const mult = R0.fireT > 0 ? 2 : 1;
+  R0.score += mult; R0.cut++; save.cut = (save.cut | 0) + 1;
+  R0.combo++; R0.comboT = COMBO_GAP;
+  if (k.special === 'ICE!') { R0.slowT = SLOW_T; sfx('ice'); }
+  if (k.special === 'FIRE BLADE!') { R0.fireT = FIRE_T; sfx('fire'); }
+  if (k.special === '+5 COINS') { R0.gold += 5; sfx('gold'); }
+  if (k.special === '★ +1') { R0.stars++; sfx('star'); }
+  if (k.special) pop(R0, f.x, f.y - 10, k.special, k.skin === '#ffe680' ? '#ffd23f' : k.skin, true);
+  else if (mult > 1) pop(R0, f.x, f.y - 8, '+2', '#ff8a1e');
+  sfx('cut', R0);
+}
+function endCombo(R0) {
+  if (R0.combo >= 3 && R0.mode !== 'demo') {
+    R0.score += R0.combo; R0.best = Math.max(R0.best, R0.combo);
+    pop(R0, S.W / 2, 70, 'COMBO X' + R0.combo + '  +' + R0.combo, '#ffd23f', true); sfx('combo', R0);
+  }
+  R0.combo = 0;
+}
+// one step of the world (dt: real seconds)
+function step(R0, dt) {
+  const real = dt;
+  if (R0.slowT > 0) { R0.slowT -= real; dt *= SLOW; }
+  if (R0.fireT > 0) R0.fireT -= real;
+  if (R0.shake > 0) R0.shake -= real;
+  if (R0.boomT > 0) R0.boomT -= real;
+  if (R0.comboT > 0 && (R0.comboT -= real) <= 0) endCombo(R0);
+  if (!R0.over) {
+    R0.t += dt;
+    if (R0.mode === 'timed') { R0.left -= real; if (R0.left <= 0) { R0.left = 0; R0.over = true; } }
+    if ((R0.spawnT -= dt) <= 0) spawnWave(R0);
+  }
+  const W = S.W;
+  for (const f of [...R0.fruit]) {
+    f.vy += GRAV * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.a += f.va * dt;
+    if (f.x < 14 || f.x > W - 14) f.vx = -f.vx * 0.6, f.x = clamp(f.x, 14, W - 14);
+    if (f.vy > 0 && f.y > H + 30) {
+      R0.fruit.splice(R0.fruit.indexOf(f), 1);
+      const k = FRUITS[f.kind];
+      if (R0.mode === 'lives' && !k.bomb && !k.special && !R0.over) {
+        R0.lives--; R0.misses.push({ x: f.x, t: 0 }); sfx('miss');
+        if (R0.lives <= 0) R0.dead = 'missed';
+      }
+    }
+  }
+  for (const h of [...R0.halves]) { h.vy += GRAV * dt; h.x += h.vx * dt; h.y += h.vy * dt; h.a += h.va * dt; if ((h.life -= dt) <= 0 || h.y > H + 30) R0.halves.splice(R0.halves.indexOf(h), 1); }
+  for (const b of [...R0.bits]) { b.vy += GRAV * 0.6 * dt; b.x += b.vx * dt; b.y += b.vy * dt; if ((b.life -= dt) <= 0) R0.bits.splice(R0.bits.indexOf(b), 1); }
+  for (const s of [...R0.splats]) if ((s.life -= real) <= 0) R0.splats.splice(R0.splats.indexOf(s), 1);
+  for (const p of [...R0.pops]) if ((p.t += real) > 1.1) R0.pops.splice(R0.pops.indexOf(p), 1);
+  for (const m of [...R0.misses]) if ((m.t += real) > 1.2) R0.misses.splice(R0.misses.indexOf(m), 1);
+  if (R0.mode === 'lives' && R0.lives <= 0 && !R0.over) { R0.over = true; endCombo(R0); }
+  if (R0.over && R0.mode !== 'demo') R0.overT += real;
+}
+// the blade: from (ax, ay) to (bx, by) in this frame; cuts what it crosses when fast enough
+function slash(R0, ax, ay, bx, by, dt) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+  if (len / Math.max(dt, 0.001) < CUT_SPEED || len < 2) return;
+  const wide = R0.fireT > 0 ? 6 : 0;
+  for (const f of [...R0.fruit]) {
+    // distance from the fruit's middle to the blade's line
+    const t = clamp(((f.x - ax) * dx + (f.y - ay) * dy) / (len * len), 0, 1), px = ax + dx * t, py = ay + dy * t;
+    if (Math.hypot(f.x - px, f.y - py) <= f.r + wide) cutFruit(R0, f, dx, dy);
+  }
+}
+function finish(R0) {                              // the run is over: points, coins, stars, the best
+  if (R0.done) return; R0.done = true;
+  const m = R0.mode, old = save.best[m] | 0;
+  R0.newBest = R0.score > old;
+  if (R0.newBest) save.best[m] = R0.score;
+  save.bestCombo = Math.max(save.bestCombo | 0, R0.best);
+  R0.coins = Math.floor(R0.score / 4) + R0.gold;
+  save.coins = (save.coins | 0) + R0.coins;
+  R0.arcade = Math.min(STAR_MAX, Math.floor(R0.score / STAR_EVERY)) + R0.stars;
+  if (R0.arcade > 0) PX.Wallet.add(R0.arcade);
+  save.played = (save.played | 0) + 1;
+  store();
+  sfx(R0.newBest ? 'win' : 'over');
+}
+
+/* --- 4. DRAWING --------------------------------------------------------------- */
+function drawPlace(t, R0) {
+  const W = S.W, p = placeOf(save.place);
+  if (p.id === 'dojo') {                         // wooden boards, a paper window, a lantern
+    for (let i = 0; i * 22 < W; i++) { ctx.fillStyle = i & 1 ? '#3a2214' : '#43281a'; ctx.fillRect(i * 22, 0, 22, H); ctx.fillStyle = '#2a180e'; ctx.fillRect(i * 22, 0, 1, H); }
+    for (let i = 0; i * 22 < W; i++) { ctx.fillStyle = '#2a180e'; ctx.fillRect(i * 22 + 6, 30 + (i * 37) % 160, 3, 1); }
+    ctx.fillStyle = '#5a3a1e'; ctx.fillRect(0, H - 22, W, 22); ctx.fillStyle = '#6a4424'; ctx.fillRect(0, H - 22, W, 2);
+    ctx.fillStyle = '#e8303a'; ctx.fillRect(W - 60, 52, 12, 16); ctx.fillStyle = '#ffd27a'; ctx.fillRect(W - 57, 55, 6, 10); ctx.fillStyle = '#2a180e'; ctx.fillRect(W - 55, 40, 2, 12);
+  } else if (p.id === 'night') {
+    ctx.fillStyle = '#0b0a1e'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 50; i++) { ctx.fillStyle = i % 4 ? '#5a5a8a' : '#ffffff'; ctx.fillRect((i * 73) % W, (i * 41) % 150, 1, 1); }
+    ctx.fillStyle = '#f3e9c8'; ctx.fillRect(W - 60, 24, 18, 18); ctx.fillStyle = '#0b0a1e'; ctx.fillRect(W - 54, 22, 14, 14);
+    ctx.fillStyle = '#16142e'; for (let i = 0; i < 9; i++) { const h = 30 + (i * 29) % 40; ctx.fillRect(i * (W / 8) - 10, H - h, W / 8 - 4, h); }
+  } else if (p.id === 'beach') {
+    ['#5ab4f0', '#7ac4f4', '#9ad4f8'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * 50, W, 50); });
+    ctx.fillStyle = '#ffe680'; ctx.fillRect(Math.round(W * 0.62), 26, 18, 18);
+    ctx.fillStyle = '#2a7ad8'; ctx.fillRect(0, 150, W, 40); ctx.fillStyle = '#5ab4f0'; for (let i = 0; i < W; i += 16) ctx.fillRect(i + Math.floor(t * 8) % 16, 156, 6, 1);
+    ctx.fillStyle = '#f0d890'; ctx.fillRect(0, 190, W, 50);
+  } else {
+    ctx.fillStyle = '#05030c'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70; i++) { ctx.fillStyle = ['#ffffff', '#7af0ff', '#ff7ab8', '#5a5a8a'][i % 4]; ctx.fillRect(((i * 97) % W + t * (2 + i % 3) * 4) % W, (i * 53) % H, 1, 1); }
+    ctx.fillStyle = '#7a3ac8'; blob(W - 70, 60, 22, 22, '#5a2a98'); blob(W - 74, 56, 18, 18, '#7a3ac8');
+  }
+  // the juice on the wall
+  for (const s of R0.splats) {
+    ctx.globalAlpha = clamp(s.life / 3, 0, 1) * 0.55;
+    blob(s.x, s.y, s.r, s.r * 0.7, s.col);
+    ctx.fillStyle = s.col; for (let i = 0; i < 5; i++) ctx.fillRect(Math.round(s.x + Math.sin(s.seed + i * 2) * s.r * 1.4), Math.round(s.y + Math.cos(s.seed + i) * s.r), 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawWorld(R0, t) {
+  const W = S.W;
+  ctx.save();
+  if (R0.shake > 0) ctx.translate(Math.round(R(-3, 3)), Math.round(R(-3, 3)));
+  drawPlace(t, R0);
+  if (R0.slowT > 0) { ctx.fillStyle = 'rgba(122,240,255,0.15)'; ctx.fillRect(0, 0, W, H); }
+  for (const h of R0.halves) drawHalf(h);
+  for (const f of R0.fruit) drawFruit(f, t);
+  for (const b of R0.bits) { ctx.fillStyle = b.col; ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2); }
+  drawBlade(t);
+  for (const p of R0.pops) { const a = 1 - p.t / 1.1; ctx.globalAlpha = clamp(a * 2, 0, 1); T(p.txt, p.x, p.y - p.t * 20, p.col, p.big ? 2 : 1, 'center', '#000'); }
+  ctx.globalAlpha = 1;
+  for (const m of R0.misses) { T('X', m.x, H - 20 - m.t * 10, '#ff3a3a', 3, 'center', '#000'); }
+  if (R0.boomT > 0) { ctx.fillStyle = `rgba(255,255,255,${R0.boomT})`; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+}
+// the blade's trail: the last few points of the swipe, thick to thin
+const trail = [];
+function drawBlade(t) {
+  const now = performance.now() / 1000, b = bladeOf(save.blade), fire = G && state === 'play' && G.fireT > 0;
+  while (trail.length && now - trail[0].t > 0.16) trail.shift();
+  for (let i = 1; i < trail.length; i++) {
+    const p = trail[i - 1], q = trail[i], k = i / trail.length, w = Math.max(1, Math.round(k * (fire ? 7 : 5)));
+    if (q.gap) continue;
+    const cols = fire ? ['#fff2a0', '#ff8a1e', '#e8303a'] : b.rainbow ? [hue(t, i), '#ffffff'] : b.cols;
+    ctx.strokeStyle = cols[Math.min(cols.length - 1, Math.floor((1 - k) * cols.length))];
+    ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  }
+}
+
+/* --- 5. SCREENS ----------------------------------------------------------------------- */
+let state = 'title';          // title | shop | play | over
+let paused = false, shopTab = 0, msg = null;
+function panel(w, h, y, col = '#ff5a8a') {
+  const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = col; ctx.fillRect(x, y, w, 2);
+  return { x, y };
+}
+function coinIcon(x, y) { ctx.fillStyle = OUT; ctx.fillRect(x - 1, y - 1, 8, 10); ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, 6, 8); ctx.fillStyle = '#fff6c0'; ctx.fillRect(x + 1, y + 1, 1, 4); }
+function topBar(back) {
+  const W = S.W;
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  const st = '★ ' + PX.Wallet.get();
+  T(st, W - 38, 12, '#ffd23f', 2, 'right', '#000');
+  T(String(save.coins | 0), W - 46 - PX.textWidth(st, 2), 12, '#ffe27a', 2, 'right', '#000');
+  coinIcon(W - 46 - PX.textWidth(st, 2) - PX.textWidth(String(save.coins | 0), 2) - 10, 13);
+  if (back && (UI.button('back', 6, 6, 56, 20, '< BACK', { size: 1 }) || UI.back)) { sfx('click'); state = 'title'; }
+}
+function start(mode) {
+  G = newRun(mode); paused = false; state = 'play'; trail.length = 0; Music.reset();
+  G.spawnT = 0.8; sfx('click');
+}
+function toMenu() { paused = false; state = 'title'; G = null; }
+function setPause(v) { if (state !== 'play' || !G || G.over) return; paused = v; trail.length = 0; }
+function drawTitle(t) {
+  const W = S.W;
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); T(profile.name, 40, 16, '#fff', 2, 'left', '#000');
+  topBar(false);
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'SLICE', W / 2, 52, 7);
+  const bw = 180, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('lives', bx, 104, 88, 26, '3 LIVES', { size: 1, accent: '#ff5a8a' })) start('lives');
+  if (UI.button('timed', bx + 92, 104, 88, 26, '60 SECONDS', { size: 1, accent: '#7af0ff' })) start('timed');
+  T('BEST ' + (save.best.lives | 0), bx + 44, 134, '#fff', 1, 'center', '#000');
+  T('BEST ' + (save.best.timed | 0), bx + 136, 134, '#fff', 1, 'center', '#000');
+  if (UI.button('shop', bx, 146, 88, 22, 'SHOP', { size: 1, accent: '#ffd23f' })) { sfx('click'); state = 'shop'; }
+  if (UI.button('music', bx + 92, 146, 88, 22, save.music ? 'MUSIC: ON' : 'MUSIC: OFF', { size: 1, on: save.music })) { save.music = !save.music; store(); }
+  T('SWIPE TO SLICE. DON\'T TOUCH THE BOMBS!', W / 2, 176, '#efe9ff', 1, 'center', '#000');
+  if (UI.button('games', bx, 190, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#c8b8ff', 1, 'right');
+}
+function drawShop(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  topBar(true);
+  if (UI.button('tab0', Math.round(W / 2 - 104), 34, 100, 20, 'BLADES', { size: 1, on: shopTab === 0, accent: '#ff5a8a' })) shopTab = 0;
+  if (UI.button('tab1', Math.round(W / 2 + 4), 34, 100, 20, 'PLACES', { size: 1, on: shopTab === 1, accent: '#7af0ff' })) shopTab = 1;
+  const list = shopTab ? PLACES : BLADES, cols = 3, bw = 110, bh = 54, gap = 6, x0 = Math.round(W / 2 - (cols * bw + (cols - 1) * gap) / 2);
+  list.forEach((it, i) => {
+    const x = x0 + (i % cols) * (bw + gap), y = 62 + Math.floor(i / cols) * (bh + gap), owned = !!save.owned[it.id] || it.price === 0;
+    const on = shopTab ? save.place === it.id : save.blade === it.id;
+    if (UI.button('it' + i, x, y, bw, bh, '', { on, accent: on ? '#5ad43f' : '#ffd23f' })) {
+      if (owned) { if (shopTab) save.place = it.id; else save.blade = it.id; store(); sfx('click'); }
+      else if ((save.coins | 0) >= it.price) { save.coins -= it.price; save.owned[it.id] = 1; if (shopTab) save.place = it.id; else save.blade = it.id; store(); sfx('buy'); msg = { txt: it.name + '!', t: 1.5 }; }
+      else { sfx('no'); msg = { txt: 'NOT ENOUGH COINS', t: 1.5 }; }
+    }
+    if (shopTab === 0) {                          // the blade: a slash
+      for (let k = 0; k < 12; k++) {
+        const c = it.rainbow ? hue(t, k) : it.cols[Math.min(it.cols.length - 1, Math.floor((1 - k / 12) * it.cols.length))];
+        ctx.fillStyle = c; ctx.fillRect(x + 20 + k * 6, y + 26 - k * 1.4, 6, Math.max(1, Math.round(k / 4)));
+      }
+    } else { ctx.fillStyle = it.bg; ctx.fillRect(x + 30, y + 8, 50, 20); ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.strokeRect(x + 30.5, y + 8.5, 49, 19); }
+    T(it.name, x + bw / 2, y + 33, '#fff', 1, 'center', '#000');
+    if (on) T('ON', x + bw / 2, y + 43, '#5ad43f', 1, 'center', '#000');
+    else if (owned) T('OWNED', x + bw / 2, y + 43, '#c8b8ff', 1, 'center', '#000');
+    else { coinIcon(x + bw / 2 - PX.textWidth(String(it.price), 1) / 2 - 7, y + 42); T(String(it.price), x + bw / 2 + 4, y + 43, (save.coins | 0) >= it.price ? '#ffd23f' : '#8a6a6a', 1, 'center', '#000'); }
+  });
+  T('EVERY 4 POINTS IS A COIN. GOLD FRUIT GIVES 5 MORE.', W / 2, 200, '#c8b8ff', 1, 'center', '#000');
+}
+function heart(x, y, on) { PX.drawIcon(ctx, ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'], { '#': on ? '#ff3a5a' : '#3a3050' }, x, y, 2); }
+function drawHUD(t) {
+  const W = S.W, R0 = G;
+  T(String(R0.score), 10, 8, '#fff', 4, 'left', '#000');
+  T('BEST ' + (save.best[R0.mode] | 0), 10, 32, '#ffe27a', 1, 'left', '#000');
+  if (R0.mode === 'lives') for (let i = 0; i < LIVES; i++) heart(W - 104 + i * 18, 16, i < R0.lives);
+  else T(String(Math.ceil(R0.left)), W - 70, 8, R0.left < 10 ? '#ff5a5a' : '#fff', 4, 'right', '#000');
+  if (UI.button('pause', W - 52, 6, 24, 20, 'II', { size: 1 })) setPause(true);
+  if (UI.button('sfx', W - 26, 6, 22, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  let y = 44;
+  if (R0.slowT > 0) { T('ICE ' + R0.slowT.toFixed(1), 10, y, '#7af0ff', 1, 'left', '#000'); y += 10; }
+  if (R0.fireT > 0) { T('FIRE BLADE ' + R0.fireT.toFixed(1), 10, y, '#ff8a1e', 1, 'left', '#000'); y += 10; }
+  if (R0.t < 2.5 && R0.mode !== 'demo') T(R0.mode === 'lives' ? "SLICE EVERY FRUIT. DON'T LET ONE FALL!" : 'SLICE AS MANY AS YOU CAN IN 60 SECONDS!', W / 2, 120, '#fff', 1, 'center', '#000');
+}
+function drawPause() {
+  const W = S.W, { y } = panel(200, 140), bw = 150, bx = Math.round(W / 2 - bw / 2);
+  T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
+  if (UI.button('restart', bx, y + 70, bw, 22, 'RESTART', { accent: '#ffd23f' })) start(G.mode);
+  if (UI.button('quit', bx, y + 100, bw, 22, 'MENU')) toMenu();
+}
+function drawOver(t) {
+  const W = S.W, R0 = G, { y } = panel(250, 170, undefined, R0.newBest ? '#5ad43f' : '#ff5a8a');
+  T(R0.dead === 'bomb' ? 'BOOM!' : R0.mode === 'timed' ? "TIME'S UP!" : 'GAME OVER', W / 2, y + 10, R0.dead === 'bomb' ? '#ff5a5a' : '#fff', 2, 'center', '#000');
+  T(String(R0.score), W / 2, y + 28, '#fff', 5, 'center', '#000');
+  if (R0.newBest) T('NEW BEST!', W / 2, y + 58, '#5ad43f', 2, 'center', '#000');
+  else T('BEST: ' + (save.best[R0.mode] | 0), W / 2, y + 60, '#c8b8ff', 1, 'center');
+  T('FRUIT ' + R0.cut + '   BEST COMBO ' + R0.best, W / 2, y + 78, '#c8b8ff', 1, 'center');
+  coinIcon(W / 2 - 50, y + 91); T('+' + R0.coins, W / 2 - 38, y + 92, '#ffe27a', 2, 'left', '#000');
+  if (R0.arcade) T('★ +' + R0.arcade, W / 2 + 14, y + 92, '#ffd23f', 2, 'left', '#000');
+  T('EVERY 40 POINTS = ★1', W / 2, y + 114, '#9a92b8', 1, 'center');
+  if (UI.button('menu', Math.round(W / 2 - 112), y + 134, 108, 24, 'MENU') || UI.back) toMenu();
+  if (UI.button('again', Math.round(W / 2 + 4), y + 134, 108, 24, 'AGAIN', { accent: '#5ad43f' })) start(R0.mode);
+}
+
+/* --- 6. SOUND --------------------------------------------------------------------- */
+function sfx(k, R0) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.1, { vol: 0.1 });
+  else if (k === 'swish') s.noise(0.09, { freq: 2200, vol: 0.05, filter: 'bandpass' });
+  else if (k === 'cut') { s.noise(0.08, { freq: 3200, vol: 0.07, filter: 'highpass' }); s.tone([300 + Math.min(8, (R0 && R0.combo) | 0) * 60, 180], 0.08, { vol: 0.08, type: 'square' }); }
+  else if (k === 'combo') [659, 784, 988, 1319].forEach((f, i) => s.tone(f + Math.min(10, R0.combo) * 20, 0.1, { vol: 0.08, delay: i * 0.06 }));
+  else if (k === 'boom') { s.noise(0.7, { freq: 300, vol: 0.3 }); s.tone([200, 40], 0.6, { vol: 0.15, type: 'sawtooth' }); }
+  else if (k === 'miss') s.tone([300, 120], 0.25, { vol: 0.1, type: 'triangle' });
+  else if (k === 'ice') [1568, 2093, 2637].forEach((f, i) => s.tone(f, 0.2, { vol: 0.06, delay: i * 0.05, type: 'triangle' }));
+  else if (k === 'fire') { s.noise(0.4, { freq: 900, vol: 0.12 }); s.tone([200, 800], 0.3, { vol: 0.08, type: 'sawtooth' }); }
+  else if (k === 'gold') [1319, 1760, 2093].forEach((f, i) => s.tone(f, 0.08, { vol: 0.07, delay: i * 0.05 }));
+  else if (k === 'star') [784, 988, 1175, 1568].forEach((f, i) => s.tone(f, 0.12, { vol: 0.09, delay: i * 0.07 }));
+  else if (k === 'win') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.16, { vol: 0.1, delay: i * 0.09 }));
+  else if (k === 'over') s.tone([440, 220], 0.4, { vol: 0.1, type: 'triangle' });
+  else if (k === 'buy') [784, 988, 1319].forEach((f, i) => s.tone(f, 0.1, { vol: 0.09, delay: i * 0.07 }));
+  else if (k === 'no') s.tone([220, 160], 0.2, { vol: 0.1 });
+}
+// a little chiptune: a pentatonic tune over a steady beat
+const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+const TUNE = [69, 72, 74, 76, 74, 72, 69, 67, 69, 72, 76, 79, 76, 74, 72, 74];
+const Music = {
+  next: 0, step: 0,
+  reset() { this.next = 0; this.step = 0; },
+  tick() {
+    const c = PX.Sound.ctx;
+    if (!c || !save.music || !save.sfx || state !== 'play' || paused || !G || G.over) { this.next = 0; return; }
+    const sp = 60 / (G.slowT > 0 ? 90 : 140) / 2;
+    if (!this.next || this.next < c.currentTime) this.next = c.currentTime + 0.05;
+    while (this.next < c.currentTime + 0.2) {
+      const i = this.step++ % 32, d = this.next - c.currentTime;
+      if (i % 2 === 0) PX.Sound.tone(midi(TUNE[(i >> 1) % 16]), sp * 1.4, { vol: 0.02, delay: d, type: 'square' });
+      if (i % 4 === 0) PX.Sound.tone(midi([45, 45, 43, 48][(i >> 3) % 4]), sp * 2, { vol: 0.05, type: 'triangle', delay: d });
+      if (i % 4 === 2) PX.Sound.noise(0.03, { freq: 7000, vol: 0.02, filter: 'highpass', delay: d });
+      if (i % 8 === 0) PX.Sound.noise(0.06, { freq: 200, vol: 0.06, delay: d });
+      this.next += sp;
+    }
+  },
+};
+
+/* --- 7. INPUT: swipe (touch or mouse), or a controller's stick with A held -------------- */
+let blade = null;            // { x, y } where the blade is while it is down
+let swishT = 0;
+const target = () => (state === 'play' && !paused && G && !G.over ? G : state === 'title' ? demo : null);
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (UI.downId !== null || !target()) return;
+  blade = { x, y, id: e.pointerId }; trail.push({ x, y, t: performance.now() / 1000, gap: true });
+};
+UI.onMove = (e, x, y) => { if (blade && blade.id === e.pointerId) moveBlade(x, y); };
+UI.onUp = e => { if (blade && blade.id === e.pointerId) blade = null; };
+let lastMove = performance.now();
+function moveBlade(x, y) {
+  const now = performance.now(), dt = Math.max(0.004, (now - lastMove) / 1000); lastMove = now;
+  const R0 = target(); if (!R0) { blade = null; return; }
+  const sp = Math.hypot(x - blade.x, y - blade.y) / dt;
+  slash(R0, blade.x, blade.y, x, y, dt);
+  if (sp > CUT_SPEED * 2 && now - swishT > 180) { swishT = now; sfx('swish'); }
+  blade.x = x; blade.y = y; trail.push({ x, y, t: now / 1000 });
+}
+// a controller: the stick moves the blade, A (or RT) held cuts
+const padBlade = { x: 200, y: 120, on: false };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if ((e.code === 'KeyP' || e.code === 'Escape') && state === 'play' && G && !G.over) setPause(!paused);
+  else if (e.code === 'Escape') UI.back = true;
+});
+window.addEventListener('blur', () => { setPause(true); blade = null; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { setPause(true); blade = null; } });
+
+/* --- 8. MAIN LOOP ---------------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'title' || state === 'shop') {
+    if (!demo) demo = newRun('demo');
+    step(demo, dt);
+    drawWorld(demo, t);
+    ctx.fillStyle = 'rgba(13,11,19,0.25)'; ctx.fillRect(0, 0, S.W, H);
+    if (state === 'title') drawTitle(t); else drawShop(t);
+  } else {
+    if (!paused) step(G, dt);
+    drawWorld(G, t);
+    if (G.over && !G.done && G.overT > (G.dead === 'bomb' ? 1.0 : 0.6)) { finish(G); state = 'over'; blade = null; }
+    if (state === 'play') drawHUD(t);
+    if (paused) drawPause(); else if (state === 'over') drawOver(t);
+  }
+  if (padBlade.on) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(padBlade.x) - 3.5, Math.round(padBlade.y) - 3.5, 7, 7); }
+  if (msg) { T(msg.txt, S.W / 2, H - 14, '#fff', 1, 'center', '#000'); if ((msg.t -= dt) <= 0) msg = null; }
+  UI.end();
+  S.blit(placeOf(save.place).bg);
+  Music.tick();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+PX.Pad.setup({
+  title: 'Pixel Slice: controller', ui: UI, menu: () => state !== 'play' || paused || !G || G.over,
+  phone: { stick: 'MOVE THE BLADE', buttons: [['A', 'SLICE']] },
+  keys: () => ({ START: 'KeyP' }),
+  onPlay(h, n, dt) {                               // the stick moves the blade; A or RT held: it cuts
+    if (n !== 0) return;
+    const W = S.W, sp = 520;
+    const ox = padBlade.x, oy = padBlade.y;
+    padBlade.x = clamp(padBlade.x + h.ax * sp * dt, 4, W - 4); padBlade.y = clamp(padBlade.y + h.ay * sp * dt, 4, H - 4);
+    if (h.touch) { padBlade.x = h.touch.x * W; padBlade.y = h.touch.y * H; }
+    padBlade.on = true;
+    const cutting = h.A || h.RT || !!h.touch, R0 = target();
+    if (cutting && R0) { slash(R0, ox, oy, padBlade.x, padBlade.y, dt); trail.push({ x: padBlade.x, y: padBlade.y, t: performance.now() / 1000, gap: !padBlade.was }); }
+    padBlade.was = cutting;
+  },
+  help: [['STICK', 'MOVE THE BLADE'], ['A|RT', 'HOLD: SLICE'], ['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+window.addEventListener('pointerdown', () => { padBlade.on = false; });
+</script>
+</body>
+</html>
