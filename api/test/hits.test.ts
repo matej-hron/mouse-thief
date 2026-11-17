@@ -81,7 +81,7 @@ describe('cors', () => {
     });
 
   it('echoes allowed origins', async () => {
-    for (const o of ['https://matej-hron.github.io', 'http://localhost:8000', 'http://127.0.0.1:5500']) {
+    for (const o of ['https://matej-hron.github.io', 'https://pixelgames.online', 'https://www.pixelgames.online', 'http://localhost:8000', 'http://127.0.0.1:5500']) {
       const res = await preflight(o);
       expect(res.status).toBe(204);
       expect(res.headers.get('access-control-allow-origin')).toBe(o);
@@ -89,7 +89,7 @@ describe('cors', () => {
   });
 
   it('ignores other origins', async () => {
-    for (const o of ['https://evil.example', 'https://matej-hron.github.io.evil.example', 'http://localhost.evil.example']) {
+    for (const o of ['https://evil.example', 'https://matej-hron.github.io.evil.example', 'https://pixelgames.online.evil.example', 'http://pixelgames.online', 'https://evilpixelgames.online', 'http://localhost.evil.example']) {
       expect((await preflight(o)).headers.get('access-control-allow-origin')).toBeNull();
     }
   });
