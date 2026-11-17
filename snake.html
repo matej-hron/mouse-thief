@@ -37,11 +37,15 @@
      ONLINE: drop into a room with real players (and bots to fill it up), or
        make a room for friends with a code. The phone that made the room runs it.
      SKINS: coins (from your length) buy new snakes.
+     CHALLENGE (?challenge={"id":"snake",...}, from Pixel Party): no menus, a game
+       with the bots right away, 90 seconds on the clock. It ends at 0:00 or when
+       you die; your length then goes to the tournament (PX.Challenge.report).
+       No second game and no menus: pause can only resume.
      1. Setup   2. The world   3. Bots   4. Online   5. Drawing   6. Screens   7. Sound   8. Input   9. Main loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const SAVE_KEY = 'pixelSnake.io';
 const NEW_SAVE = () => ({ best: 0, coins: 0, skin: 'lime', skins: { lime: 1 }, kills: 0, games: 0, sfx: true });
 let save = NEW_SAVE();
@@ -57,6 +61,8 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const OUT = '#0b0614';
 const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+// CHALLENGE: a round of a Pixel Party tournament (null in normal play)
+const CH = PX.Challenge.on && PX.Challenge.spec && PX.Challenge.spec.id === 'snake' ? { left: 90, sendT: -1 } : null;
 
 const ARENA = 900;              // the arena is a circle this big (radius, px)
 const SEG = 3;                  // a body point every 3 px of the path
@@ -449,7 +455,8 @@ function drawGame(t) {
     if (stick.on) { ctx.globalAlpha = 0.3; ctx.drawImage(disc(20, '#ffffff'), stick.x0 - 20, stick.y0 - 20); ctx.globalAlpha = 0.6; ctx.drawImage(disc(7, '#ffffff'), Math.round(stick.x0 + Math.cos(G.aim) * 14) - 7, Math.round(stick.y0 + Math.sin(G.aim) * 14) - 7); ctx.globalAlpha = 1; }
   }
   if (!G.over && UI.button('pause', Wd / 2 - 12, 4, 24, 16, 'II', { size: 1 })) setPause(true);
-  for (let i = G.feed.length - 1; i >= 0; i--) { const f = G.feed[i]; T(f.txt, Wd / 2, 26 + i * 10, f.col, 1, 'center', '#000'); if ((f.t -= 1 / 60) <= 0) G.feed.splice(i, 1); }
+  if (CH) { const sec = Math.max(0, Math.ceil(CH.left)); T(sec + 's', Wd / 2, 24, sec <= 10 ? '#ff4a4a' : '#ffd23f', 2, 'center', '#000'); }
+  for (let i = G.feed.length - 1; i >= 0; i--) { const f = G.feed[i]; T(f.txt, Wd / 2, (CH ? 42 : 26) + i * 10, f.col, 1, 'center', '#000'); if ((f.t -= 1 / 60) <= 0) G.feed.splice(i, 1); }
   if (G.startT > 0 && mine) T(touchUsed ? 'DRAG TO STEER, HOLD BOOST TO GO FAST' : PX.Pad.used ? 'STICK: STEER   A: BOOST' : 'THE MOUSE STEERS, HOLD THE BUTTON (OR SPACE) TO BOOST', Wd / 2, H - 30, '#fff', 1, 'center', '#000');
 }
 function feed(txt, col) { if (G) { G.feed.push({ txt, col, t: 2.5 }); if (G.feed.length > 3) G.feed.shift(); } }
@@ -572,11 +579,12 @@ function drawSkins(t, dt) {
 }
 function drawOver(t) {
   const Wd = S.W, o = G.over, { x, y } = panel(250, 150, '#ff4a4a');
-  T(o.by ? 'YOU HIT ' + o.by + '!' : 'YOU HIT THE WALL!', Wd / 2, y + 10, '#ff8a8a', 2, 'center', '#000');
+  T(o.timeUp ? 'TIME UP!' : o.by ? 'YOU HIT ' + o.by + '!' : 'YOU HIT THE WALL!', Wd / 2, y + 10, '#ff8a8a', 2, 'center', '#000');
   T('LENGTH ' + o.mass, Wd / 2, y + 32, '#fff', 3, 'center', '#000');
   T(o.newBest ? 'NEW BEST!' : 'BEST ' + save.best, Wd / 2, y + 58, o.newBest ? '#5ad43f' : '#c8b8ff', o.newBest ? 2 : 1, 'center', '#000');
   T('KILLS ' + o.kills + '   PLACE ' + o.rank + '   COINS +' + o.coins + (o.stars ? '   ★ +' + o.stars : ''), Wd / 2, y + 78, '#fff', 1, 'center');
   T('EVERY 300 LENGTH = ★1, BEING NUMBER 1 = ★1', Wd / 2, y + 90, '#9a92b8', 1, 'center');
+  if (CH) { T('CHALLENGE OVER: LENGTH ' + o.mass, Wd / 2, y + 122, '#ffd23f', 1, 'center'); return; }   // no menu, no second game
   if (UI.button('menu', x + 12, y + 116, 108, 24, Net.live ? 'LEAVE' : 'MENU', { size: 1 }) || UI.back) { Net.reset(); state = 'title'; G.over = null; return; }
   if (UI.button('again', x + 130, y + 116, 108, 24, 'PLAY AGAIN', { accent: '#5ad43f' })) {
     if (G.guest) { try { Net.host.send({ t: 'spawn' }); } catch (e) { /* closing */ } G.over = null; }
@@ -590,7 +598,7 @@ function drawPause() {
   if (Net.isHost && Net.code) { T('ROOM CODE ' + Net.code, Wd / 2, y + 100, '#ff7ab8', 1, 'center'); PX.Invite.button(UI, x + 35, y + 110, 150, 18); }
   T(Net.live ? 'MENU' : 'PAUSED', Wd / 2, y + 10, '#fff', 3, 'center');
   if (UI.button('resume', x + 35, y + 38, 150, 22, Net.live ? 'BACK TO THE GAME' : 'RESUME', { accent: '#5ad43f' }) || UI.back) setPause(false);
-  if (UI.button('quit', x + 35, y + 66, 150, 22, Net.live ? 'LEAVE THE ROOM' : 'QUIT', { size: 1 })) { paused = false; Net.reset(); state = 'title'; G.over = null; }
+  if (!CH && UI.button('quit', x + 35, y + 66, 150, 22, Net.live ? 'LEAVE THE ROOM' : 'QUIT', { size: 1 })) { paused = false; Net.reset(); state = 'title'; G.over = null; }
   if (Net.live) T("ONLINE GAMES DON'T STOP WHILE YOU LOOK HERE", Wd / 2, y + 94, '#9a92b8', 1, 'center');
 }
 function setPause(v) { if (state !== 'play') return; paused = v; stick.on = false; G.boost = false; }
@@ -657,7 +665,10 @@ function frame(now) {
   else if (state === 'online') drawOnline(t, dt);
   else if (state === 'skins') drawSkins(t, dt);
   else {
-    if (!paused || Net.live) {
+    if ((!paused || Net.live) && !(G.over && G.over.timeUp)) {
+      if (CH && !G.over && (CH.left -= dt) <= 0 && me && me.alive) {   // CHALLENGE: the clock ran out
+        CH.left = 0; G.over = { mass: Math.floor(me.mass), kills: me.kills, by: '', rank: rankOf(me), timeUp: true }; finishScore(G.over);
+      }
       if (!G.over) steerInput(dt);
       if (G.startT > 0) G.startT -= dt;
       if (!G.guest) {
@@ -668,6 +679,10 @@ function frame(now) {
     }
     drawGame(t);
     if (G.over) drawOver(t); else if (paused) drawPause();
+    if (CH && G.over) {                                // CHALLENGE: the result shows ~1 s, then goes to the tournament
+      if (CH.sendT < 0) CH.sendT = 1.2;
+      else if ((CH.sendT -= dt) <= 0 && !CH.sent) { CH.sent = true; PX.Challenge.report(G.over.mass, 'LENGTH ' + G.over.mass); }
+    }
   }
   UI.end();
   S.blit('#0d0b16');
@@ -686,7 +701,8 @@ PX.Pad.setup({
   help: [['STICK', 'STEER (POINT WHERE TO GO)'], ['A', 'BOOST (COSTS LENGTH)'], ['START', 'MENU'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that room right away
-PX.Invite.auto(code => { state = 'online'; Net.join(code); });
+if (CH) startGame();                               // CHALLENGE: straight into a game with the bots, never online
+else PX.Invite.auto(code => { state = 'online'; Net.join(code); });
 </script>
 </body>
 </html>

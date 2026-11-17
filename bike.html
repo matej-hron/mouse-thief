@@ -37,11 +37,15 @@
      FREE RIDE: an endless trail to farm money (a crash puts you back at the last checkpoint).
      RACE A FRIEND: online with a 4-letter code, the same trail, first to the bottom wins.
      BIKE SHOP: 7 bikes, and abilities (power pedals, flip spin, trick cash, nitro, second chance, magnet).
+     CHALLENGE (a Pixel Party round, ?challenge={"id":"bike",...}): no menus, a solo time trial on trail 1
+     (SUNSET HILLS) with your own bike; a crash puts you back at the last checkpoint (it only costs time).
+     At the finish it reports the time (seconds, lower wins, shown M:SS.S); after 230 s it reports 240 'DNF'.
    1. Setup  2. Trails and terrain  3. The bike  4. Riding  5. Drawing  6. Screens  7. Online  8. Input  9. Loop
    ========================================================================== */
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
+const CH = !!(PX.Challenge && PX.Challenge.on && PX.Challenge.spec.id === 'bike');   // a Pixel Party round (see CHALLENGE above)
 const SAVE_KEY = 'pixelBikeRun.save';
 const save = { money: 0, bikes: { starter: 1 }, bike: 'starter', up: {}, best: {}, stars: {}, done: {}, sfx: true, seenHelp: false, freeBest: 0, helmet: 0 };
 try {
@@ -311,7 +315,7 @@ function crash(cause) {
   const v = bVel(b, 1 / 240);
   b.rag = { x: b.p[2].x, y: b.p[2].y, vx: v.x * 0.8, vy: v.y + 3, a: 0, va: (Math.random() < 0.5 ? -1 : 1) * 8 };
   dust(b.p[2].x, b.p[2].y, 14);
-  if (mode === 'free' || G.mp) { G.respawnT = 1.4; pop(cause, '#ff8a8a', true); return; }
+  if (mode === 'free' || G.mp || CH) { G.respawnT = 1.4; pop(cause, '#ff8a8a', true); return; }
   G.done = true; G.cause = cause; state = 'crashed'; G.crashT = 0; bank();
 }
 function respawn() {
@@ -728,6 +732,7 @@ function pauseMenu() {
   glass(x, y, pw, 118, '#ffd23f');
   T('PAUSED', W / 2, y + 10, '#fff', 3, 'center', '#000');
   if (UI.button('resume', x + 16, y + 38, pw - 32, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) paused = false;
+  if (CH) return;                                                      // a challenge: only RESUME
   if (UI.button('restart', x + 16, y + 64, pw - 32, 20, 'START AGAIN', { size: 1, accent: '#ffd23f' })) startRide(mode, trailIdx);
   if (UI.button('quit', x + 16, y + 88, pw - 32, 20, mode === 'free' ? 'BANK $ AND QUIT' : 'QUIT', { size: 1 })) { if (mode === 'free') bank(); toTitle(); }
 }
@@ -735,6 +740,14 @@ function nextTrail() { return trailIdx < TRAILS.length - 1 ? trailIdx + 1 : null
 function endScreen(t) {
   const W = S.W, pw = Math.min(310, W - 20), x = Math.round(W / 2 - pw / 2), y = 50, ok = state === 'finished';
   if (!ok && G.crashT < 0.9) return;
+  if (CH) {                                                            // a challenge: the time, and no buttons (one ride only)
+    if (!ok) return;
+    glass(x - 4, y - 4, pw + 8, 70, '#5ad43f');
+    T(G.dnf ? 'TIME UP!' : 'FINISHED!', W / 2, y + 6, G.dnf ? '#ff8a8a' : '#5ad43f', 2, 'center', '#000');
+    T(G.dnf ? 'DNF' : chText(G.t), W / 2, y + 26, '#ffd23f', 3, 'center', '#000');
+    T(chSent ? 'TIME SENT!' : 'SENDING YOUR TIME...', W / 2, y + 52, '#fff', 1, 'center');
+    return;
+  }
   ctx.fillStyle = 'rgba(13,11,19,0.45)'; ctx.fillRect(0, 0, W, H);
   glass(x - 4, y - 4, pw + 8, 162, ok ? '#5ad43f' : '#e8303a');
   if (G.mp) {
@@ -977,7 +990,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape') { UI.back = true; return; }
   if (KEYMAP[e.code]) { inp.keys[KEYMAP[e.code]] = true; touchUI = false; }
   if ((e.code === 'Space' || e.code === 'KeyN' || e.code === 'ShiftLeft') && state === 'play' && !e.repeat) { useNitro(); touchUI = false; }
-  if (e.code === 'Enter' && (state === 'finished' || (state === 'crashed' && G.crashT > 0.9)) && !G.mp) { const nx = state === 'finished' ? nextTrail() : null; startRide(mode, nx !== null && nx !== undefined ? nx : trailIdx); }
+  if (e.code === 'Enter' && !CH && (state === 'finished' || (state === 'crashed' && G.crashT > 0.9)) && !G.mp) { const nx = state === 'finished' ? nextTrail() : null; startRide(mode, nx !== null && nx !== undefined ? nx : trailIdx); }
 });
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) inp.keys[KEYMAP[e.code]] = false; });
 window.addEventListener('blur', () => { inp.keys = {}; inp.touch.clear(); if (state === 'play' && G && !G.done && !G.mp) paused = true; });
@@ -1000,6 +1013,7 @@ function frame(now) {
     hud(t);
     if (state === 'crashed' || state === 'finished') endScreen(t);
     else if (paused) pauseMenu();
+    if (CH) chCheck(now);
   }
   if (state !== lastState) { fadeT = 0.22; lastState = state; }
   if (fadeT > 0) { fadeT -= dt; ctx.fillStyle = 'rgba(13,11,19,' + clamp(fadeT / 0.22, 0, 1) * 0.85 + ')'; ctx.fillRect(0, 0, S.W, H); }
@@ -1025,7 +1039,21 @@ PX.Pad.setup({
   help: [['LEFT|RIGHT', 'LEAN BACK / FORWARD (FLIP IN THE AIR)'], ['RT|A', 'GAS'], ['LT|B', 'BRAKE'], ['X|RB', 'NITRO (FROM THE SHOP)'], ['START', 'PAUSE'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
 });
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
-PX.Invite.auto(code => { state = 'online'; Net.join(code); });
+if (!CH) PX.Invite.auto(code => { state = 'online'; Net.join(code); });
+
+// CHALLENGE: a Pixel Party round. One solo ride on trail 1, timed; the time goes to the tournament.
+let chSent = false, chStart = 0;
+function chText(s) { const d = Math.round(s * 10), r = d % 600; return Math.floor(d / 600) + ':' + String(Math.floor(r / 10)).padStart(2, '0') + '.' + (r % 10); }
+function chCheck(now) {
+  if (chSent || !G) return;
+  if (state === 'finished' && (G.endT || 0) >= 1) { chSent = true; PX.Challenge.report(Math.round(G.t * 10) / 10, chText(G.t)); return; }
+  // not at the bottom after 230 s (ride time, or real time to cover pausing): a DNF
+  if (state !== 'finished' && (G.t >= 230 || (now - chStart) / 1000 >= 230)) {
+    chSent = true; G.done = G.dnf = true; paused = false; state = 'finished'; G.endT = 0; G.t = Math.max(G.t, 230);
+    pop('TIME UP!', '#ff8a8a', true); PX.Challenge.report(240, 'DNF');
+  }
+}
+if (CH) { startRide('trail', 0); chStart = performance.now(); }
 </script>
 </body>
 </html>

@@ -91,6 +91,7 @@ describe('notes', () => {
     expect(noteFor({ t: 'gift', name: 'MIA', n: 50 })).toMatchObject({ title: '★50 FROM MIA!' });
     expect(noteFor({ t: 'inv', name: 'MIA', g: 'racer', code: 'ABCD' })).toMatchObject({ body: 'PIXEL GP - TAP TO JOIN (CODE ABCD)', url: 'racer.html?join=ABCD' });
     expect(noteFor({ t: 'inv', name: 'MIA', g: 'nope', code: 'ABCD' })).toBeNull();
+    expect(noteFor({ t: 'inv', name: 'MIA', g: 'party', code: 'ABCD' })).toMatchObject({ body: 'PIXEL PARTY - TAP TO JOIN (CODE ABCD)', url: 'party.html?join=ABCD' });
     expect(noteFor({ t: 'gift', name: 'MIA' })).toBeNull();
     expect(noteFor({ t: 'chat', name: 'MIA', fid: '222222' })).toMatchObject({ title: 'NEW MESSAGE FROM MIA', tag: 'chat-222222' });
     expect(noteFor({ t: 'gchat', name: 'MIA', gn: 'GANG', gid: 'abcdefgh1234' })).toMatchObject({ title: 'NEW MESSAGE IN GANG', body: 'FROM MIA. TAP TO READ IT IN THE ARCADE.', tag: 'gchat-abcdefgh1234' });

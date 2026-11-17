@@ -38,6 +38,11 @@
    MOUSE THIEF
    You stole the cat's mouse "just for fun". She did not find it funny.
 
+   CHALLENGE mode (Pixel Party opens this page with ?challenge={"id":"thief",...}): no menus, no story,
+   no tutorial, no online; one normal single-player run starts at once. When it ends (or at 290 s) the
+   time survived goes to the tournament via PX.Challenge.report(seconds, 'm:ss.s'). No retry, shop or
+   menu; pause can only resume.
+
    Code map
      1. Config & utilities
      2. Save data (localStorage)
@@ -181,6 +186,10 @@ function colStr(c) {
 }
 function overlaps(a, b) { return a.x < b.x + b.w - 0.001 && a.x + a.w > b.x + 0.001 && a.y < b.y + b.h - 0.001 && a.y + a.h > b.y + 0.001; }
 
+// Pixel Party tournament round (see the header): one run, then the time survived is reported
+const CH = !!(window.PX && PX.Challenge && PX.Challenge.on && PX.Challenge.spec && PX.Challenge.spec.id === 'thief');
+const CH_CAP = 290;   // seconds: the run is ended here at the latest
+let chStart = 0;      // performance.now() when the challenge run started
 let state = 'menu';   // menu | shop | skinedit | pixeledit | worlds | settings | layout | about | mp | intro | run
 let menuT = 0;        // global animation clock
 let run = null;       // the current run (see section 10)
@@ -2306,9 +2315,26 @@ function finishRun() {
   if (R.newBest) d.bestTime = R.time;
   if (R.points > d.bestPoints) d.bestPoints = R.points;
   Save.save();
-  if (d.ending !== false && !R.tutorial) { Ending.start(R); return; }   // a little scene first
+  if (CH) chReport(R);
+  if (d.ending !== false && !R.tutorial && !R.capped) { Ending.start(R); return; }   // a little scene first
   sfx('gameover');
   UI.focus = 0;
+}
+// Challenge: send the time survived to the tournament, once, after the end has shown for a moment
+function chReport(R) {
+  const tenths = Math.round(Math.min(R.time, CH_CAP) * 10), sec = (tenths % 600) / 10;
+  const text = Math.floor(tenths / 600) + ':' + sec.toFixed(1).padStart(4, '0');
+  setTimeout(() => PX.Challenge.report(tenths / 10, text), 1000);
+}
+// Challenge: the 290 s cap (game time, or real time so a long pause can't stall the round)
+function chCheckCap() {
+  const R = run;
+  if (!R || R.phase !== 'play' || R.capped) return;
+  if (R.time < CH_CAP && performance.now() - chStart < CH_CAP * 1000) return;
+  R.capped = true; R.paused = false; R.choice = false; R.countdown = 0;
+  R.time = Math.min(R.time, CH_CAP); R.cause = 'time'; R.line = 'YOU OUTLASTED THE CLOCK!';
+  Music.stop(); Input.clear();
+  finishRun();
 }
 function angerEvent() {
   const R = run;
@@ -3509,6 +3535,7 @@ function drawPause() {
   drawText('PAUSED', W / 2, 52, '#fff', 4, 'center', '#000');
   const bw = 160, bx = Math.round(W / 2 - bw / 2);
   if (UI.button('resume', bx, 96, bw, 24, 'RESUME', { theme: 'dark' }) || UI.back) setPaused(false);
+  if (CH) return;   // a tournament round: resume only
   if (run.tutorial) { if (UI.button('skiptut', bx, 128, bw, 24, 'SKIP TUTORIAL', { theme: 'dark' })) finishTutorial(); }
   else if (UI.button('restart', bx, 128, bw, 24, 'RESTART', { theme: 'dark' })) startRun();
   if (UI.button('quit', bx, 160, bw, 24, 'MENU', { theme: 'dark' })) go('menu');
@@ -3614,7 +3641,7 @@ function drawGameOver() {
   ctx.fillStyle = 'rgba(8,6,14,' + (0.7 * k) + ')'; ctx.fillRect(0, 0, W, H);
   const pw = 290, ph = 178, { px, py } = drawPanel(pw, ph, k);
   drawText('GAME OVER', W / 2, py - 18, '#ff3b3b', 2, 'center', '#000');
-  shakyText('SHE GOT YOU!', W / 2, py + 12, '#e01e1e', 4, R.overT < 0.6 ? 1.2 : 0);
+  shakyText(R.capped ? "TIME'S UP!" : 'SHE GOT YOU!', W / 2, py + 12, '#e01e1e', 4, R.overT < 0.6 ? 1.2 : 0);
   drawText(R.line, W / 2, py + 38, PAL.inkSoft, 1, 'center');
   const rows = [['TIME', fmtTime(R.time)], ['POINTS EARNED', '+' + R.points], ['BEST TIME', fmtTime(d.bestTime)], ['WALLET', '★ ' + d.points]];
   rows.forEach(([a, b], i) => {
@@ -3624,6 +3651,7 @@ function drawGameOver() {
   });
   if (R.newBest && Math.floor(menuT * 3) % 2) drawText('NEW BEST!', W / 2, py + 120, '#e01e1e', 2, 'center');
   if (R.overT < 0.5) return;   // brief delay so a frantic tap doesn't instantly retry
+  if (CH) { drawText('RESULT SENT TO THE TOURNAMENT', W / 2, py + ph - 24, PAL.inkSoft, 1, 'center'); return; }   // one run only
   const bw = 80, by = py + ph - 34, gx = Math.round(W / 2 - (bw * 3 + 16) / 2);
   if (UI.button('retry', gx, by, bw, 24, 'RETRY', { accent: '#e01e1e' })) startRun();
   if (UI.button('shop', gx + bw + 8, by, bw, 24, 'SHOP')) go('shop');
@@ -4185,7 +4213,7 @@ const Intro = {
    12. MENU SCREENS
    -------------------------------------------------------------------------- */
 // --- installable app (PWA) -------------------------------------------------
-const VERSION = '1.19.0';
+const VERSION = '1.20.0';
 let installPrompt = null;                       // Chrome/Android hands us this when the app can be installed
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
 window.addEventListener('appinstalled', () => { installPrompt = null; });
@@ -5353,6 +5381,7 @@ function frame(now) {
   lastT = now;
   menuT += dt;
   Input.update();
+  if (CH && state === 'run') chCheckCap();
   if (state === 'run' && run) {
     if (run.view) updateView(dt);                                               // multiplayer cat: just draw what the thief sends
     else if (run.paused || run.netLost || run.choice) acc = 0;
@@ -5386,7 +5415,9 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 // an invite from a friend (the arcade opens this page with ?join=CODE): join that game right away
-PX.Invite.auto(code => { go('mp'); Net.join(code); });
+// a Pixel Party round: straight into one normal run (no story, tutorial, menus or online)
+if (CH) { chStart = performance.now(); startRun(); }
+else PX.Invite.auto(code => { go('mp'); Net.join(code); });
 </script>
 </body>
 </html>

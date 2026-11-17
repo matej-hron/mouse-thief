@@ -1701,6 +1701,45 @@ window.PX = (() => {
     with(id) { return !!(Voice.direct && Voice.friend && Voice.friend.id === id && Voice.phase !== 'off'); },
   };
 
+  // --- CHALLENGES: a game played as one round of a PIXEL PARTY tournament ---------------------------------------
+  // Pixel Party opens a game in a frame over itself, with ?challenge={"id":"slice","seed":123} in the address. Such a
+  // game skips its menus, starts its challenge right away (the same for every player: built from the seed where the
+  // game can) and, when it is over, calls PX.Challenge.report(score, 'TEXT'): the score goes to the tournament, which
+  // closes the frame. Leaving the game ('< ALL GAMES', or the phone's back button) gives up the round (the tournament
+  // is the frame's ArcadeShell, so it closes the frame). A game says what its challenge is in PX.Challenge.GAMES below
+  // (Pixel Party reads it): name, how to play, whether a lower score wins, and how long it takes at most.
+  const Challenge = (() => {
+    let spec = null;
+    try {
+      const q = new URLSearchParams(location.search).get('challenge');
+      if (q && window.parent !== window) { const o = JSON.parse(q); if (o && typeof o.id === 'string') spec = { id: o.id, seed: (o.seed >>> 0) || 1 }; }
+    } catch (e) { spec = null; }
+    let done = false;
+    // the same random numbers for every player of the round: Math.random follows the round's seed
+    if (spec) { let r = spec.seed >>> 0; Math.random = () => { r = (r + 0x6D2B79F5) >>> 0; let t = r; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    return {
+      on: !!spec, spec,
+      // the challenges: the game's page, its round's name and rule, lower wins?, the most it takes (seconds)
+      GAMES: {
+        slice: { url: 'slice.html', name: 'PIXEL SLICE', how: '60 SECONDS: SLICE AS MUCH FRUIT AS YOU CAN!', low: false, max: 75 },
+        hook: { url: 'hook.html', name: 'PIXEL HOOK', how: 'ENDLESS: SWING AS FAR AS YOU CAN. ONE FALL ENDS IT!', low: false, max: 240 },
+        runs: { url: 'runs.html', name: 'PIXEL RUNS', how: 'RUN AS FAR AS YOU CAN!', low: false, max: 240 },
+        snake: { url: 'snake.html', name: 'PIXEL SNAKE', how: 'GROW AS LONG AS YOU CAN IN 90 SECONDS!', low: false, max: 100 },
+        hoops: { url: 'hoops.html', name: 'PIXEL HOOPS', how: '60 SECONDS: SCORE AS MANY BASKETS AS YOU CAN!', low: false, max: 120 },
+        bike: { url: 'bike.html', name: 'PIXEL BIKE RUN', how: 'RIDE THE TRACK AS FAST AS YOU CAN!', low: true, max: 240 },
+        ski: { url: 'ski.html', name: 'PIXEL SKI', how: 'SKI DOWN AS FAST AS YOU CAN!', low: true, max: 240 },
+        thief: { url: 'thief.html', name: 'MOUSE THIEF', how: 'RUN FROM THE CAT AS LONG AS YOU CAN!', low: false, max: 300 },
+      },
+      // the round is over: the score (a number) and how to show it ('1:23.4', '35 M'...)
+      report(score, text) {
+        if (!spec || done) return; done = true;
+        try { window.parent.postMessage({ t: 'px-challenge', id: spec.id, score: Number(score) || 0, text: String(text || score) }, location.origin); } catch (e) { /* the tournament is gone */ }
+      },
+      // the game was left before the end
+      quit() { if (spec && !done) { done = true; try { window.parent.postMessage({ t: 'px-challenge', id: spec.id, quit: true }, location.origin); } catch (e) { /* gone */ } } },
+    };
+  })();
+
   // --- CHAT IN THE GAMES: a friend's message pops up while you play, and you can answer without leaving --------------
   // The chat itself is the arcade's (Chat in index.html): messages travel through ntfy.sh, to the topic
   // pixel-arcade-stars-<your ID>, and every phone keeps the last 40 with each friend in localStorage['pixelArcade.chat'].
@@ -2082,5 +2121,5 @@ window.PX = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => ChatPop.start()); else setTimeout(() => ChatPop.start(), 0);
 
   return { Voice, Call, Invite, Presence, Push, Pad, Remote, Settings, PADNUM, setIcon, avatarIconURL, Wallet, Bet, textWidth, drawText, drawLogo, AVATAR_SHAPES, AVATAR_COLORS, GIFT_SHAPES, Gifts, drawAvatar, avatarImage, drawIcon, Profile, cleanName, censor, rudeWord, Api, Scores,
-           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, Groups, chatClean, CHAT_EMOJIS, Lang, tr: s => Lang.tr(s) };
+           CODE_CHARS, ICE_SERVERS, loadPeer, relays, makeScreen, makeUI, Sound, ChatPop, Groups, Challenge, chatClean, CHAT_EMOJIS, Lang, tr: s => Lang.tr(s) };
 })();
