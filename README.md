@@ -15,8 +15,8 @@ The **controller button** next to the ★ counter turns phones into game control
 Every game's title is drawn the same way: white letters with a thick dark outline, a drop shadow and a pale blue lower half (`PX.drawLogo` in `common.js`).
 In every game the pause button is two thick bars and the sound button a speaker (a red cross when the sound is off).
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
-MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat), and
-**CHAT POP-UPS** on or off (see Chat in the games).
+MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat),
+**CHAT POP-UPS** on or off (see Chat in the games), and the **LANGUAGE** (top right: ENGLISH or ČEŠTINA, see Languages).
 
 | Game | |
 |---|---|
@@ -848,6 +848,27 @@ phone (so a new account can't take the same gift again). It is a lock against br
 while nobody is logged in, a game opened by its own address plays as a nameless guest whose progress is thrown away,
 and clearing the browser's data removes all the accounts from the phone (the ones on the server stay there, and
 LOG IN FROM ANOTHER PHONE brings them back, without the progress).
+
+## Languages
+
+The arcade speaks **English** and **Czech (ČEŠTINA)**: the button at the top right of SETTINGS switches between them.
+The first time, a phone set to Czech or Slovak gets Czech and every other phone English. (An idea from a player, on the IDEAS board.)
+
+- **What is translated:** the whole arcade (`index.html`: the games list, search, settings, friends, chat, calls, stars,
+  TOP, IDEAS, accounts...) and the chat box in the games. **The games themselves are still in English**; they come
+  next, one by one. Names of games, players and ideas stay as they are.
+- **Czech letters:** the pixel font draws Á É Í Ó Ú Ý Č Ď Ě Ň Ř Š Ť Ž Ů: the letter, with its mark in the two pixel
+  rows above it (`MARKS` in `common.js`). What players type (names, chat, ideas) still loses its accents, as before.
+- **How it works:** the code keeps writing English. `cs.js` is a table: the English text exactly as the code writes it,
+  and its Czech (`'BACK': 'ZPĚT'`). A key with `{0}`, `{1}`... is a pattern for text put together from pieces
+  (`'{0} IS YOUR FRIEND NOW!': 'S {0} JSTE TEĎ KAMARÁDI!'`); the pieces are looked up too. A page that is translated
+  loads `cs.js` and calls `PX.Lang.page()`; from then on `PX.drawText` and `PX.textWidth` draw and measure the Czech
+  (so centering and fitting work as before). Text missing from the table stays English. The arcade's wrapping helpers
+  (`wrapText`, `wrapSized`, `fitText`) translate first, then wrap. Pages without `page()` (the games) draw English;
+  `PX.Lang.t()` translates anyway, for boxes of our own like the chat in the games (it loads `cs.js` itself).
+  The choice is `lang` in `localStorage['pixelArcade.settings']` (`PX.Settings`).
+- **Translating a game:** load `cs.js` after `common.js`, call `PX.Lang.page()`, add the game's text to `cs.js` and
+  check every screen: Czech is often longer than English.
 
 ## Buy me a coffee
 
