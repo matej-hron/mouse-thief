@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Sniper: a hunting game. Drag to aim with the scope, let go to shoot. Mind the wind and the distance, lead the running animals, and hunt only what your licence says.">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Sniper</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a4a2a; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script src="common.js"></script>
+<script src="cs.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL SNIPER: a hunting game (part of the PIXEL ARCADE).
+   Drag anywhere: the scope shows a zoomed view a little above your finger. Let go: you shoot (if the scope was up
+   long enough). The scope sways; hold still and it steadies for a moment, then starts shaking again.
+   A bullet is not instant: the farther the animal, the more it DROPS, the more the WIND pushes it, and the longer it
+   flies (lead a running animal). The land has three depths: near, middle and far (small, and hard). Trees, bushes and
+   hills stop a bullet. A shot scares the animals near it: they run (ducks fly up).
+   LEVELS: every level has a LICENCE (what to hunt, e.g. 3 DEER) and a time. Hitting another animal breaks the rules
+   (-100 and no clean-hunt star). Stars: the licence done, no wrong animal, 70 % of the shots hit.
+   3 places x 6 levels: FOREST, MOUNTAINS, LAKE. ENDLESS: everything counts; the time grows with every hit; 3 wrong
+   animals end it. A bear needs two hits. A hit in the chest (the vital spot) counts double.
+   Coins buy upgrades: ZOOM+, STEADY HANDS, FAST RELOAD, BIG MAG, SMART DOT (where it will land), FAST BULLETS.
+   No blood: a hit animal tips over, stars spin, and it fades away.
+     1. Setup   2. Animals   3. The land   4. Shots   5. The hunt   6. Drawing   7. Screens   8. Sound   9. Input   10. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelSniper.save';
+const save = { sfx: true, coins: 0, stars: {}, best: 0, owned: {}, played: 0 };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const screenCtx = S.ctx, H = S.H;
+let ctx = screenCtx;                               // (the land is drawn on its own canvas first, for the scope's zoom)
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+PX.Lang.page('sniper');                            // Czech when SETTINGS → LANGUAGE says so (cs.js)
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rng = seed => { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+
+const SCALE = [0, 1, 0.66, 0.44];                  // near, middle, far
+const DROP = [0, 2, 6, 11];                        // how far a bullet drops by then (px)
+const FLIGHT = [0, 0.12, 0.24, 0.38];              // how long it flies (s)
+const DRIFT = [0, 0.4, 1.1, 2];                    // px per point of wind
+const UPGRADES = [
+  { id: 'zoom', name: 'ZOOM+', price: 150, desc: 'A STRONGER SCOPE' },
+  { id: 'steady', name: 'STEADY HANDS', price: 250, desc: 'HALF THE SWAY' },
+  { id: 'reload', name: 'FAST RELOAD', price: 200, desc: 'RELOADS 40 % FASTER' },
+  { id: 'mag', name: 'BIG MAG', price: 300, desc: '8 SHOTS INSTEAD OF 5' },
+  { id: 'bullets', name: 'FAST BULLETS', price: 500, desc: 'LESS DROP, WIND AND WAIT' },
+  { id: 'smart', name: 'SMART DOT', price: 800, desc: 'SHOWS WHERE IT WILL LAND' },
+];
+const has = id => !!save.owned[id];
+
+/* --- 2. ANIMALS: pixel art (facing right), what they do, what they are worth ------------------------------- */
+const ART = {
+  deer: { rows: ['.............h.h', '............hh.h', '.............hh.', '............bbb.', '...........bbebk', '...........bbbb.', '.bbbbbbbbbbbb...', 'bbbbbbbbbbbbb...', 'wbbbbbbbbbbb....', '.bllllllllbb....', '.b.b.....b.b....', '.b.b.....b.b....', '.k.k.....k.k....'], pal: { b: '#b0743a', l: '#e8c090', w: '#ffffff', h: '#6a4424', e: '#111111', k: '#3a2214' } },
+  boar: { rows: ['..kkkkkkk.....', '.kbbbbbbbbk...', 'kbbbbbbbbbbbk.', 'kbbbbbbbbbbebw', 'kbbbbbbbbbbbbk', '.bbbbbbbbbbbk.', '.b.b....b.b...', '.b.b....b.b...', '.k.k....k.k...'], pal: { b: '#6a5040', k: '#3a2a20', e: '#111111', w: '#f0e8d8' } },
+  rabbit: { rows: ['.....ll.', '.....bl.', '....bbb.', '.bbbbeb.', 'bbbbbbbk', 'wbbbbbb.', '.k.k.kk.'], pal: { b: '#a89a88', l: '#f0c8c8', e: '#111111', k: '#5a5048', w: '#ffffff' } },
+  fox: { rows: ['...........b..', '..........bbb.', '.........bbebk', 'bbbb.bbbbbbbbb', 'bwbbbbbbbbbb..', '....bwwwwwbb..', '....b.b..b.b..', '....k.k..k.k..'], pal: { b: '#e8702a', w: '#ffffff', e: '#111111', k: '#3a2214' } },
+  duck: { rows: ['..g......', '.ggb.....', '.gbbbbbb.', '..bbbbbbo', '...www...', '....w....'], pal: { g: '#2a8a3a', b: '#8a7a6a', o: '#f0a020', w: '#d8d0c0' }, rows2: ['..g......', '.ggb.....', '.gbbbbbb.', '..bbbbbbo', '..bbb....', '.bb......'] },
+  bear: { rows: ['..............bb..', '.............bbbb.', '..bbbbbbbbbbbbbebk', '.bbbbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbbbbb.', 'bbbbbbbbbbbbbbbb..', 'bbbbbbbbbbbbbbbb..', '.bbbbbbbbbbbbbb...', '.bb.bb.....bb.bb..', '.bb.bb.....bb.bb..', '.kk.kk.....kk.kk..'], pal: { b: '#5a3a24', e: '#111111', k: '#2a1a10' } },
+};
+const KINDS = {
+  deer: { name: 'DEER', speed: 22, run: 75, pts: 100, hp: 1 },
+  boar: { name: 'BOAR', speed: 16, run: 60, pts: 120, hp: 1 },
+  rabbit: { name: 'RABBIT', speed: 14, run: 90, pts: 150, hp: 1, hop: true },
+  fox: { name: 'FOX', speed: 26, run: 85, pts: 160, hp: 1 },
+  duck: { name: 'DUCK', speed: 40, run: 90, pts: 180, hp: 1, fly: true },
+  bear: { name: 'BEAR', speed: 12, run: 45, pts: 300, hp: 2 },
+};
+// the sprites, drawn once on little canvases (both ways), and scaled when drawn
+const SPRITES = {};
+for (const k in ART) {
+  const make = (rows, flip) => {
+    const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length; const g = c.getContext('2d');
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') { g.fillStyle = ART[k].pal[ch]; g.fillRect(flip ? r.length - 1 - x : x, y, 1, 1); } }));
+    return c;
+  };
+  SPRITES[k] = { r: make(ART[k].rows, false), l: make(ART[k].rows, true), w: ART[k].rows[0].length, h: ART[k].rows.length };
+  if (ART[k].rows2) { SPRITES[k].r2 = make(ART[k].rows2, false); SPRITES[k].l2 = make(ART[k].rows2, true); }
+}
+
+/* --- 3. THE LAND: three layers of hills with trees and bushes (they stop bullets) -------------------------------- */
+const PLACES = [
+  { name: 'FOREST', sky: ['#7ac4ec', '#9ad4f0', '#bce4f4'], hill: ['', '#4a8a2a', '#5a9a4a', '#7aaa7a'], soil: ['', '#3a6a1e', '#4a7a3a', '#6a8a6a'], tree: ['', '#1e5a1e', '#2a6a3a', '#5a8a6a'], trunk: '#5a3a1e', kinds: ['deer', 'boar', 'rabbit', 'fox'] },
+  { name: 'MOUNTAINS', sky: ['#5a7ab8', '#7a9ad0', '#a8c0e8'], hill: ['', '#e8eef8', '#c8d4e8', '#a8b4d0'], soil: ['', '#b8c4d8', '#98a4c0', '#8894b0'], tree: ['', '#1e4a3a', '#2a5a4a', '#5a7a7a'], trunk: '#4a3424', kinds: ['deer', 'fox', 'rabbit', 'bear'] },
+  { name: 'LAKE', sky: ['#f0a868', '#f8c890', '#ffe0b0'], hill: ['', '#6a9a3a', '#7aaa5a', '#9ab88a'], soil: ['', '#4a7a2a', '#5a8a4a', '#7a9a7a'], tree: ['', '#3a6a2a', '#4a7a3a', '#6a8a6a'], trunk: '#5a3a1e', kinds: ['duck', 'deer', 'boar', 'duck'], water: true },
+];
+function makeLand(seed, place) {
+  const W = S.W, r = rng(seed), layers = [null];
+  for (let d = 1; d <= 3; d++) {
+    const base = [0, 208, 170, 132][d], amp = [0, 8, 10, 14][d], f = 0.012 + r() * 0.01, ph = r() * 6, g = new Float32Array(W);
+    for (let x = 0; x < W; x++) g[x] = base - Math.sin(x * f + ph) * amp - Math.sin(x * f * 2.7 + ph * 2) * amp * 0.35;
+    const trees = [], n = [0, 4, 6, 9][d];
+    for (let i = 0; i < n; i++) { const x = Math.round(r() * W), s = SCALE[d]; trees.push({ x, w: Math.round((r() < 0.4 ? 16 : 10) * s * 1.6), h: Math.round((26 + r() * 18) * s * 1.5), bush: r() < 0.35 }); }
+    layers.push({ d, g, trees });
+  }
+  return layers;
+}
+// does the land of layer d (its hill, a tree or a bush) cover the point (x, y)?
+function solid(L, x, y) {
+  const W = L.g.length, xi = clamp(Math.round(x), 0, W - 1);
+  if (y >= L.g[xi]) return true;
+  for (const t of L.trees) {
+    const gy = L.g[clamp(t.x, 0, W - 1)];
+    if (t.bush) { if (Math.abs(x - t.x) < t.w * 0.7 && y > gy - t.h * 0.45) return true; }
+    else if ((Math.abs(x - t.x) < t.w / 2 && y > gy - t.h && y < gy - t.h * 0.35) || (Math.abs(x - t.x) < Math.max(1, t.w / 8) && y > gy - t.h * 0.4)) return true;
+  }
+  return false;
+}
+
+/* --- 4. SHOTS: from where the scope points, each depth has its own drop, drift and time -------------------------- */
+function fireAt(x, y) {
+  const R = G, fast = has('bullets') ? 0.6 : 1;
+  R.shots++; R.ammo--; R.shake = 0.25; R.flash = 0.08; sfx('shot');
+  if (R.ammo <= 0) R.reload = has('reload') ? 0.96 : 1.6;
+  R.bullets.push({ x, y, wind: R.wind, t: 0, fast, d: 1, done: false });
+}
+// where a bullet lands (or flies by), the animals near it get scared and run (ducks fly up): only then, not at the
+// bang, so a well-aimed shot gets there first
+function scare(x) { for (const a of G.animals) if (!a.dead && Math.abs(a.x - x) < 90 / a.d) { a.scared = true; a.dir = a.x < x ? -1 : 1; if (a.fly) a.vy = -40; } }
+const impact = (b, d) => ({ x: b.x + b.wind * DRIFT[d] * b.fast, y: b.y + DROP[d] * b.fast });
+function stepBullets(dt) {
+  const R = G;
+  for (const b of R.bullets) {
+    if (b.done) continue;
+    b.t += dt;
+    while (!b.done && b.d <= 3 && b.t >= FLIGHT[b.d] * b.fast) {
+      const p = impact(b, b.d), L = R.land[b.d];
+      // an animal of this depth there?
+      const a = R.animals.find(o => !o.dead && o.d === b.d && hitBox(o, p.x, p.y));
+      if (a) { hitAnimal(a, p.x, p.y); scare(p.x); b.done = true; break; }
+      if (solid(L, p.x, p.y)) { R.puffs.push({ x: p.x, y: p.y, t: 0, d: b.d }); scare(p.x); b.done = true; sfx('thud'); break; }
+      b.d++;
+    }
+    if (b.d > 3 && !b.done) { b.done = true; scare(b.x); }
+  }
+  R.bullets = R.bullets.filter(b => !b.done);
+}
+function box(a) {                                   // where the animal is on the screen: x, y (top left), w, h
+  const sp = SPRITES[a.kind], s = SCALE[a.d] * (a.kind === 'bear' ? 1.2 : 1) * 1.7, w = sp.w * s, h = sp.h * s;
+  return { x: a.x - w / 2, y: a.y - h, w, h, s };
+}
+function hitBox(a, x, y) { const b = box(a); return x >= b.x - 0.5 && x <= b.x + b.w + 0.5 && y >= b.y - 0.5 && y <= b.y + b.h + 0.5; }
+function vital(a, x, y) {                            // the chest: the front third of the body, middle height
+  const b = box(a), front = a.dir > 0 ? b.x + b.w * 0.55 : b.x + b.w * 0.1;
+  return x >= front && x <= front + b.w * 0.35 && y >= b.y + b.h * 0.35 && y <= b.y + b.h * 0.75;
+}
+function hitAnimal(a, x, y) {
+  const R = G, k = KINDS[a.kind], v = vital(a, x, y);
+  a.hp -= v ? 2 : 1; R.hits++;
+  if (a.hp > 0) { a.scared = true; R.pops.push({ x, y: y - 6, txt: 'HIT! AGAIN!', col: '#ffd23f', t: 0 }); sfx('hit'); return; }
+  a.dead = true; a.deadT = 0; sfx('down');
+  const wanted = R.mode === 'endless' || R.lic.kind === a.kind;
+  if (!wanted) { R.wrong++; R.score = Math.max(0, R.score - 100); R.pops.push({ x, y: y - 6, txt: 'WRONG ANIMAL! -100', col: '#ff5a5a', t: 0 }); sfx('bad'); return; }
+  const pts = k.pts * (v ? 2 : 1) * (a.d === 3 ? 1.5 : a.d === 2 ? 1.2 : 1);
+  R.score += Math.round(pts); R.got++;
+  if (R.mode === 'endless') R.left = Math.min(99, R.left + 5);
+  R.pops.push({ x, y: y - 6, txt: (v ? 'CLEAN SHOT! ' : 'HIT! ') + '+' + Math.round(pts), col: v ? '#5ad43f' : '#fff', t: 0 });
+}
+
+/* --- 5. THE HUNT --------------------------------------------------------------------------------------------- */
+// levels: place (0-2) x 6. The licence: what and how many; the time; how lively the animals are; the wind
+function levelOf(w, li) {
+  const kinds = PLACES[w].kinds, kind = kinds[li % 3];                 // (the last hunt of a place: its big one)
+  return { kind: li === 5 ? (w === 2 ? 'duck' : w === 1 ? 'bear' : 'fox') : kind, n: li === 5 ? (w === 1 ? 2 : 4) : 2 + Math.floor(li / 2), time: 70 + li * 5,
+           wind: 1 + li * 1.4, far: 0.2 + li * 0.1, speed: 1 + li * 0.08 };
+}
+let G = null;
+function newHunt(mode, w = 0, li = 0) {
+  const P = PLACES[w], L = mode === 'endless' ? { kind: null, n: 0, time: 45, wind: 6, far: 0.4, speed: 1.15 } : levelOf(w, li);
+  G = { mode, w, li, P, lic: L, land: makeLand(Math.floor(Math.random() * 1e9), P), animals: [], bullets: [], puffs: [], pops: [],
+        score: 0, got: 0, wrong: 0, shots: 0, hits: 0, left: L.time, ammo: mag(), reload: 0, wind: 0, windT: 0, spawnT: 0.5, t: 0,
+        over: false, won: false, overT: 0, shake: 0, flash: 0 };
+  newWind(); state = 'play'; paused = false; scope.on = false;
+}
+const mag = () => (has('mag') ? 8 : 5);
+function newWind() { const R = G; R.wind = Math.round((Math.random() * 2 - 1) * R.lic.wind); R.windT = 8 + Math.random() * 6; }
+// a new animal: of the licence's kind more often, at a depth (far ones are worth more)
+function spawn() {
+  const R = G, W = S.W, P = R.P, L = R.lic;
+  if (R.animals.filter(a => !a.dead).length >= 6) return;
+  let kind = L.kind && Math.random() < 0.5 ? L.kind : P.kinds[Math.floor(Math.random() * P.kinds.length)];
+  if (kind === 'bear' && Math.random() < 0.6 && L.kind !== 'bear') kind = 'deer';
+  const k = KINDS[kind], d = Math.random() < L.far ? 3 : Math.random() < 0.55 ? 2 : 1, dir = Math.random() < 0.5 ? 1 : -1;
+  const x = dir > 0 ? -12 : W + 12, lay = R.land[d];
+  const a = { kind, d, x, y: lay.g[clamp(Math.round(x), 0, W - 1)], dir, hp: k.hp, fly: !!k.fly, scared: false, stopT: 1 + Math.random() * 3, walkT: 0, frame: 0, vy: 0 };
+  if (a.fly) { a.y = [0, 90, 70, 55][d] + Math.random() * 20; }
+  R.animals.push(a);
+}
+function stepHunt(dt) {
+  const R = G, W = S.W;
+  R.t += dt; if (R.shake > 0) R.shake -= dt; if (R.flash > 0) R.flash -= dt;
+  if (!R.over) {
+    R.left -= dt;
+    if ((R.windT -= dt) <= 0) newWind();
+    if ((R.spawnT -= dt) <= 0) { spawn(); R.spawnT = 1.6 + Math.random() * 2.2; }
+    if (R.reload > 0 && (R.reload -= dt) <= 0) { R.ammo = mag(); sfx('reload'); }
+    const done = R.mode === 'level' && R.got >= R.lic.n;
+    if (done || R.left <= 0 || (R.mode === 'endless' && R.wrong >= 3)) end(done);
+  } else R.overT += dt;
+  for (const a of R.animals) {
+    const k = KINDS[a.kind];
+    if (a.dead) { a.deadT += dt; continue; }
+    a.frame += dt * (a.scared ? 10 : 5);
+    if (a.fly) { a.x += a.dir * k.speed * (a.scared ? 2 : 1) * R.lic.speed * SCALE[a.d] * 1.6 * dt; a.y += (a.vy += (a.scared ? -10 : 0) * dt) * dt; a.y += Math.sin(R.t * 3 + a.x) * 0.15; }
+    else {
+      // walk, stop to graze, walk on; scared: run away
+      if (!a.scared && (a.stopT -= dt) <= 0) { if (a.walkT <= 0) a.walkT = 1.5 + Math.random() * 3; if ((a.walkT -= dt) <= 0) a.stopT = 1 + Math.random() * 3; }
+      const moving = a.scared || a.stopT <= 0;
+      if (moving) a.x += a.dir * (a.scared ? k.run : k.speed) * R.lic.speed * SCALE[a.d] * 1.6 * dt;
+      a.y = R.land[a.d].g[clamp(Math.round(a.x), 0, W - 1)] - (k.hop && moving ? Math.abs(Math.sin(a.frame)) * 4 * SCALE[a.d] : 0);
+      a.moving = moving;
+    }
+  }
+  R.animals = R.animals.filter(a => (a.dead ? a.deadT < 1.6 : a.x > -40 && a.x < W + 40 && a.y > -20));
+  stepBullets(dt);
+  for (const p of R.puffs) p.t += dt; R.puffs = R.puffs.filter(p => p.t < 0.5);
+  for (const p of R.pops) p.t += dt; R.pops = R.pops.filter(p => p.t < 1.4);
+}
+function end(done) {
+  const R = G; if (R.over) return;
+  R.over = true; R.won = done; R.overT = 0; scope.on = false;
+  R.acc = R.shots ? Math.round(R.hits / R.shots * 100) : 0;
+  R.coins = Math.floor(R.score / 10); save.coins = (save.coins | 0) + R.coins; save.played = (save.played | 0) + 1;
+  if (R.mode === 'level' && done) {
+    const st = 1 + (R.wrong === 0 ? 1 : 0) + (R.acc >= 70 ? 1 : 0), key = R.w + '-' + R.li, was = save.stars[key] | 0;
+    R.stars = st; if (st > was) { PX.Wallet.add(st - was); R.newStars = st - was; save.stars[key] = st; }
+  }
+  if (R.mode === 'endless') { R.newBest = R.score > (save.best | 0); if (R.newBest) save.best = R.score; R.arcade = Math.min(10, Math.floor(R.score / 1000)); if (R.arcade) PX.Wallet.add(R.arcade); }
+  store(); sfx(done || R.mode === 'endless' ? 'win' : 'lose');
+}
+
+/* --- 6. DRAWING: the land on its own canvas (the scope zooms into it), then the scope, then the HUD ------------- */
+const landC = document.createElement('canvas'), landG = landC.getContext('2d');
+function drawLand(t) {
+  const W = S.W, R = G || demo, P = R.P;
+  if (landC.width !== W || landC.height !== H) { landC.width = W; landC.height = H; }
+  ctx = landG; ctx.imageSmoothingEnabled = false;
+  P.sky.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(0, i * 40, W, 41); });
+  ctx.fillStyle = P.sky[2]; ctx.fillRect(0, 120, W, H);
+  ctx.fillStyle = '#fff6c0'; ctx.fillRect(W - 70, 26, 14, 14);
+  for (let i = 0; i < 4; i++) { const cx = ((i * 150 + t * (4 + R.wind)) % (W + 80) + W + 80) % (W + 80) - 40; ctx.fillStyle = '#ffffffc0'; ctx.fillRect(Math.round(cx), 22 + i * 12, 30, 5); ctx.fillRect(Math.round(cx) + 6, 19 + i * 12, 16, 4); }
+  for (let d = 3; d >= 1; d--) {
+    const L = R.land[d];
+    for (let x = 0; x < W; x++) { const y = Math.round(L.g[x]); ctx.fillStyle = P.hill[d]; ctx.fillRect(x, y, 1, 2); ctx.fillStyle = P.soil[d]; ctx.fillRect(x, y + 2, 1, H - y); }
+    if (P.water && d === 2) { ctx.fillStyle = '#3a7ad8'; for (let x = 0; x < W; x++) { const y = Math.round(L.g[x]) + 6; ctx.fillRect(x, y, 1, 8); } ctx.fillStyle = '#7ac4ec'; for (let x = 0; x < W; x += 9) ctx.fillRect(x + Math.floor(t * 6) % 9, Math.round(L.g[x]) + 8, 4, 1); }
+    for (const tr of L.trees) {
+      const gy = Math.round(L.g[clamp(tr.x, 0, W - 1)]);
+      if (tr.bush) { ctx.fillStyle = P.tree[d]; ctx.beginPath(); ctx.ellipse(tr.x, gy - tr.h * 0.22, tr.w * 0.7, tr.h * 0.25, 0, 0, 6.29); ctx.fill(); }
+      else { ctx.fillStyle = P.trunk; ctx.fillRect(Math.round(tr.x - Math.max(1, tr.w / 8)), gy - Math.round(tr.h * 0.4), Math.max(2, Math.round(tr.w / 4)), Math.round(tr.h * 0.4) + 1);
+             ctx.fillStyle = P.tree[d]; for (let k = 0; k < 3; k++) { const yy = gy - tr.h * 0.35 - k * tr.h * 0.22, ww = tr.w * (1 - k * 0.25); ctx.beginPath(); ctx.moveTo(tr.x - ww / 2, yy); ctx.lineTo(tr.x + ww / 2, yy); ctx.lineTo(tr.x, yy - tr.h * 0.32); ctx.fill(); } }
+    }
+    for (const a of R.animals) if (a.d === d) drawAnimal(a, t);
+    for (const p of R.puffs) if (p.d === d) { const r = 1 + p.t * 8 * SCALE[d]; ctx.fillStyle = `rgba(200,180,140,${1 - p.t * 2})`; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.29); ctx.fill(); }
+  }
+  ctx = screenCtx;
+}
+function drawAnimal(a, t) {
+  const sp = SPRITES[a.kind], b = box(a), right = a.dir > 0;
+  let img = right ? sp.r : sp.l;
+  if (a.fly && sp.r2 && Math.floor(a.frame) % 2) img = right ? sp.r2 : sp.l2;
+  ctx.save();
+  if (a.dead) { ctx.globalAlpha = Math.max(0, 1 - Math.max(0, a.deadT - 0.8) / 0.8); ctx.translate(b.x + b.w / 2, b.y + b.h); ctx.rotate((right ? 1 : -1) * Math.min(1.57, a.deadT * 5)); ctx.drawImage(img, -b.w / 2, -b.h, b.w, b.h);
+    ctx.rotate(-(right ? 1 : -1) * Math.min(1.57, a.deadT * 5)); for (let i = 0; i < 3; i++) { const ang = t * 6 + i * 2.1; ctx.fillStyle = '#ffd23f'; ctx.fillRect(Math.round(Math.cos(ang) * b.w * 0.4) - 1, Math.round(-b.h - 3 + Math.sin(ang) * 2), 2, 2); } }
+  else { const bob = !a.fly && a.moving ? (Math.floor(a.frame) % 2) * 0.5 : 0; ctx.drawImage(img, Math.round(b.x), Math.round(b.y - bob), b.w, b.h); }
+  ctx.restore();
+}
+// the scope: where the finger is (or the stick), a bit above it; it sways
+const scope = { on: false, x: 0, y: 0, fx: 0, fy: 0, t: 0, id: null };
+const ZOOM = () => (has('zoom') ? 3.5 : 2.5);
+function sway() {                                   // steady for a moment after ~0.8 s still, then shaky
+  const s = scope.t, base = has('steady') ? 0.5 : 1, k = s < 0.8 ? 1 - s / 1.6 : s < 2.4 ? 0.25 : Math.min(1.6, 0.25 + (s - 2.4) * 0.6);
+  return { x: Math.sin(s * 2.1) * 3.2 * k * base + Math.sin(s * 5.3) * 0.8 * k * base, y: Math.cos(s * 1.7) * 2.6 * k * base };
+}
+const aimPoint = () => { const sw = sway(); return { x: scope.x + sw.x, y: scope.y + sw.y }; };
+function drawScope(t) {
+  const R = G, z = ZOOM(), r = 46, p = aimPoint(), cx = clamp(scope.x, r, S.W - r), cy = clamp(scope.y, r, H - r);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, S.W, H);
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.29); ctx.clip();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(landC, p.x - r / z, p.y - r / z, (r * 2) / z, (r * 2) / z, cx - r, cy - r, r * 2, r * 2);
+  // the cross, the marks for the drop at each depth, and the SMART DOT
+  ctx.fillStyle = '#111'; ctx.fillRect(cx - r, cy, r * 2, 1); ctx.fillRect(cx, cy - r, 1, r * 2);
+  for (let d = 1; d <= 3; d++) { const yy = cy + DROP[d] * (has('bullets') ? 0.6 : 1) * z; ctx.fillRect(cx - 4 + d, Math.round(yy), 9 - d * 2, 1); }
+  if (has('smart')) {
+    for (let d = 1; d <= 3; d++) {
+      const q = impact({ x: p.x, y: p.y, wind: R.wind, fast: has('bullets') ? 0.6 : 1 }, d);
+      if (solid(R.land[d], q.x, q.y) || R.animals.some(a => !a.dead && a.d === d && hitBox(a, q.x, q.y))) { ctx.fillStyle = '#ff2a2a'; ctx.fillRect(Math.round(cx + (q.x - p.x) * z) - 1, Math.round(cy + (q.y - p.y) * z) - 1, 3, 3); break; }
+    }
+  }
+  ctx.restore();
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.29); ctx.stroke();
+  ctx.strokeStyle = '#5a5a6a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, 6.29); ctx.stroke();
+  const steady = scope.t >= 0.8 && scope.t < 2.4;
+  T(steady ? 'STEADY!' : scope.t >= 2.4 ? 'SHAKY...' : '', cx, cy + r + 6, steady ? '#5ad43f' : '#ff8a5a', 1, 'center', '#000');
+}
+function windArrow(x, y) {
+  const w = G.wind, len = Math.abs(w) * 2;
+  T('WIND ' + Math.abs(w), x, y, '#fff', 1, 'center', '#000');
+  if (!w) return;
+  ctx.fillStyle = '#7af0ff'; ctx.fillRect(Math.round(x - len / 2), y + 8, len, 2);
+  const hx = w > 0 ? Math.round(x + len / 2) : Math.round(x - len / 2);
+  for (let i = 0; i < 3; i++) ctx.fillRect(hx + (w > 0 ? i : -i), y + 9 - (3 - i), 1, (3 - i) * 2);
+}
+
+/* --- 7. SCREENS ---------------------------------------------------------------------------------------------- */
+let state = 'title';          // title | levels | shop | play
+let paused = false, world = 0, msg = null, demo = null;
+function panel(w, h, y, col = '#5ad43f') {
+  const W = S.W, x = Math.round(W / 2 - w / 2); y = y === undefined ? Math.round(H / 2 - h / 2) : y;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#1d1830'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = col; ctx.fillRect(x, y, w, 2);
+  return { x, y };
+}
+function coinIcon(x, y) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1, y - 1, 8, 10); ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, 6, 8); ctx.fillStyle = '#fff6c0'; ctx.fillRect(x + 1, y + 1, 1, 4); }
+function topBar(back) {
+  const W = S.W, st = '★ ' + PX.Wallet.get();
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  T(st, W - 38, 12, '#ffd23f', 2, 'right', '#000');
+  T(String(save.coins | 0), W - 46 - PX.textWidth(st, 2), 12, '#ffe27a', 2, 'right', '#000');
+  coinIcon(W - 46 - PX.textWidth(st, 2) - PX.textWidth(String(save.coins | 0), 2) - 10, 13);
+  if (back && (UI.button('back', 6, 6, 56, 20, '< BACK', { size: 1 }) || UI.back)) { sfx('click'); state = 'title'; }
+}
+const starsOf = (w, li) => save.stars[w + '-' + li] | 0;
+const total = () => Object.values(save.stars).reduce((a, b) => a + (b | 0), 0);
+const open = (w, li) => (w === 0 || starsOf(w - 1, 5) > 0) && (li === 0 || starsOf(w, li - 1) > 0);
+function drawTitle(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.25)'; ctx.fillRect(0, 0, W, H);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); PX.Lang.raw(() => T(profile.name, 40, 16, '#fff', 2, 'left', '#000'));
+  topBar(false);
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 34, 3);
+  PX.drawLogo(ctx, 'SNIPER', W / 2, 52, 7);
+  const bw = 200, bx = Math.round(W / 2 - bw / 2);
+  if (UI.button('levels', bx, 102, bw, 26, 'HUNTS  ★' + total() + '/54', { accent: '#5ad43f' })) { sfx('click'); state = 'levels'; }
+  if (UI.button('endless', bx, 132, 98, 22, 'ENDLESS', { size: 1, accent: '#ffd23f' })) { sfx('click'); newHunt('endless', Math.floor(Math.random() * 3)); }
+  if (UI.button('shop', bx + 102, 132, 98, 22, 'UPGRADES', { size: 1, accent: '#7af0ff' })) { sfx('click'); state = 'shop'; }
+  T('ENDLESS BEST: ' + (save.best | 0), W / 2, 162, '#fff', 1, 'center', '#000');
+  if (UI.button('games', bx, 180, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION, W - 4, H - 9, '#c8b8ff', 1, 'right');
+}
+function drawLevels(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.55)'; ctx.fillRect(0, 0, W, H);
+  topBar(true);
+  if (UI.button('wprev', Math.round(W / 2 - 150), 34, 26, 22, '<', { disabled: world === 0 })) world--;
+  if (UI.button('wnext', Math.round(W / 2 + 124), 34, 26, 22, '>', { disabled: world === 2 })) world++;
+  T(PLACES[world].name, W / 2, 40, '#fff', 2, 'center', '#000');
+  const bw = 112, bh = 50, gap = 8, x0 = Math.round(W / 2 - (3 * bw + 2 * gap) / 2);
+  for (let li = 0; li < 6; li++) {
+    const x = x0 + (li % 3) * (bw + gap), y = 66 + Math.floor(li / 3) * (bh + gap), ok = open(world, li), L = levelOf(world, li), st = starsOf(world, li);
+    if (UI.button('lv' + li, x, y, bw, bh, '', { disabled: !ok, accent: '#5ad43f' })) newHunt('level', world, li);
+    if (!ok) { PX.drawIcon(ctx, ['.###.', '#...#', '#####', '##.##', '#####'], { '#': '#5b5275' }, x + bw / 2, y + bh / 2, 2); continue; }
+    T((world + 1) + '-' + (li + 1), x + 8, y + 6, '#fff', 1);
+    T(L.n + ' ' + KINDS[L.kind].name, x + bw / 2, y + 18, '#ffd23f', 1, 'center');
+    ctx.drawImage(SPRITES[L.kind].r, x + bw - 26, y + 6, SPRITES[L.kind].w, SPRITES[L.kind].h);
+    for (let s = 0; s < 3; s++) T('★', x + bw / 2 - 12 + s * 12, y + 32, s < st ? '#ffd23f' : '#3a3258', 1, 'center');
+  }
+  T('★ THE LICENCE   ★ NO WRONG ANIMAL   ★ 70 % OF SHOTS HIT', W / 2, 186, '#c8b8ff', 1, 'center', '#000');
+  T('FINISH THE LAST HUNT OF A PLACE TO OPEN THE NEXT ONE', W / 2, 200, '#9a92b8', 1, 'center', '#000');
+}
+function drawShop(t) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(13,11,19,0.6)'; ctx.fillRect(0, 0, W, H);
+  topBar(true);
+  T('UPGRADES', W / 2, 34, '#fff', 2, 'center', '#000');
+  const bw = 120, bh = 50, gap = 6, x0 = Math.round(W / 2 - (3 * bw + 2 * gap) / 2);
+  UPGRADES.forEach((u, i) => {
+    const x = x0 + (i % 3) * (bw + gap), y = 54 + Math.floor(i / 3) * (bh + gap), own = has(u.id);
+    if (UI.button('u' + i, x, y, bw, bh, '', { on: own, accent: own ? '#5ad43f' : '#ffd23f', disabled: own })) {
+      if ((save.coins | 0) >= u.price) { save.coins -= u.price; save.owned[u.id] = 1; store(); sfx('buy'); msg = { txt: u.name + '!', t: 1.5 }; }
+      else { sfx('bad'); msg = { txt: 'NOT ENOUGH COINS', t: 1.5 }; }
+    }
+    T(u.name, x + bw / 2, y + 8, '#fff', 1, 'center', '#000');
+    T(u.desc, x + bw / 2, y + 22, '#c8b8ff', 1, 'center');
+    if (own) T('OWNED', x + bw / 2, y + 36, '#5ad43f', 1, 'center', '#000');
+    else { coinIcon(x + bw / 2 - PX.textWidth(String(u.price), 1) / 2 - 7, y + 35); T(String(u.price), x + bw / 2 + 4, y + 36, (save.coins | 0) >= u.price ? '#ffd23f' : '#8a6a6a', 1, 'center', '#000'); }
+  });
+  T('EVERY 10 POINTS IS A COIN.', W / 2, 178, '#c8b8ff', 1, 'center', '#000');
+}
+function drawHUD(t) {
+  const W = S.W, R = G;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, 0, W, 22);
+  if (R.mode === 'level') T('HUNT: ' + R.got + ' / ' + R.lic.n + ' ' + KINDS[R.lic.kind].name, 6, 4, '#ffd23f', 1); else T('SCORE ' + R.score, 6, 4, '#ffd23f', 1);
+  T(R.mode === 'level' ? 'SCORE ' + R.score : 'WRONG ' + R.wrong + ' / 3', 6, 13, '#fff', 1);
+  windArrow(W / 2, 3);
+  T(String(Math.max(0, Math.ceil(R.left))), W - 34, 4, R.left < 10 ? '#ff5a5a' : '#fff', 2, 'right', '#000');
+  if (UI.button('pause', W - 28, 1, 24, 20, 'II', { size: 1 })) { paused = true; scope.on = false; }
+  // the bullets left (or reloading)
+  for (let i = 0; i < mag(); i++) { ctx.fillStyle = i < R.ammo && R.reload <= 0 ? '#ffd23f' : '#3a3258'; ctx.fillRect(8 + i * 5, H - 14, 3, 8); }
+  if (R.reload > 0) T('RELOADING...', 10 + mag() * 5, H - 13, '#ff8a5a', 1, 'left', '#000');
+  if (R.t < 4) T('DRAG TO AIM, LET GO TO SHOOT', W / 2, H - 14, '#fff', 1, 'center', '#000');
+  for (const p of R.pops) T(p.txt, p.x, p.y - p.t * 14, p.col, 1, 'center', '#000');
+}
+function drawPause() {
+  const W = S.W, { y } = panel(200, 110), bw = 150, bx = Math.round(W / 2 - bw / 2);
+  T('PAUSED', W / 2, y + 12, '#fff', 3, 'center');
+  if (UI.button('resume', bx, y + 40, bw, 22, 'RESUME', { accent: '#5ad43f' }) || UI.back) paused = false;
+  if (UI.button('quit', bx, y + 72, bw, 22, 'MENU')) { paused = false; state = 'title'; G = null; }
+}
+function drawOver(t) {
+  const W = S.W, R = G, { y } = panel(260, 170, undefined, R.won || R.mode === 'endless' ? '#5ad43f' : '#ff5a5a');
+  T(R.mode === 'endless' ? 'THE HUNT IS OVER' : R.won ? 'LICENCE DONE!' : "TIME'S UP!", W / 2, y + 10, '#fff', 2, 'center', '#000');
+  T(String(R.score), W / 2, y + 30, '#fff', 4, 'center', '#000');
+  if (R.mode === 'level' && R.won) for (let s = 0; s < 3; s++) T('★', W / 2 - 24 + s * 24, y + 64, s < R.stars ? '#ffd23f' : '#3a3258', 3, 'center', s < R.stars ? '#000' : null);
+  if (R.mode === 'endless') T(R.newBest ? 'NEW BEST!' : 'BEST: ' + (save.best | 0), W / 2, y + 66, R.newBest ? '#5ad43f' : '#c8b8ff', R.newBest ? 2 : 1, 'center', '#000');
+  T('SHOTS ' + R.shots + '   HITS ' + R.hits + '   ' + R.acc + ' %   WRONG ' + R.wrong, W / 2, y + 96, '#c8b8ff', 1, 'center');
+  coinIcon(W / 2 - 50, y + 109); T('+' + R.coins, W / 2 - 38, y + 110, '#ffe27a', 2, 'left', '#000');
+  const st = R.newStars || R.arcade; if (st) T('★ +' + st, W / 2 + 14, y + 110, '#ffd23f', 2, 'left', '#000');
+  if (UI.button('menu', W / 2 - 122, y + 136, 118, 24, 'MENU', { size: 1 }) || UI.back) { state = R.mode === 'level' ? 'levels' : 'title'; world = R.w; G = null; return; }
+  if (R.mode === 'level' && R.won && R.li < 5 && open(R.w, R.li + 1)) { if (UI.button('next', W / 2 + 4, y + 136, 118, 24, 'NEXT HUNT >', { size: 1, accent: '#5ad43f' })) newHunt('level', R.w, R.li + 1); }
+  else if (UI.button('again', W / 2 + 4, y + 136, 118, 24, 'AGAIN', { size: 1, accent: '#5ad43f' })) newHunt(R.mode, R.w, R.li);
+}
+
+/* --- 8. SOUND --------------------------------------------------------------------------------------------- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone([523, 784], 0.1, { vol: 0.1 });
+  else if (k === 'shot') { s.noise(0.25, { freq: 1200, vol: 0.25 }); s.tone([180, 60], 0.25, { vol: 0.12, type: 'square' }); }
+  else if (k === 'thud') s.noise(0.06, { freq: 600, vol: 0.06 });
+  else if (k === 'hit') s.tone([660, 880], 0.08, { vol: 0.08 });
+  else if (k === 'down') [784, 988, 1319].forEach((f, i) => s.tone(f, 0.08, { vol: 0.08, delay: i * 0.05 }));
+  else if (k === 'bad') s.tone([300, 120], 0.3, { vol: 0.12, type: 'sawtooth' });
+  else if (k === 'reload') { s.tone(400, 0.04, { vol: 0.08, type: 'square' }); s.tone(700, 0.04, { vol: 0.08, type: 'square', delay: 0.12 }); }
+  else if (k === 'empty') s.tone(200, 0.05, { vol: 0.06, type: 'square' });
+  else if (k === 'zoom') s.tone(1200, 0.03, { vol: 0.03 });
+  else if (k === 'win') [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.16, { vol: 0.1, delay: i * 0.09 }));
+  else if (k === 'lose') s.tone([440, 220], 0.4, { vol: 0.1, type: 'triangle' });
+  else if (k === 'buy') [784, 988, 1319].forEach((f, i) => s.tone(f, 0.1, { vol: 0.09, delay: i * 0.07 }));
+}
+
+/* --- 9. INPUT: drag to aim (the scope sits a little above the finger), let go to shoot -------------------------- */
+const LIFT = 50;                                   // the scope is this far above the finger
+const canAim = () => state === 'play' && G && !G.over && !paused;
+UI.onDown = (e, x, y) => {
+  PX.Sound.unlock();
+  if (!canAim() || UI.downId !== null) return;
+  scope.on = true; scope.id = e.pointerId; scope.t = 0; scope.x = x; scope.y = clamp(y - LIFT, 4, H - 4); sfx('zoom');
+};
+UI.onMove = (e, x, y) => {
+  if (!scope.on || scope.id !== e.pointerId) return;
+  const nx = x, ny = clamp(y - LIFT, 4, H - 4);
+  if (Math.hypot(nx - scope.x, ny - scope.y) > 1.5) scope.t = Math.min(scope.t, 0.3);   // (moving: not steady yet)
+  scope.x = nx; scope.y = ny;
+};
+UI.onUp = e => { if (scope.on && scope.id === e.pointerId) shoot(); };
+function shoot() {
+  scope.on = false;
+  if (!canAim() || scope.t < 0.2) return;
+  if (G.reload > 0 || G.ammo <= 0) { sfx('empty'); return; }
+  const p = aimPoint(); fireAt(p.x, p.y);
+}
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (canAim() || paused) { paused = !paused; scope.on = false; } else UI.back = true; }
+  if (e.code === 'KeyR' && canAim() && G.ammo < mag() && G.reload <= 0) G.reload = has('reload') ? 0.96 : 1.6;
+});
+window.addEventListener('blur', () => { if (canAim()) { paused = true; scope.on = false; } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && canAim()) { paused = true; scope.on = false; } });
+
+/* --- 10. MAIN LOOP ------------------------------------------------------------------------------------------ */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'play' && G) {
+    if (!paused) { stepHunt(dt); if (scope.on) scope.t += dt; }
+    drawLand(t);
+    screenCtx.save(); if (G.shake > 0) screenCtx.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 4));
+    screenCtx.drawImage(landC, 0, 0); screenCtx.restore();
+    if (G.flash > 0) { ctx.fillStyle = 'rgba(255,255,220,0.35)'; ctx.fillRect(0, 0, S.W, H); }
+    if (scope.on && !G.over) drawScope(t);
+    if (!G.over) drawHUD(t); else if (G.overT > 0.8) drawOver(t);
+    if (paused) drawPause();
+  } else {
+    // animals wander behind the menus
+    if (!demo) { const keep = G; newHunt('endless', Math.floor(Math.random() * 3)); demo = G; G = keep; state = 'title'; demo.left = 1e9; }
+    { const keep = G; G = demo; stepHunt(dt); drawLand(t); G = keep; }
+    screenCtx.drawImage(landC, 0, 0);
+    if (state === 'title') drawTitle(t); else if (state === 'levels') drawLevels(t); else if (state === 'shop') drawShop(t);
+  }
+  if (msg) { T(msg.txt, S.W / 2, H - 14, '#fff', 1, 'center', '#000'); if ((msg.t -= dt) <= 0) msg = null; }
+  UI.end();
+  S.blit(G ? G.P.sky[0] : '#7ac4ec');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+// a controller: the stick moves the scope (it opens), A or RT shoots, X reloads
+PX.Pad.setup({
+  title: 'Pixel Sniper: controller', ui: UI, menu: () => !canAim(),
+  phone: { stick: 'AIM', buttons: [['A', 'SHOOT'], ['X', 'RELOAD']] },
+  keys: () => ({ START: 'KeyP', X: 'KeyR' }),
+  onPlay(h, n, dt, edge) {
+    if (n !== 0) return;
+    const m = Math.hypot(h.ax, h.ay);
+    if (m > 0.2 || h.touch) {
+      if (!scope.on) { scope.on = true; scope.t = 0; scope.id = 'pad'; scope.x = S.W / 2; scope.y = H / 2; }
+      if (h.touch) { scope.x = h.touch.x * S.W; scope.y = h.touch.y * H; } else { scope.x = clamp(scope.x + h.ax * 140 * dt, 4, S.W - 4); scope.y = clamp(scope.y + h.ay * 140 * dt, 4, H - 4); }
+      if (m > 0.3) scope.t = Math.min(scope.t, 0.3);
+    }
+    if (scope.on && scope.id === 'pad' && (edge('A') || edge('RT'))) shoot();
+  },
+  help: [['STICK', 'AIM (THE SCOPE)'], ['A|RT', 'SHOOT'], ['X', 'RELOAD'], ['START', 'PAUSE'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>

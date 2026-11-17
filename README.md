@@ -41,6 +41,7 @@ MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOIC
 | **Pixel Slice** (`slice.html`) | Fruit flies up: swipe to slice it. Combos, ICE that slows time, CHILI that sets your blade on fire, GOLD and STAR fruit, and bombs you must not touch. 3 LIVES or 60 SECONDS, a shop of blades and places. |
 | **Pixel Party** (`party.html`) | A tournament of the arcade's own games for 2 to 4 players, online (each on their own phone) or taking turns on one phone: every round is a short challenge in one of the games (Slice, Hook, Runs, Snake, Hoops, Bike Run, Ski, Mouse Thief). Pick the games, the rounds and the trophy; the winner's trophy goes on the TROPHIES leaderboard. |
 | **Pixel Tanks** (`tanks.html`) | Turn-based artillery for 2 to 4 tanks on hills that break apart: aim, mind the wind, pick a weapon (SHELL, BIG SHOT, TRIPLE, CLUSTER, ROLLER, DIRT), fire. Against 1-3 bots or friends on one phone. |
+| **Pixel Sniper** (`sniper.html`) | A hunting game: drag to aim with the scope, let go to shoot. Mind the drop, the wind and the distance, lead the running animals, and hunt only what your licence says. 3 places x 6 hunts, ENDLESS, upgrades. |
 | **Pixel Miner** (`miner.html`) | Drill down, find ores, gems and lost artifacts, sell them at the base, upgrade your digger and go deeper: 1000 m through 7 layers to the core. Your mine stays dug. |
 | **Pixel Horde** (`horde.html`) | You only walk: your weapons fire by themselves. Survive 10 minutes of a growing monster horde, pick an upgrade at every level, evolve weapons, beat the boss. Gold buys upgrades that stay, 6 heroes, 3 maps. |
 | **Pixel Snake** (`snake.html`) | A big arena full of snakes: eat the glowing dots to grow, boost to cut others off, don't hit a body with your head. With 15 bots, or online with real players (a room for everybody, or one for friends with a code). |
@@ -507,6 +508,27 @@ Turn-based artillery for **2 to 4 tanks**. (A new game, made for the arcade's pl
 - **ONE PHONE:** 2-4 players take turns (READY! before each turn).
 - **SHOP:** coins buy tank styles (CAMO, STRIPES, ROBOT, GOLD).
 - A battle of bots goes on behind the menus. In Czech too.
+
+## Pixel Sniper
+
+A hunting game with a scope. (A player's wish: a sniper game, hunting animals.)
+
+- **Aim:** drag anywhere: a zoomed scope shows the land a little above your finger (so the finger doesn't hide it);
+  **let go to shoot** (the scope has to be up for a moment). The scope sways: hold still and it is STEADY! for a
+  moment, then it gets SHAKY again. 5 shots, then it reloads (R, or X on a controller).
+- **A bullet is not instant:** the land has three depths (near, middle, far). The farther, the more the bullet
+  **drops** (the marks under the cross), the more the **WIND** pushes it (the arrow at the top) and the longer it flies,
+  so lead a running animal. Trees, bushes and hills stop a bullet. Where a bullet lands, the animals near it get scared
+  and run (ducks fly up), so the first shot counts.
+- **Animals:** DEER, BOAR, RABBIT, FOX, DUCK (flying), BEAR (two hits). A hit in the chest is a CLEAN SHOT (double);
+  far animals are worth more. No blood: a hit animal tips over, stars spin and it fades away.
+- **HUNTS:** 3 places (FOREST, MOUNTAINS, LAKE) x 6. Every hunt has a **LICENCE** (what and how many, e.g. 3 DEER) and
+  a time; another animal is the WRONG ANIMAL (-100). Stars: the licence done, no wrong animal, 70 % of the shots hit
+  (★ for the arcade too). The last hunt of a place opens the next place.
+- **ENDLESS:** everything counts, every hit adds 5 seconds, 3 wrong animals end it. **TOP: PIXEL SNIPER** is the best.
+- **UPGRADES** (every 10 points is a coin): ZOOM+, STEADY HANDS, FAST RELOAD, BIG MAG (8 shots), FAST BULLETS (less drop,
+  wind and wait), SMART DOT (a red dot shows where the bullet will land).
+- Animals wander behind the menus. In Czech too.
 
 ## Pixel Defense
 

@@ -47,7 +47,7 @@
 <script>
 'use strict';
 /* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.69.0';
+const VERSION = '2.70.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -119,6 +119,7 @@ const GAMES = [
   { id: 'slice', name: 'PIXEL SLICE', sub: 'SWIPE AND SLICE!', url: 'slice.html', color: '#ff5a8a', cats: ['ACTION'], tags: 'SLICE SLASH CUT FRUIT SWIPE BLADE SWORD KATANA BOMB BOMBS COMBO JUICE WATERMELON MELON APPLE BANANA PINEAPPLE CHILI ICE' },
   { id: 'party', name: 'PIXEL PARTY', sub: 'A TOURNAMENT FOR 2-4!', url: 'party.html', color: '#ff7ab8', cats: ['2 PLAYERS', 'ONLINE'], tags: 'PARTY TOURNAMENT CHALLENGE TROPHY TROPHIES CUP FRIENDS FAMILY 3 4 PLAYERS SLICE HOOK RUNS SNAKE HOOPS BIKE SKI THIEF' },
   { id: 'tanks', name: 'PIXEL TANKS', sub: 'AIM, MIND THE WIND, FIRE!', url: 'tanks.html', color: '#5ad43f', cats: ['ACTION', '2 PLAYERS'], tags: 'TANKS TANK ARTILLERY CANNON SHOOT AIM WIND TURN BASED BOTS EXPLOSION CRATER HILLS WEAPONS CLUSTER ROLLER' },
+  { id: 'sniper', name: 'PIXEL SNIPER', sub: 'HUNT WITH THE SCOPE!', url: 'sniper.html', color: '#7aaa3a', cats: ['ACTION'], tags: 'SNIPER HUNT HUNTING HUNTER RIFLE SCOPE AIM SHOOT DEER BOAR RABBIT FOX DUCK BEAR FOREST MOUNTAINS LAKE WIND' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -372,6 +373,23 @@ function previewMiner(x, y, w, h, t) {            // a digger drills down throug
   ctx.fillStyle = Math.floor(t * 20) % 2 ? '#d8d8e4' : '#9a9aa8'; ctx.fillRect(cx - 3, dy + 4, 7, 2); ctx.fillRect(cx - 1, dy + 6, 3, 2);
   if (Math.floor(t * 10) % 2) { ctx.fillStyle = '#9a6a3a'; ctx.fillRect(cx - 6, dy + 6, 2, 2); ctx.fillRect(cx + 5, dy + 5, 2, 2); }
   const dark = ctx.createLinearGradient(0, y + 20, 0, y + h); dark.addColorStop(0, 'rgba(8,4,12,0)'); dark.addColorStop(1, 'rgba(8,4,12,0.7)'); ctx.fillStyle = dark; ctx.fillRect(x, y + 20, w, h - 20);
+  ctx.restore();
+}
+function previewSniper(x, y, w, h, t) {           // green hills, a deer walks; the scope drifts onto it, a shot, it tips over
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ['#7ac4ec', '#9ad4f0', '#bce4f4'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + i * 20, w, 21); });
+  const hill = (base, amp, f, ph, c) => { for (let q = 0; q < w; q++) { const g = Math.round(y + base - Math.sin(q * f + ph) * amp); ctx.fillStyle = c; ctx.fillRect(x + q, g, 1, h); } };
+  hill(30, 5, 0.05, 1, '#7aaa7a'); hill(44, 4, 0.07, 2, '#5a9a4a'); hill(56, 3, 0.09, 0, '#4a8a2a');
+  for (let i = 0; i < 5; i++) { const tx = x + 8 + i * 27, ty = y + 40 - (i % 2) * 6; ctx.fillStyle = '#2a6a3a'; ctx.beginPath(); ctx.moveTo(tx - 4, ty); ctx.lineTo(tx + 4, ty); ctx.lineTo(tx, ty - 11); ctx.fill(); }
+  const k = (t * 0.3) % 1, dx = x + 20 + k * (w - 40), dy = y + 44, down = k > 0.7;
+  ctx.save(); ctx.translate(Math.round(dx), dy); if (down) { ctx.rotate(Math.min(1.5, (k - 0.7) * 12)); ctx.globalAlpha = Math.max(0, 1 - (k - 0.82) * 6); }
+  ctx.fillStyle = '#b0743a'; ctx.fillRect(-6, -6, 10, 4); ctx.fillRect(3, -9, 3, 4); ctx.fillRect(-5, -2, 1, 3); ctx.fillRect(2, -2, 1, 3); ctx.fillStyle = '#6a4424'; ctx.fillRect(4, -12, 1, 3); ctx.fillRect(6, -12, 1, 3);
+  ctx.restore();
+  if (!down) {                                       // the scope comes onto the deer
+    const sx = Math.round(dx + (0.7 - k) * 40 + Math.sin(t * 3) * 2), sy = Math.round(dy - 5 + Math.cos(t * 2.3) * 2);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, 11, 0, 6.29); ctx.stroke();
+    ctx.fillStyle = '#111'; ctx.fillRect(sx - 11, sy, 22, 1); ctx.fillRect(sx, sy - 11, 1, 22);
+  } else if (k < 0.76) { ctx.fillStyle = '#ffffffa0'; ctx.fillRect(x, y, w, h); }
   ctx.restore();
 }
 function previewTanks(x, y, w, h, t) {            // two tanks on green hills; a shell arcs over and bursts in the ground
@@ -720,7 +738,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, sniper: previewSniper, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
