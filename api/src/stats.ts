@@ -150,7 +150,7 @@ export async function statsRoute(c: Ctx) {
   const uniqByDay = new Map(uniqDays!.results.map((r) => [r.day, r.uniques]));
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Pixel Arcade stats</title>
+<meta name="robots" content="noindex"><title>Pixel Games stats</title>
 <style>
 body{font:15px/1.4 system-ui,sans-serif;margin:0 auto;padding:16px;max-width:640px;background:#111;color:#eee}
 h1{font-size:20px}h2{font-size:16px;margin-top:28px}
@@ -161,7 +161,7 @@ th,td{text-align:left;padding:4px 10px 4px 0;border-bottom:1px solid #333;white-
 .idea input{font:inherit;font-size:12px;width:min(320px,60%)}.idea select{font:inherit;font-size:12px}.dim{color:#999;font-size:13px}
 .untriaged{border-color:#1ec8e0}.accepted{border-color:#ffd23f}.rejected{border-color:#ff5a5a}.implemented{border-color:#5ad43f}
 </style></head><body>
-<h1>PIXEL ARCADE STATS</h1>
+<h1>PIXEL GAMES STATS</h1>
 <p>Last 30 days, UTC.</p>
 <h2>Per day</h2>
 ${table(['Day', 'Views', 'Unique visitors'], days!.results.map((r) => [r.day, r.views, uniqByDay.get(r.day) ?? 0]))}

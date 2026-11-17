@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pixel Arcade">
+<meta name="apple-mobile-web-app-title" content="Pixel Games">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -229,7 +229,7 @@ const Save = {
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* private mode: progress lives for this session only */ } },
 };
 Save.load();
-// PIXEL ARCADE: one name for all the games (set in the arcade or in SETTINGS -> NAME)
+// PIXEL GAMES: one name for all the games (set in the arcade or in SETTINGS -> NAME)
 const arcade = () => (window.PX ? PX.Profile.load() : { name: Save.data.name, avatar: { shape: 'cat', color: 0 } });
 if (window.PX) { const pr = PX.Profile.load(); if (pr.name) Save.data.name = pr.name; }
 

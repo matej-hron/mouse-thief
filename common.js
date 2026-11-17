@@ -1,4 +1,4 @@
-// PIXEL ARCADE: shared bits for the arcade (index.html) and its games.
+// PIXEL GAMES: shared bits for the arcade (index.html) and its games.
 // Everything lives under window.PX, so it never clashes with a game's own code.
 'use strict';
 // GAMES INSIDE THE ARCADE: during a call from the chat the arcade opens a game in a frame over itself, so the call goes
@@ -904,7 +904,7 @@ window.PX = (() => {
       if (this.order.length !== n) this.saveOrder();
     },
     seat(id) {                                                       // an idle controller, holding a phone's place
-      return this.seats[id] || (this.seats[id] = { id: 'Pixel Arcade phone controller (reconnecting)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+      return this.seats[id] || (this.seats[id] = { id: 'Pixel Games phone controller (reconnecting)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
         buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0] });
     },
     // the controllers the phones are, in their order
@@ -962,7 +962,7 @@ window.PX = (() => {
       const ph = { conn, pad: null, name: 'PHONE', avatar: null, sent: '', raw: 0, hold: new Array(17).fill(0) };
       conn.on('open', () => {
         if (this.phones.length >= MAX_PHONES) { try { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 500); } catch (e) { /* gone */ } return; }
-        ph.pad = { id: 'Pixel Arcade phone controller', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(),
+        ph.pad = { id: 'Pixel Games phone controller', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(),
                    buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0], touchpad: { on: false, x: 0, y: 0 } };
         this.phones.push(ph); ph.sent = ''; this.sync();
       });
@@ -1010,7 +1010,7 @@ window.PX = (() => {
       const cfg = Pad.cfg || {};
       let menu = true; try { menu = cfg.phoneMenu ? !!cfg.phoneMenu() : cfg.menu ? !!cfg.menu() : true; } catch (e) { /* not ready yet */ }
       const L = menu ? (cfg.phoneMenuLayout || MENU_LAYOUT) : (cfg.phone || layoutFromHelp(cfg.help));
-      return { title: String(cfg.title || document.title || 'Pixel Arcade').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
+      return { title: String(cfg.title || document.title || 'Pixel Games').replace(/: controller$/i, ''), mode: menu ? 'menu' : 'play',
                stick: L.stick || null, dpad: !!L.dpad, touch: L.touch || null, buttons: L.buttons || [] };
     },
     sync() {                                   // tell each phone what to show, when it changes

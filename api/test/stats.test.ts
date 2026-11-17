@@ -41,7 +41,7 @@ describe('GET /stats', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(res.headers.get('x-robots-tag')).toBe('noindex');
     const html = await res.text();
-    expect(html).toContain('PIXEL ARCADE STATS');
+    expect(html).toContain('PIXEL GAMES STATS');
     expect(html).toContain('thief.html');
     // per page: uniques are distinct across days (thief: v1,v2 -> 2, not 3)
     expect(html).toContain('<tr><td>thief.html</td><td>10</td><td>2</td></tr>');

@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="description" content="Pixel Arcade: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Snake and Pixel Farmings. Pixel-art games to play alone or with a friend.">
+<meta name="description" content="Pixel Games: Mouse Thief, Pixel GP, Pixel Heist, Pixel Pong, Pixel Football, Pixel Hoops, Pixel Wings, Deep Catch, Pixel Skate, Pixel Ski, Pixel Box Fight, Pixel Bike Run, Pixel Cook, Pixel Runs, Pixel Sky GP, Pixel Moto, Pixel Defense, Pixel Hook, Pixel Miner, Pixel Horde, Pixel Snake and Pixel Farmings. Pixel-art games to play alone or with a friend.">
 <meta name="theme-color" content="#0d0b13">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pixel Arcade">
+<meta name="apple-mobile-web-app-title" content="Pixel Games">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>Pixel Arcade</title>
+<title>Pixel Games</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
@@ -46,8 +46,8 @@
 <script src="cs.js"></script>
 <script>
 'use strict';
-/* PIXEL ARCADE: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.70.0';
+/* PIXEL GAMES: the dashboard. Pick a game, set your name and avatar (all the games use them). */
+const VERSION = '2.71.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -761,11 +761,11 @@ function drawHome(t) {
   // the title, smaller (and moved left) when the buttons on the right need the room
   const right = px - 114, left = installPrompt ? 86 : 8;
   // (with a huge wallet and INSTALL on a narrow screen there is no room at all: then no title)
-  const ts = [4, 3, 2].find(s => Math.min(W / 2, right - PX.textWidth('PIXEL ARCADE', s) / 2) - PX.textWidth('PIXEL ARCADE', s) / 2 >= left);
+  const ts = [4, 3, 2].find(s => Math.min(W / 2, right - PX.textWidth('PIXEL GAMES', s) / 2) - PX.textWidth('PIXEL GAMES', s) / 2 >= left);
   if (ts) {
-    const tx = Math.min(W / 2, right - PX.textWidth('PIXEL ARCADE', ts) / 2), ty = { 4: 8, 3: 10, 2: 12 }[ts], d = ts > 2 ? 2 : 1;
-    T('PIXEL ARCADE', tx + d, ty + d, '#e01e1e', ts, 'center');
-    T('PIXEL ARCADE', tx, ty, '#fff', ts, 'center');
+    const tx = Math.min(W / 2, right - PX.textWidth('PIXEL GAMES', ts) / 2), ty = { 4: 8, 3: 10, 2: 12 }[ts], d = ts > 2 ? 2 : 1;
+    T('PIXEL GAMES', tx + d, ty + d, '#e01e1e', ts, 'center');
+    T('PIXEL GAMES', tx, ty, '#fff', ts, 'center');
   }
   if (UI.button('remote', px, 7, 30, 20, '', { size: 1, accent: '#5ad43f', on: PX.Remote.active() })) openRemote();
   padIcon(px + 15 + (UI.mx >= px && UI.mx < px + 30 && UI.my >= 7 && UI.my < 27 ? 1 : 0), 17);
@@ -863,7 +863,7 @@ function drawSettings(t) {
   // BUY ME A COFFEE: the cup at the top right
   if (COFFEE_URL && UI.button('coffee', W - 34, 8, 26, 22, '', { size: 1, accent: '#c8843a' })) openCoffee();
   if (COFFEE_URL) cupIcon(W - 21, 19);
-  T('PIXEL ARCADE ' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
+  T('PIXEL GAMES ' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
 }
 function cupIcon(cx, cy) {
   PX.drawIcon(ctx, ['.#.#.#...', '.#.#.#...', '.........', '#######..', '#######.##', '#######.#.', '#######.##', '.#####...', '.........'].map(r => r.padEnd(10, '.')), { '#': '#efe9ff' }, cx, cy, 1);
@@ -1005,7 +1005,7 @@ function drawRemote(t) {
   } else T('QR...', qx + box / 2, qy + box / 2 - 3, '#9a92b8', 1, 'center');
   T('SCAN WITH YOUR PHONE', qx + box / 2, qy + box + 6, '#9a92b8', 1, 'center');
   const rx = qx + box + 14;
-  T('ON YOUR PHONE: OPEN PIXEL ARCADE,', rx, 42, '#efe9ff', 1);
+  T('ON YOUR PHONE: OPEN PIXEL GAMES,', rx, 42, '#efe9ff', 1);
   T('PRESS THE CONTROLLER BUTTON (TOP RIGHT),', rx, 52, '#efe9ff', 1);
   T('BE A CONTROLLER, AND TYPE THE CODE:', rx, 62, '#efe9ff', 1);
   T(R.code, rx, 76, '#ffd23f', 6, 'left', '#000');
@@ -2358,7 +2358,7 @@ function drawIdeaView(cx, x, pw) {
   const answer = wrapSized(r.reply || IDEA_ANSWER[r.status] || '', 1, pw - 20), ph = 18 + answer.length * 9;
   if (r.status !== 'untriaged' || r.reply) {
     panel(x, y, pw, ph, sc);
-    T('PIXEL ARCADE SAYS:', x + 10, y + 6, sc, 1);
+    T('PIXEL GAMES SAYS:', x + 10, y + 6, sc, 1);
     answer.forEach((line, k) => T(line, x + 10, y + 16 + k * 9, '#fff', 1));
   } else T(answer[0] || '', x, y + 2, '#5b5275', 1, 'left', '#000');
   // votes and what you can do: vote (or take the vote back), or take your own idea back while it is waiting
@@ -3020,7 +3020,7 @@ applyLang();
 addEventListener('storage', e => { if (e.key === 'pixelArcade.settings') applyLang(); });
 requestAnimationFrame(frame);
 PX.Pad.setup({                                     // the arcade reads the controller itself (PX.Pad only moves between the SETTINGS buttons)
-  title: 'Pixel Arcade: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders' || screen === 'ideas', ui: UI,
+  title: 'Pixel Games: controller', menu: () => screen === 'settings' || screen === 'coffee' || screen === 'notify' || screen === 'leaders' || screen === 'ideas', ui: UI,
   phone: { stick: 'PICK A GAME', dpad: true, buttons: [['A', 'PLAY'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['B', 'BACK']] },
   help: [['STICK|D-PAD', 'PICK A GAME'], ['A', 'PLAY IT'], ['R-STICK', 'SCROLL'], ['X', 'SEARCH'], ['Y', 'SETTINGS'], ['LB|RB', 'SEARCH: CATEGORY / TOP: GAME / IDEAS: TAB'], ['RB', 'PHONE CONTROLLERS'], ['B', 'SEARCH: BACK']],
 });

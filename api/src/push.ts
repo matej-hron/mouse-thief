@@ -77,7 +77,7 @@ export function noteFor(b: { t: PushKind; name: string; fid?: string; n?: number
     case 'call':                                                  // CALL in the arcade's chat, while your arcade isn't open
       return { title: `${who} IS CALLING YOU!`, body: 'OPEN THE ARCADE TO ANSWER.', url: 'index.html', tag: `call-${b.fid ?? who}`, call: true };
     case 'test':
-      return { title: 'PIXEL ARCADE', body: 'NOTIFICATIONS WORK! YOU WILL HEAR FROM YOUR FRIENDS HERE.', url: 'index.html', tag: 'test' };
+      return { title: 'PIXEL GAMES', body: 'NOTIFICATIONS WORK! YOU WILL HEAR FROM YOUR FRIENDS HERE.', url: 'index.html', tag: 'test' };
   }
 }
 
