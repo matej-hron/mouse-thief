@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Tom in the Backrooms: a short cartoon. Tom and Max fall through the floor into the Backrooms, endless yellow rooms with buzzing lights. Can they get home?">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Tom in the Backrooms</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #world { position: fixed; left: 0; top: 0; display: block; pointer-events: none; }
+  #hud { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="world"></canvas>
+<canvas id="hud"></canvas>
+<script src="common.js"></script>
+<script src="cs.js"></script>
+<script type="module">
+/* ==========================================================================
+   TOM IN THE BACKROOMS: a short cartoon to watch (part of the PIXEL GAMES).
+   (A player's wish: a short in the style of the cartoons with flat 2D characters in a 3D world, eyes that dart
+   around and moody lighting: Tom and Max survive the Backrooms, and when Tom finally gets home, he can finally play
+   pixel games in peace.)
+   The world is 3D (three.js, vendor/, MIT licence): endless yellow rooms, a damp carpet, buzzing ceiling lights
+   that flicker and go out. The characters are flat paper cut-outs drawn on a 2D canvas every frame (so the eyes can
+   dart, blink, widen and the mouths can talk) and stood up in the 3D world, always turned to the camera.
+   The whole film is a function of the time: shot(t) puts the camera, the characters, the lights and the words where
+   they are at second t, so it can be paused, started over or jumped (window.SHORT.seek for the tests).
+     1. Setup   2. Textures   3. The Backrooms   4. Home   5. Cut-outs   6. The film   7. Sound   8. Screens   9. Main loop
+   ========================================================================== */
+import * as THREE from './vendor/three.module.min.js';
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '1.0.0';
+const SAVE_KEY = 'pixelBackrooms.save';
+const save = { sfx: true, watched: 0 };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new viewer */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+
+const hud = document.getElementById('hud');
+const S = PX.makeScreen(hud, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H, hctx = hud.getContext('2d');
+const UI = PX.makeUI(S, hud);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = '#000') => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+PX.Lang.page('backrooms');                         // Czech when SETTINGS → LANGUAGE says so (cs.js)
+
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = k => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
+const span = (t, a, b) => clamp((t - a) / (b - a), 0, 1);          // 0 before a, 1 after b
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const noise1 = x => { const i = Math.floor(x), f = x - i; return lerp(hash(i), hash(i + 1), f * f * (3 - 2 * f)); };
+// keyframes: [[t, value], ...] (numbers or [x, y, z]), eased between
+function key(t, ks) {
+  if (t <= ks[0][0]) return ks[0][1];
+  for (let i = 1; i < ks.length; i++) if (t < ks[i][0]) {
+    const [t0, a] = ks[i - 1], [t1, b] = ks[i], k = smooth((t - t0) / (t1 - t0));
+    return Array.isArray(a) ? a.map((v, j) => lerp(v, b[j], k)) : lerp(a, b, k);
+  }
+  return ks[ks.length - 1][1];
+}
+function lin(t, ks) {                               // the same, without easing (steady walking)
+  if (t <= ks[0][0]) return ks[0][1];
+  for (let i = 1; i < ks.length; i++) if (t < ks[i][0]) {
+    const [t0, a] = ks[i - 1], [t1, b] = ks[i], k = (t - t0) / (t1 - t0);
+    return Array.isArray(a) ? a.map((v, j) => lerp(v, b[j], k)) : lerp(a, b, k);
+  }
+  return ks[ks.length - 1][1];
+}
+
+let renderer = null;
+try { renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('world'), antialias: true, powerPreference: 'high-performance' }); }
+catch (e) { renderer = null; }
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(58, 1, 0.05, 120);
+function resize3d() {
+  if (!renderer) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  let pr = Math.min(window.devicePixelRatio || 1, 1.5);
+  if (w * h * pr * pr > 2.2e6) pr = Math.sqrt(2.2e6 / (w * h));       // keep phones fast
+  renderer.setPixelRatio(pr);
+  renderer.setSize(w, h);
+  const f = filmRect(); camera.aspect = f.w / f.h; camera.updateProjectionMatrix();
+}
+// the film is shown in the band of the pixel screen (a phone held upright: a wide band in the middle, black around)
+function filmRect() { const w = window.innerWidth, h = window.innerHeight, bh = Math.min(h, Math.round(H * S.view.scale / S.view.dpr)); return { w, h: bh, top: Math.round((h - bh) / 2), full: h }; }
+window.addEventListener('resize', resize3d);
+resize3d();
+
+/* --- 2. TEXTURES (painted on canvases, no image files) --------------------------- */
+function canvasTex(w, h, paint, repeat = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  paint(c.getContext('2d'), w, h);
+  const tx = new THREE.CanvasTexture(c);
+  tx.colorSpace = THREE.SRGBColorSpace;
+  if (repeat) tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+  tx.anisotropy = 4;
+  return tx;
+}
+const speckle = (g, w, h, n, cols, size = 1) => { for (let i = 0; i < n; i++) { g.fillStyle = cols[i % cols.length]; g.fillRect(Math.random() * w, Math.random() * h, size, size); } };
+// the wallpaper: mono-yellow with thin stripes and a faint pattern, a stain, a dark skirting board at the bottom
+const wallTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#cdb85e'; g.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,240,170,0.18)'; g.fillRect(x, 0, 3, h); g.fillStyle = 'rgba(120,95,30,0.10)'; g.fillRect(x + 8, 0, 1, h); }
+  g.strokeStyle = 'rgba(130,105,40,0.16)'; g.lineWidth = 1.5;
+  for (let y = 10; y < h - 20; y += 22) for (let x = 0; x < w; x += 32) { g.beginPath(); g.moveTo(x + 4, y); g.lineTo(x + 12, y + 7); g.lineTo(x + 20, y); g.stroke(); }
+  speckle(g, w, h, 900, ['rgba(90,70,20,0.10)', 'rgba(255,250,200,0.10)'], 2);
+  const st = g.createRadialGradient(170, 200, 4, 170, 200, 60); st.addColorStop(0, 'rgba(110,85,25,0.22)'); st.addColorStop(1, 'rgba(110,85,25,0)');
+  g.fillStyle = st; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#6e5a2a'; g.fillRect(0, h - 14, w, 14); g.fillStyle = '#8a7438'; g.fillRect(0, h - 14, w, 2);
+});
+const carpetTex = canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#9c8a48'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 4000, ['#8a7838', '#ad9a58', '#94823f', '#b5a364'], 1);
+  for (let i = 0; i < 3; i++) { const x = Math.random() * w, y = Math.random() * h, r = 14 + Math.random() * 20, d = g.createRadialGradient(x, y, 2, x, y, r); d.addColorStop(0, 'rgba(80,65,25,0.35)'); d.addColorStop(1, 'rgba(80,65,25,0)'); g.fillStyle = d; g.fillRect(0, 0, w, h); }
+});
+carpetTex.repeat.set(70, 30);
+const ceilTex = canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#d8cd98'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 1500, ['#c9bd86', '#e2d8a6', '#bfb27a'], 1);
+  g.fillStyle = '#a99d6a'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h);
+});
+ceilTex.repeat.set(90, 40);
+const woodTex = canvasTex(256, 256, (g, w, h) => {
+  for (let y = 0; y < h; y += 32) {
+    for (let x = -((y / 32) % 2) * 64; x < w; x += 128) {
+      g.fillStyle = ['#9a6438', '#a86e3e', '#8e5a32', '#b07644'][(x / 128 + y / 32 + 8) % 4 | 0]; g.fillRect(x, y, 128, 32);
+      g.fillStyle = 'rgba(60,30,10,0.5)'; g.fillRect(x, y, 2, 32);
+    }
+    g.fillStyle = 'rgba(50,25,10,0.55)'; g.fillRect(0, y, w, 2);
+  }
+  speckle(g, w, h, 800, ['rgba(60,30,10,0.18)', 'rgba(255,220,170,0.08)'], 2);
+});
+woodTex.repeat.set(3, 3);
+const homeWallTex = canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#5f7fa8'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,255,255,0.08)'; for (let y = 0; y < h; y += 16) for (let x = (y / 16) % 2 * 8; x < w; x += 16) g.fillRect(x + 6, y + 6, 4, 4);
+});
+homeWallTex.repeat.set(4, 2);
+
+/* --- 3. THE BACKROOMS --------------------------------------------------------------
+   A grid of 5 m cells. The long corridor (row 0, along +x) is where the film happens; the rest is a maze of random
+   walls and pillars seen through the gaps. At the end of the corridor: the EXIT door. */
+const C = 5, WH = 3.0, I0 = -5, I1 = 18, J0 = -5, J1 = 5, DOOR_X = 17 * C + C / 2;     // the end wall at x = 87.5
+const BACK = new THREE.Group(), HOME = new THREE.Group();
+scene.add(BACK, HOME);
+const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
+let seed = 7;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+function wallBox(x, z, len, along, mat = wallMat, h = WH, y0 = 0) {                  // along 'x' or 'z'
+  const g = new THREE.BoxGeometry(along === 'x' ? len : 0.22, h, along === 'x' ? 0.22 : len);
+  const uv = g.attributes.uv, k = len / 2.5;
+  for (let f = 0; f < 6; f++) {                                     // the long faces repeat the wallpaper along the wall
+    const long = along === 'x' ? (f === 4 || f === 5) : (f === 0 || f === 1);
+    for (let v = 0; v < 4; v++) { const i = f * 4 + v; uv.setX(i, uv.getX(i) * (long ? k : 0.1)); uv.setY(i, uv.getY(i) * (h / WH)); }
+  }
+  const m = new THREE.Mesh(g, mat); m.position.set(x, y0 + h / 2, z); BACK.add(m); return m;
+}
+function buildBackrooms() {
+  const W = (I1 - I0 + 1) * C, D = (J1 - J0 + 1) * C, cx = (I0 + I1) / 2 * C, cz = (J0 + J1) / 2 * C;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ map: carpetTex }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0, cz); BACK.add(floor);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ map: ceilTex }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(cx, WH, cz); BACK.add(ceil);
+  // walls between cells: x-edges (a wall along z between cell i and i+1), z-edges (a wall along x between j and j+1)
+  for (let i = I0; i <= I1; i++) for (let j = J0; j <= J1; j++) {
+    const x = i * C, z = j * C;
+    if (i < I1 && j !== 0 && rnd() < 0.36) {                        // (never across the corridor)
+      if (rnd() < 0.5) wallBox(x + C / 2, z, C, 'z');
+      else { wallBox(x + C / 2, z - C / 2 + 1.1, 2.2, 'z'); }       // half a wall: a doorway-sized gap
+    }
+    if (j < J1) {
+      const side = j === 0 || j === -1;                              // the corridor's two sides: mostly wall, some gaps
+      const gap = (j === 0 && i === 3) || (j === -1 && (i === 5 || i === 9 || i === 12)) || (j === 0 && (i === 7 || i === 13)) || (j === -1 && i === -2);
+      if (side ? !gap && i < 17 && i > -4 : rnd() < 0.42) wallBox(x, z + C / 2, C, 'x');
+    }
+    if (j !== 0 && rnd() < 0.18) {                                   // a square pillar
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.7, WH, 0.7), wallMat); p.position.set(x + (rnd() - 0.5) * 2, WH / 2, z + (rnd() - 0.5) * 2); BACK.add(p);
+    }
+  }
+  // the outside walls
+  wallBox(cx, J0 * C - C / 2, W, 'x'); wallBox(cx, J1 * C + C / 2, W, 'x'); wallBox(I0 * C - C / 2, cz, D, 'z'); wallBox(I1 * C + C / 2, cz, D, 'z');
+  // the corridor's end: a wall with the EXIT door
+  wallBox(DOOR_X, -1.65, 1.7, 'z'); wallBox(DOOR_X, 1.65, 1.7, 'z'); wallBox(DOOR_X, 0, 1.6, 'z', wallMat, WH - 2.15, 2.15);
+  wallBox(DOOR_X, -(C / 2 + 0.6), 0.9, 'z');  wallBox(DOOR_X, C / 2 + 0.6, 0.9, 'z');
+  // stop the corridor's side walls at the door wall
+  wallBox(DOOR_X + 2.5, -2.5, 5, 'x'); wallBox(DOOR_X + 2.5, 2.5, 5, 'x');
+}
+// the ceiling lights: one panel in every cell (some dead), drawn as one instanced mesh; 8 real lights follow the action
+const PANELS = [];
+let panelMesh = null;
+function buildPanels() {
+  for (let i = I0; i <= I1; i++) for (let j = J0; j <= J1; j++) {
+    const dead = j !== 0 && rnd() < 0.14, buzz = j !== 0 && rnd() < 0.08;
+    PANELS.push({ x: i * C, z: j * C, dead, buzz, b: dead ? 0 : 1, ph: rnd() * 100 });
+  }
+  const g = new THREE.BoxGeometry(1.5, 0.06, 0.7);
+  panelMesh = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), PANELS.length);
+  const m = new THREE.Matrix4();
+  PANELS.forEach((p, k) => { m.makeTranslation(p.x, WH - 0.03, p.z); panelMesh.setMatrixAt(k, m); panelMesh.setColorAt(k, new THREE.Color(1, 1, 1)); });
+  BACK.add(panelMesh);
+}
+const POOL = [];
+for (let i = 0; i < 12; i++) { const l = new THREE.PointLight(0xffefc0, 0, 12.5, 1.1); POOL.push(l); BACK.add(l); }
+const hemi = new THREE.HemisphereLight(0xfff0b8, 0x5a4a1e, 0.5);
+scene.add(hemi);
+const backFog = new THREE.Fog(0x2b2410, 6, 42);
+// the EXIT door, the green sign and the white light behind it
+const exitSign = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.4), new THREE.MeshBasicMaterial({ fog: false, map: canvasTex(128, 48, (g, w, h) => {
+  g.fillStyle = '#1a9a3a'; g.fillRect(0, 0, w, h); g.fillStyle = '#d8ffd8'; g.font = 'bold 34px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('EXIT', w / 2, h / 2 + 2);
+  g.strokeStyle = '#d8ffd8'; g.lineWidth = 3; g.strokeRect(3, 3, w - 6, h - 6);
+}, false) }));
+exitSign.position.set(DOOR_X - 0.13, 2.55, 0); exitSign.rotation.y = -Math.PI / 2;
+const doorHinge = new THREE.Group(); doorHinge.position.set(DOOR_X - 0.05, 0, -0.8);
+const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.15, 1.6), new THREE.MeshLambertMaterial({ color: 0x7a6a50 }));
+doorMesh.position.set(0, 1.075, 0.8); doorHinge.add(doorMesh);
+const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshLambertMaterial({ color: 0xd8c070 })); knob.position.set(-0.07, 1.05, 1.4); doorHinge.add(knob);
+const doorLight = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.3), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
+doorLight.position.set(DOOR_X + 0.3, 1.1, 0); doorLight.rotation.y = -Math.PI / 2;
+const greenGlow = new THREE.PointLight(0x40ff70, 0, 9, 1.3); greenGlow.position.set(DOOR_X - 0.8, 2.3, 0);
+BACK.add(exitSign, doorHinge, doorLight, greenGlow);
+
+/* --- 4. HOME: Tom's living room (far from the Backrooms; only one of the two is shown) ----- */
+const HX = 0, HZ = 400;                                 // the room's middle
+const homeLamp = new THREE.PointLight(0xffc880, 0, 12, 1.2);
+const tvLight = new THREE.PointLight(0x80b0ff, 0, 7, 1.4);
+const homeHemi = new THREE.HemisphereLight(0xffe0b0, 0x40304a, 0.0);
+let tvTex = null, tvCanvas = null, ceilingBulb = null;
+function box(w, h, d, color, x, y, z, parent = HOME, mat = null) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || new THREE.MeshLambertMaterial({ color }));
+  m.position.set(HX + x, y, HZ + z); parent.add(m); return m;
+}
+function buildHome() {
+  const RW = 7, RD = 6, RH = 2.8;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshLambertMaterial({ map: woodTex }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(HX, 0, HZ); HOME.add(floor);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshLambertMaterial({ color: 0xe8e0d0 }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(HX, RH, HZ); HOME.add(ceil);
+  const wm = new THREE.MeshLambertMaterial({ map: homeWallTex });
+  box(RW, RH, 0.2, 0, 0, RH / 2, -RD / 2, HOME, wm); box(RW, RH, 0.2, 0, 0, RH / 2, RD / 2, HOME, wm);
+  box(0.2, RH, RD, 0, -RW / 2, RH / 2, 0, HOME, wm); box(0.2, RH, RD, 0, RW / 2, RH / 2, 0, HOME, wm);
+  // the door (back wall, left) and a window with the night and the moon
+  box(1.0, 2.1, 0.06, 0x8a5a34, -2.6, 1.05, -2.88);
+  box(0.08, 0.08, 0.04, 0xe0c060, -2.25, 1.0, -2.84);
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.1), new THREE.MeshBasicMaterial({ map: canvasTex(128, 88, (g, w, h) => {
+    const sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#0b1438'); sky.addColorStop(1, '#2a3a78'); g.fillStyle = sky; g.fillRect(0, 0, w, h);
+    speckle(g, w, h * 0.7, 40, ['#ffffff', '#c8d8ff'], 1);
+    g.fillStyle = '#fff6c8'; g.beginPath(); g.arc(92, 24, 10, 0, 7); g.fill(); g.fillStyle = '#1a2450'; g.beginPath(); g.arc(97, 21, 9, 0, 7); g.fill();
+    g.fillStyle = '#10142a'; for (let x = 0; x < w; x += 14) g.fillRect(x, h - 10 - (x * 7 % 19), 12, 30);
+    g.fillStyle = '#ffd860'; for (let x = 3; x < w; x += 14) if (x % 3) g.fillRect(x + 2, h - 6 - (x * 7 % 13) / 2, 2, 2);
+    g.fillStyle = '#e8e0d0'; g.fillRect(w / 2 - 2, 0, 4, h); g.fillRect(0, h / 2 - 2, w, 4); g.strokeStyle = '#e8e0d0'; g.lineWidth = 6; g.strokeRect(0, 0, w, h);
+  }, false) }));
+  win.position.set(HX + 0.9, 1.6, HZ - 2.89); HOME.add(win);
+  // the rug, the couch (facing the TV), a little table, a plant, a floor lamp, a poster
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(1.5, 32), new THREE.MeshLambertMaterial({ color: 0x3a8a6a }));
+  rug.rotation.x = -Math.PI / 2; rug.position.set(HX + 0.6, 0.01, HZ); HOME.add(rug);
+  const red = 0xc0483e, dark = 0x963630;
+  box(0.95, 0.42, 2.3, red, -1.45, 0.21, 0); box(0.3, 0.6, 2.3, dark, -1.85, 0.72, 0);
+  box(0.95, 0.35, 0.22, dark, -1.45, 0.58, -1.2); box(0.95, 0.35, 0.22, dark, -1.45, 0.58, 1.2);
+  box(0.5, 0.1, 0.5, 0xe0c060, -1.4, 0.47, -0.6);                               // a cushion
+  box(0.7, 0.35, 0.5, 0x6a4a30, 0.6, 0.18, 0.9);                                // the table; a soda can on it
+  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 12), new THREE.MeshLambertMaterial({ color: 0xe03030 })); can.position.set(HX + 0.5, 0.42, HZ + 0.9); HOME.add(can);
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.35, 12), new THREE.MeshLambertMaterial({ color: 0xb0603a })); pot.position.set(HX + 3.0, 0.18, HZ - 2.5); HOME.add(pot);
+  for (let i = 0; i < 6; i++) { const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3a9a4a })); leaf.scale.set(1, 1.6, 0.5); leaf.position.set(HX + 3.0 + Math.cos(i) * 0.15, 0.6 + (i % 3) * 0.12, HZ - 2.5 + Math.sin(i) * 0.15); leaf.rotation.y = i; HOME.add(leaf); }
+  box(0.06, 1.5, 0.06, 0x30303a, -2.9, 0.75, 2.2); box(0.3, 0.04, 0.3, 0x30303a, -2.9, 0.02, 2.2);
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 0.32, 16), new THREE.MeshBasicMaterial({ color: 0xffd890 })); shade.position.set(HX - 2.9, 1.6, HZ + 2.2); HOME.add(shade);
+  homeLamp.position.set(HX - 2.6, 1.7, HZ + 1.8);
+  const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.0), new THREE.MeshLambertMaterial({ map: canvasTex(64, 80, (g, w, h) => {
+    g.fillStyle = '#1a1028'; g.fillRect(0, 0, w, h); PX.drawText(g, 'PIXEL', w / 2, 10, '#ffd23f', 2, 'center'); PX.drawText(g, 'GAMES', w / 2, 24, '#7ac8ff', 2, 'center');
+    g.fillStyle = '#3a8aff'; g.fillRect(22, 44, 20, 18); g.fillStyle = '#000'; g.fillRect(26, 50, 3, 3); g.fillRect(35, 50, 3, 3); g.fillStyle = '#3a8aff'; g.fillRect(22, 40, 5, 5); g.fillRect(37, 40, 5, 5);
+  }, false) }));
+  poster.position.set(HX - 3.38, 1.6, HZ - 0.9); poster.rotation.y = Math.PI / 2; HOME.add(poster);
+  // the TV on a stand, on the right wall, facing the couch; its screen is a canvas with a pixel game playing
+  box(0.5, 0.5, 1.8, 0x3a2a22, 3.1, 0.25, 0);
+  box(0.1, 0.95, 1.6, 0x15151a, 3.25, 1.15, 0);
+  tvCanvas = document.createElement('canvas'); tvCanvas.width = 160; tvCanvas.height = 96;
+  tvTex = new THREE.CanvasTexture(tvCanvas); tvTex.colorSpace = THREE.SRGBColorSpace; tvTex.magFilter = THREE.NearestFilter; tvTex.minFilter = THREE.NearestFilter;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.86), new THREE.MeshBasicMaterial({ map: tvTex }));
+  screen.position.set(HX + 3.19, 1.15, HZ); screen.rotation.y = -Math.PI / 2; HOME.add(screen);
+  tvLight.position.set(HX + 2.4, 1.2, HZ);
+  // the ceiling lamp (the one that flickers at the very end...)
+  ceilingBulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 10), new THREE.MeshBasicMaterial({ color: 0xfff0c8 }));
+  ceilingBulb.scale.y = 0.55; ceilingBulb.position.set(HX + 0.3, RH - 0.1, HZ); HOME.add(ceilingBulb);
+  HOME.add(homeLamp, tvLight, homeHemi);
+}
+// the TV shows a pixel game: a blue cat jumps over boxes, the score goes up
+function drawTV(t) {
+  const g = tvCanvas.getContext('2d'), w = 160, h = 96;
+  g.fillStyle = '#1a2a6a'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#2a3a8a'; for (let i = 0; i < 6; i++) { const x = ((i * 37 - t * 12) % 190 + 190) % 190 - 20; g.fillRect(x, 30 + (i % 3) * 8, 18, 6); }
+  g.fillStyle = '#3aaa4a'; g.fillRect(0, 74, w, 22); g.fillStyle = '#2a8a3a'; for (let x = -(t * 60 % 8); x < w; x += 8) g.fillRect(x, 74, 4, 2);
+  const run = t * 60;
+  for (let k = 0; k < 4; k++) { const bx = ((k * 70 - run) % 280 + 280) % 280 - 20; g.fillStyle = '#c87a3a'; g.fillRect(bx, 62, 12, 12); g.fillStyle = '#8a4a1a'; g.fillRect(bx, 62, 12, 2); g.fillRect(bx, 67, 12, 1); }
+  // the cat jumps when a box comes close
+  let jy = 0; for (let k = 0; k < 4; k++) { const bx = ((k * 70 - run) % 280 + 280) % 280 - 20; const d = bx - 34; if (d > -16 && d < 18) jy = Math.max(jy, Math.sin(((18 - d) / 34) * Math.PI) * 22); }
+  const cy = 62 - jy, leg = Math.floor(t * 10) % 2;
+  g.fillStyle = '#3a8aff'; g.fillRect(30, cy, 14, 10); g.fillRect(30, cy - 4, 4, 4); g.fillRect(40, cy - 4, 4, 4);
+  g.fillStyle = '#fff'; g.fillRect(38, cy + 2, 3, 3); g.fillStyle = '#000'; g.fillRect(40, cy + 3, 1, 1);
+  g.fillStyle = '#3a8aff'; g.fillRect(31 + leg * 2, cy + 10, 3, 2); g.fillRect(39 - leg * 2, cy + 10, 3, 2); g.fillRect(26, cy + 2, 4, 2);
+  PX.drawText(g, 'SCORE ' + String(Math.floor(t * 37) * 10).padStart(5, '0'), 4, 4, '#fff', 1, 'left', '#000');
+  PX.drawText(g, '★ ' + (3 + Math.floor(t / 2.5)), w - 4, 4, '#ffd23f', 1, 'right', '#000');
+  if (Math.floor(t * 2) % 2) PX.drawText(g, 'PIXEL GAMES', w / 2, 16, '#ffd23f', 1, 'center', '#000');
+  g.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = 0; y < h; y += 2) g.fillRect(0, y, w, 1);   // scanlines
+  tvTex.needsUpdate = true;
+}
+
+/* --- 5. CUT-OUTS: flat characters drawn on a canvas every frame -----------------------
+   A cut-out has a mood (how the eyes and the brows look), a look direction its eyes go to (with small quick
+   darts around it, like real eyes), blinks, a mouth that moves while it talks, legs that walk, and a white paper
+   edge. From behind (the camera behind its facing) it shows its back: no face. */
+const OUT = '#1a1020', PAPER = '#fffaf0';
+class Cutout {
+  constructor(kind, wM, hM, cw, ch) {
+    this.kind = kind; this.cw = cw; this.ch = ch;
+    this.cv = document.createElement('canvas'); this.cv.width = cw; this.cv.height = ch;
+    this.g = this.cv.getContext('2d');
+    this.tex = new THREE.CanvasTexture(this.cv); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, alphaTest: 0.04, side: THREE.DoubleSide, depthWrite: true });
+    const geo = new THREE.PlaneGeometry(wM, hM); geo.translate(0, hM / 2, 0);
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(wM * 0.36, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.root = new THREE.Group(); this.root.add(this.mesh, this.shadow); scene.add(this.root);
+    // what shot() sets every frame
+    Object.assign(this, { x: 0, y: 0, z: 0, facing: 0, mood: 'calm', lookX: 0, lookY: 0, talk: false, walk: 0, run: false, squash: 0, visible: false, light: 1, hold: false, dizzy: false, sweat: false, shake: 0, lid: 0 });
+    // the eyes' own life
+    this.eye = { x: 0, y: 0, tx: 0, ty: 0, next: 0, blink: 0, nextBlink: 1 + Math.random() * 2 };
+  }
+  update(t, dt) {
+    const e = this.eye;
+    if (t >= e.next || t < e.next - 3) {                             // a quick dart near where it looks
+      const fid = this.mood === 'scared' ? 0.25 : 0.12;
+      e.tx = clamp(this.lookX + (Math.random() - 0.5) * fid * 2, -1, 1); e.ty = clamp(this.lookY + (Math.random() - 0.5) * fid, -1, 1);
+      e.next = t + (this.mood === 'scared' ? 0.15 + Math.random() * 0.3 : 0.5 + Math.random() * 1.2);
+    }
+    if (Math.abs(e.tx - this.lookX) > 0.35) { e.tx = this.lookX; e.ty = this.lookY; }   // a new look: go now
+    const k = 1 - Math.pow(0.0005, dt);                              // saccade: very fast
+    e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k;
+    if (t >= e.nextBlink || t < e.nextBlink - 8) { e.blink = 0.16; e.nextBlink = t + 1.6 + Math.random() * 3.2; }
+    e.blink = Math.max(0, e.blink - dt);
+    this.root.visible = this.visible;
+    if (!this.visible) return;
+    // stand it up facing the camera (only around the up axis, like a paper puppet)
+    const bob = this.walk ? Math.abs(Math.sin(this.walk * Math.PI)) * (this.run ? 0.1 : 0.05) : 0;
+    this.root.position.set(this.x, 0, this.z);
+    this.mesh.position.y = this.y + bob;
+    this.mesh.rotation.y = Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    this.mesh.rotation.z = this.walk ? Math.sin(this.walk * Math.PI) * (this.run ? 0.08 : 0.045) : 0;
+    const sq = this.squash; this.mesh.scale.set(1 + sq * 0.25, 1 - sq * 0.3, 1);
+    if (this.shake) { this.mesh.position.x += (Math.random() - 0.5) * this.shake; }
+    this.shadow.position.y = 0.012; this.shadow.scale.setScalar(clamp(1 - this.y * 0.25, 0.3, 1));
+    this.shadow.material.opacity = 0.35 * this.light;
+    const c = clamp(this.light, 0.06, 1.2); this.mat.color.setRGB(c, c * 0.97, c * 0.9);
+    // from behind?
+    const toCam = Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    let d = toCam - this.facing; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+    this.back = Math.abs(d) > 1.75;
+    this.draw(t);
+    this.tex.needsUpdate = true;
+  }
+  draw(t) { const g = this.g; g.clearRect(0, 0, this.cw, this.ch); DRAW[this.kind](g, this, t); }
+}
+// drawing helpers: every part is outlined in dark ink; the whole figure first gets a white paper edge
+function part(g, path, fill) { g.beginPath(); path(g); g.fillStyle = fill; g.fill(); g.lineWidth = 5; g.strokeStyle = OUT; g.stroke(); }
+function paper(g, paths) { g.save(); g.lineJoin = 'round'; g.lineWidth = 20; g.strokeStyle = PAPER; g.fillStyle = PAPER; for (const p of paths) { g.beginPath(); p(g); g.stroke(); g.fill(); } g.restore(); }
+const ell = (x, y, rx, ry, rot = 0) => g => g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+const rrect = (x, y, w, h, r) => g => { g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); };
+const poly = (...pts) => g => { g.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.closePath(); };
+// the eyes: white, a pupil that darts, a shine, lids (blink, sleepy), brows by the mood
+function eyes(g, c, cx, cy, gap, skin, size = 1) {
+  const m = c.mood, e = c.eye;
+  const rx = (m === 'scared' ? 33 : 29) * size, ry = (m === 'scared' ? 42 : m === 'happy' ? 30 : 36) * size;
+  const pr = (m === 'scared' ? 6.5 : m === 'relaxed' || m === 'happy' ? 14 : 12) * size;
+  for (const s of [-1, 1]) {
+    const x = cx + s * gap, y = cy;
+    part(g, ell(x, y, rx, ry), '#ffffff');
+    let px = x + e.x * (rx - pr - 5), py = y + e.y * (ry - pr - 5);
+    if (c.dizzy) { const a = t_now * 9 + (s > 0 ? Math.PI : 0); px = x + Math.cos(a) * (rx - pr - 6); py = y + Math.sin(a) * (ry - pr - 8); }
+    g.fillStyle = '#120a14'; g.beginPath(); g.arc(px, py, pr, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(px - pr * 0.35, py - pr * 0.4, pr * 0.32 + 1, 0, Math.PI * 2); g.fill();
+    // lids: a blink closes them; relaxed half closes; the lid is the skin color with an ink edge
+    const lid = Math.max(c.lid, e.blink > 0 ? 1 : 0, m === 'relaxed' ? 0.45 : 0, m === 'angry' ? 0.3 : 0);
+    if (lid > 0) {
+      g.save(); g.beginPath(); g.ellipse(x, y, rx + 1, ry + 1, 0, 0, Math.PI * 2); g.clip();
+      const ly = y - ry + lid * ry * 2;
+      g.fillStyle = skin; g.fillRect(x - rx - 3, y - ry - 3, rx * 2 + 6, ly - (y - ry) + 3);
+      g.restore();
+      g.lineWidth = 5; g.strokeStyle = OUT; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+      if (lid < 1) { g.lineWidth = 4; g.beginPath(); const hw = Math.sqrt(Math.max(0, 1 - Math.pow((ly - y) / ry, 2))) * rx; g.moveTo(x - hw, ly); g.lineTo(x + hw, ly); g.stroke(); }
+      else { g.lineWidth = 5; g.beginPath(); g.moveTo(x - rx * 0.8, y + 2); g.quadraticCurveTo(x, y + 10, x + rx * 0.8, y + 2); g.stroke(); }
+    }
+    // brows
+    g.lineWidth = 7; g.lineCap = 'round'; g.strokeStyle = OUT; g.beginPath();
+    const by = y - ry - 12 * size;
+    if (m === 'worried' || m === 'scared') { g.moveTo(x - s * rx * 0.7, by + 2); g.lineTo(x + s * rx * 0.6, by - 12); }
+    else if (m === 'angry') { g.moveTo(x - s * rx * 0.7, by - 10); g.lineTo(x + s * rx * 0.6, by + 4); }
+    else if (m === 'happy' || m === 'relaxed') { g.moveTo(x - rx * 0.6, by); g.quadraticCurveTo(x, by - 10, x + rx * 0.6, by); }
+    else { g.moveTo(x - rx * 0.6, by - 3); g.lineTo(x + rx * 0.6, by - 5); }
+    g.stroke(); g.lineCap = 'butt';
+  }
+}
+function mouth(g, c, x, y, w) {
+  const m = c.mood;
+  g.lineWidth = 5; g.strokeStyle = OUT; g.lineCap = 'round';
+  const open = c.talk ? (0.35 + 0.65 * Math.abs(Math.sin(t_now * 17 + Math.sin(t_now * 5) * 2))) : 0;
+  if (m === 'scared' && !c.talk) { part(g, ell(x, y + 6, w * 0.35, 14), '#4a0f1a'); }
+  else if (open > 0.05) {
+    const h = 6 + open * (m === 'scared' ? 26 : 16);
+    g.beginPath(); g.ellipse(x, y + h / 2, w * (m === 'scared' ? 0.45 : 0.35), h, 0, 0, Math.PI * 2); g.fillStyle = '#4a0f1a'; g.fill(); g.stroke();
+    g.fillStyle = '#e8606a'; g.beginPath(); g.ellipse(x, y + h * 1.0, w * 0.18, h * 0.45, 0, 0, Math.PI * 2); g.fill();
+  } else if (m === 'happy' || m === 'relaxed') { g.beginPath(); g.moveTo(x - w * 0.5, y); g.quadraticCurveTo(x, y + 22, x + w * 0.5, y); g.stroke(); }
+  else if (m === 'worried') { g.beginPath(); g.moveTo(x - w * 0.4, y + 8); g.bezierCurveTo(x - w * 0.15, y - 2, x + w * 0.15, y + 12, x + w * 0.4, y + 3); g.stroke(); }
+  else { g.beginPath(); g.moveTo(x - w * 0.35, y + 4); g.lineTo(x + w * 0.35, y + 4); g.stroke(); }
+  g.lineCap = 'butt';
+}
+let t_now = 0;
+const DRAW = {
+  // TOM: an orange cat in a green hoodie
+  tom(g, c, t) {
+    const W = c.cw, skin = '#f0943a', dk = '#c86a1e', hood = '#3a9a5a';
+    const step = c.walk ? Math.sin(c.walk * Math.PI) : 0, sw = c.run ? 16 : 9;
+    const legL = 300 + (step > 0 ? -step * sw : 0), legR = 300 + (step < 0 ? step * sw : 0);
+    const tail = g2 => { g2.moveTo(170, 250); g2.bezierCurveTo(230, 250, 240, 190, 214, 160 + Math.sin(t * 3) * 8); };
+    paper(g, [ell(W / 2, 128, 98, 84), ell(W / 2, 238, 60, 62), rrect(88, 260, 34, legL - 250, 14), rrect(134, 260, 34, legR - 250, 14), poly(46, 92, 60, 10, 112, 56), poly(210, 92, 196, 10, 144, 56)]);
+    g.save(); g.lineCap = 'round'; g.lineWidth = 34; g.strokeStyle = PAPER; g.beginPath(); tail(g); g.stroke(); g.lineWidth = 24; g.strokeStyle = OUT; g.stroke(); g.lineWidth = 15; g.strokeStyle = skin; g.stroke(); g.restore();
+    part(g, rrect(90, 255, 30, legL - 252, 12), skin); part(g, rrect(136, 255, 30, legR - 252, 12), skin);
+    part(g, ell(W / 2, 236, 58, 58), hood);                                           // the hoodie
+    if (!c.back) { part(g, rrect(108, 236, 40, 24, 8), '#2e8048'); g.lineWidth = 3; g.strokeStyle = '#f0f0e0'; g.beginPath(); g.moveTo(118, 208); g.lineTo(116, 230); g.moveTo(138, 208); g.lineTo(140, 230); g.stroke(); }
+    // arms: swinging, up in a panic, or holding a controller
+    const armUp = c.mood === 'scared' && !c.hold;
+    for (const s of [-1, 1]) {
+      const sx = W / 2 + s * 54, ay = armUp ? 175 : 238 + (c.hold ? -6 : s * step * (c.run ? 14 : 7));
+      part(g, ell(sx + s * (armUp ? 14 : 6), ay, 16, 26, s * (armUp ? -0.6 : 0.2)), hood);
+      part(g, ell(sx + s * (armUp ? 22 : 8), ay + (armUp ? -22 : 22), 12, 11), skin);
+    }
+    part(g, poly(46, 92, 60, 10, 112, 56), skin); part(g, poly(210, 92, 196, 10, 144, 56), skin);
+    g.fillStyle = '#f7b8b0'; g.beginPath(); g.moveTo(60, 74); g.lineTo(66, 34); g.lineTo(92, 60); g.fill(); g.beginPath(); g.moveTo(196, 74); g.lineTo(190, 34); g.lineTo(164, 60); g.fill();
+    part(g, ell(W / 2, 128, 96, 82), skin);
+    g.fillStyle = dk; for (const dx of [-26, 0, 26]) { g.beginPath(); g.ellipse(W / 2 + dx, 56, 6, 16, dx * 0.012, 0, Math.PI * 2); g.fill(); }
+    if (c.back) { g.fillStyle = dk; for (const dy of [100, 130, 160]) { g.beginPath(); g.ellipse(W / 2, dy, 60, 5, 0, 0, Math.PI * 2); g.fill(); } return; }
+    eyes(g, c, W / 2, 118, 38, skin);
+    part(g, poly(W / 2 - 9, 156, W / 2 + 9, 156, W / 2, 166), '#f7a0a8');
+    mouth(g, c, W / 2, 170, 40);
+    g.lineWidth = 3; g.strokeStyle = OUT; g.beginPath();
+    for (const s of [-1, 1]) { g.moveTo(W / 2 + s * 40, 160); g.lineTo(W / 2 + s * 90, 152); g.moveTo(W / 2 + s * 40, 168); g.lineTo(W / 2 + s * 90, 172); }
+    g.stroke();
+    if (c.sweat) { const sy = 70 + (t * 40 % 30); part(g, g2 => { g2.moveTo(212, sy); g2.quadraticCurveTo(224, sy + 22, 212, sy + 26); g2.quadraticCurveTo(200, sy + 22, 212, sy); }, '#9ad8ff'); }
+    if (c.hold) {                                                                      // the controller
+      part(g, rrect(88, 232, 80, 34, 14), '#3a3a48');
+      g.fillStyle = '#ff5a5a'; g.beginPath(); g.arc(150, 246, 5, 0, 7); g.fill(); g.fillStyle = '#5aa0ff'; g.beginPath(); g.arc(140, 254, 5, 0, 7); g.fill();
+      g.fillStyle = '#d8d8e0'; g.fillRect(100, 246, 18, 6); g.fillRect(106, 240, 6, 18);
+      for (const s of [-1, 1]) part(g, ell(W / 2 + s * 40, 250, 13, 12), skin);
+    }
+  },
+  // MAX: a white dog with brown floppy ears and a blue T-shirt (a bit taller, braver, louder)
+  max(g, c, t) {
+    const W = c.cw, skin = '#f4efe4', ear = '#8a5a34', shirt = '#3a6ad0';
+    const step = c.walk ? Math.sin(c.walk * Math.PI) : 0, sw = c.run ? 16 : 9;
+    const legL = 300 + (step > 0 ? -step * sw : 0), legR = 300 + (step < 0 ? step * sw : 0);
+    paper(g, [ell(W / 2, 120, 88, 84), ell(W / 2, 236, 58, 62), rrect(90, 260, 32, legL - 250, 14), rrect(134, 260, 32, legR - 250, 14), ell(42, 130, 30, 56, 0.25), ell(214, 130, 30, 56, -0.25)]);
+    part(g, rrect(92, 255, 30, legL - 252, 12), '#5a5a6a'); part(g, rrect(136, 255, 30, legR - 252, 12), '#5a5a6a');
+    part(g, ell(W / 2, 234, 56, 58), shirt);
+    if (!c.back) { g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(128, 214); g.lineTo(136, 232); g.lineTo(120, 232); g.fill(); }
+    const armUp = c.mood === 'scared';
+    for (const s of [-1, 1]) {
+      const sx = W / 2 + s * 52, ay = armUp ? 176 : 236 + s * step * (c.run ? 14 : 7);
+      part(g, ell(sx + s * (armUp ? 14 : 6), ay, 15, 25, s * (armUp ? -0.6 : 0.2)), shirt);
+      part(g, ell(sx + s * (armUp ? 22 : 8), ay + (armUp ? -22 : 22), 12, 11), skin);
+    }
+    part(g, ell(W / 2, 120, 86, 82), skin);
+    if (!c.back) { g.fillStyle = '#d8c8b0'; g.beginPath(); g.ellipse(W / 2 + 40, 92, 26, 22, 0.4, 0, Math.PI * 2); g.fill(); }   // a patch over one eye
+    const flap = Math.sin(t * 6) * (c.run ? 0.25 : 0.06);
+    part(g, ell(44, 130, 26, 52, 0.25 + flap), ear); part(g, ell(212, 130, 26, 52, -0.25 - flap), ear);
+    if (c.back) return;
+    eyes(g, c, W / 2, 104, 36, skin, 0.92);
+    part(g, ell(W / 2, 148, 20, 14), '#1a1020');
+    g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(W / 2 - 6, 144, 6, 4, 0, 0, Math.PI * 2); g.fill();
+    mouth(g, c, W / 2, 166, 46);
+  },
+  // THE THING: tall, thin, black, no face, just two white eyes; it twitches (no paper edge: it is not from our world)
+  thing(g, c, t) {
+    const W = c.cw, Hh = c.ch, j = () => (Math.random() - 0.5) * 3;
+    const step = c.walk ? Math.sin(c.walk * Math.PI) : 0;
+    g.fillStyle = '#07050a'; g.strokeStyle = '#07050a'; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.ellipse(W / 2 + j(), 70 + j(), 34, 46, Math.sin(t * 1.3) * 0.15, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(W / 2 - 30, 110); g.lineTo(W / 2 + 30, 110); g.lineTo(W / 2 + 22 + j(), 300); g.lineTo(W / 2 - 22 + j(), 300); g.closePath(); g.fill();
+    g.lineWidth = 14;
+    for (const s of [-1, 1]) {                                                         // long arms, long fingers
+      const hx = W / 2 + s * (54 + (c.run ? 20 : 0)) + j(), hy = 330 - s * step * 30 + j();
+      g.beginPath(); g.moveTo(W / 2 + s * 26, 120); g.quadraticCurveTo(W / 2 + s * 60, 210, hx, hy); g.stroke();
+      g.lineWidth = 5; for (let f = -1; f <= 1; f++) { g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + f * 8 + j(), hy + 30 + j()); g.stroke(); } g.lineWidth = 14;
+    }
+    g.lineWidth = 18;
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(W / 2 + s * 14, 290); g.lineTo(W / 2 + s * (22 + step * s * 26), Hh - 8); g.stroke(); }
+    const open = c.lid;                                                                // the eyes open slowly
+    g.fillStyle = '#f4f8ff'; g.shadowColor = '#ffffff'; g.shadowBlur = 16;
+    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(W / 2 + s * 14, 66, 8, Math.max(0.5, 11 * open), s * 0.25, 0, Math.PI * 2); g.fill(); }
+    g.shadowBlur = 0;
+  },
+};
+const tom = new Cutout('tom', 0.95, 1.19, 256, 320);
+const max = new Cutout('max', 1.0, 1.25, 256, 320);
+const thing = new Cutout('thing', 1.15, 2.85, 200, 496);
+thing.mat.alphaTest = 0.3; thing.mesh.material.fog = true; thing.shadow.visible = false;
+const CAST = [tom, max, thing];
+
+/* --- 6. THE FILM ---------------------------------------------------------------------
+   shot(t) sets everything for second t. Words: captions at the bottom, bubbles over a head. */
+const LENGTH = 79.5;
+let caption = '', bubbles = [], flash = 0, fade = 0, theEnd = 0, setName = 'back', panelOverride = null, hum = 0, globalPower = 1;
+const camPos = new THREE.Vector3(), camAt = new THREE.Vector3();
+function say(c, text, from, to, t) { if (t >= from && t < to) { c.talk = t < to - 0.35; bubbles.push({ c, text }); } }
+function cap(text, from, to, t) { if (t >= from && t < to) caption = text; }
+function shot(t) {
+  caption = ''; bubbles = []; flash = 0; fade = 0; theEnd = 0; panelOverride = null; hum = 0.06; globalPower = 1;
+  for (const c of CAST) Object.assign(c, { visible: false, talk: false, walk: 0, run: false, squash: 0, y: 0, dizzy: false, sweat: false, shake: 0, lid: 0, hold: false, mood: 'calm', lookX: 0, lookY: 0 });
+  setName = t < 55.5 ? 'back' : 'home';
+  if (setName === 'back') backrooms(t); else home(t);
+  if (t < 0.6) fade = 1 - t / 0.6;                                                    // fade in from black
+}
+function backrooms(t) {
+  // where the two are, all the way through: fall at x=2, talk, walk, stop at 31, run to the door
+  const tomX = lin(t, [[0, 2], [19.5, 2], [31, 30.6], [44, 30.6], [50, 57.5], [54.3, 86.5], [55.5, 92]]);
+  const maxX = lin(t, [[0, 2.6], [19.5, 2.6], [31, 31.4], [43.6, 31.4], [50, 59], [54.0, 87], [55.5, 92]]);
+  Object.assign(tom, { visible: t < 54.4, x: tomX, z: t < 50 ? -0.65 : lin(t, [[50, -0.65], [53.4, -0.3], [54.3, 0]]) });
+  Object.assign(max, { visible: t < 54.2, x: maxX, z: t < 50 ? 0.65 : lin(t, [[50, 0.65], [53.2, 0.25], [54, 0]]) });
+  const walking = t >= 19.5 && t < 31, running = t >= 44 && t < 54.4;
+  if (walking) { tom.walk = (tomX - 2) * 1.2; max.walk = (maxX - 2.6) * 1.2 + 0.5; }
+  if (running) { tom.walk = tomX * 0.9; max.walk = maxX * 0.9 + 0.5; tom.run = max.run = true; }
+  tom.facing = max.facing = t < 19.5 ? Math.PI / 2 : Math.PI / 2;                     // (+x)
+  // --- A. 0-6: the fall through the ceiling
+  const fallT = k => 3.8 * (1 - k * k);
+  if (t < 1.2) tom.y = 99; else if (t < 1.7) tom.y = fallT((t - 1.2) / 0.5);
+  if (t < 2.4) max.y = 99; else if (t < 2.9) max.y = fallT((t - 2.4) / 0.5);
+  if (t >= 1.7 && t < 2.1) tom.squash = Math.sin((t - 1.7) / 0.4 * Math.PI) * 0.9;
+  if (t >= 2.9 && t < 3.3) max.squash = Math.sin((t - 2.9) / 0.4 * Math.PI) * 0.9;
+  if (tom.y > 50) tom.visible = false; if (max.y > 50) max.visible = false;
+  tom.dizzy = t > 1.8 && t < 3.6; max.dizzy = t > 3.0 && t < 4.6;
+  cap('ONE DAY, TOM AND MAX FELL THROUGH THE FLOOR...', 0.4, 5.8, t);
+  if (t < 6) {
+    const up = key(t, [[0, 2.7], [1.1, 2.7], [1.6, 1.0], [6, 0.8]]);
+    camPos.set(6.6, 1.15, 1.8); camAt.set(2.3, up, 0);
+    tom.mood = t > 3.6 ? 'worried' : 'calm'; max.mood = t > 4.6 ? 'worried' : 'calm';
+    tom.lookX = t > 4.2 ? 0.8 : 0; max.lookX = t > 4.8 ? -0.8 : 0;
+    return lightsAndHum(t, 2.3);
+  }
+  // --- B. 6-10.5: the long corridor
+  cap('...STRAIGHT INTO THE BACKROOMS.', 6.3, 10.3, t);
+  if (t < 10.5) {
+    const k = span(t, 6, 10.5);
+    camPos.set(lerp(-6, -3.6, k), lerp(1.9, 1.6, k), 0.9); camAt.set(40, 1.2, 0);
+    tom.mood = max.mood = 'worried'; tom.lookX = Math.sin(t * 1.3) > 0 ? 0.7 : -0.7; max.lookY = -0.6; max.lookX = 0.3;
+    tom.facing = max.facing = -Math.PI / 2;                                          // facing this way
+    hum = 0.06 + k * 0.05;
+    return lightsAndHum(t, 2.3);
+  }
+  // --- C. 10.5-19.5: where are we?
+  if (t < 19.5) {
+    const k = span(t, 10.5, 19.5);
+    camPos.set(lerp(5.6, 5.0, k), 1.0, lerp(0.15, -0.1, k)); camAt.set(2.3, 0.82, 0);
+    tom.facing = max.facing = Math.PI / 2;
+    tom.mood = max.mood = 'worried';
+    say(max, 'WHERE ARE WE?', 10.8, 13.2, t);
+    say(tom, 'IT SMELLS LIKE WET CARPET...', 13.5, 16.3, t);
+    say(max, 'AND IT JUST... KEEPS GOING.', 16.6, 19.3, t);
+    tom.lookX = t < 13.4 ? (Math.floor(t * 1.6) % 2 ? 0.85 : -0.85) : t < 16.4 ? 0.9 : 0.6; tom.lookY = t > 14.5 && t < 16.4 ? -0.85 : 0;   // up at the light
+    max.lookX = t < 13.4 ? -0.6 : t < 16.4 ? -0.9 : -0.2; max.lookY = t > 13.4 && t < 16.4 ? 0.5 : 0;
+    panelOverride = (p, b) => (p.x === 0 && p.z === 0 && t > 14.2 && t < 17 ? (noise1(t * 22) > 0.45 ? b : 0.08) : b);
+    return lightsAndHum(t, 2.3);
+  }
+  // --- D. 19.5-25: walking, seen from the side
+  cap('RULE 1: NEVER SPLIT UP.', 20, 24.6, t);
+  if (t < 25) {
+    camPos.set(tomX + 1.7, 1.0, -2.25); camAt.set(tomX - 0.2, 0.8, 0.3);
+    tom.mood = 'worried'; max.mood = 'calm'; tom.lookX = -0.5; max.lookX = 0.5;
+    tom.lookX = Math.floor(t * 0.9) % 2 ? -0.7 : 0.6;
+    return lightsAndHum(t, tomX);
+  }
+  // --- E. 25-31: walking towards the camera
+  cap('RULE 2: STAY WHERE THE LIGHTS WORK.', 25.4, 30.6, t);
+  if (t < 31) {
+    camPos.set(tomX + 4.6, 1.05, 0.2); camAt.set(tomX, 0.85, 0);
+    tom.mood = 'worried'; max.mood = 'calm'; tom.lookY = -0.6; tom.lookX = Math.sin(t * 2) * 0.5; max.lookX = -0.4;
+    return lightsAndHum(t, tomX);
+  }
+  // --- lights go out behind them, one by one (from x=0 to x=25 between 31 and 36.5), and stay out
+  const outTo = t < 31.5 ? -99 : lerp(0, 25, span(t, 31.5, 36.5));
+  const thingLight = t > 39.4 && t < 41.5 ? (noise1(t * 30) > 0.35 ? 1 : 0.05) : 0;
+  panelOverride = (p, b) => {
+    if (p.x <= outTo && Math.abs(p.z) < 26) return p.x === 20 && p.z === 0 ? thingLight : 0;
+    if (t > 37 && t < 44 && p.x === 30 && p.z === 0) return noise1(t * 8) > 0.3 ? 0.5 : 0.08;   // the last light, dying too
+    if (running && Math.abs(p.z) < 3) return b * (noise1(t * 14 + p.x) > 0.25 ? 1 : 0.15);     // strobing on the run
+    return b;
+  };
+  // --- F. 31-37: they stop; the lights behind them go out
+  if (t < 37) {
+    const k = span(t, 31, 37);
+    camPos.set(lerp(33.4, 32.9, k), 0.95, -0.5); camAt.set(30.6, 0.9, -0.55);
+    tom.mood = t < 33 ? 'calm' : 'worried'; max.mood = 'calm';
+    tom.lookX = t < 32.4 ? 0 : key(t, [[32.4, 0], [34.5, 0.95]]); tom.sweat = t > 34; max.lookX = -0.3;
+    say(tom, 'MAX... WHY ARE THE LIGHTS GOING OFF?', 33.4, 36.8, t);
+    return lightsAndHum(t, 30.6, 1 - k * 0.5);
+  }
+  // --- G. 37-41.5: behind them, in the dark... two eyes. Then the light shows it.
+  Object.assign(thing, { visible: t < 54.5, x: lin(t, [[37, 19.2], [44.2, 19.2], [46, 32], [50, 53], [54.3, 81]]), z: 0, facing: Math.PI / 2 });
+  thing.lid = key(t, [[38.2, 0], [38.9, 1]]);
+  thing.light = t < 44 ? 0.18 + thingLight * 0.7 : 0.35;
+  if (t > 44) { thing.walk = thing.x * 0.6; thing.run = true; }
+  thing.shake = t > 40.6 && t < 44 ? 0.03 : 0;
+  if (t < 41.5) {
+    const k = span(t, 37, 41.5);
+    camPos.set(34.6, 1.45, 1.3); camAt.set(lerp(25, 19.2, smooth(k)), lerp(0.9, 1.4, k), 0);
+    tom.facing = max.facing = -Math.PI / 2;
+    tom.mood = max.mood = 'worried';
+    camera.fov -= k * 14;                                                          // a slow zoom in
+    return lightsAndHum(t, 25, 0.6);
+  }
+  // --- H. 41.5-44: RUN!!!
+  if (t < 44) {
+    camPos.set(34.4, 0.95, 0); camAt.set(31, 0.92, 0);
+    tom.facing = max.facing = Math.PI / 2; tom.mood = max.mood = 'scared';
+    tom.shake = max.shake = 0.025; tom.lookX = max.lookX = 0; tom.sweat = true;
+    tom.lookY = -0.1;
+    say(max, 'RUN!!!', 42.2, 44, t); if (t > 42.6) tom.talk = true;
+    return lightsAndHum(t, 30.6, 0.7);
+  }
+  // --- I. 44-50: the chase, seen from in front
+  cap("RULE 3: IF IT HAS NO FACE... DON'T STOP TO SAY HI.", 44.4, 49.7, t);
+  if (t < 50) {
+    camPos.set(tomX + 5.2, 0.85, 0.35); camAt.set(tomX - 2, 1.1, 0);
+    tom.facing = max.facing = Math.PI / 2; tom.mood = max.mood = 'scared';
+    tom.lookX = max.lookX = 0;
+    return lightsAndHum(t, tomX - 2);
+  }
+  // --- J. 50-54.5: the EXIT door; from behind them
+  say(max, 'THERE! THE EXIT!', 50.4, 52.2, t);
+  camPos.set(Math.min(tomX - 3.6, 83), 1.3, 0.35); camAt.set(DOOR_X, 1.25, 0);
+  tom.facing = max.facing = Math.PI / 2; tom.mood = max.mood = 'scared';
+  if (t > 53.6) { tom.y = Math.sin(span(t, 53.6, 54.4) * Math.PI) * 0.4; }
+  flash = span(t, 54.0, 54.5);
+  return lightsAndHum(t, Math.min(tomX, DOOR_X - 3));
+}
+function lightsAndHum(t, fx, pw = 1) { lightFocus = fx; globalPower = pw; backFog.far = t >= 50 && t < 55.5 ? 75 : 42; }
+let lightFocus = 2;
+function home(t) {
+  // --- K. 55.5-56.5: white, then the room
+  flash = 1 - span(t, 55.5, 56.6); hum = 0;
+  Object.assign(tom, { visible: true, facing: 0 });
+  if (t < 58.6) {                                                                     // in through the door
+    const k = span(t, 56.2, 58.4);
+    camPos.set(HX + 1.2, 1.85, HZ + 1.0); camAt.set(HX - 2.3, 0.75, HZ - 2.2);
+    tom.x = HX + lerp(-2.6, -2.2, k); tom.z = HZ + lerp(-2.55, -1.9, k); tom.walk = k * 3;
+    tom.mood = t < 57.6 ? 'scared' : 'worried'; tom.sweat = t < 58;
+    tom.lookX = t < 57.2 ? 0 : (Math.floor(t * 2) % 2 ? 0.7 : -0.7);
+    if (t < 57.6) tom.shake = 0.015;
+    say(tom, 'HOME... SWEET... HOME.', 57.4, 58.6, t);
+  } else if (t < 61) {                                                                // to the couch, and flop
+    camPos.set(HX + 2.4, 1.3, HZ + 2.3); camAt.set(HX - 1.4, 0.75, HZ - 0.2);
+    tom.x = HX + key(t, [[58.6, -2.2], [60, -1.5], [60.6, -1.38]]); tom.z = HZ + key(t, [[58.6, -1.9], [60, -0.4], [60.6, 0.05]]);
+    if (t < 60) tom.walk = (t - 58.6) * 3;
+    tom.y = t < 60 ? 0 : t < 60.6 ? Math.sin(span(t, 60, 60.6) * Math.PI) * 0.5 + span(t, 60, 60.6) * 0.3 : 0.3;
+    if (t >= 60.6) tom.squash = Math.max(0, Math.sin(span(t, 60.6, 61) * Math.PI) * 0.6);
+    tom.mood = t < 60 ? 'calm' : 'happy'; tom.lookX = 0.5;
+  } else if (t < 73.5 || t >= 73.5) {
+    tom.x = HX - 1.38; tom.z = HZ + 0.05; tom.y = 0.3; tom.hold = t > 61.4; tom.mood = 'relaxed';
+    tom.facing = Math.PI / 2;
+    tom.lookX = 0.15; tom.lookY = 0.05;
+    if (t < 70) {                                                                     // TV's view of Tom: push in
+      const k = span(t, 61, 70);
+      camPos.set(HX + lerp(2.4, 1.2, k), 1.05, HZ + lerp(0.9, 0.35, k)); camAt.set(HX - 1.38, 0.95, HZ + 0.05);
+    } else if (t < 73.5) {                                                            // over his shoulder: the game
+      const k = span(t, 70, 73.5);
+      camPos.set(HX - 2.9, 1.8, HZ + 1.25); camAt.set(HX + lerp(2.4, 3.2, k), 1.1, HZ);
+    } else {                                                                          // the end... the lamp flickers
+      camPos.set(HX + 1.2, 1.05, HZ + 0.35); camAt.set(HX - 1.38, 0.98, HZ + 0.05);
+      if (t > 74.2) { tom.mood = 'scared'; tom.lookY = -1; tom.lookX = 0.3; tom.hold = true; }
+      if (t > 74.2 && t < 75.4) tom.shake = 0.01;
+      if (t > 75.6) { tom.mood = 'worried'; tom.lookY = -0.7; }
+      say(tom, 'NOPE. NOT AGAIN.', 75.4, 77.2, t);
+      theEnd = span(t, 77.2, 78.2);
+    }
+  }
+  cap('AND WHEN TOM FINALLY GOT HOME...', 61.6, 65.4, t);
+  cap('...HE COULD FINALLY PLAY PIXEL GAMES IN PEACE.', 65.6, 73.2, t);
+}
+
+/* --- 7. SOUND: the hum of the lights, clunks, footsteps, the chase, the little game on the TV ----------- */
+const Hum = {
+  nodes: null,
+  start() {
+    const c = PX.Sound.ctx; if (!c || this.nodes) return;
+    const out = c.createGain(); out.gain.value = 0; out.connect(PX.Sound.out);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.connect(out);
+    const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 60; o1.connect(lp);
+    const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.value = 120.4; const g2 = c.createGain(); g2.gain.value = 0.35; o2.connect(g2); g2.connect(lp);
+    const o3 = c.createOscillator(); o3.type = 'sine'; o3.frequency.value = 3150; const g3 = c.createGain(); g3.gain.value = 0.05; o3.connect(g3); g3.connect(out);
+    o1.start(); o2.start(); o3.start();
+    this.nodes = { out, lp };
+  },
+  set(v) { if (!this.nodes) return; this.nodes.out.gain.setTargetAtTime(save.sfx ? v : 0, PX.Sound.ctx.currentTime, 0.06); },
+};
+function sfx(kind, o = {}) {
+  if (!save.sfx || !PX.Sound.ctx) return;
+  const S2 = PX.Sound;
+  if (kind === 'thud') { S2.noise(0.25, { vol: 0.35, freq: 260 }); S2.tone([120, 45], 0.25, { vol: 0.25, type: 'sine' }); }
+  else if (kind === 'boing') { S2.tone([180, 420, 260], 0.3, { vol: 0.1, type: 'triangle' }); }
+  else if (kind === 'clunk') { S2.noise(0.12, { vol: 0.3, freq: 900 }); S2.tone([300, 90], 0.18, { vol: 0.12, type: 'square' }); }
+  else if (kind === 'step') S2.noise(0.07, { vol: o.vol || 0.08, freq: 500 });
+  else if (kind === 'tick') S2.noise(0.03, { vol: 0.06, freq: 3000, filter: 'highpass' });
+  else if (kind === 'sting') { S2.tone([700, 90], 1.4, { vol: 0.12, type: 'sawtooth' }); S2.tone([740, 95], 1.4, { vol: 0.1, type: 'sawtooth' }); S2.noise(1.0, { vol: 0.12, freq: 1800 }); }
+  else if (kind === 'drone') { S2.tone([55, 52], 3.5, { vol: 0.16, type: 'sawtooth' }); S2.tone([58.3, 55], 3.5, { vol: 0.12, type: 'sawtooth' }); }
+  else if (kind === 'door') { S2.noise(0.3, { vol: 0.3, freq: 700 }); S2.tone([200, 100], 0.2, { vol: 0.12, type: 'square' }); }
+  else if (kind === 'whoosh') { S2.noise(0.8, { vol: 0.25, freq: 2500, filter: 'highpass' }); S2.tone([300, 1400], 0.7, { vol: 0.06, type: 'sine' }); }
+  else if (kind === 'slam') { S2.noise(0.2, { vol: 0.3, freq: 500 }); S2.tone([140, 70], 0.15, { vol: 0.15, type: 'square' }); }
+  else if (kind === 'flick') { S2.noise(0.08, { vol: 0.15, freq: 2400 }); S2.tone(110, 0.1, { vol: 0.08, type: 'sawtooth' }); }
+  else if (kind === 'end') [392, 494, 587, 784].forEach((f, i) => S2.tone(f, 0.5, { vol: 0.09, delay: i * 0.13, type: 'triangle' }));
+  else if (kind === 'blip') S2.tone(o.f, 0.05, { vol: 0.05, type: 'square' });
+}
+const CUES = [
+  [1.7, 'thud'], [2.9, 'thud'], [14.4, 'flick'], [15.2, 'flick'], [16.3, 'flick'],
+  [31.5, 'clunk'], [32.5, 'clunk'], [33.5, 'clunk'], [34.5, 'clunk'], [35.5, 'clunk'], [36.5, 'clunk'],
+  [38.2, 'drone'], [39.45, 'sting'], [42.2, 'drone'], [53.6, 'door'], [54.1, 'whoosh'], [57.6, 'slam'], [60.6, 'boing'], [60.6, 'thud'],
+  [74.0, 'flick'], [74.35, 'flick'], [77.3, 'end'],
+];
+let cueAt = 0, stepSeen = { tom: 0, max: 0, thing: 0 }, beatAt = 0;
+const CHASE = [36, 36, 48, 36, 39, 36, 46, 36, 34, 34, 46, 34, 37, 34, 44, 34];
+const TUNE = [72, 76, 79, 76, 81, 79, 76, 72, 74, 77, 81, 77, 79, 77, 74, 71];
+const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+function soundFrame(t, dt) {
+  if (!PX.Sound.ctx) return;
+  Hum.start();
+  Hum.set(playing && !paused ? hum * (setName === 'back' ? globalPower * 0.9 + 0.1 : 0) : state === 'title' ? 0.05 : 0);
+  if (!playing || paused) return;
+  while (cueAt < CUES.length && CUES[cueAt][0] <= t) { if (t - CUES[cueAt][0] < 0.5) sfx(CUES[cueAt][1]); cueAt++; }
+  // footsteps when a leg comes down
+  for (const c of [tom, max, thing]) {
+    if (!c.visible || !c.walk) continue;
+    const n = Math.floor(c.walk);
+    if (n !== stepSeen[c.kind]) { stepSeen[c.kind] = n; sfx('step', { vol: c.kind === 'thing' ? 0.14 : c.run ? 0.1 : 0.05 }); }
+  }
+  // the voices: little blips while a mouth moves (Tom high, Max lower)
+  for (const c of [tom, max]) if (c.talk && Math.random() < dt * 14) sfx('blip', { f: (c === tom ? 620 : 380) * (0.85 + Math.random() * 0.4) });
+  // the chase music (44-54) and the TV game's tune (61.4-73.5): one note every beat
+  const chase = t >= 44 && t < 54.2, game = t >= 61.4 && t < 73.6;
+  if (chase || game) {
+    const bpm = chase ? 300 : 260, beat = Math.floor(t * bpm / 60);
+    if (beat !== beatAt) {
+      beatAt = beat;
+      if (chase) {
+        if (!save.sfx) return;
+        PX.Sound.tone(midi(CHASE[beat % 16]), 0.14, { vol: 0.12, type: 'square' });
+        if (beat % 2 === 0) PX.Sound.tone([150, 50], 0.1, { vol: 0.16, type: 'sine' });
+        else PX.Sound.noise(0.04, { vol: 0.05, freq: 6000, filter: 'highpass' });
+      } else if (save.sfx) {
+        PX.Sound.tone(midi(TUNE[beat % 16]), 0.12, { vol: 0.045, type: 'square' });
+        if (beat % 4 === 0) PX.Sound.tone(midi(TUNE[beat % 16] - 24), 0.25, { vol: 0.05, type: 'triangle' });
+      }
+    }
+  }
+}
+
+/* --- 8. SCREENS: the title, the film with its words, pause, the end ------------------------ */
+let state = 'title', playing = false, paused = false, playhead = 0, frozen = false;   // (frozen: held still by the tests)
+const BAR = 16;                                                                       // the black film bars
+function wrap(text, size, maxW) {
+  const words = PX.tr(text).split(' '), lines = []; let cur = '';
+  for (const w of words) { const tryL = cur ? cur + ' ' + w : w; if (PX.textWidth(tryL, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = tryL; }
+  if (cur) lines.push(cur); return lines;
+}
+const v3 = new THREE.Vector3();
+function toScreen(x, y, z) {
+  v3.set(x, y, z).project(camera);
+  if (v3.z > 1) return null;
+  return { x: (v3.x + 1) / 2 * window.innerWidth * S.view.dpr, y: (1 - v3.y) / 2 * window.innerHeight * S.view.dpr };
+}
+function drawBubble(b) {
+  const c = b.c, p = toScreen(c.x, c.y + (c === max ? 1.32 : 1.24), c.z);
+  const W = S.W, lines = wrap(b.text, 1, 120), lw = Math.max(...lines.map(l => PX.textWidth(l, 1))), bw = lw + 12, bh = lines.length * 8 + 8;
+  let x, y;
+  if (p) { x = (p.x - S.view.ox) / S.view.scale; y = (p.y - S.view.oy) / S.view.scale; } else { x = W / 2; y = 60; }
+  const bx = clamp(Math.round(x - bw / 2), 4, W - bw - 4), by = clamp(Math.round(y - bh - 10), BAR + 4, H - BAR - bh - 40);
+  const tx = clamp(Math.round(x), bx + 6, bx + bw - 6);
+  ctx.fillStyle = '#1a1020'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#1a1020'; ctx.fillRect(tx - 3, by + bh + 1, 7, 1); ctx.fillRect(tx - 2, by + bh + 2, 5, 2); ctx.fillRect(tx - 1, by + bh + 4, 3, 2);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(tx - 2, by + bh, 5, 1); ctx.fillRect(tx - 1, by + bh + 1, 3, 2);
+  lines.forEach((l, i) => PX.drawText(ctx, l, bx + bw / 2, by + 5 + i * 8, '#1a1020', 1, 'center'));
+}
+function drawFilm(t) {
+  const W = S.W;
+  for (const b of bubbles) drawBubble(b);
+  if (caption) {
+    const lines = wrap(caption, 2, W - 40);
+    const y0 = H - BAR - 8 - lines.length * 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, y0 - 5, W, lines.length * 14 + 8);
+    lines.forEach((l, i) => T(l, W / 2, y0 + i * 14, '#fff6c8', 2, 'center', '#000'));
+  }
+  if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash})`; ctx.fillRect(0, 0, W, H); }
+  if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fade})`; ctx.fillRect(0, 0, W, H); }
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, BAR); ctx.fillRect(0, H - BAR, W, BAR);
+  if (theEnd > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${theEnd * 0.85})`; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = theEnd; PX.drawLogo(ctx, PX.tr('THE END'), W / 2, 90, 6); ctx.globalAlpha = 1;
+  }
+  // the progress line in the bottom bar
+  ctx.fillStyle = '#3a2f5c'; ctx.fillRect(8, H - 9, W - 16, 2); ctx.fillStyle = '#ffd23f'; ctx.fillRect(8, H - 9, Math.round((W - 16) * clamp(t / LENGTH, 0, 1)), 2);
+  if (UI.button('pause', W - 28, 0, 24, 15, 'II', { size: 1 })) setPause(true);
+  if (UI.button('sfx', W - 54, 0, 24, 15, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+}
+function drawTitle(now) {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(10,8,4,0.35)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, BAR); ctx.fillRect(0, H - BAR, W, BAR);
+  PX.drawLogo(ctx, PX.tr('TOM IN THE'), W / 2, 34, 4, { color: '#fff6c8' });
+  PX.drawLogo(ctx, PX.tr('BACKROOMS'), W / 2, 62, 6, { color: '#fff6c8' });
+  T('A SHORT CARTOON', W / 2, 106, '#ffd23f', 1, 'center');
+  if (window.innerHeight > window.innerWidth) T('TURN YOUR PHONE FOR A BIGGER PICTURE', W / 2, 196, '#a898d0', 1, 'center');
+  if (UI.button('watch', Math.round(W / 2 - 70), 124, 140, 30, 'WATCH', { accent: '#ffd23f' })) start();
+  if (UI.button('games', Math.round(W / 2 - 70), 162, 140, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  if (UI.button('sfx', W - 30, 20, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  if (save.watched) T(PX.tr('WATCHED') + ': ' + save.watched + 'x', 8, H - BAR - 10, '#a898d0', 1, 'left');
+  T('V' + VERSION, W - 6, H - BAR - 10, '#5b5275', 1, 'right', null);
+}
+function drawPause() {
+  const W = S.W;
+  ctx.fillStyle = 'rgba(8,6,14,0.72)'; ctx.fillRect(0, 0, W, H);
+  T('PAUSED', W / 2, 52, '#fff', 3, 'center');
+  if (UI.button('cont', Math.round(W / 2 - 70), 86, 140, 26, 'RESUME', { accent: '#9be36b' }) || UI.back) setPause(false);
+  if (UI.button('again', Math.round(W / 2 - 70), 120, 140, 22, 'RESTART', { size: 1 })) start();
+  if (UI.button('menu', Math.round(W / 2 - 70), 148, 140, 22, 'MENU', { size: 1 })) toTitle();
+  if (UI.button('games', Math.round(W / 2 - 70), 176, 140, 22, '< ALL GAMES', { size: 1 })) location.href = './';
+}
+function drawEnd() {
+  const W = S.W;
+  if (UI.button('again', Math.round(W / 2 - 145), 150, 140, 26, 'WATCH AGAIN', { accent: '#ffd23f' })) start();
+  if (UI.button('games', Math.round(W / 2 + 5), 150, 140, 26, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+}
+function start() { PX.Sound.unlock(); state = 'film'; playing = true; paused = false; seek(0); }
+function seek(t) { playhead = t; cueAt = 0; while (cueAt < CUES.length && CUES[cueAt][0] < t) cueAt++; beatAt = -1; }
+function setPause(v) { if (state !== 'film') return; paused = v; }
+function toTitle() { state = 'title'; playing = false; paused = false; }
+
+/* --- 9. MAIN LOOP ---------------------------------------------------------------------------- */
+const col = new THREE.Color();
+function stageLights(t) {
+  const back = setName === 'back';
+  BACK.visible = back; HOME.visible = !back;
+  scene.fog = back ? backFog : null;
+  scene.background = back ? backFog.color : col.set(0x101020);
+  if (back) {
+    // every panel: its own buzz, dead ones, the film's override; then the 8 real lights go to the nearest lit panels
+    for (let k = 0; k < PANELS.length; k++) {
+      const p = PANELS[k];
+      let b = p.dead ? 0 : p.buzz ? (noise1(t * 9 + p.ph) > 0.3 ? 1 : 0.1) : 1;
+      if (panelOverride) b = panelOverride(p, b);
+      p.b = b; panelMesh.setColorAt(k, col.setRGB(0.25 + b * 0.75, 0.24 + b * 0.73, 0.2 + b * 0.6));
+    }
+    panelMesh.instanceColor.needsUpdate = true;
+    const near = PANELS.filter(p => p.b > 0.02).map(p => ({ p, d: Math.hypot(p.x - lightFocus, p.z) })).sort((a, b) => a.d - b.d).slice(0, POOL.length);
+    POOL.forEach((l, i) => { const n = near[i]; if (n) { l.position.set(n.p.x, WH - 0.25, n.p.z); l.intensity = 10 * n.p.b; } else l.intensity = 0; });
+    hemi.intensity = 0.2 * globalPower; hemi.color.setHex(0xfff0b8);
+    // how lit each cut-out is: the lit panels near it
+    for (const c of CAST) {
+      if (c === thing) continue;
+      let lt = 0.18; for (const p of PANELS) { if (p.b <= 0.02) continue; const d = Math.hypot(p.x - c.x, p.z - c.z); if (d < 9) lt += p.b * (1 - d / 9) * 0.9; }
+      c.light = clamp(lt, 0.15, 1.08);
+    }
+    greenGlow.intensity = 6; doorHinge.rotation.y = -key(playhead, [[53.5, 0], [53.9, 1.6]]);
+    doorLight.visible = playhead > 53.5;
+  } else {
+    POOL.forEach(l => { l.intensity = 0; }); greenGlow.intensity = 0;
+    const flick = playhead > 73.9 && playhead < 74.6 ? (noise1(playhead * 40) > 0.5 ? 1 : 0.1) : 1;
+    hemi.intensity = 0; homeHemi.intensity = 0.9 * flick;
+    homeLamp.intensity = 7 * flick;
+    ceilingBulb.material.color.setRGB(flick, flick * 0.94, flick * 0.8);
+    const g = (Math.sin(t * 3) + 1) / 2; tvLight.color.setRGB(0.4 + g * 0.5, 0.5, 1 - g * 0.3); tvLight.intensity = 4;
+    for (const c of CAST) c.light = 1.0 * (0.55 + 0.45 * flick);
+    drawTV(t);
+  }
+}
+let last = performance.now(), titleT = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  UI.begin();
+  hctx.setTransform(1, 0, 0, 1, 0, 0); hctx.clearRect(0, 0, hud.width, hud.height);
+  ctx.clearRect(0, 0, S.W, H);
+  if (!renderer) {
+    ctx.fillStyle = '#0d0b13'; ctx.fillRect(0, 0, S.W, H);
+    T("SORRY, THIS DEVICE CAN'T SHOW 3D.", S.W / 2, 100, '#fff', 1, 'center');
+    if (UI.button('games', Math.round(S.W / 2 - 70), 130, 140, 24, '< ALL GAMES') || UI.back) location.href = './';
+  } else {
+    const fovWas = camera.fov;
+    if (state === 'title') {
+      titleT += dt;                                                               // an empty corridor, drifting slowly
+      setName = 'back'; panelOverride = null; caption = ''; bubbles = []; hum = 0.05; globalPower = 1;
+      for (const c of CAST) c.visible = false;
+      const x = -14 + (titleT * 0.7) % 60;
+      camPos.set(x, 1.5, Math.sin(titleT * 0.2) * 0.6); camAt.set(x + 10, 1.4, Math.sin(titleT * 0.15) * 1.5);
+      lightFocus = x + 4; t_now = titleT;
+      stageLights(titleT);
+    } else {
+      if (playing && !paused && !frozen) playhead = Math.min(LENGTH, playhead + dt);
+      if (playhead >= LENGTH - 0.01 && state === 'film') { state = 'end'; save.watched++; store(); }
+      t_now = playhead;
+      camera.fov = 58;
+      shot(playhead);
+      stageLights(playhead);
+    }
+    const fr = filmRect();
+    camera.aspect = fr.w / fr.h;
+    camera.position.copy(camPos); camera.lookAt(camAt); camera.updateProjectionMatrix();
+    for (const c of CAST) c.update(t_now, dt);
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, fr.w, fr.full); renderer.setScissor(0, 0, fr.w, fr.full); renderer.setClearColor(0x000000, 1); renderer.clear();
+    renderer.setViewport(0, fr.top, fr.w, fr.h); renderer.setScissor(0, fr.top, fr.w, fr.h);
+    renderer.render(scene, camera);
+    camera.fov = fovWas;
+    if (state === 'title') drawTitle(now);
+    else { drawFilm(playhead); if (paused) drawPause(); if (state === 'end') drawEnd(); }
+  }
+  soundFrame(playhead, dt);
+  UI.end();
+  S.blit('rgba(0,0,0,0)');
+  requestAnimationFrame(frame);
+}
+if (renderer) { buildBackrooms(); buildPanels(); buildHome(); }
+requestAnimationFrame(frame);
+
+/* --- input ----------------------------------------------------------------------- */
+UI.onDown = () => { PX.Sound.unlock(); };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (e.code === 'Space' || e.code === 'KeyP') { if (state === 'film') setPause(!paused); else if (state === 'title' || state === 'end') start(); e.preventDefault(); }
+  else if (e.code === 'Escape') { if (state === 'film' && !paused) setPause(true); else UI.back = true; }
+  else if (e.code === 'KeyM') { save.sfx = !save.sfx; store(); }
+  else if (state === 'film' && e.code === 'ArrowRight') seek(Math.min(LENGTH - 0.1, playhead + 5));
+  else if (state === 'film' && e.code === 'ArrowLeft') seek(Math.max(0, playhead - 5));
+});
+window.addEventListener('blur', () => setPause(true));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+// for the tests: jump to a second of the film and stop there
+window.SHORT = { start, seek: t => { if (state !== 'film') start(); seek(t); frozen = true; }, play: () => { frozen = false; }, get t() { return playhead; }, get state() { return state; }, LENGTH };
+PX.Pad.setup({
+  title: 'Tom in the Backrooms: controller', ui: UI,
+  phone: { stick: '', buttons: [['A', 'PAUSE']] },
+  menu: () => true,
+  keys: () => ({ START: 'KeyP' }),
+  help: [['START', 'PAUSE'], ['STICK|D-PAD', 'MENUS: PICK A BUTTON'], ['A', 'MENUS: OK'], ['B', 'MENUS: BACK']],
+});
+</script>
+</body>
+</html>

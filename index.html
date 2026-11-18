@@ -47,7 +47,7 @@
 <script>
 'use strict';
 /* PIXEL GAMES: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.71.0';
+const VERSION = '2.72.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -120,6 +120,7 @@ const GAMES = [
   { id: 'party', name: 'PIXEL PARTY', sub: 'A TOURNAMENT FOR 2-4!', url: 'party.html', color: '#ff7ab8', cats: ['2 PLAYERS', 'ONLINE'], tags: 'PARTY TOURNAMENT CHALLENGE TROPHY TROPHIES CUP FRIENDS FAMILY 3 4 PLAYERS SLICE HOOK RUNS SNAKE HOOPS BIKE SKI THIEF' },
   { id: 'tanks', name: 'PIXEL TANKS', sub: 'AIM, MIND THE WIND, FIRE!', url: 'tanks.html', color: '#5ad43f', cats: ['ACTION', '2 PLAYERS'], tags: 'TANKS TANK ARTILLERY CANNON SHOOT AIM WIND TURN BASED BOTS EXPLOSION CRATER HILLS WEAPONS CLUSTER ROLLER' },
   { id: 'sniper', name: 'PIXEL SNIPER', sub: 'HUNT WITH THE SCOPE!', url: 'sniper.html', color: '#7aaa3a', cats: ['ACTION'], tags: 'SNIPER HUNT HUNTING HUNTER RIFLE SCOPE AIM SHOOT DEER BOAR RABBIT FOX DUCK BEAR FOREST MOUNTAINS LAKE WIND' },
+  { id: 'backrooms', name: 'TOM: BACKROOMS', sub: 'A SHORT CARTOON', url: 'backrooms.html', color: '#e8cf5a', cats: [], tags: 'BACKROOMS CARTOON SHORT FILM MOVIE VIDEO WATCH STORY TOM MAX CAT DOG SCARY YELLOW ROOMS LIGHTS EXIT' },
 ];
 // --- search: type a name, or pick a category -----------------------------------------------
 const CATEGORIES = ['ALL', 'ACTION', 'RACING', 'SPORTS', 'RUNNING', 'PLANES', 'ONLINE', '2 PLAYERS'];
@@ -373,6 +374,29 @@ function previewMiner(x, y, w, h, t) {            // a digger drills down throug
   ctx.fillStyle = Math.floor(t * 20) % 2 ? '#d8d8e4' : '#9a9aa8'; ctx.fillRect(cx - 3, dy + 4, 7, 2); ctx.fillRect(cx - 1, dy + 6, 3, 2);
   if (Math.floor(t * 10) % 2) { ctx.fillStyle = '#9a6a3a'; ctx.fillRect(cx - 6, dy + 6, 2, 2); ctx.fillRect(cx + 5, dy + 5, 2, 2); }
   const dark = ctx.createLinearGradient(0, y + 20, 0, y + h); dark.addColorStop(0, 'rgba(8,4,12,0)'); dark.addColorStop(1, 'rgba(8,4,12,0.7)'); ctx.fillStyle = dark; ctx.fillRect(x, y + 20, w, h - 20);
+  ctx.restore();
+}
+function previewBackrooms(x, y, w, h, t) {        // an endless yellow corridor, buzzing lights; Tom's eyes dart; far away... a thing
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const cx = x + w / 2, cy = y + 27, on = Math.sin(t * 23) > -0.6 || Math.floor(t) % 3;
+  ctx.fillStyle = '#5a4e22'; ctx.fillRect(x, y, w, h);
+  for (let k = 5; k >= 0; k--) {                     // rings of the corridor, far to near
+    const s = Math.pow(1.7, k) * 3, wl = s * 2.2, hl = s * 1.6;
+    const sh = Math.max(0, 1 - k * 0.16) * (on ? 1 : 0.6), c = (r, g, b) => `rgb(${Math.round(r * sh)},${Math.round(g * sh)},${Math.round(b * sh)})`;
+    ctx.fillStyle = c(205, 184, 94); ctx.fillRect(Math.round(cx - wl), Math.round(cy - hl), Math.round(wl * 2), Math.round(hl * 2));
+    ctx.fillStyle = c(150, 132, 66); ctx.fillRect(Math.round(cx - wl), Math.round(cy + hl * 0.55), Math.round(wl * 2), Math.round(hl * 0.45));
+    ctx.fillStyle = c(216, 205, 152); ctx.fillRect(Math.round(cx - wl), Math.round(cy - hl), Math.round(wl * 2), Math.round(hl * 0.3));
+    ctx.fillStyle = on || k > 2 ? '#fffbe0' : '#8a8460'; ctx.fillRect(Math.round(cx - s * 0.5), Math.round(cy - hl * 0.9), Math.max(1, Math.round(s)), Math.max(1, Math.round(s * 0.2)));
+  }
+  ctx.fillStyle = '#3a3218'; ctx.fillRect(Math.round(cx - 3), cy - 6, 6, 12);
+  if (Math.floor(t / 2) % 3 === 2) { ctx.fillStyle = '#07050a'; ctx.fillRect(cx - 1, cy - 4, 2, 8); ctx.fillStyle = '#fff'; ctx.fillRect(cx - 1, cy - 3, 1, 1); ctx.fillRect(cx + 1, cy - 3, 1, 1); }
+  const tx = x + 22, ty = y + h - 30;                  // Tom: an orange cut-out with a white paper edge
+  ctx.fillStyle = '#fffaf0'; ctx.fillRect(tx - 1, ty - 4, 20, 27); ctx.fillRect(tx - 2, ty - 1, 22, 22);
+  ctx.fillStyle = '#f0943a'; ctx.fillRect(tx + 1, ty, 16, 12); ctx.fillRect(tx + 1, ty - 3, 3, 3); ctx.fillRect(tx + 14, ty - 3, 3, 3);
+  ctx.fillStyle = '#3a9a5a'; ctx.fillRect(tx + 3, ty + 12, 12, 8); ctx.fillStyle = '#f0943a'; ctx.fillRect(tx + 4, ty + 20, 3, 2); ctx.fillRect(tx + 11, ty + 20, 3, 2);
+  const look = [0, 1, -1, 1, 0, -1][Math.floor(t * 1.7) % 6];
+  ctx.fillStyle = '#fff'; ctx.fillRect(tx + 3, ty + 3, 5, 6); ctx.fillRect(tx + 10, ty + 3, 5, 6);
+  ctx.fillStyle = '#120a14'; ctx.fillRect(tx + 5 + look, ty + 5, 2, 2); ctx.fillRect(tx + 12 + look, ty + 5, 2, 2);
   ctx.restore();
 }
 function previewSniper(x, y, w, h, t) {           // green hills, a deer walks; the scope drifts onto it, a shot, it tips over
@@ -726,7 +750,7 @@ function previewFish(x, y, w, h, t) {             // a golden fish swims past th
   if (Math.sin(t * 5) > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(fx + 6, fy - 9, 2, 2); ctx.fillRect(fx - 15, fy + 6, 2, 2); }
   ctx.restore();
 }
-const NEW_GAMES = ['farm', 'snake', 'horde'];                       // a NEW badge on the newest games
+const NEW_GAMES = ['backrooms', 'farm', 'snake', 'horde'];                       // a NEW badge on the newest games
 function card(g, i, x, y, w, h, t) {
   const hot = (UI.mx >= x && UI.mx < x + w && UI.my >= y && UI.my < y + h) || (pad.used && pad.focus === i), col = g ? g.color : '#3a2f5c';
   // the card: dark glass with cut corners, lighter at the top; its color on top, glowing when you're on it
@@ -738,7 +762,7 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, sniper: previewSniper, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, sniper: previewSniper, backrooms: previewBackrooms, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
