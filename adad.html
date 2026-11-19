@@ -182,6 +182,15 @@
   .mn span { font: 700 12px 'Alegreya Sans', sans-serif; white-space: nowrap; margin-top: 1px; text-shadow: 0 0 3px #f4e8c8; }
   .mn.here b { background: #ffd23f; } .mn.go b { background: #fff; box-shadow: 0 0 0 3px rgba(90,60,20,.3); } .mn.unk { opacity: .7; } .mn.unk b { border-style: dashed; }
   .art { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .card.talk { max-width: 560px; display: flex; flex-direction: column; max-height: 92vh; }
+  .card.talk .sh-head img { width: 64px; height: 64px; border-radius: 10px; }
+  .tlog { flex: 1; min-height: 140px; max-height: 46vh; overflow-y: auto; padding: 8px; border-radius: 8px; background: rgba(0,0,0,.3); user-select: text; -webkit-user-select: text;
+          font: 400 16.5px/1.45 'Alegreya', Georgia, serif; }
+  .tl { margin: 0 0 8px; } .tl.npc { color: #e8c8f8; } .tl.intro { color: var(--muted); font-style: italic; } .tl.player { color: #fff; } .tl i { color: var(--muted); }
+  .trow { display: flex; gap: 6px; margin-top: 8px; }
+  .tin { flex: 1; min-width: 0; font: 500 16px 'Alegreya Sans', sans-serif; background: #0b0912; color: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; user-select: text; -webkit-user-select: text; }
+  .tsend { min-width: 46px; justify-content: center; } .tmic.on { background: #8a1a2a; }
+  .card.talk .btns { justify-content: space-between; align-items: center; }
   .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.72); padding: 16px; box-sizing: border-box; pointer-events: auto; }
   .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
   .sh-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
@@ -268,7 +277,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.4.1';
+const VERSION = '0.5.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -415,6 +424,7 @@ const ART = {
             hint: L('Malrec by ho dal jen po dobrém…', 'Malrec would only give it up of his own will...') },
 };
 const CLUES = {
+  stranger: { ic: '🦴', name: L('Cizinec v rudém', 'The stranger in red'), info: L('Malrec prozradil, že ho obřad naučil cizinec v rudém rouchu s pečetí kostěné ruky. Přišel o letním slunovratu.', 'Malrec let slip that a stranger in a red robe, with a bony-hand seal, taught him the rite. He came at midsummer.') },
   robe: { ic: '🟥', name: L('Rudé roucho', 'The red robe'), info: L('Malrecovo roucho. Na rukávu je vyšitá pečeť: kostěná ruka. Kdo za ním doopravdy stál?', 'Malrec\'s robe. A seal is stitched on the sleeve: a bony hand. Who was really behind him?') },
 };
 const hasArt = (h, id) => !!G.arts && G.arts[id] === G.heroes.indexOf(h);
@@ -852,16 +862,21 @@ const ROOMS = {
     foes: () => bossFoes(),
     choices: () => [
       { label: L('Zaútočit!', 'Attack!'), ic: '⚔', act: () => bossFight(null) },
-      { label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L(`Kdo s ním mluví? (Charisma${f().rumour === 2 ? ' +2: víte o jeho bratrovi' : ' -2'})`, `Who talks to him? (Charisma${f().rumour === 2 ? ' +2: you know about his brother' : ' -2'})`), h => abilityChance(h, 'cha', f().rumour === 2 ? 2 : -2), h => {
+      { label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L('Kdo s ním mluví? (svými slovy; pak rozhodne hod na Charisma)', 'Who talks to him? (in your own words; then a Charisma roll decides)'), h => abilityChance(h, 'cha'), h => {
         f().talked = 1;
-        if (checkAbility(h, 'cha', f().rumour === 2 ? 2 : -2)) {
-          f().talkOk = 1;
-          say(L(`${h.name}: „Tvůj bratr by tohle nechtěl, Malrecu.“ Malrec zaváhá. Zvon vynechá úder. Teď!`, `${h.name}: "Your brother wouldn\'t want this, Malrec." He falters. The bell misses a beat. Now!`), '#7aea7a');
-          then(() => bossFight('party'));
-        } else {
-          say(L('Malrec se jen zasměje a zvon zaburácí. Utopenci se vrhnou vpřed!', 'Malrec just laughs and the bell roars. The drowned surge forward!'), '#ff7a6a');
-          then(() => bossFight('foes'));
-        }
+        startTalk('malrec', h, (bonus, t) => {
+          if (t && t.reveals.includes('stranger')) findClue('stranger');
+          if (bonus === null) bonus = f().rumour === 2 ? 2 : -2;          // no connection: the old way
+          gap();
+          if (checkAbility(h, 'cha', bonus)) {
+            f().talkOk = 1;
+            say(L('Malrec zaváhá. Ruka s rudým rukávem se mu třese. Zvon vynechá úder. Teď!', 'Malrec falters. The hand in the red sleeve shakes. The bell misses a beat. Now!'), '#7aea7a');
+            then(() => bossFight('party'));
+          } else {
+            say(L('Malrec zavrtí hlavou. „Pozdě.“ Zvon zaburácí a utopenci se vrhnou vpřed!', 'Malrec shakes his head. "Too late." The bell roars and the drowned surge forward!'), '#ff7a6a');
+            then(() => bossFight('foes'));
+          }
+        });
       }) },
     ],
   },
@@ -2753,8 +2768,8 @@ function portrait(h) {
     if (P.armL && h.cls !== 'fighter') P.armL.rotation.x = -0.15;
     if (P.armR) P.armR.rotation.x = -0.45;
     pScene.add(fig);
-    const tall = h.cls === 'mage';
-    pCam.position.set(0.45, tall ? 1.22 : 1.08, tall ? 1.8 : 1.55); pCam.lookAt(0, tall ? 1.08 : 0.92, 0);
+    const tall = h.cls === 'mage', big = h.cls === 'malrec';
+    pCam.position.set(0.45, big ? 1.32 : tall ? 1.22 : 1.08, big ? 1.8 : tall ? 1.8 : 1.55); pCam.lookAt(0, big ? 1.12 : tall ? 1.08 : 0.92, 0);
     pRen.render(pScene, pCam);
     portraits[key] = pRen.domElement.toDataURL();
     pScene.remove(fig);
@@ -3053,6 +3068,7 @@ function openSheet(h) {
 }
 function closeSheet() { sheet = null; $('sheet').hidden = true; }
 $('sheet').addEventListener('click', e => {
+  if (sheet === 'talk') return;
   const b = e.target.closest('[data-a], [data-eq], [data-uneq]');
   if (!b) { if (e.target === $('sheet')) closeSheet(); return; }
   const h = sheet, a = b.dataset.a;
@@ -3232,6 +3248,109 @@ function endMission() {
   for (const h of G.heroes) if (!h.dead) { h.hp = h.shp = h.max; h.spells = h.spellMax; }
   store2();
   setState('map');
+}
+
+/* --- 12c. TALKING TO CHARACTERS ---------------------------------------------------------------
+   Some characters can really be talked to: the player types (or says) what the hero says, the character answers in
+   their own words (Claude, through the arcade's backend: POST /v1/npc; the character sheets live there) and judges
+   how convincing the hero was (0 to 3) and how the character feels. The dice still decide: when the talk ends, the
+   best argument is a bonus to the hero's Charisma roll. Without a connection (or over the day's limit) the game falls
+   back to the classic choice. */
+const TALK = {
+  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), who: { cls: 'malrec', g: 'm', hair: 0 }, col: '#8a1a2a',
+            open: L('Malrec se na vás dívá přes rameno. Zvon se houpe. „Tak mluv, když už jsi tady.“', 'Malrec looks at you over his shoulder. The bell swings. "Speak, then, since you are here."'),
+            facts: () => ({ knowsBrother: f().rumour === 2, milaDrowned: (f().late || 0) >= 2, alarm: !!f().alarm }) },
+};
+const MOOD = { hostile: L('nepřátelský', 'hostile'), wary: L('ostražitý', 'wary'), softening: L('povoluje', 'softening'), moved: L('dojatý', 'moved') };
+const TALK_TURNS = 8;
+let talk = null;
+// best argument (0-3) → the bonus to the roll; a character who is moved gives 2 more
+const talkBonus = t => Math.min(6, [-2, 0, 2, 4][t.best] + (t.mood === 'moved' ? 2 : 0));
+function startTalk(id, h, done) {
+  const T = TALK[id];
+  talk = { id, T, h, done, msgs: [], best: 0, mood: 'wary', reveals: [], over: false, waiting: false, failed: false };
+  sheet = 'talk';
+  const el = $('sheet');
+  el.innerHTML = `<div class="card talk" style="--c:${T.col}">
+    <div class="sh-head"><img class="pt" src="${portrait(T.who)}" alt=""><div><h2>${esc(T.name)}</h2><div class="muted tmood"></div></div></div>
+    <div class="tlog"></div>
+    <div class="trow"><input class="tin" maxlength="300" placeholder="${esc(L(`Co ${h.name} řekne?`, `What does ${h.name} say?`))}" autocomplete="off">
+      ${window.SpeechRecognition || window.webkitSpeechRecognition ? '<button class="pill tmic" title="Mluvit">🎤</button>' : ''}
+      <button class="ch tsend">➤</button></div>
+    <div class="btns"><span class="muted tleft"></span><button class="ch go tend">🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}</button></div>
+  </div>`;
+  el.hidden = false;
+  talkLine('npc', T.open, true);
+  talkState();
+  const input = el.querySelector('.tin');
+  el.querySelector('.tsend').onclick = () => talkSend();
+  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); talkSend(); } };
+  el.querySelector('.tend').onclick = () => endTalk();
+  const mic = el.querySelector('.tmic');
+  if (mic) mic.onclick = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition, r = new SR();
+    r.lang = L('cs-CZ', 'en-US'); r.interimResults = false;
+    r.onresult = ev => { input.value = (input.value + ' ' + ev.results[0][0].transcript).trim().slice(0, 300); };
+    r.onend = () => mic.classList.remove('on');
+    mic.classList.add('on'); try { r.start(); } catch (e) { mic.classList.remove('on'); }
+  };
+  setTimeout(() => input.focus(), 50);
+}
+function talkLine(from, text, intro) {
+  const log = $('sheet').querySelector('.tlog'); if (!log) return;
+  const d = document.createElement('div');
+  d.className = 'tl ' + (intro ? 'intro' : from);
+  d.innerHTML = from === 'player' ? `<b>${esc(talk.h.name)}:</b> ${esc(text)}` : esc(text).replace(/\*([^*]+)\*/g, '<i>$1</i>');
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+function talkState() {
+  const el = $('sheet'), t = talk, said = t.msgs.filter(m => m.from === 'player').length;
+  el.querySelector('.tmood').textContent = `${L('nálada', 'mood')}: ${MOOD[t.mood]}` + (said ? ` · ${L('bonus k hodu', 'bonus to the roll')}: ${talkBonus(t) >= 0 ? '+' : ''}${talkBonus(t)}` : '');
+  const can = !t.over && !t.waiting && said < TALK_TURNS && !t.failed;
+  el.querySelector('.tin').disabled = !can; el.querySelector('.tsend').disabled = !can;
+  el.querySelector('.tend').disabled = t.waiting || (!said && !t.failed);
+  el.querySelector('.tend').textContent = t.failed ? L('🎲 Hodit kostkou postaru', '🎲 Roll the old way') : `🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}`;
+  el.querySelector('.tleft').textContent = t.waiting ? L('…přemýšlí…', '...thinking...') : t.over ? L('Rozhovor skončil.', 'The talk is over.') : t.failed ? '' : L(`Zbývá ${TALK_TURNS - said} vět`, `${TALK_TURNS - said} lines left`);
+}
+async function talkSend() {
+  const t = talk, input = $('sheet').querySelector('.tin');
+  const text = (PX.censor ? PX.censor(input.value) : input.value).trim().slice(0, 300);
+  if (!text || t.waiting || t.over) return;
+  input.value = '';
+  t.msgs.push({ from: 'player', text }); talkLine('player', text);
+  t.waiting = true; talkState(); sfx('click');
+  let data = null, status = 0;
+  try {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
+    const res = await fetch(PX.Api.base + '/v1/npc', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal, mode: 'cors',
+      body: JSON.stringify({ npc: t.id, lang: LANG, hero: { name: t.h.name.slice(0, 20), cls: t.h.cls, g: t.h.g }, facts: t.T.facts(), messages: t.msgs }) });
+    clearTimeout(timer); status = res.status; data = await res.json().catch(() => null);
+  } catch (e) { status = 0; }
+  if (talk !== t) return;
+  t.waiting = false;
+  if (!data || !data.say) {
+    t.msgs.pop();
+    t.failed = true;
+    talkLine('npc', status === 429 ? L('(Pro dnešek už postavy nemluví. Zkuste to zítra, nebo hoďte kostkou postaru.)', '(The characters have talked enough for today. Try tomorrow, or roll the old way.)')
+                                   : L('(Malrec teď neodpovídá: spojení nefunguje. Můžete hodit kostkou postaru.)', '(Malrec isn\'t answering: no connection. You can roll the old way.)'), true);
+    talkState(); return;
+  }
+  t.msgs.push({ from: 'npc', text: data.say }); talkLine('npc', data.say);
+  t.best = Math.max(t.best, data.persuasion | 0); t.mood = data.mood || t.mood;
+  for (const r of data.reveal || []) if (!t.reveals.includes(r)) t.reveals.push(r);
+  if (data.end || t.msgs.filter(m => m.from === 'player').length >= TALK_TURNS) t.over = true;
+  sfx(data.persuasion >= 2 ? 'ok' : data.persuasion === 0 ? 'bad' : 'click');
+  talkState();
+}
+function endTalk() {
+  const t = talk; if (!t) return;
+  talk = null; closeSheet();
+  // the talk goes into the story, then the dice
+  if (t.msgs.length) {
+    gap();
+    for (const m of t.msgs) say(m.from === 'player' ? `${t.h.name}: „${m.text}“` : `${t.T.name}: ${m.text.replace(/\*/g, '')}`, m.from === 'player' ? undefined : '#c06aff');
+  }
+  t.done(t.failed && !t.msgs.length ? null : talkBonus(t), t);
 }
 
 /* --- 13. SOUND --------------------------------------------------------------------------- */
@@ -3439,7 +3558,7 @@ window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (state === 'intro') { if (['Space', 'Enter', 'Escape'].includes(e.code)) { e.preventDefault(); endIntro(); } return; }
   if (state === 'play' && G) {
-    if (e.code === 'Escape') { if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
+    if (e.code === 'Escape') { if (sheet === 'talk') return; if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
     if (sheet || menu) return;
     if (film && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); endFilm(); return; }
     if (/^(Digit|Numpad)[1-9]$/.test(e.code)) { choose1(+e.code.slice(-1) - 1); return; }

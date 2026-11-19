@@ -4,6 +4,7 @@ import { accounts } from './accounts';
 import { cleanupHits, hitRoute } from './hits';
 import { push } from './push';
 import { ideas } from './ideas';
+import { npc } from './npc';
 import { scores } from './scores';
 import { turn } from './turn';
 import { deleteIdeaRoute, deletePlayerRoute, ideaStatusRoute, renamePlayerRoute, statsRoute } from './stats';
@@ -17,6 +18,7 @@ export type Env = {
   VAPID_PRIVATE_KEY: string;
   TURN_KEY_ID?: string;          // Cloudflare Realtime TURN (secrets; see turn.ts)
   TURN_KEY_API_TOKEN?: string;
+  ANTHROPIC_API_KEY?: string;    // Pixel Quest's talking characters (secret; see npc.ts). Without it /v1/npc is off.
 };
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|https:\/\/(www\.)?pixelgames\.online|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
@@ -39,10 +41,13 @@ app.route('/', scores);
 app.route('/', push);
 app.route('/', ideas);
 app.route('/', turn);
+app.route('/', npc);
 
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(cleanupHits(env.DB, new Date().toISOString().slice(0, 10)));
+    const today = new Date().toISOString().slice(0, 10);
+    ctx.waitUntil(cleanupHits(env.DB, today));
+    ctx.waitUntil(env.DB.prepare('DELETE FROM npc_usage WHERE day < ?').bind(today).run());
   },
 };
