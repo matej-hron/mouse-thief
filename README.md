@@ -1383,7 +1383,7 @@ PRIVACY AND POLICY in the arcade.
 
 `adad.html`, at https://pixelgames.online/adad. Not in the arcade's menu, not in the service worker's cache, and
 `noindex`: a proof of concept for an old-school tabletop-style adventure where the game is the dungeon master.
-Version 0.2.0 is **in Czech, for children, and in 3D** (three.js from `vendor/`; everything is built in code, no image
+Version 0.2 is **in Czech, for children, and in 3D**, in a fantasy world (fantasy names for people and places) (three.js from `vendor/`; everything is built in code, no image
 or model files).
 
 - **Party:** 1 to 4 heroes (VÁLEČNÍK, KNĚZ, ČARODĚJ, ZLODĚJ; each a boy or a girl, so the class names and the words
@@ -1403,7 +1403,7 @@ or model files).
   sound (the bell, wind, an owl, rats, bones), and scripted moments (the skeletons get up from their niches and walk
   towards you, the drowned climb out of the pool). A film ends exactly where the scene's camera starts. Tap skips it.
 - **Battles in 3D:** fights happen on the set's floor on a grid. The hero whose turn it is has a gold ring: tap a blue
-  tile to walk there (up to 3 or 4 tiles, diagonals too), and pick what they do from the **pop-up next to the hero**
+  tile to walk there (up to 3 or 4 tiles, diagonals too), and pick what they do in the **action panel** (under the scene, or on the right in landscape: it never covers the scene)
   (ÚTOK, KOUZLA, ZAHNAT NEMRTVÉ, SCHOVAT SE, PŘEDMĚTY, ČEKAT, UTÉCT), or just tap a monster (red tile) to walk up to it
   and attack. Healing and potions work by touch (green tiles). Monsters walk to the nearest hero still standing.
   Figures are chunky low-poly people and monsters with animations: walking, striking, casting, falling, sleeping; a
