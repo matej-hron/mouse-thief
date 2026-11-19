@@ -182,6 +182,7 @@
     <button class="ch gold" data-t="cont">Pokračovat</button>
     <button class="ch" data-t="rules">Jak se hraje</button>
     <button class="ch" data-t="snd">Zvuk: zapnutý</button>
+    <button class="ch" data-t="mus">Hudba: zapnutá</button>
     <button class="ch dim" data-t="games">‹ Všechny hry</button>
   </div>
   <div class="foot"><span id="wins"></span><span id="ver"></span></div>
@@ -227,9 +228,9 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
-const save = { sfx: true, wins: 0 };
+const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
 const profile = PX.Profile.get();
@@ -457,6 +458,7 @@ function enter(id) {
   const first = !f()['seen_' + id];
   G.room = id;
   f()['seen_' + id] = 1;
+  Music.play(roomMusic());
   showSet(R.set, R.view);
   showPreview(R.foes && !(R.beaten && R.beaten()) ? R.foes() : null);
   if (first && R.film && !skipFilms) Q.push({ k: 'film', id: R.film });
@@ -727,7 +729,7 @@ function winFight() {
     h.held = 0; h.hidden = false;
   }
   const win = F.def.win;
-  play(() => cheer(), 1.0);
+  play(() => { cheer(); TRACKS.win.then = roomMusic(); Music.play('win'); }, 1.0);
   then(() => { endBattle(); F = null; win(); });
 }
 function newRound() {
@@ -1839,6 +1841,7 @@ function showPreview(list) {
 }
 const ROLE = { fighter: 0, cleric: 1, thief: 2, mage: 3 };
 function startBattle(foes) {
+  Music.play(F.def.boss ? 'boss' : 'battle');
   document.body.classList.add('battle');
   const A = arena();
   // the monsters: take over the figures already standing there, or put new ones in
@@ -2225,6 +2228,7 @@ function portrait(h) {
 const SCREENS = ['title', 'setup', 'rules', 'play'];
 function setState(s) {
   state = s;
+  if (s !== 'play') Music.play('hill');
   for (const id of SCREENS) $(id).hidden = id !== s;
   $('side').hidden = s !== 'play';
   if (s !== 'play') {
@@ -2242,6 +2246,7 @@ function renderTitle() {
   const saved = loadGame();
   const b = $('title').querySelector('[data-t="cont"]'); b.disabled = !saved;
   $('title').querySelector('[data-t="snd"]').textContent = 'Zvuk: ' + (save.sfx ? 'zapnutý' : 'vypnutý');
+  $('title').querySelector('[data-t="mus"]').textContent = 'Hudba: ' + (save.music !== false ? 'zapnutá' : 'vypnutá');
   $('ver').textContent = 'V' + VERSION + ' · zkušební verze';
   $('wins').textContent = save.wins ? 'Vyhraná dobrodružství: ' + save.wins : '';
 }
@@ -2253,6 +2258,7 @@ $('title').addEventListener('click', e => {
   if (a === 'cont') { const g = loadGame(); if (g) { G = g; startPlay(G.room); } }
   if (a === 'rules') setState('rules');
   if (a === 'snd') { save.sfx = !save.sfx; store(); renderTitle(); }
+  if (a === 'mus') { save.music = save.music === false; store(); renderTitle(); }
   if (a === 'games') location.href = './';
 });
 function newSetup() {
@@ -2480,6 +2486,7 @@ function openMenu() {
   $('menu').innerHTML = `<div class="card small"><h2>Pauza</h2>
     <button class="ch" data-m="resume">Pokračovat</button>
     <button class="ch" data-m="sfx">Zvuk: ${save.sfx ? 'zapnutý' : 'vypnutý'}</button>
+    <button class="ch" data-m="mus">Hudba: ${save.music !== false ? 'zapnutá' : 'vypnutá'}</button>
     <button class="ch dim" data-m="quit">Uložit a odejít</button></div>`;
   $('menu').hidden = false;
 }
@@ -2490,6 +2497,7 @@ $('menu').addEventListener('click', e => {
   sfx('click');
   if (b.dataset.m === 'resume') closeMenu();
   if (b.dataset.m === 'sfx') { save.sfx = !save.sfx; store(); openMenu(); }
+  if (b.dataset.m === 'mus') { save.music = save.music === false; store(); openMenu(); }
   if (b.dataset.m === 'quit') { closeMenu(); if (F) endBattle(); store2(); setState('title'); }
 });
 $('pause').addEventListener('click', () => { sfx('click'); openMenu(); });
@@ -2530,6 +2538,131 @@ function sfx(k) {
   else if (k === 'creak') s.tone([90, 140, 110], 0.7, { vol: 0.04, type: 'sawtooth' });
   else if (k === 'rumble') { s.noise(1.6, { vol: 0.2, freq: 140 }); s.tone([60, 45], 1.5, { vol: 0.08, type: 'sine' }); }
 }
+
+/* MUSIC: dramatic music made live with Web Audio (no files), one piece per mood. A piece is a tempo, a list of chords
+   (one a bar, as MIDI note numbers) and step(i, t, chord): what plays on each 16th note. Pieces cross-fade. */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const CH = {                                       // chords (MIDI numbers, around the middle of the keyboard)
+  Dm: [50, 53, 57], Bb: [46, 50, 53], Gm: [43, 50, 55], A: [45, 49, 52], C: [48, 52, 55], F: [41, 48, 53], Eb: [51, 55, 58],
+  Em: [52, 55, 59], Am: [45, 52, 57], B: [47, 51, 54], G: [43, 50, 55], E: [40, 47, 52], Cm: [48, 51, 55], Ab: [44, 48, 51],
+  Fm: [41, 48, 53], Gs: [43, 47, 50], Cdim: [49, 52, 55], D: [50, 54, 57], Bm: [47, 50, 54], Gmaj: [43, 47, 50],
+};
+const Music = {
+  want: null, id: null, bus: null, nextT: 0, i: 0,
+  ctx() { return PX.Sound.ctx; },
+  play(id) { this.want = id; },
+  stopBus(fadeS) {
+    const c = this.ctx(); if (!c || !this.bus) return;
+    const g = this.bus; try { g.gain.cancelScheduledValues(c.currentTime); g.gain.setValueAtTime(g.gain.value, c.currentTime); g.gain.linearRampToValueAtTime(0.0001, c.currentTime + fadeS); } catch (e) { /* fine */ }
+    setTimeout(() => { try { g.disconnect(); } catch (e) { /* fine */ } }, fadeS * 1000 + 200);
+    this.bus = null;
+  },
+  update() {
+    const c = this.ctx(); if (!c || !PX.Sound.out) return;
+    const want = save.music !== false ? this.want : null;
+    if (want !== this.id) {
+      this.stopBus(this.id && TRACKS[this.id] && TRACKS[this.id].sting ? 0.3 : 1.6);
+      this.id = want;
+      if (want && TRACKS[want]) {
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.linearRampToValueAtTime(TRACKS[want].vol || 0.55, c.currentTime + 1.4);
+        g.connect(PX.Sound.out); this.bus = g; this.i = 0; this.nextT = c.currentTime + 0.1;
+      }
+    }
+    if (!this.bus) return;
+    const T = TRACKS[this.id], sd = 60 / T.bpm / 4;
+    if (this.nextT < c.currentTime) this.nextT = c.currentTime + 0.05;   // the tab was asleep: don't play the missed notes
+    while (this.nextT < c.currentTime + 0.25) {
+      if (T.sting && this.i >= T.sting) { this.want = T.then; break; }
+      const bar = Math.floor(this.i / 16), chord = CH[T.chords[bar % T.chords.length]];
+      T.step(this.i % 16, this.nextT, chord, bar, sd);
+      this.i++; this.nextT += sd;
+    }
+  },
+  // the instruments: every note is a few oscillators with an envelope, into the piece's bus
+  env(t, a, d, vol) { const g = this.ctx().createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + a); g.gain.setTargetAtTime(0.0001, t + a, d / 3); g.connect(this.bus); return g; },
+  osc(type, f, t, dur, dest, detune = 0) { const o = this.ctx().createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.detune.value = detune; o.connect(dest); o.start(t); o.stop(t + dur + 0.1); return o; },
+  filt(type, f, q, dest) { const b = this.ctx().createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q || 0.7; b.connect(dest); return b; },
+  pad(ch, t, dur, vol = 0.022, cut = 900) { const g = this.env(t, Math.min(1.2, dur * 0.3), dur, vol), f = this.filt('lowpass', cut, 0.5, g); for (const m of ch) for (const d of [-8, 8]) this.osc('sawtooth', mtof(m), t, dur * 1.6, f, d); },
+  choir(ch, t, dur, vol = 0.014) {
+    const g = this.env(t, 0.9, dur, vol), f = this.filt('bandpass', 750, 1.4, g), lfo = this.ctx().createOscillator(), lg = this.ctx().createGain();
+    lfo.frequency.value = 5; lg.gain.value = 9; lfo.connect(lg); lfo.start(t); lfo.stop(t + dur * 1.6);
+    for (const m of ch) for (const d of [-6, 5]) { const o = this.osc('sawtooth', mtof(m + 12), t, dur * 1.6, f, d); lg.connect(o.detune); }
+  },
+  drone(m, t, dur, vol = 0.07) { const g = this.env(t, 1.5, dur, vol); this.osc('sine', mtof(m - 12), t, dur * 1.5, g); this.osc('triangle', mtof(m - 5), t, dur * 1.5, g); },
+  bass(m, t, dur, vol = 0.07, cut = 600) { const g = this.env(t, 0.01, dur, vol), f = this.filt('lowpass', cut, 3, g); this.osc('sawtooth', mtof(m - 12), t, dur, f); this.osc('square', mtof(m - 24), t, dur, f); },
+  pluck(m, t, vol = 0.05) { const g = this.env(t, 0.005, 0.6, vol); this.osc('triangle', mtof(m), t, 0.7, g); },
+  brass(ch, t, dur, vol = 0.03) { const g = this.env(t, 0.04, dur, vol), f = this.filt('lowpass', 1800, 1, g); for (const m of ch) this.osc('sawtooth', mtof(m), t, dur, f); },
+  kick(t, vol = 0.32) { const c = this.ctx(), g = this.env(t, 0.003, 0.25, vol), o = c.createOscillator(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.22); o.connect(g); o.start(t); o.stop(t + 0.4); },
+  timp(t, m = 38, vol = 0.3) { const c = this.ctx(), g = this.env(t, 0.005, 1.4, vol), o = c.createOscillator(); o.frequency.setValueAtTime(mtof(m) * 1.3, t); o.frequency.exponentialRampToValueAtTime(mtof(m), t + 0.12); o.connect(g); o.start(t); o.stop(t + 1.8); this.noise(t, 0.3, vol * 0.4, 'lowpass', 300); },
+  noise(t, dur, vol, type = 'highpass', f = 1800) {
+    const c = this.ctx(), len = Math.ceil(c.sampleRate * dur), b = c.createBuffer(1, len, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const s = c.createBufferSource(); s.buffer = b; const g = this.env(t, 0.002, dur, vol); s.connect(this.filt(type, f, 0.8, g)); s.start(t);
+  },
+  bell(m, t, vol = 0.05) { [[1, 1], [2, 0.6], [2.4, 0.4], [3, 0.3], [4.2, 0.2]].forEach(([k, v]) => { const g = this.env(t, 0.005, 4 / k, vol * v); this.osc('sine', mtof(m) * k, t, 5 / k, g); }); },
+};
+const M = Music;
+const TRACKS = {
+  // the village at night: a sad little music box over a soft pad
+  village: { bpm: 72, chords: ['Dm', 'Bb', 'Gm', 'A'], vol: 0.5, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.pad(ch, t, sd * 16, 0.016, 700); M.drone(ch[0], t, sd * 16, 0.05); }
+    if (i % 4 === 0) M.pluck(ch[(i / 4 + bar) % 3] + 24, t, 0.035);
+    if (i === 14 && bar % 2) M.pluck(ch[2] + 26, t, 0.025);
+  } },
+  // the hill in the mist: a low drone, a ghostly choir, a far drum
+  hill: { bpm: 56, chords: ['Dm', 'Gm', 'Dm', 'Bb'], vol: 0.6, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.drone(50, t, sd * 16, 0.07); M.choir(ch, t, sd * 16, 0.012); M.pad(ch, t, sd * 16, 0.012, 500); if (bar % 2 === 0) M.timp(t, 38, 0.18); }
+    if (i === 8 && bar % 4 === 3) M.bell(74, t, 0.02);
+  } },
+  // inside the church: a heartbeat and strings that won't settle
+  nave: { bpm: 66, chords: ['Em', 'C', 'Am', 'B'], vol: 0.55, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.pad(ch, t, sd * 16, 0.018, 800); M.drone(40, t, sd * 16, 0.05); }
+    if (i % 2 === 0) M.bass(ch[0], t, sd * 1.6, 0.035, 450);
+    if (i === 0 || i === 3) M.kick(t, 0.2);
+    if (i === 12 && bar % 2) M.pluck(ch[2] + 24, t, 0.03);
+  } },
+  // the crypt: a dark staccato ostinato, timpani, a choir
+  crypt: { bpm: 76, chords: ['Cm', 'Ab', 'Fm', 'Gs'], vol: 0.6, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.choir(ch, t, sd * 16, 0.013); M.pad(ch, t, sd * 16, 0.014, 600); M.drone(36, t, sd * 16, 0.06); }
+    if (i % 2 === 0) M.bass(ch[(i / 2) % 3 === 2 ? 2 : 0], t, sd * 1.2, 0.045, 550);
+    if (i === 0 || i === 8) M.timp(t, 36, 0.22);
+  } },
+  // the bell of the drowned: huge and slow, a choir, the bell itself
+  bell: { bpm: 54, chords: ['Dm', 'Eb', 'Dm', 'Cdim'], vol: 0.65, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.drone(38, t, sd * 16, 0.09); M.choir(ch, t, sd * 16, 0.017); M.pad(ch, t, sd * 16, 0.02, 700); M.bell(62, t, 0.04); M.timp(t, 38, 0.26); }
+    if (i === 8) M.timp(t, 38, 0.14);
+  } },
+  // a fight: driving bass, drums, brass on the chord changes
+  battle: { bpm: 124, chords: ['Am', 'F', 'G', 'E'], vol: 0.5, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.pad(ch, t, sd * 16, 0.014, 1200); M.brass(ch.map(m => m + 12), t, sd * 3, 0.022); }
+    if (i % 2 === 0) M.bass(ch[0] + (i % 8 === 6 ? 7 : 0), t, sd * 1.5, 0.05, 900);
+    if (i === 0 || i === 6 || i === 8) M.kick(t, 0.28);
+    if (i === 4 || i === 12) M.noise(t, 0.14, 0.09, 'highpass', 1500);
+    if (i % 2 === 1) M.noise(t, 0.03, 0.025, 'highpass', 6000);
+    if (i === 14 && bar % 4 === 3) M.timp(t, 40, 0.25);
+  } },
+  // the boss: faster, darker, with the choir
+  boss: { bpm: 134, chords: ['Dm', 'Bb', 'C', 'A'], vol: 0.55, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.choir(ch, t, sd * 16, 0.015); M.brass(ch.map(m => m + 12), t, sd * 4, 0.025); M.timp(t, 38, 0.3); }
+    if (i % 2 === 0) M.bass(ch[0] + (i % 4 === 2 ? 12 : 0), t, sd * 1.4, 0.055, 1000);
+    if (i % 4 === 0) M.kick(t, 0.3);
+    if (i === 4 || i === 12) M.noise(t, 0.16, 0.11, 'highpass', 1400);
+    if (i % 2 === 1) M.noise(t, 0.03, 0.03, 'highpass', 6000);
+    if (i === 8 && bar % 2) M.bell(74, t, 0.025);
+  } },
+  // victory: a short fanfare, then back to the scene
+  win: { bpm: 120, chords: ['C', 'F', 'C'], vol: 0.6, sting: 24, then: null, step(i, t, ch, bar, sd) {
+    if (bar === 0 && i % 4 === 0 && i < 12) M.brass([60, 64, 67].map(m => m + [0, 0, 5][i / 4]), t, sd * 3, 0.03);
+    if (bar === 0 && i === 12) { M.brass([60, 64, 67, 72], t, sd * 12, 0.035); M.timp(t, 36, 0.3); M.kick(t); }
+  } },
+  // dawn: warm, major, slow
+  dawn: { bpm: 76, chords: ['D', 'A', 'Bm', 'Gmaj'], vol: 0.5, step(i, t, ch, bar, sd) {
+    if (i === 0) { M.pad(ch, t, sd * 16, 0.02, 1400); M.drone(ch[0], t, sd * 16, 0.04); }
+    if (i % 2 === 0) M.pluck(ch[(i / 2) % 3] + 24, t, 0.03);
+  } },
+};
+const ROOM_MUSIC = { inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
+const roomMusic = () => (G && ROOM_MUSIC[G.room]) || 'hill';
 
 /* --- 14. INPUT: drag the 3D world to look around; tap a tile, a monster or a hero. Keys: 1-9 pick, Space/Enter skip, Esc menu --- */
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -2593,6 +2726,7 @@ function frame(now) {
     }
   }
   updateWorld(dt, t);
+  Music.update();
   updateCamera(dt, t);
   if (renderer) renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -2607,7 +2741,7 @@ window.PQ = {
     for (const h of party) { h.vals = [16, 15, 14, 13, 12, 11]; setClass(h, h.cls); }
     startGame(); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
   },
-  get G() { return G; }, get F() { return F; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
+  get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
   tileScreen: t => toScreen(tileWorld(t)),
