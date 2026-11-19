@@ -165,7 +165,8 @@
   .mpin { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; display: flex; gap: 5px; align-items: center; padding: 4px 9px; border-radius: 16px; white-space: nowrap;
           background: rgba(27,22,40,.92); border: 1px solid var(--line); font-weight: 800; font-size: 13.5px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
   .mpin i { font-style: normal; } .mpin em { font-style: normal; font-size: 12px; color: var(--muted); }
-  .mpin.story { border-color: #c8a030; }
+  .mpin.story { border-color: #c8a030; } .mpin.town { border: 2px solid #8ad0ff; } .mpin.town em { color: #8ad0ff; }
+  .mtitle small { display: block; font: 600 12px 'Alegreya Sans', sans-serif; color: rgba(255,255,255,.55); }
   .mpin.open { border: 2px solid var(--gold); animation: pinPulse 1.4s ease-in-out infinite; } .mpin.open em { color: var(--gold); }
   .mpin.done em { color: var(--good); } .mpin.locked { opacity: .75; } .mpin.soon { opacity: .6; border-style: dashed; }
   @keyframes pinPulse { 50% { box-shadow: 0 0 0 4px rgba(255,210,63,.25), 0 4px 14px rgba(0,0,0,.5); } }
@@ -277,7 +278,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.5.5';
+const VERSION = '0.6.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -362,10 +363,10 @@ function setClass(h, cls) {
   h.spells = h.spellMax;
 }
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
-const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex);
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0);
 const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
-const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0);
-const dmgOf = h => strDmg(h.st.str);
+const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0);
+const dmgOf = h => strDmg(h.st.str) + (h.sharp || 0);
 const up = h => h.hp > 0 && !h.dead;                        // can act (if not held)
 const hardcore = () => !!G && G.mode === 'hard';            // HARDCORE: heroes bleed at 0 HP and die at -10, for good
 function thiefSkill(h, k) {                                 // k: 0 open locks, 1 find traps, 2 move silently, 3 hide in shadows
@@ -651,6 +652,39 @@ function enter(id) {
 }
 function showChoices() { const R = ROOMS[G.room]; setChoices(typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?'), R.choices()); }
 // the inn's patrons: who sits where, and what each one has to say (their sheets are on the server: api/src/npcs.ts)
+// THORNWALL between missions: the inn (the same patrons, who remember what happened), Granny Sedge's shop, the map.
+function enterTown() {
+  for (const h of G.heroes) { h.tried = {}; h.held = 0; h.hidden = false; }
+  G.f = {}; G.mission = null;
+  startPlay('town');
+}
+const SHOP = [
+  { id: 'potion', ic: '🧪', price: 30, name: L('Léčivý lektvar', 'Healing potion'), buy: () => { G.items.potion++; } },
+  { id: 'holy', ic: '💧', price: 25, name: L('Svěcená voda', 'Holy water'), buy: () => { G.items.holy++; } },
+  { id: 'food', ic: '🧀', price: 2, name: L('Jídlo na den', 'Food for a day'), buy: () => { G.items.food++; } },
+];
+// the blacksmith's work, one of each per hero: armour (AC 1 better), a keener weapon (+1 to hit and damage)
+const UPGRADES = [
+  { id: 'armorUp', ic: '🛡', price: 80, name: L('Lepší zbroj', 'Better armour'), info: L('obrana o 1 lepší', 'AC 1 better') },
+  { id: 'sharp', ic: '⚔', price: 100, name: L('Nabroušená zbraň', 'A keener weapon'), info: L('+1 k útoku i zranění', '+1 to hit and damage') },
+];
+function shopMenu() {
+  setChoices(L(`Babka Sedge, kovář a jejich zboží (máte ${G.gold} zl.)`, `Granny Sedge, the blacksmith and their wares (you have ${G.gold} gold)`), [
+    ...SHOP.map(it => ({ label: it.name, ic: it.ic, note: `${it.price} ${L('zl.', 'gold')}`, if: () => G.gold >= it.price, act: () => {
+      G.gold -= it.price; it.buy(); sfx('coin'); store2();
+      say(L(`Koupeno: ${it.name}.`, `Bought: ${it.name}.`), '#7aea7a'); then(shopMenu);
+    } })),
+    ...UPGRADES.map(u => ({ label: u.name, ic: u.ic, note: `${u.price} ${L('zl.', 'gold')} · ${u.info}`, if: () => G.gold >= u.price && G.heroes.some(h => !h.dead && !h[u.id]), act: () =>
+      setChoices(L(`Pro koho: ${u.name}?`, `${u.name} for who?`), [
+        ...G.heroes.filter(h => !h.dead && !h[u.id]).map(h => ({ label: h.name, note: clsName(h), act: () => {
+          G.gold -= u.price; h[u.id] = 1; sfx('coin'); store2(); partyKey = '';
+          say(L(`${h.name}: ${u.name.toLowerCase()} (${u.info}).`, `${h.name}: ${u.name.toLowerCase()} (${u.info}).`), '#7aea7a'); then(shopMenu);
+        } })),
+        { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: shopMenu },
+      ]) })),
+    { label: L('Odejít z obchodu', 'Leave the shop'), ic: '‹', dim: true, act: stay },
+  ]);
+}
 function innChat() {
   setChoices(L('Ke komu si přisednete?', 'Who do you sit down with?'), [
     ...['elva', 'hollis', 'brannock', 'garth', 'oren'].map(id => ({ label: TALK[id].name, ic: TALK[id].ic, note: TALK[id].tag, act: () =>
@@ -710,6 +744,21 @@ function endText() {
   return t;
 }
 const ROOMS = {
+  town: {
+    title: 'Thornwall', set: 'village', view: 'inn',
+    text: () => G.done.bell
+      ? (G.world && G.world.milaLost
+        ? L('Thornwall. Zvon na kopci mlčí, ale ve vesnici je smutno: na hřbitově přibyl malý hrob. Lidé na vás kývnou, ale nezastaví se.', 'Thornwall. The bell on the hill is silent, but the village is sad: there is a small new grave in the churchyard. People nod at you but don\'t stop.')
+        : L('Thornwall. Zvon na kopci mlčí a lidé se zase smějí. Mila vám zamává z mlýna. V hostinci vám nalévají zadarmo… skoro.', 'Thornwall. The bell on the hill is silent and people laugh again. Mila waves at you from the mill. At the inn they pour for you for free... almost.'))
+      : L('Thornwall, malá vesnice u řeky. Nahoře na kopci zvoní zvon, který neexistuje. V hostinci U Křivé lucerny se svítí a babka Sedge má ještě otevřeno.', 'Thornwall, a small village by the river. Up on the hill a bell rings that isn\'t there. The Crooked Lantern Inn is lit, and Granny Sedge\'s shop is still open.'),
+    again: L('Thornwall. Co dál?', 'Thornwall. What next?'),
+    ask: L('Kam půjdete?', 'Where do you go?'),
+    choices: () => [
+      { label: L('Hostinec: napít se a pokecat', 'The inn: have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
+      { label: L('Obchod babky Sedge a kovář', 'Granny Sedge\'s shop and the smith'), ic: '🧪', act: () => shopMenu() },
+      { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => { G.room = null; store2(); setState('map'); } },
+    ],
+  },
   inn: {
     title: L('Thornwall: hostinec U Křivé lucerny', 'Thornwall: the Crooked Lantern Inn'), set: 'village', view: 'inn', film: 'village',
     text: L('Podzimní večer. Už sedm nocí zvoní nahoře na kopci zvon. Jenže ten zvon spadl do řeky před sto lety!\n' +
@@ -958,6 +1007,7 @@ const ROOMS = {
       if (f().paid) return;
       f().paid = 1;
       const pay = f().late >= 2 ? 100 : 200;
+      G.world = Object.assign(G.world || {}, { milaLost: f().late >= 2, malrec: f().surrender ? 'trial' : 'dead' });
       G.gold += pay;
       gap();
       giveXP(pay, L(`${pay} zlaťáků přinesených domů`, `${pay} gold brought home`));
@@ -2362,7 +2412,7 @@ function endIntro() {
    the heroes. Each has a tile; walking follows a path of tiles. Logic changes tiles at once, the animation follows. */
 let curSet = null, curSetId = '', curView = '';
 let units = [];
-const orbit = { yaw: 0, pitch: 0, dist: 8, look: V(), uyaw: 0, upitch: 0, uzoom: 1, focus: null };
+const orbit = { yaw: 0, pitch: 0, dist: 8, look: V(), uyaw: 0, upitch: 0, uzoom: 1, focus: null, pan: V() };   // pan: the world map moved by a finger
 function viewPose(v, uy = 0, up = 0, uz = 1) {
   const yaw = v.yaw + uy, pitch = clamp(v.pitch + up, -0.1, 1.35), d = v.dist * uz, look = V(...v.look);
   return { look, pos: V(look.x + Math.sin(yaw) * Math.cos(pitch) * d, look.y + Math.sin(pitch) * d, look.z + Math.cos(yaw) * Math.cos(pitch) * d) };
@@ -2791,7 +2841,8 @@ function updateCamera(dt, t) {
     const S = curSet.userData, tall = curView === 'world' && window.innerHeight > window.innerWidth;
     const v = (F && S.views.battle) || (tall ? S.views.worldTall : S.views[curView]) || Object.values(S.views)[0];
     if (state === 'title' || state === 'setup' || state === 'rules') orbit.uyaw = Math.sin(t * 0.05) * 0.5;
-    const p = viewPose(v, orbit.uyaw + Math.sin(t * 0.13) * 0.03, orbit.upitch, orbit.uzoom);
+    const p = viewPose(v, orbit.uyaw + (state === 'map' ? 0 : Math.sin(t * 0.13) * 0.03), orbit.upitch, orbit.uzoom);
+    if (state === 'map') { p.look.add(orbit.pan); p.pos.add(orbit.pan); }
     if (orbit.focus && F) { const d = V().subVectors(orbit.focus, p.look).multiplyScalar(0.35); d.y = 0; p.look.add(d); p.pos.add(d); }
     const k = 1 - Math.exp(-dt * 2.6);
     camPos.lerp(p.pos, k); camLook.lerp(p.look, k);
@@ -2861,6 +2912,9 @@ function setState(s) {
   }
   if (s === 'map') {
     renderMap();
+    orbit.uyaw = orbit.upitch = 0; orbit.uzoom = 0.5;
+    const tallMap = window.innerHeight > window.innerWidth, base = tallMap ? V(0, 0, 0.5) : V(-1, 0, 1.5);
+    orbit.pan.set(-17 - base.x, 0, 5.5 - base.z); clampPan();
     const U = SETS.world.userData;
     if (U.token) SETS.world.remove(U.token);
     const lead = G.heroes[0]; U.token = makeFig(lead.cls, lead); U.token.scale.multiplyScalar(0.9);
@@ -3189,7 +3243,7 @@ sideEl.addEventListener('pointerdown', e => {
    forests, the royal castle, Thornwall, Morgrath's tower in the east under a dark shadow. Missions and regions are
    HTML labels pinned to points of the land (they follow the camera). */
 const REGIONS = [
-  [[-18, 9.5], L('Thornwall', 'Thornwall')], [[-2, 5], L('Highcrown', 'Highcrown')], [[-15, -13], L('Elderwood', 'Elderwood')],
+[[-2, 5], L('Highcrown', 'Highcrown')], [[-15, -13], L('Elderwood', 'Elderwood')],
   [[2, -16], L('Ironpeak', 'Ironpeak')], [[9, 15.5], L('Lucerní bažiny', 'The Lantern Marsh')], [[-14, 17.5], L('Saltreach', 'Saltreach')],
   [[13, -8], L('Divoká step', 'The Wild Steppe')], [[25, 7], L('Popelavé hory', 'The Ashen Mountains')],
 ];
@@ -3200,11 +3254,13 @@ function renderMap() {
       <div class="mparty">${G.heroes.map((h, i) => `<button class="mh${h.dead ? ' dead' : ''}" data-${h.dead ? 'recruit' : 'hero'}="${i}" style="--c:${CLASSES[h.cls].col}"><img class="pt" src="${portrait(h)}" alt=""><span><b>${esc(h.name)}</b><i>${h.dead ? L('✝ pohřbít a najmout nového', '✝ bury, hire a new one') : `${L('úr.', 'lv')} ${lvl(h)} · ❤ ${h.max}`}</i></span></button>`).join('')}</div>
       <div class="mbtns"><span class="mgold">${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button><button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
     </div>
-    <div class="mtitle">${L('Království Aldmere', 'The Kingdom of Aldmere')}</div>
+    <div class="mtitle">${L('Království Aldmere', 'The Kingdom of Aldmere')}<small>${L('táhni prstem · dvěma prsty přibliž', 'drag to move · pinch to zoom')}</small></div>
     <div id="mlabels"></div>`;
   const lab = el.querySelector('#mlabels');
   mapEls = [];
   for (const [at, name] of REGIONS) { const d = document.createElement('div'); d.className = 'mreg'; d.textContent = name; lab.appendChild(d); mapEls.push({ el: d, at, y: 0.3 }); }
+  { const b = document.createElement('button'); b.className = 'mpin town'; b.dataset.town = 'thornwall';
+    b.innerHTML = `<i>🏘</i><span>Thornwall</span><em>${L('hostinec · obchod', 'inn · shop')}</em>`; lab.appendChild(b); mapEls.push({ el: b, at: [-17.2, 9.2], y: 0.6 }); }
   for (const M of MISSIONS) {
     const st = M.soon ? 'soon' : G.done[M.id] ? 'done' : missionOpen(M) ? 'open' : 'locked';
     const b = document.createElement('button');
@@ -3236,6 +3292,7 @@ $('map').addEventListener('click', e => {
     G.heroes[i] = h; store2(); renderMap(); setState('map'); return;
   }
   if (b.dataset.mis) { openCard(missionOf(b.dataset.mis)); return; }
+  if (b.dataset.town) { enterTown(); return; }
   if (b.dataset.m === 'book') openBook();
   if (b.dataset.m === 'title') { store2(); setState('title'); }
 });
@@ -3287,6 +3344,7 @@ const MAPS = {
           short: { inn: L('Hostinec', 'The inn'), hill: L('Kostel na kopci', 'Church on the hill'), nave: L('Loď kostela', 'The nave'), altar: L('Oltář', 'The altar'), crypt: L('Krypta', 'The crypt'), ossuary: L('Kostnice', 'Ossuary'), door: L('Bronzové dveře', 'Bronze door'), bell: L('Zvon', 'The bell'), pool: L('Tůň', 'The pool') } },
 };
 function openMissionMap() {
+  if (!G.mission) { if (!busy() && !F) { G.room = null; store2(); setState('map'); } return; }
   const D = MAPS[G.mission]; if (!D) return;
   const seen = id => !!f()['seen_' + id];
   const canGo = id => seen(id) && id !== G.room && !F && !busy() && G.room !== 'end' && G.room !== 'tpk' && !(id === 'bell' && f().won) && !(id === 'pool' && !f().won);
@@ -3341,7 +3399,7 @@ const TALK = {
             open: L('Malrec se na vás dívá přes rameno. Zvon se houpe. „Tak mluv, když už jsi tady.“', 'Malrec looks at you over his shoulder. The bell swings. "Speak, then, since you are here."'),
             facts: () => ({ knowsBrother: f().rumour === 2, milaDrowned: (f().late || 0) >= 2, alarm: !!f().alarm }) },
 };
-const innFacts = () => ({ milaLost: (f().late || 0) >= 2, won: !!f().won });
+const innFacts = () => G.mission ? { milaLost: (f().late || 0) >= 2, won: !!f().won } : { milaLost: !!(G.world && G.world.milaLost), won: !!G.done.bell };
 const MOOD = { hostile: L('nepřátelský', 'hostile'), wary: L('ostražitý', 'wary'), softening: L('povoluje', 'softening'), moved: L('dojatý', 'moved') };
 const TALK_TURNS = 8;
 let talk = null;
@@ -3595,22 +3653,46 @@ TRACKS.intro = { bpm: 60, chords: ['Dm', 'Bb', 'Gm', 'A', 'Dm', 'Bb', 'Eb', 'A']
   if (bar >= 8 && (i === 8 || i === 12)) M.timp(t, 38, 0.18);
   if (i === 8 && bar % 4 === 3) M.brass(ch.map(m => m + 12), t, sd * 8, 0.02);
 } };
-const ROOM_MUSIC = { inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
+const ROOM_MUSIC = { town: 'village', inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
 const roomMusic = () => (G && ROOM_MUSIC[G.room]) || 'hill';
 
 /* --- 14. INPUT: drag the 3D world to look around; tap a tile, a monster or a hero. Keys: 1-9 pick, Space/Enter skip, Esc menu --- */
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 let drag = null;
-worldEl.addEventListener('pointerdown', e => { PX.Sound.unlock(); drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; try { worldEl.setPointerCapture(e.pointerId); } catch (er) { /* fine */ } });
+// On the world map: one finger moves the map, two fingers (or the wheel) zoom. Elsewhere: drag to look around.
+const touches = new Map();
+let pinch = 0;
+function clampPan() { orbit.pan.x = clamp(orbit.pan.x, -26, 26); orbit.pan.z = clamp(orbit.pan.z, -18, 18); }
+worldEl.addEventListener('pointerdown', e => {
+  PX.Sound.unlock(); touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); drag = drag && Object.assign(drag, { moved: true }); return; }
+  drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; try { worldEl.setPointerCapture(e.pointerId); } catch (er) { /* fine */ }
+});
 worldEl.addEventListener('pointermove', e => {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size === 2 && state === 'map') {
+    const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch) orbit.uzoom = clamp(orbit.uzoom * pinch / d, 0.25, 1.5);
+    pinch = d; return;
+  }
   if (!drag || film) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) < 9) return;
   drag.moved = true; drag.x = e.clientX; drag.y = e.clientY;
+  if (state === 'map') {
+    // move the land under the finger: along the camera's right and forward, flat on the ground
+    const k = camPos.distanceTo(camLook) * 1.6 / window.innerHeight;
+    const right = V(1, 0, 0).applyQuaternion(camera.quaternion); right.y = 0; right.normalize();
+    const fwd = V(0, 0, -1).applyQuaternion(camera.quaternion); fwd.y = 0; fwd.normalize();
+    orbit.pan.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k); clampPan();
+    return;
+  }
   orbit.uyaw = clamp(orbit.uyaw - dx * 0.006, -1.4, 1.4); orbit.upitch = clamp(orbit.upitch + dy * 0.004, -0.4, 0.5);
 });
-worldEl.addEventListener('pointerup', e => { const d = drag; drag = null; if (state === 'intro') { endIntro(); return; } if (d && !d.moved) tapWorld(e.clientX, e.clientY); });
-worldEl.addEventListener('wheel', e => { orbit.uzoom = clamp(orbit.uzoom * (e.deltaY > 0 ? 1.08 : 0.93), 0.55, 1.6); }, { passive: true });
+const lift = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; };
+worldEl.addEventListener('pointercancel', e => { lift(e); drag = null; });
+worldEl.addEventListener('pointerup', e => { lift(e); const d = drag; drag = null; if (state === 'intro') { endIntro(); return; } if (d && !d.moved && !touches.size) tapWorld(e.clientX, e.clientY); });
+worldEl.addEventListener('wheel', e => { orbit.uzoom = clamp(orbit.uzoom * (e.deltaY > 0 ? 1.1 : 0.9), state === 'map' ? 0.25 : 0.55, state === 'map' ? 1.5 : 1.6); }, { passive: true });
 function tapWorld(x, y) {
   if (state !== 'play' || sheet || menu) return;
   if (film) { endFilm(); return; }
