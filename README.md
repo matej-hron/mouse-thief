@@ -1391,6 +1391,10 @@ PRIVACY AND POLICY in the arcade.
   crypt, ossuary, cells, a riddle door, the boss). Each room is data in `ROOMS`: its text and its choices; a choice can
   ask the party who tries a check (with each hero's chance), start a fight, give items, set flags. A new adventure is a
   new `ROOMS` list; new rules go in section 2 (RULES).
+- **Look:** the title and party screens are pixel like the arcade; the play screen is HTML: pixel-art scenes and
+  monsters (drawn in code on a small canvas, blown up crisp), the story as real text in a book font (Alegreya, from
+  Google Fonts; Georgia when offline) that scrolls back, dice results as coloured lines, a character sheet card.
+  Landscape: scene left, story right; phone upright: scene on top.
 - Saved after every step in `pixelQuest.game` (CONTINUE on the title). Winning gives ★10 the first time, ★2 after.
 
 ## Install as an app (PWA)
