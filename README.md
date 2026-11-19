@@ -1454,6 +1454,11 @@ or model files).
   eastern road), Brannock the innkeeper (the stranger in red, the prince and the old king), Garth the old soldier (the
   red window in the Ashen Mountains), Oren the miller (Mila's father). What they let slip becomes hints and clues in
   the book (the threads of the big story). No dice; the classic "ask around" roll stays.
+- **The map and Thornwall** (0.6): the world map opens zoomed in on the party; drag to move it, pinch (or the wheel)
+  to zoom out to the whole kingdom. Thornwall is a place on it (🏘): between missions the party can go to the inn
+  (have a drink and chat: the same patrons, who now remember how the Drowned Bell ended) and to Granny Sedge's shop
+  and the smith (potions, holy water, food; per hero once: better armour, AC 1 better, 80 gold; a keener weapon, +1 to
+  hit and damage, 100 gold).
 - **Testing a scene**: `adad?scena=bell` (or `?scene=`) starts a throwaway party of 4 straight in that scene of the
   Drowned Bell (inn, hill, nave, altar, crypt, door, ossuary, bell, pool, end); a test game is never saved.
 - Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
