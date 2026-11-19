@@ -277,7 +277,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.5.2';
+const VERSION = '0.5.3';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -424,6 +424,9 @@ const ART = {
             hint: L('Malrec by ho dal jen po dobrém…', 'Malrec would only give it up of his own will...') },
 };
 const CLUES = {
+  riders: { ic: '🔥', name: L('Popelaví jezdci', 'The ash-grey riders'), info: L('Jezdci v popelavých pláštích vypálili statek na východní cestě za Highcrownem. Hollis psal do Highcrownu. Nikdo neodpověděl.', 'Riders in ash-grey cloaks burned a farm on the eastern road beyond Highcrown. Hollis wrote to Highcrown. Nobody answered.') },
+  vesk: { ic: '📜', name: L('Kancléř Vesk', 'Chancellor Vesk'), info: L('Starý král prý poslouchá už jen kancléře Veska. A daně z Thornwallu odcházejí s Veskovou pečetí, ne s královou.', 'They say the old king listens only to Chancellor Vesk now. And Thornwall\'s taxes leave under Vesk\'s seal, not the king\'s.') },
+  tower: { ic: '🗼', name: L('Rudé okno ve věži', 'The red window in the tower'), info: L('Starý voják Garth viděl v Popelavých horách černou věž, kde se před třemi zimami rozsvítilo rudé světlo. A mrtvé, kteří pochodovali z hor. Král stáhl posádku z průsmyku.', 'Old Garth saw a black tower in the Ashen Mountains where a red light came on three winters ago. And the dead marching down from the mountains. The king withdrew the garrison from the pass.') },
   stranger: { ic: '🦴', name: L('Cizinec v rudém', 'The stranger in red'), info: L('Malrec prozradil, že ho obřad naučil cizinec v rudém rouchu s pečetí kostěné ruky. Přišel o letním slunovratu.', 'Malrec let slip that a stranger in a red robe, with a bony-hand seal, taught him the rite. He came at midsummer.') },
   robe: { ic: '🟥', name: L('Rudé roucho', 'The red robe'), info: L('Malrecovo roucho. Na rukávu je vyšitá pečeť: kostěná ruka. Kdo za ním doopravdy stál?', 'Malrec\'s robe. A seal is stitched on the sleeve: a bony hand. Who was really behind him?') },
 };
@@ -647,6 +650,32 @@ function enter(id) {
   then(stay);
 }
 function showChoices() { const R = ROOMS[G.room]; setChoices(typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?'), R.choices()); }
+// the inn's patrons: who sits where, and what each one has to say (their sheets are on the server: api/src/npcs.ts)
+function innChat() {
+  setChoices(L('Ke komu si přisednete?', 'Who do you sit down with?'), [
+    ...['elva', 'hollis', 'brannock', 'garth', 'oren'].map(id => ({ label: TALK[id].name, ic: TALK[id].ic, note: TALK[id].tag, act: () =>
+      setChoices(L(`Kdo si přisedne k: ${TALK[id].name}?`, `Who sits down with ${TALK[id].name}?`), [
+        ...G.heroes.filter(up).map(h => ({ label: h.name, act: () => {
+          G.gold -= 2; sfx('coin');
+          startTalk(id, h, (bonus, t) => { innLearned(id, t); then(stay); });
+        } })),
+        { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: stay },
+      ]) })),
+    { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: stay },
+  ]);
+}
+// what the hero learned turns into the game: hints, flags, clues for the book
+function innLearned(id, t) {
+  if (!t) return;
+  const r = t.reveals;
+  if (id === 'elva' && r.includes('brother')) { if (f().rumour !== 2) say(L('(Teď víte o Malrecově bratrovi. To se může hodit.)', '(Now you know about Malrec\'s brother. That may come in handy.)'), '#c8b8ff'); f().rumour = 2; }
+  if (id === 'elva' && r.includes('song')) f().song = 1;
+  if (id === 'brannock' && r.includes('stranger')) findClue('stranger');
+  if (id === 'brannock' && (r.includes('court') || r.includes('prince'))) findClue('vesk');
+  if (id === 'hollis' && r.includes('riders')) findClue('riders');
+  if (id === 'hollis' && r.includes('taxes')) findClue('vesk');
+  if (id === 'garth' && r.some(x => ['tower', 'dead', 'garrison'].includes(x))) findClue('tower');
+}
 function needle(h) {
   say(L(`Au! Do ruky se zabodne malá jehla. ${h.name} sykne bolestí.`, `Ouch! A tiny needle jabs ${h.name}\'s hand.`), '#ff7a6a');
   f().trapGone = 1;
@@ -704,6 +733,7 @@ const ROOMS = {
         }
         then(stay);
       }) },
+      { label: L('Napít se a pokecat', 'Have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
       { label: L('Vyrazit na kopec ke kostelu', 'Set off up the hill to the church'), ic: '⛰', act: () => go('hill') },
     ],
   },
@@ -806,6 +836,7 @@ const ROOMS = {
           'At the end of the crypt stands a huge bronze door, showing a bell sinking under waves. In the middle is a metal mouth, and words run around it:\n' +
           '"I have a tongue but never taste. I have a mouth but never eat. I call the living and the dead. Speak my name."'),
     again: L('„Řekni, kdo jsem,“ šeptají dveře.', '"Speak my name," whispers the door.'),
+    enter: first => { if (first && f().song) say(L('(Ta slova znáte. Malrec si je prý pořád brouká.)', '(You know those words. Malrec keeps humming them, they say.)'), '#c8b8ff'); },
     ask: L('Co dveřím odpovíte?', 'What do you answer the door?'),
     choices: () => [
       ...L([['Hodiny'], ['Pták'], ['Zvon', 1], ['Duch']], [['The river'], ['A ghost'], ['A bell', 1], ['A candle']]).map(([w, ok]) => ({ label: L(`„${w}“`, `"${w}"`), act: () => answerDoor(w, ok) })),
@@ -1707,6 +1738,35 @@ const FIG = {
     FIG.rat(root);
     root.userData.mats[0].color.setHex(0x34343c); root.userData.mats[1].color.setHex(0x22222a);
     root.scale.setScalar(1.9);
+  },
+  elva(root) {
+    const P = person(root, { skin: 0xd8b8a0, torso: 0x5a4a6a, legs: 0x3a3040, robe: 0x4a3a5a, sleeve: 0x5a4a6a });
+    hair(root, P.head, 'f', 0xd8d8d0);
+    const shawl = fm(root, { color: 0x8a5a3a });
+    mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.2, 10), shawl, 0, 0.78, 0, root.userData.rig);
+    root.userData.rig.rotation.x = 0.12; root.scale.setScalar(0.92);
+  },
+  hollis(root) {
+    const P = person(root, { torso: 0x5a3a24, legs: 0x3a2a1e, sleeve: 0x4a3020, skin: 0xe0b090 });
+    hair(root, P.head, 'm', 0x6a5a4a);
+    mesh(new THREE.TorusGeometry(0.15, 0.02, 5, 16, Math.PI), fm(root, { color: 0xc8a030, metalness: 0.8, roughness: 0.3 }), 0, 0.78, 0.13, root.userData.rig).rotation.z = Math.PI;
+  },
+  brannock(root) {
+    const P = person(root, { torso: 0x8a6a4a, legs: 0x3a2a1e, sleeve: 0x8a6a4a, skin: 0xe8b090 });
+    mesh(box(0.24, 0.18, 0.08), fm(root, { color: 0x9a9a90 }), 0, -0.13, 0.13, P.head);
+    mesh(box(0.38, 0.45, 0.03), fm(root, { color: 0xd8d0c0 }), 0, 0.58, 0.14, root.userData.rig);
+    root.scale.setScalar(1.1);
+  },
+  garth(root) {
+    const P = person(root, { torso: 0x6a6a72, torsoMat: { metalness: 0.4, roughness: 0.6 }, legs: 0x3a3a30, sleeve: 0x4a4a40, skin: 0xd8a888 });
+    hair(root, P.head, 'm', 0x9a9a9a);
+    mesh(box(0.2, 0.12, 0.06), fm(root, { color: 0x9a9a9a }), 0, -0.12, 0.13, P.head);
+    mesh(box(0.03, 0.14, 0.01), fm(root, { color: 0x8a3a3a }), 0.07, 0.04, 0.17, P.head);
+  },
+  oren(root) {
+    const P = person(root, { torso: 0xd8d0c0, legs: 0x6a5a4a, sleeve: 0xc8c0b0, skin: 0xe8c0a0 });
+    hair(root, P.head, 'm', 0x5a3a20);
+    mesh(box(0.42, 0.4, 0.03), fm(root, { color: 0xeee8dc }), 0, 0.55, 0.14, root.userData.rig);
   },
 };
 function makeFig(kind, hero) {
@@ -3257,10 +3317,21 @@ function endMission() {
    best argument is a bonus to the hero's Charisma roll. Without a connection (or over the day's limit) the game falls
    back to the classic choice. */
 const TALK = {
+  elva: { name: L('Stará Elva', 'Old Elva'), ic: '🧓', tag: L('kořenářka a drbna', 'herb-woman and gossip'), who: { cls: 'elva', g: 'f', hair: 0 }, col: '#8a5a3a', chat: true,
+          open: L('Elva si přisune hrnek horkého moštu. „No, sedni si, dítě. Kolena mě dneska zas trápí…“', 'Elva pulls her mug of hot cider closer. "Well, sit down, child. My knees are at me again today..."'), facts: () => innFacts() },
+  hollis: { name: L('Správce Hollis', 'Reeve Hollis'), ic: '🧔', tag: L('správce vesnice', 'the village reeve'), who: { cls: 'hollis', g: 'm', hair: 0 }, col: '#c8a030', chat: true,
+            open: L('Hollis zvedne unavené oči od hrnku. „Přišel někdo, kdo konečně něco udělá?“', 'Hollis lifts tired eyes from his mug. "Has someone come who will finally do something?"'), facts: () => innFacts() },
+  brannock: { name: L('Hostinský Brannock', 'Brannock the innkeeper'), ic: '🍺', tag: L('hostinský, slyší všechno', 'the innkeeper, hears everything'), who: { cls: 'brannock', g: 'm', hair: 0 }, col: '#8a6a4a', chat: true,
+              open: L('Brannock otírá pořád tentýž korbel. „Tak co to bude? A co se povídá tam, odkud jdete?“', 'Brannock wipes the same mug again. "What\'ll it be? And what do they say where you come from?"'), facts: () => innFacts() },
+  garth: { name: L('Starý voják Garth', 'Garth the old soldier'), ic: '🪖', tag: L('sedí sám v rohu', 'sits alone in the corner'), who: { cls: 'garth', g: 'm', hair: 0 }, col: '#6a6a72', chat: true,
+           open: L('Garth ani nezvedne hlavu. Dřevěná noha ťuká do podlahy. „Kdo platí, ten se ptá. Kdo neplatí, ať táhne.“ (Pivo pro Gartha jste už objednali.)', 'Garth doesn\'t even look up. His wooden leg taps the floor. "Who pays, asks. Who doesn\'t, clears off." (You have already ordered Garth a beer.)'), facts: () => Object.assign(innFacts(), { boughtDrink: true }) },
+  oren: { name: L('Mlynář Oren', 'Oren the miller'), ic: '🌾', tag: L('Milin otec', 'Mila\'s father'), who: { cls: 'oren', g: 'm', hair: 0 }, col: '#d8d0c0', chat: true,
+          open: L('Oren sedí nad nedotčeným pivem. Ruce má ještě bílé od mouky.', 'Oren sits over an untouched beer. His hands are still white with flour.'), facts: () => innFacts() },
   malrec: { name: L('Bratr Malrec', 'Brother Malrec'), who: { cls: 'malrec', g: 'm', hair: 0 }, col: '#8a1a2a',
             open: L('Malrec se na vás dívá přes rameno. Zvon se houpe. „Tak mluv, když už jsi tady.“', 'Malrec looks at you over his shoulder. The bell swings. "Speak, then, since you are here."'),
             facts: () => ({ knowsBrother: f().rumour === 2, milaDrowned: (f().late || 0) >= 2, alarm: !!f().alarm }) },
 };
+const innFacts = () => ({ milaLost: (f().late || 0) >= 2, won: !!f().won });
 const MOOD = { hostile: L('nepřátelský', 'hostile'), wary: L('ostražitý', 'wary'), softening: L('povoluje', 'softening'), moved: L('dojatý', 'moved') };
 const TALK_TURNS = 8;
 let talk = null;
@@ -3277,7 +3348,7 @@ function startTalk(id, h, done) {
     <div class="trow"><input class="tin" maxlength="300" placeholder="${esc(L(`Co ${h.name} řekne?`, `What does ${h.name} say?`))}" autocomplete="off">
       ${window.SpeechRecognition || window.webkitSpeechRecognition ? '<button class="pill tmic" title="Mluvit">🎤</button>' : ''}
       <button class="ch tsend">➤</button></div>
-    <div class="btns"><span class="muted tleft"></span><button class="ch go tend">🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}</button></div>
+    <div class="btns"><span class="muted tleft"></span><button class="ch go tend"></button></div>
   </div>`;
   el.hidden = false;
   talkLine('npc', T.open, true);
@@ -3305,11 +3376,11 @@ function talkLine(from, text, intro) {
 }
 function talkState() {
   const el = $('sheet'), t = talk, said = t.msgs.filter(m => m.from === 'player').length;
-  el.querySelector('.tmood').textContent = `${L('nálada', 'mood')}: ${MOOD[t.mood]}` + (said ? ` · ${L('bonus k hodu', 'bonus to the roll')}: ${talkBonus(t) >= 0 ? '+' : ''}${talkBonus(t)}` : '');
+  el.querySelector('.tmood').textContent = `${L('nálada', 'mood')}: ${MOOD[t.mood]}` + (said && !t.T.chat ? ` · ${L('bonus k hodu', 'bonus to the roll')}: ${talkBonus(t) >= 0 ? '+' : ''}${talkBonus(t)}` : '');
   const can = !t.over && !t.waiting && said < TALK_TURNS && !t.failed;
   el.querySelector('.tin').disabled = !can; el.querySelector('.tsend').disabled = !can;
-  el.querySelector('.tend').disabled = t.waiting || (!said && !t.failed);
-  el.querySelector('.tend').textContent = t.failed ? L('🎲 Hodit kostkou postaru', '🎲 Roll the old way') : `🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}`;
+  el.querySelector('.tend').disabled = t.waiting || (!said && !t.failed && !t.T.chat);
+  el.querySelector('.tend').textContent = t.T.chat ? L('👋 Rozloučit se', '👋 Say goodbye') : t.failed ? L('🎲 Hodit kostkou postaru', '🎲 Roll the old way') : `🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}`;
   el.querySelector('.tleft').textContent = t.waiting ? L('…přemýšlí…', '...thinking...') : t.over ? L('Rozhovor skončil.', 'The talk is over.') : t.failed ? '' : L(`Zbývá ${TALK_TURNS - said} vět`, `${TALK_TURNS - said} lines left`);
 }
 async function talkSend() {
@@ -3332,6 +3403,7 @@ async function talkSend() {
     t.msgs.pop();
     t.failed = true;
     talkLine('npc', status === 429 ? L('(Pro dnešek už postavy nemluví. Zkuste to zítra, nebo hoďte kostkou postaru.)', '(The characters have talked enough for today. Try tomorrow, or roll the old way.)')
+                                   : t.T.chat ? L('(Nikdo vás teď neposlouchá: spojení nefunguje. Zkuste se vyptat na klepy postaru.)', '(Nobody is listening: no connection. Try asking around the old way.)')
                                    : L('(Malrec teď neodpovídá: spojení nefunguje. Můžete hodit kostkou postaru.)', '(Malrec isn\'t answering: no connection. You can roll the old way.)'), true);
     talkState(); return;
   }
