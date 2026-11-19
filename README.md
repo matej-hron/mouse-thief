@@ -1423,6 +1423,11 @@ or model files).
   clues and the allies. **The mission map** (🗺 at the top): a parchment plan of the scenes, "?" for unexplored
   exits, tap a visited place to go back there. The world, the people and the plan of the missions are in
   `docs/pixel-quest-world.md`.
+- **Story or Hardcore** (chosen in the party screen): in Story nobody dies (a fallen hero gets up after the fight; a
+  fallen party wakes up at the inn). In Hardcore heroes bleed at 0 HP and die at -10, for good; after a party wipe
+  each of the fallen rolls to survive the night; a dead hero is buried on the world map and the Guild sends a new
+  level 1 hero; if nobody survives, the campaign is over. The tone is darker fantasy (see the story bible): in the
+  Drowned Bell Mila isn't the first one taken, and going back to the village twice costs her life.
 - Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
