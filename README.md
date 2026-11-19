@@ -1383,22 +1383,38 @@ PRIVACY AND POLICY in the arcade.
 
 `adad.html`, at https://pixelgames.online/adad. Not in the arcade's menu, not in the service worker's cache, and
 `noindex`: a proof of concept for an old-school tabletop-style adventure where the game is the dungeon master.
+Version 0.2.0 is **in Czech, for children, and in 3D** (three.js from `vendor/`; everything is built in code, no image
+or model files).
 
-- **Party:** 1 to 4 heroes (FIGHTER, CLERIC, MAGE, THIEF) taking turns on one phone. 4d6 drop the lowest for the six
-  abilities, put where the class needs them most; REROLL as often as you like; tap a name to change it.
-- **Rules** (classic 1st level, cut down): descending AC and THAC0 (d20 + bonuses >= THAC0 - AC), five saving throws,
-  ability checks (d20 <= the ability), thief skills in % (d100), d10 initiative per side, surprise, morale (2d10),
-  dying at 0 HP and dead at -10, spells per day (MAGIC MISSILE, SLEEP, CURE LIGHT WOUNDS, BLESS), TURN UNDEAD,
-  backstab from hiding, XP for monsters and for gold brought home. Every roll is shown on a die and in the text.
-- **The adventure:** THE DROWNED BELL, an original intro adventure (village, shop, ruined chapel, trapped trapdoor,
-  crypt, ossuary, cells, a riddle door, the boss). Each room is data in `ROOMS`: its text and its choices; a choice can
-  ask the party who tries a check (with each hero's chance), start a fight, give items, set flags. A new adventure is a
-  new `ROOMS` list; new rules go in section 2 (RULES).
-- **Look:** the title and party screens are pixel like the arcade; the play screen is HTML: pixel-art scenes and
-  monsters (drawn in code on a small canvas, blown up crisp), the story as real text in a book font (Alegreya, from
-  Google Fonts; Georgia when offline) that scrolls back, dice results as coloured lines, a character sheet card.
-  Landscape: scene left, story right; phone upright: scene on top.
-- Saved after every step in `pixelQuest.game` (CONTINUE on the title). Winning gives ★10 the first time, ★2 after.
+- **Party:** 1 to 4 heroes (VÁLEČNÍK, KNĚZ, ČARODĚJ, ZLODĚJ; each a boy or a girl, so the class names and the words
+  fit) taking turns on one phone. 4d6 drop the lowest; 🎲 ZNOVU rerolls; type a name.
+- **Rules** (classic 1st level, cut down, kind to children): descending AC and THAC0 shown as "potřeba 12 nebo víc",
+  saving throws, ability checks (d20 <= the ability), thief skills in % (d100), d10 initiative per side, surprise,
+  morale (2d10), spells per day (MAGICKÁ STŘELA, SPÁNEK, LÉČENÍ, POŽEHNÁNÍ), ZAHNAT NEMRTVÉ, a backstab from hiding.
+  At 0 HP a hero falls and can't fight (a potion or a cure gets them up; after a won fight they get up with 1 HP).
+  **Nobody dies:** if the whole party falls, they wake up in the inn and can try again from the hill.
+- **The adventure:** UTOPENÝ ZVON, a few scenes to tune rather than many: the village inn, the church on the hill in
+  the mist, the nave with the rats, the altar and its trapped trapdoor, the crypt where the skeletons get up, the
+  bronze door with the riddle, the cave of the bell (Malrek and the drowned). Each scene is data in `ROOMS`: its 3D
+  set and camera view, its film, its text and its choices.
+- **Sets and films:** every scene is a small 3D set (`BUILD` in section 9): fog, drifting mist, moonlight, candles that
+  flicker, bats around the tower, a swinging bronze bell over a black pool. The first time the party comes to a scene,
+  a few seconds of **film** play (`FILMS`): the camera flies through the set (keyframes), letterbox bars, a caption,
+  sound (the bell, wind, an owl, rats, bones), and scripted moments (the skeletons get up from their niches and walk
+  towards you, the drowned climb out of the pool). A film ends exactly where the scene's camera starts. Tap skips it.
+- **Battles in 3D:** fights happen on the set's floor on a grid. The hero whose turn it is has a gold ring: tap a blue
+  tile to walk there (up to 3 or 4 tiles, diagonals too), and pick what they do from the **pop-up next to the hero**
+  (ÚTOK, KOUZLA, ZAHNAT NEMRTVÉ, SCHOVAT SE, PŘEDMĚTY, ČEKAT, UTÉCT), or just tap a monster (red tile) to walk up to it
+  and attack. Healing and potions work by touch (green tiles). Monsters walk to the nearest hero still standing.
+  Figures are chunky low-poly people and monsters with animations: walking, striking, casting, falling, sleeping; a
+  skeleton falls apart into bones, a rat rolls over, the drowned sink into the floor. Numbers float up over heads, and
+  every roll still shows on a die and in the story log. Drag to look around. In a fight the roof is hidden and the
+  story panel shrinks.
+- **Look:** the title, party and rules screens are HTML over the 3D world (the church in the mist); the play screen is
+  the 3D scene with the party cards on top and the story in a book font (Alegreya) on the right (a phone held upright:
+  at the bottom). The camera's view is shifted so the scene stays centred in the part of the screen you can see.
+- Saved after every step in `pixelQuest.game2` (POKRAČOVAT on the title). Winning gives ★10 the first time, ★2 after.
+  For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
 ## Install as an app (PWA)
 
