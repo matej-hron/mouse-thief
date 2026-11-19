@@ -107,18 +107,17 @@
   #choices.two { grid-template-columns: 1fr 1fr; }
   .hint { text-align: center; color: #8a80a8; font-size: 13px; padding: 6px; text-shadow: 0 1px 3px #000; }
 
-  /* the battle: the story becomes a short log, the actions pop up next to the hero */
-  body.battle #story { font-size: 15.5px; padding: 8px 12px; }
+  /* the battle: the story becomes a short log, the actions sit in a fixed panel beside (or under) the scene */
+  body.battle #story { flex: 1 1 0; min-height: 40px; font-size: 15px; padding: 6px 12px; }
   body.battle #story h3 { display: none; }
-  body.battle #choices { display: none; }
+  body.battle #ask { font-size: 14px; }
+  body.battle #choices { grid-template-columns: 1fr 1fr; flex: none; min-height: 168px; align-content: start; }
+  body.battle #choices .ch { min-height: 38px; padding: 5px 9px; font-size: 15px; gap: 6px; }
+  body.battle #choices .ch kbd { display: none; }
+  body.battle #choices .ch small { font-size: 12px; }
+  body.battle #inv { display: none; }
   #banner { position: fixed; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 20px; background: rgba(13,11,19,.82); border: 1px solid var(--gold);
             color: var(--gold); font-weight: 800; font-size: 15px; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 3px #000; transition: opacity .2s; }
-  #pop { position: fixed; z-index: 3; display: flex; flex-direction: column; gap: 5px; width: 210px; padding: 8px; border-radius: 12px; box-sizing: border-box;
-         background: rgba(27,22,40,.94); border: 1px solid var(--line); border-top: 3px solid var(--c, var(--gold)); box-shadow: 0 12px 40px rgba(0,0,0,.6);
-         animation: popIn .16s ease-out; }
-  #pop .pq { font-weight: 800; font-size: 13.5px; color: var(--gold); padding: 0 2px 2px; }
-  #pop .ch { min-height: 38px; padding: 6px 10px; font-size: 15.5px; }
-  @keyframes popIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
   #die { position: fixed; width: 52px; height: 56px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center;
          background: #f0e8d8; color: #1a1018; border: 3px solid #0b0912; box-shadow: 0 6px 18px rgba(0,0,0,.6); pointer-events: none; transition: background .15s, transform .15s; }
   #die b { font: 800 24px/1 'Alegreya Sans', sans-serif; } #die span { font: 700 11px 'Alegreya Sans', sans-serif; opacity: .7; }
@@ -146,7 +145,7 @@
   #film.on .skip { opacity: 1; }
   #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; }
   #fade.on { opacity: 1; }
-  body.film #play, body.film #side, body.film #banner, body.film #pop, body.film #die, body.film #fx { visibility: hidden; }
+  body.film #play, body.film #side, body.film #banner, body.film #die, body.film #fx { visibility: hidden; }
 
   .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.72); padding: 16px; box-sizing: border-box; pointer-events: auto; }
   .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
@@ -168,7 +167,6 @@
   @media (max-height: 430px) and (min-aspect-ratio: 1/1) {
     .hero { padding: 3px 7px 4px; } .hero .hn { font-size: 14px; }
     #story { font-size: 16px; padding: 8px 12px; } .ch { min-height: 34px; padding: 5px 10px; font-size: 15px; }
-    #pop .ch { min-height: 32px; font-size: 14.5px; }
   }
 </style>
 </head>
@@ -200,7 +198,6 @@
 </div>
 <div id="banner" hidden></div>
 <div id="die" hidden><b>20</b><span>k20</span></div>
-<div id="pop" hidden></div>
 <div id="film"><div class="bar t"></div><div class="bar b"></div><div class="cap"><b></b><span></span></div><div class="skip">klepni pro přeskočení ›</div></div>
 <div id="fade"></div>
 <div id="sheet" class="modal" hidden></div>
@@ -215,7 +212,7 @@
    Every scene is a small 3D set (three.js, vendor/, MIT licence), built in code: no image or model files. The first
    time the party comes to a scene, a few seconds of film (the camera flies through the set, a caption) set the mood.
    Fights happen on the set's floor, on a grid: the hero whose turn it is gets a gold ring, tap a blue tile to walk
-   there, and pick what they do from the pop-up next to them (or tap a monster to attack it).
+   there, and pick what they do in the panel (or tap a monster to attack it).
    The rules are the classic 1st-level ones, cut down, and kind to children:
      - six abilities, 4d6 drop the lowest, put where the class needs them most
      - descending armour class and THAC0 (shown as "need 12 or more"), saving throws, ability checks (d20 <= ability),
@@ -229,7 +226,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
 const save = { sfx: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -284,13 +281,13 @@ const MON = {
   rat:    { name: 'Krysa', hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, move: 4, fell: 'je poražená', ran: 'utíká pryč', squeak: true },
   skel:   { name: 'Kostlivec', hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, move: 3, fell: 'se rozsypal na hromádku kostí', ran: 'prchá před světlem' },
   zomb:   { name: 'Utopenec', hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: 'se rozpadl v louži vody', ran: 'couvá zpátky do tůně' },
-  malrec: { name: 'Bratr Malrek', hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: 'padá k zemi', ran: '' },
+  malrec: { name: 'Bratr Malrec', hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: 'padá k zemi', ran: '' },
 };
 const ITEMS = { potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'Jídlo' };
 
 /* --- 3. HEROES ------------------------------------------------------------- */
-const NAMES = [['Kuba', 'm'], ['Bára', 'f'], ['Matyáš', 'm'], ['Ema', 'f'], ['Tonda', 'm'], ['Eliška', 'f'], ['Vojta', 'm'], ['Anička', 'f'],
-               ['Šimon', 'm'], ['Klárka', 'f'], ['Ondra', 'm'], ['Julie', 'f'], ['Honza', 'm'], ['Terka', 'f']];
+const NAMES = [['Bran', 'm'], ['Mira', 'f'], ['Oswin', 'm'], ['Tess', 'f'], ['Garrick', 'm'], ['Elwyn', 'f'], ['Hob', 'm'], ['Sable', 'f'],
+               ['Rowan', 'm'], ['Ida', 'f'], ['Corvin', 'm'], ['Nell', 'f'], ['Aldo', 'm'], ['Wren', 'f']];
 function rollStats() { return Array.from({ length: 6 }, () => { const r = [rnd(6), rnd(6), rnd(6), rnd(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; }).sort((a, b) => b - a); }
 function makeHero(name, g, cls, vals) {
   const h = { name, g, cls, vals, st: {}, xp: 0, tried: {}, hair: rnd(5) - 1 };
@@ -493,23 +490,23 @@ function answerDoor(word) {
   then(stay);
 }
 function endText() {
-  let t = 'Odvážete Mílu. Chytí se nejbližšího hrdiny a nechce ho pustit.\n';
+  let t = 'Odvážete Milu. Chytí se nejbližšího hrdiny a nechce ho pustit.\n';
   t += 'Zelený zvon se naposledy zhoupne. Pak tiše pukne a už nikdy nezazvoní.\n';
-  t += f().surrender ? 'Bratr Malrek jde s vámi dolů z kopce. Pláče pro svého bratra a prosí o odpuštění.\n' : '';
-  t += 'Svítá, když vedete Mílu dolů do vesnice. Mlynář pláče radostí. Rychtář Holub vám vysype 200 zlaťáků.';
+  t += f().surrender ? 'Bratr Malrec jde s vámi dolů z kopce. Pláče pro svého bratra a prosí o odpuštění.\n' : '';
+  t += 'Svítá, když vedete Milu dolů do vesnice. Mlynář pláče radostí. Správce Hollis vám vysype 200 zlaťáků.';
   return t;
 }
 const ROOMS = {
   inn: {
-    title: 'Trnov: hostinec U Křivé lucerny', set: 'village', view: 'inn', film: 'village',
+    title: 'Thornwall: hostinec U Křivé lucerny', set: 'village', view: 'inn', film: 'village',
     text: 'Podzimní večer. Už sedm nocí zvoní nahoře na kopci zvon. Jenže ten zvon spadl do řeky před sto lety!\n' +
-          'Včera večer se tam šla podívat Míla, mlynářova dcera. Dodnes se nevrátila. Rychtář Holub slibuje 200 zlaťáků tomu, kdo ji přivede domů.',
+          'Včera večer se tam šla podívat Mila, mlynářova dcera. Dodnes se nevrátila. Správce Hollis slibuje 200 zlaťáků tomu, kdo ji přivede domů.',
     again: 'Oheň v krbu praská. Nahoře na kopci zase zvoní zvon.',
     choices: () => [
       { label: 'Vyptat se na klepy', ic: '💬', if: () => !f().rumour, ...pickWho('Kdo se vyptává? (hod na Charisma)', h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
           f().rumour = 2;
-          say('Stará Vrba se nakloní: „Kostelník, bratr Malrek, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám jazyk, ale nic neochutnám…“');
+          say('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám jazyk, ale nic neochutnám…“');
           say('„A ty kosti pod kostelem? Meč po nich jen sklouzne. Lepší je pořádná rána palcátem.“');
         } else {
           f().rumour = 1;
@@ -531,7 +528,7 @@ const ROOMS = {
         h.tried.grave = 1;
         if (checkAbility(h, 'wis')) {
           f().grave = 1; G.items.holy++;
-          say('U hrobu svatého Oldřicha stojí malá lahvička. Svěcená voda! Na kostlivce a utopence je jako oheň.', '#7aea7a');
+          say('U hrobu svatého Aldera stojí malá lahvička. Svěcená voda! Na kostlivce a utopence je jako oheň.', '#7aea7a');
         } else say(`${h.name} najde jen mokrou trávu a mlhu.`);
         then(stay);
       }) },
@@ -630,19 +627,19 @@ const ROOMS = {
   },
   bell: {
     title: 'Zvon utopených', set: 'bell', view: 'bell', film: 'bell',
-    text: 'Vysoká jeskyně. Nad černou tůní visí zelený zvon a houpe se úplně sám. Míla je přivázaná ke sloupu, tak vyděšená, že ani nepláče.\n' +
-          'Bratr Malrek se otočí od vody. „Právě včas,“ řekne. „Utopenci potřebují víc hlasů.“ Z tůně lezou mokré postavy.',
-    again: 'Malrek čeká u zvonu.',
+    text: 'Vysoká jeskyně. Nad černou tůní visí zelený zvon a houpe se úplně sám. Mila je přivázaná ke sloupu, tak vyděšená, že ani nepláče.\n' +
+          'Bratr Malrec se otočí od vody. „Právě včas,“ řekne. „Utopenci potřebují víc hlasů.“ Z tůně lezou mokré postavy.',
+    again: 'Malrec čeká u zvonu.',
     foes: () => bossFoes(),
     choices: () => [
       { label: 'Zaútočit!', ic: '⚔', act: () => bossFight(null) },
       { label: 'Promluvit s ním', ic: '💬', if: () => !f().talked, ...pickWho(`Kdo s ním mluví? (Charisma${f().rumour === 2 ? ' +2: víte o jeho bratrovi' : ' -2'})`, h => abilityChance(h, 'cha', f().rumour === 2 ? 2 : -2), h => {
         f().talked = 1;
         if (checkAbility(h, 'cha', f().rumour === 2 ? 2 : -2)) {
-          say(`${h.name}: „Tvůj bratr by tohle nechtěl, Malreku.“ Malrek zaváhá. Zvon vynechá úder. Teď!`, '#7aea7a');
+          say(`${h.name}: „Tvůj bratr by tohle nechtěl, Malrecu.“ Malrec zaváhá. Zvon vynechá úder. Teď!`, '#7aea7a');
           then(() => bossFight('party'));
         } else {
-          say('Malrek se jen zasměje a zvon zaburácí. Utopenci se vrhnou vpřed!', '#ff7a6a');
+          say('Malrec se jen zasměje a zvon zaburácí. Utopenci se vrhnou vpřed!', '#ff7a6a');
           then(() => bossFight('foes'));
         }
       }) },
@@ -851,7 +848,7 @@ function kill(m) {
   const u = unitOf(m);
   then(() => { m.shp = 0; deathAnim(u); });
   if (m.boss) {
-    say('Malrek padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', '#7aea7a');
+    say('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', '#7aea7a');
     goneAll();
     return;
   }
@@ -873,9 +870,9 @@ function bossMorale(m) {
   if (F.m_boss || m.hp * 2 > m.max) return;
   F.m_boss = 1;
   const r = dice(2, 10);
-  rollFx(20, r, `Malrekova odvaha: 2k10 = ${r} (víc než ${m.morale}: vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, r > m.morale);
+  rollFx(20, r, `Malrecova odvaha: 2k10 = ${r} (víc než ${m.morale}: vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, r > m.morale);
   if (r > m.morale) {
-    say('Malrek pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', '#7aea7a');
+    say('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', '#7aea7a');
     f().surrender = 1;
     m.state = 'gone'; F.xp += m.xp;
     const mu = unitOf(m); then(() => setPose(mu, 'kneel'));
@@ -1003,13 +1000,13 @@ function foeAct(m) {
     if (!F.cast.hold) {
       F.cast.hold = 1;
       play(() => { setPose(mu, 'cast', hu); beam(mu, hu, 0xb06aff); sfx('spell'); }, 0.6);
-      say(`Malrek ukáže na hrdinu ${h.name}: „Ztuhni!“`, '#c06aff');
+      say(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, '#c06aff');
       if (!checkSave(h, 'spell')) { h.held = 2; say(`${h.name} ztuhne na 2 kola.`, '#ff7a6a'); then(() => tint(hu, 'held')); } else say(`${h.name} se z toho vytřese.`);
       return;
     }
     F.cast.wound = 1;
     play(() => { setPose(mu, 'cast', hu); missile(mu, hu, 0x9a3aff); sfx('spell'); }, 0.6);
-    say('Malrekova ruka zčerná a vyletí z ní temný blesk!', '#c06aff');
+    say('Malrecova ruka zčerná a vyletí z ní temný blesk!', '#c06aff');
     foeAttack(m, h, true, [1, 8, 0]);
     return;
   }
@@ -1675,7 +1672,7 @@ const BUILD = {
    A few seconds of film the first time a scene opens: keys are [second, camera position, the point it looks at]; the
    film always ends where the scene's view starts, so it flows into the game. ev: [second, what happens]. Tap skips. */
 const FILMS = {
-  village: { dur: 8, cap: 'Trnov', sub: 'sedmá noc, kdy zvoní zvon, který neexistuje',
+  village: { dur: 8, cap: 'Thornwall', sub: 'sedmá noc, kdy zvoní zvon, který neexistuje',
     keys: [[0, [1.5, 1.0, 14], [0, 1.4, 0]], [3, [1.2, 1.5, 5], [-3, 1.8, -1]], [5.8, [0.6, 2.0, 2.5], [0, 7, -46]]],
     ev: [[0, 'wind'], [1.2, 'bell'], [4.6, 'bell']] },
   hill: { dur: 8, cap: 'Kostel na kopci', sub: 'mlha je tak hustá, že není vidět na krok',
@@ -2135,6 +2132,8 @@ function updateUnit(u, dt, t) {
         u.tag.style.display = '';
         u.tag.style.left = s.x + 'px'; u.tag.style.top = s.y + 'px';
         const r = u.ref, hp = Math.max(0, r.shp !== undefined ? r.shp : r.hp), k2 = r.name + '|' + hp + '|' + r.max;
+        const named = F.actor === r || !!(F.target && F.target.ok(r) && (F.target.kind === 'foe') !== G.heroes.includes(r));
+        u.tag.firstChild.style.display = named ? '' : 'none';
         if (u.tagKey !== k2) { u.tagKey = k2; u.tag.firstChild.textContent = r.name; u.tag.querySelector('u').style.width = Math.round(100 * hp / Math.max(1, r.max)) + '%'; }
       } else u.tag.style.display = 'none';
     } else u.tag.style.display = 'none';
@@ -2197,7 +2196,7 @@ function setState(s) {
   for (const id of SCREENS) $(id).hidden = id !== s;
   $('side').hidden = s !== 'play';
   if (s !== 'play') {
-    sheet = null; menu = false; $('sheet').hidden = true; $('menu').hidden = true; $('pop').hidden = true; $('banner').hidden = true; $('die').hidden = true;
+    sheet = null; menu = false; $('sheet').hidden = true; $('menu').hidden = true; $('banner').hidden = true; $('die').hidden = true;
     F = null; Q.length = 0; cur = null; film = null; document.body.classList.remove('film', 'battle'); filmEl.classList.remove('on'); fade(false);
     showGrid(false); markTiles(null);
     showSet('hill', 'title'); clearUnits(true);
@@ -2287,8 +2286,8 @@ function renderRules() {
 }
 $('rules').addEventListener('click', e => { if (e.target.closest('[data-a="back"]')) { sfx('click'); setState('title'); } });
 
-/* the play screen: party cards, the story, the choices (or the pop-up in a fight), the die */
-const partyEl = $('party'), invEl = $('inv'), askEl = $('ask'), choicesEl = $('choices'), popEl = $('pop'), dieEl = $('die'), bannerEl = $('banner'), sideEl = $('side');
+/* the play screen: party cards, the story, the choices, the die */
+const partyEl = $('party'), invEl = $('inv'), askEl = $('ask'), choicesEl = $('choices'), dieEl = $('die'), bannerEl = $('banner'), sideEl = $('side');
 let partyKey = '', invKey = '', choiceKey = '', layoutKey = '';
 function heroState(h) { const hp = h.shp; return hp <= 0 ? 'down' : hp * 3 <= h.max ? 'low' : 'ok'; }
 function renderParty() {
@@ -2327,34 +2326,14 @@ function renderChoices() {
   const key = choicesVer + '|' + (wait ? 'w' : b ? 'b' : '') + (inFight ? 'F' : '');
   if (key !== choiceKey) {
     choiceKey = key;
-    popEl.hidden = true;
     if (wait) { askEl.textContent = ''; choicesEl.className = ''; choicesEl.innerHTML = '<button class="ch go" data-go="1"><kbd>␣</kbd>Dál ›</button>'; }
-    else if (b || !choices.length) { askEl.textContent = ''; choicesEl.className = ''; choicesEl.innerHTML = b && !inFight ? '<div class="hint">klepni pro přeskočení</div>' : ''; }
-    else if (inFight) {
-      askEl.textContent = ''; choicesEl.innerHTML = '';
-      const h = F.actor;
-      popEl.style.setProperty('--c', h ? CLASSES[h.cls].col : '#ffd23f');
-      popEl.innerHTML = `<div class="pq">${esc(typeof ask === 'function' ? ask() : ask)}</div>` + choices.slice(0, 9).map(btnHTML).join('');
-      popEl.hidden = false;
-    } else {
+    else if (b || !choices.length) { askEl.textContent = inFight ? '…' : ''; choicesEl.className = ''; choicesEl.innerHTML = b ? '<div class="hint">klepni pro přeskočení</div>' : ''; }
+    else {
       askEl.textContent = typeof ask === 'function' ? ask() : ask;
-      choicesEl.className = choices.length > 3 ? 'two' : '';
+      choicesEl.className = choices.length > 3 && !inFight ? 'two' : '';
       choicesEl.innerHTML = choices.slice(0, 9).map(btnHTML).join('');
     }
   }
-  if (!popEl.hidden) placePop();
-}
-function placePop() {
-  const r = viewRect, pw = popEl.offsetWidth || 210, phh = popEl.offsetHeight || 200;
-  let x = r.x + r.w / 2 - pw / 2, y = r.y + r.h / 2 - phh / 2;
-  const u = F && F.actor && unitOf(F.actor);
-  if (u) {
-    const s = toScreen(V(u.pos.x, u.pos.y + 0.9, u.pos.z));
-    x = s.x + 50; if (x + pw > r.x + r.w - 6) x = s.x - 50 - pw;
-    y = s.y - phh / 2;
-  }
-  x = clamp(x, r.x + 6, Math.max(r.x + 6, r.x + r.w - pw - 6)); y = clamp(y, r.y + 44, Math.max(r.y + 44, r.y + r.h - phh - 6));
-  popEl.style.left = Math.round(x) + 'px'; popEl.style.top = Math.round(y) + 'px';
 }
 function onChoiceClick(e) {
   const b = e.target.closest('button'); if (!b) return;
@@ -2362,7 +2341,6 @@ function onChoiceClick(e) {
   choose1(+b.dataset.i);
 }
 choicesEl.addEventListener('click', onChoiceClick);
-popEl.addEventListener('click', onChoiceClick);
 function doChoice(fn) {
   if (busy()) return;
   sfx('click');
@@ -2398,12 +2376,11 @@ function layout() {
   const topB = $('top').getBoundingClientRect().bottom || 50;
   const land = W > H * 1.05;
   if (land) {
-    const sw = Math.round(battle ? clamp(W * 0.27, 230, 330) : clamp(W * 0.4, 300, 480));
-    const top = battle ? Math.round(Math.max(topB + 6, H * 0.5)) : topB + 6;
-    Object.assign(sideEl.style, { left: '', right: `max(${pad}px, var(--sr))`, top: top + 'px', bottom: `max(${pad}px, var(--sb))`, width: sw + 'px', height: '' });
-    viewRect = { x: 0, y: topB, w: W - (battle ? 0 : sw + pad * 2), h: H - topB };
+    const sw = Math.round(battle ? clamp(W * 0.32, 270, 380) : clamp(W * 0.4, 300, 480));
+    Object.assign(sideEl.style, { left: '', right: `max(${pad}px, var(--sr))`, top: (topB + 6) + 'px', bottom: `max(${pad}px, var(--sb))`, width: sw + 'px', height: '' });
+    viewRect = { x: 0, y: topB, w: W - sw - pad * 2, h: H - topB };
   } else {
-    const sh = Math.round(battle ? H * 0.2 : H * 0.47);
+    const sh = Math.round(battle ? clamp(H * 0.36, 270, 340) : H * 0.47);
     Object.assign(sideEl.style, { left: `max(${pad}px, var(--sl))`, right: `max(${pad}px, var(--sr))`, top: '', bottom: `max(${pad}px, var(--sb))`, width: '', height: sh + 'px' });
     viewRect = { x: 0, y: topB, w: W, h: H - topB - sh - pad * 2 };
   }
