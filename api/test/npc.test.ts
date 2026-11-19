@@ -76,6 +76,21 @@ describe('POST /v1/npc with a model', () => {
   });
 });
 
+describe('the inn', () => {
+  beforeEach(() => resetTables());
+  it('every patron answers, with their own sheet and the inn around them', async () => {
+    for (const [npc, name] of [['elva', 'OLD ELVA'], ['hollis', 'HOLLIS'], ['brannock', 'BRANNOCK'], ['garth', 'GARTH'], ['oren', 'OREN']] as const) {
+      seen.length = 0;
+      const r = await post({ ...ok, npc, facts: { boughtDrink: true, milaLost: false, won: false } }, KEY);
+      expect(r.status).toBe(200);
+      const sys = (seen[0]!.messages as { content: string }[])[0]!.content;
+      expect(sys).toContain(name);
+      expect(sys).toContain('Crooked Lantern');
+      if (npc === 'garth') expect(sys).toContain('just bought you a drink');
+    }
+  });
+});
+
 describe('answerText', () => {
   it('reads both shapes of model output', () => {
     expect(answerText({ choices: [{ message: { content: 'a' } }] })).toBe('a');
