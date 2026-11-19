@@ -1446,6 +1446,8 @@ or model files).
   words (a language model on Cloudflare Workers AI, through the backend's `POST /v1/npc`), and judges how convincing the hero was. The dice still decide:
   the best argument becomes a bonus to the Charisma roll (-2 to +6), and what Malrec lets slip can become a clue.
   Without a connection or over the day's limit, the game falls back to the classic roll.
+- **Testing a scene**: `adad?scena=bell` (or `?scene=`) starts a throwaway party of 4 straight in that scene of the
+  Drowned Bell (inn, hill, nave, altar, crypt, door, ossuary, bell, pool, end); a test game is never saved.
 - Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
