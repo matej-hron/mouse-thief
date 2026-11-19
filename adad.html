@@ -277,7 +277,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.5.3';
+const VERSION = '0.5.4';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -3402,6 +3402,7 @@ async function talkSend() {
   if (!data || !data.say) {
     t.msgs.pop();
     t.failed = true;
+    if (data && data.error) talkLine('npc', `[${data.error}${data.detail ? ': ' + String(data.detail).slice(0, 220) : ''}]`, true);
     talkLine('npc', status === 429 ? L('(Pro dnešek už postavy nemluví. Zkuste to zítra, nebo hoďte kostkou postaru.)', '(The characters have talked enough for today. Try tomorrow, or roll the old way.)')
                                    : t.T.chat ? L('(Nikdo vás teď neposlouchá: spojení nefunguje. Zkuste se vyptat na klepy postaru.)', '(Nobody is listening: no connection. Try asking around the old way.)')
                                    : L('(Malrec teď neodpovídá: spojení nefunguje. Můžete hodit kostkou postaru.)', '(Malrec isn\'t answering: no connection. You can roll the old way.)'), true);

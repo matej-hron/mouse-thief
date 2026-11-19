@@ -15,6 +15,7 @@ import type { Facts } from './npcs';
 // player (by the hash of the IP address and the day); ALL_PER_DAY answers a day for everybody together.
 
 export const MODEL = '@cf/deepseek-ai/deepseek-v4-flash-0731';   // when NPC_MODEL isn't set
+export const BACKUP_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';   // when the first one fails
 export const MAX_TURNS = 8;
 export const MAX_TEXT = 300;
 export const PER_DAY = 60;
@@ -94,20 +95,27 @@ npc.post('/v1/npc', async (c) => {
   messages[messages.length - 1]!.content += `\n\n(${scene} Answer as the character, with only the JSON object.)`;
 
   const ai = c.env.AI as unknown as { run(model: string, inputs: Record<string, unknown>): Promise<unknown> };
-  try {
-    const out = await ai.run(c.env.NPC_MODEL || MODEL, {
-      messages,
-      max_tokens: 700,
-      temperature: 0.8,
-      reasoning_effort: 'low',
-      response_format: { type: 'json_schema', json_schema: { name: 'npc_reply', schema: REPLY_SCHEMA, strict: true } },
-    });
-    const reply = parseReply(answerText(out), who.reveals);
-    if (!reply) return c.json({ error: 'bad_reply' }, 502);
-    return c.json(reply);
-  } catch {
-    return c.json({ error: 'upstream' }, 502);
+  // Tries in order: the chosen model with the answer forced into JSON; the same model plainly (some models don't take
+  // response_format or reasoning_effort); then the backup model plainly. The first answer that parses wins.
+  const first = c.env.NPC_MODEL || MODEL;
+  const tries: [string, Record<string, unknown>][] = [
+    [first, { reasoning_effort: 'low', response_format: { type: 'json_schema', json_schema: { name: 'npc_reply', schema: REPLY_SCHEMA, strict: true } } }],
+    [first, {}],
+    [BACKUP_MODEL, {}],
+  ];
+  const errors: string[] = [];
+  for (const [model, extra] of tries) {
+    try {
+      const out = await ai.run(model, { messages, max_tokens: 700, temperature: 0.8, ...extra });
+      const reply = parseReply(answerText(out), who.reveals);
+      if (reply) return c.json(reply);
+      errors.push(`${model}: not an answer: ${answerText(out).slice(0, 120)}`);
+    } catch (e) {
+      errors.push(`${model}: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+    }
   }
+  console.error('npc failed', errors);
+  return c.json({ error: 'upstream', detail: errors.join(' | ').slice(0, 600) }, 502);
 });
 
 /** The model's text, from the chat-completions shape (choices[0].message.content) or the older { response }. */
