@@ -18,7 +18,9 @@ export type Env = {
   VAPID_PRIVATE_KEY: string;
   TURN_KEY_ID?: string;          // Cloudflare Realtime TURN (secrets; see turn.ts)
   TURN_KEY_API_TOKEN?: string;
-  ANTHROPIC_API_KEY?: string;    // Pixel Quest's talking characters (secret; see npc.ts). Without it /v1/npc is off.
+  AI?: Ai;                       // Workers AI: Pixel Quest's talking characters (npc.ts)
+  NPC_MODEL?: string;            // which Workers AI model they use (a variable in wrangler.jsonc)
+  NPC_OFF?: string;              // '1' turns them off
 };
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|https:\/\/(www\.)?pixelgames\.online|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;

@@ -10,7 +10,6 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.11.0",
     "hono": "^4.12.30",
     "zod": "^4.4.3"
   },

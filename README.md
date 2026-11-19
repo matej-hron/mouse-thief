@@ -1373,13 +1373,15 @@ games call it through `PX.Api` in `common.js`.
 ### Talking characters (Pixel Quest)
 
 `POST /v1/npc` (`api/src/npc.ts`): the game sends which character, the language, the hero who speaks, a few facts
-about the scene and the conversation; Claude (`claude-opus-5-5`, low effort, with the server-side refusal fallback)
-answers as the character and judges the player's last message. The character sheets live on the server
-(`api/src/npcs.ts`), so the endpoint can't be used as a free chat bot; the player's words go through `censor` first.
-Limits: 8 player messages a conversation, 60 answers a day per player (by a hash of the day and the IP address),
-3000 a day for everybody (table `npc_usage`, cleaned up by the nightly cron). It is **off until the secret is set**:
-`cd api && npx wrangler secret put ANTHROPIC_API_KEY` (an Anthropic API key); without it the answer is 503 `npc_off`
-and the game rolls the old way.
+about the scene and the conversation; a language model on **Cloudflare Workers AI** (the `AI` binding in
+`wrangler.jsonc`; the model is the `NPC_MODEL` variable, now `@cf/deepseek-ai/deepseek-v4-flash-0731`, low reasoning,
+the answer forced into JSON) answers as the character and judges the player's last message. The character sheets live
+on the server (`api/src/npcs.ts`), so the endpoint can't be used as a free chat bot; the player's words go through
+`censor` first. Limits: 8 player messages a conversation, 60 answers a day per player (by a hash of the day and the IP
+address), 3000 a day for everybody (table `npc_usage`, cleaned up by the nightly cron). Workers AI has a free daily
+allowance and is billed beyond it. To switch the model, change `NPC_MODEL`; to turn the characters off, set the
+variable `NPC_OFF` to `"1"` (the game then rolls the old way). The tests use a stand-in for the AI binding
+(`remoteBindings: false` in `vitest.config.ts`).
 
 ### Usage numbers
 
@@ -1441,7 +1443,7 @@ or model files).
   Drowned Bell Mila isn't the first one taken, and going back to the village twice costs her life.
 - **Talking to characters** (0.5): some characters can really be talked to. In the cave, "Talk to him" opens a chat
   with Brother Malrec: the player types (or says, where the phone can) what the hero says, Malrec answers in his own
-  words (Claude, through the backend's `POST /v1/npc`), and judges how convincing the hero was. The dice still decide:
+  words (a language model on Cloudflare Workers AI, through the backend's `POST /v1/npc`), and judges how convincing the hero was. The dice still decide:
   the best argument becomes a bonus to the Charisma roll (-2 to +6), and what Malrec lets slip can become a clue.
   Without a connection or over the day's limit, the game falls back to the classic roll.
 - Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.

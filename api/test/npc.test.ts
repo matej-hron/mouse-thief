@@ -1,24 +1,28 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
-import { ALL_PER_DAY, MAX_TURNS, parseReply } from '../src/npc';
+import { ALL_PER_DAY, MAX_TURNS, answerText, parseReply } from '../src/npc';
 import { NPCS } from '../src/npcs';
 import { resetTables } from './helpers';
 
-// The route talks to Claude only with the ANTHROPIC_API_KEY secret; the tests never call the real API.
+// The tests never call the real Workers AI: the AI binding is a stand-in that answers like a chat model would.
 const post = (body: unknown, bindings: Record<string, unknown> = {}) =>
   app.request('https://api.test/v1/npc', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }, { ...env, ...bindings });
 const ok = {
   npc: 'malrec', lang: 'cs', hero: { name: 'Bran', cls: 'fighter', g: 'm' }, facts: { knowsBrother: true },
   messages: [{ from: 'player', text: 'Tvůj bratr by tohle nechtěl.' }],
 };
-const KEY = { ANTHROPIC_API_KEY: 'test-key-not-real' };
+const seen: Record<string, unknown>[] = [];
+const fakeAi = (content: string) => ({ run: async (_model: string, inputs: Record<string, unknown>) => { seen.push(inputs); return { choices: [{ message: { content } }] }; } });
+const GOOD = '{"say": "Tobin... *hlas se mu zlomí*", "persuasion": 3, "mood": "moved", "reveal": ["tobin", "x"], "end": false}';
+const KEY = { AI: fakeAi(GOOD) };
 
 describe('POST /v1/npc', () => {
   beforeEach(() => resetTables());
 
-  it('is off without the API key', async () => {
-    const r = await post(ok);
+  it('is off without the AI binding, or when turned off', async () => {
+    expect((await post(ok, { AI: undefined, NPC_OFF: '1' })).status).toBe(503);
+    const r = await post(ok, { AI: undefined });
     expect(r.status).toBe(503);
     expect(await r.json()).toEqual({ error: 'npc_off' });
   });
@@ -40,6 +44,44 @@ describe('POST /v1/npc', () => {
     const r = await post(ok, KEY);
     expect(r.status).toBe(429);
     expect(await r.json()).toEqual({ error: 'limit' });
+  });
+});
+
+describe('POST /v1/npc with a model', () => {
+  beforeEach(() => resetTables());
+
+  it('answers as the character, with the sheet, the scene note and the player\'s words (censored)', async () => {
+    seen.length = 0;
+    const r = await post({ ...ok, messages: [{ from: 'player', text: 'Ty kreténe, pusť ji!' }] }, KEY);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ say: 'Tobin... *hlas se mu zlomí*', persuasion: 3, mood: 'moved', reveal: ['tobin'], end: false });
+    const msgs = seen[0]!.messages as { role: string; content: string }[];
+    expect(msgs[0]!.role).toBe('system');
+    expect(msgs[0]!.content).toContain('BROTHER MALREC');
+    expect(msgs[0]!.content).toContain('they heard in the village about your drowned brother');
+    expect(msgs[1]!.content).toContain('Bran: Ty #######, pusť ji!');
+    expect(msgs[1]!.content).toContain('language cs');
+    expect(seen[0]!.response_format).toMatchObject({ type: 'json_schema' });
+  });
+
+  it('a model that answers nonsense is an error, not a crash', async () => {
+    expect((await post(ok, { AI: fakeAi('Sorry, I cannot.') })).status).toBe(502);
+    expect((await post(ok, { AI: { run: async () => { throw new Error('down'); } } })).status).toBe(502);
+  });
+
+  it('counts the answers of the day', async () => {
+    await post(ok, KEY); await post(ok, KEY);
+    const all = await env.DB.prepare("SELECT n FROM npc_usage WHERE k = 'all'").first<{ n: number }>();
+    expect(all!.n).toBe(2);
+  });
+});
+
+describe('answerText', () => {
+  it('reads both shapes of model output', () => {
+    expect(answerText({ choices: [{ message: { content: 'a' } }] })).toBe('a');
+    expect(answerText({ response: 'b' })).toBe('b');
+    expect(answerText({ response: { say: 'c' } })).toBe('{"say":"c"}');
+    expect(answerText(null)).toBe('');
   });
 });
 

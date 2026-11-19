@@ -12,6 +12,8 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: './wrangler.jsonc' },
+        // no remote bindings: the Workers AI binding (talking characters) is a stand-in in the tests (test/npc.test.ts)
+        remoteBindings: false,
         miniflare: {
           bindings: {
             TEST_MIGRATIONS: migrations,
