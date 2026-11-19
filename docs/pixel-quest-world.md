@@ -8,6 +8,20 @@ Status: a draft to iterate on. Nothing here is fixed until a mission is built.
 
 ---
 
+## 0. The tone
+
+Dark fantasy, for older children and grown-ups alike. Not gory: the darkness comes from the story, not from showing
+wounds.
+
+- **Real stakes.** Villages burn, people go missing, and not everyone can be saved. Some things happen off screen;
+  the story tells you what is left.
+- **Villains who mean it.** Morgrath and his lieutenants are cruel; the Ash Riders take hostages, the Bone Abbot
+  raises the dead of a village's own graveyard.
+- **Grey choices.** People do terrible things for reasons you can understand (Malrec). Sometimes the right choice
+  costs something: save the prisoners, or catch the rider with the letter?
+- **Consequences.** A failure, a wrong choice or wasted time can cost a life, and the world remembers it.
+- **Hope.** The heroes can push the darkness back; small kindnesses matter later.
+
 ## 1. The world: the Kingdom of Aldmere
 
 A kingdom of rivers, forests and mountains, old and tired. For a long time nothing bad has happened, and most people
@@ -101,6 +115,51 @@ Two kinds, both on the world map:
 
 The Raven Witch and Red Varga can be story or side missions; to be decided when we get there.
 
+### S1: The Prince's Messenger (draft for review)
+
+*Story mission · level 1–2 · needs: The Drowned Bell finished · gives: the Prince's Signet (key artefact).*
+*Opens: The Bone Abbot (S2) and the side missions around Highcrown.*
+
+The idea: the heroes get pulled into the big story by accident. A dying rider brings them a message that was never
+meant for them, and the night shows them what Morgrath's men do to the people of Aldmere.
+
+1. **Thornwall, a stormy night (the inn).** *Film:* a horse gallops out of the rain, its rider slumped in the
+   saddle with a black arrow in his back. He falls at the inn's door: Tam, a messenger in the prince's colours.
+   *"The lodge... in Elderwood... they know where he is."* He has a sealed letter and a fever.
+   *Choices:* treat him (Cure, a potion, a Wisdom roll): **if he lives**, he can ride with you and knows the
+   shortcuts; **if not**, he dies on the inn floor, and the letter is all you have. Read the letter? (It is in
+   code; an Intelligence roll gets a word or two: "traitor", "the gate".)
+2. **The burning farm (on the road).** *Film:* a farmstead on fire in the night, riders' torches leaving it.
+   The farmer is dead in the yard; his wife and son hide in the root cellar. Two Ash Riders came back for the
+   horses. *Choices:* fight them (a small 3D fight), or slip past (thief / Dexterity) and keep going. **Stopping
+   costs time** (it matters at the lodge), but the boy saw where the riders went (a shortcut through the old mill)
+   and the family will remember you (later: a place to sleep, a warning).
+3. **The ford (the river at night).** The bridge is guarded by the riders; the ford below it is the other way. An
+   ambush in the water: Ash Riders and their **wargs**. Or the shortcut through the **old mill** (if the boy told
+   you): a sneak past a sleeping warg pack, a rotten floor (Dexterity), an old miller's ghost who just wants his
+   millstone stopped (a small kindness, a bonus artefact: the **Miller's Lantern**, shows hidden things).
+4. **The hunting lodge (the edge of Elderwood).** *Film:* the lodge under siege, the stable burning, arrows from
+   the windows of the upper floor. The prince and two guards hold the stairs. In the courtyard: the riders and
+   their leader, **Kael Ashborn**, Red Varga's man (the boss). *Choices before the fight:* attack at once; set the
+   barn alight to scatter their horses (it works, and the horses die: grey); or sneak a hero up the back wall to
+   the prince. **If you were slow** (you helped at the farm and took the long way), one of the prince's guards is
+   already dead when you arrive.
+5. **The open gate.** Someone opened the lodge's gate for the riders: one of the prince's own guards, Bren, with
+   a purse of gold sealed with the chancellor's crest. *Choices:* hand him to the prince (he will hang), let him go
+   (he swears to disappear), or **make him go back to Vesk with a false report** (a Charisma roll: a spy for our
+   side, which pays off in S5). Clue: **Vesk's purse**.
+6. **The prince (the lodge at dawn).** *Film:* Edric in the grey light, his arm in a sling. He tells them a little:
+   the court is rotten, his father won't listen, the Dark King's men are already inside Aldmere. He needs people
+   nobody watches. He gives them his **Signet** (the key artefact: it opens his missions). If Tam died, the prince
+   is quiet for a moment: Tam was his friend.
+
+**New things to build:** sets (a stormy Thornwall, a burning farm, a river ford at night, an old mill, a hunting
+lodge with a courtyard); monsters (Ash Riders with axes and torches, Kael Ashborn, wargs, a miller's ghost);
+figures (Tam, Bren, the farmer's family); films for scenes 1, 2, 4 and 6.
+
+**Open questions:** should Tam be saveable at all, or always die (darker)? Is hanging Bren too dark for the
+prince, or right for this world?
+
 ### Side missions (ideas, any order)
 
 | Side mission | Region | Level | Gives |
@@ -146,7 +205,13 @@ the undead much harder), **Shard of the Bell** (after the bell cracks; once per 
 - One party for the whole campaign: the heroes keep their experience, gold, items and artefacts between missions.
 - Levels 1 to 5: more HP, better hits, better saves, more spells, new spells (the cleric gets Hold Person, the mage
   Web...).
-- Kind to children: nobody dies; a fallen party wakes up and tries again.
+- **Two ways to play**, chosen when a campaign starts:
+  - **Story**: nobody dies. A hero at 0 HP falls and can't fight; after a won fight they get up. If the whole party
+    falls, they wake up in the inn and can try again.
+  - **Hardcore**: the old rules. At 0 HP a hero falls and bleeds (1 HP a round); at -10 they are dead, for good. A
+    potion or a cure in time saves them. If the whole party falls, each of the fallen rolls to survive; the
+    survivors wake up somewhere they didn't choose. A dead hero is buried and the Guild sends a new one (level 1).
+    If nobody survives, the campaign is over.
 
 ## 6. The maps
 
@@ -176,7 +241,8 @@ doesn't tell everything:
 ## 8. The plan
 
 1. **This document, and the intro film** (built in 0.3.1).
-2. **The campaign frame** (built in 0.4.0; new spells for levels 3+ still to come): one party for the whole game, levels 1–5, the world map (Aldmere, with the Drowned Bell on
+2. **The campaign frame** (built in 0.4.0; new spells for levels 3+ still to come; Story / Hardcore and a darker
+   Drowned Bell in 0.4.1): one party for the whole game, levels 1–5, the world map (Aldmere, with the Drowned Bell on
    it as the first side mission), the mission map, artefacts (the three of the Drowned Bell, with the hidden
    ossuary), the artefact book. The Drowned Bell gets its clue (the red robe).
 3. **S1, The Prince's Messenger**: we write its scenes here first (like the Drowned Bell: 5–7 scenes, films, fights,
