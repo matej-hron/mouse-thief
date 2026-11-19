@@ -1370,6 +1370,17 @@ games call it through `PX.Api` in `common.js`.
 - Deploy by hand (migrations first, then the Worker): `cd api && npx wrangler d1 migrations apply pixel-arcade --remote && npm run deploy`
 - Stats page: `https://pixel-arcade-api.matej-hron.workers.dev/stats?key=…` (the admin key)
 
+### Talking characters (Pixel Quest)
+
+`POST /v1/npc` (`api/src/npc.ts`): the game sends which character, the language, the hero who speaks, a few facts
+about the scene and the conversation; Claude (`claude-opus-5-5`, low effort, with the server-side refusal fallback)
+answers as the character and judges the player's last message. The character sheets live on the server
+(`api/src/npcs.ts`), so the endpoint can't be used as a free chat bot; the player's words go through `censor` first.
+Limits: 8 player messages a conversation, 60 answers a day per player (by a hash of the day and the IP address),
+3000 a day for everybody (table `npc_usage`, cleaned up by the nightly cron). It is **off until the secret is set**:
+`cd api && npx wrangler secret put ANTHROPIC_API_KEY` (an Anthropic API key); without it the answer is 503 `npc_off`
+and the game rolls the old way.
+
 ### Usage numbers
 
 Every time a page of the arcade or a game opens, it tells the backend three things: which page, which version, and a
@@ -1428,6 +1439,11 @@ or model files).
   each of the fallen rolls to survive the night; a dead hero is buried on the world map and the Guild sends a new
   level 1 hero; if nobody survives, the campaign is over. The tone is darker fantasy (see the story bible): in the
   Drowned Bell Mila isn't the first one taken, and going back to the village twice costs her life.
+- **Talking to characters** (0.5): some characters can really be talked to. In the cave, "Talk to him" opens a chat
+  with Brother Malrec: the player types (or says, where the phone can) what the hero says, Malrec answers in his own
+  words (Claude, through the backend's `POST /v1/npc`), and judges how convincing the hero was. The dice still decide:
+  the best argument becomes a bonus to the Charisma roll (-2 to +6), and what Malrec lets slip can become a clue.
+  Without a connection or over the day's limit, the game falls back to the classic roll.
 - Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
