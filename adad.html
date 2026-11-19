@@ -163,7 +163,10 @@
     #party { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .sh-cols { grid-template-columns: 1fr; }
     #story { font-size: 17px; padding: 10px 13px; }
-    #choices.two { grid-template-columns: 1fr; }
+    #choices.two { grid-template-columns: 1fr 1fr; }
+    #choices .ch { min-height: 40px; padding: 6px 9px; font-size: 15.5px; gap: 6px; }
+    #choices .ch kbd { display: none; }
+    #choices .ch small { font-size: 12px; }
   }
   @media (max-height: 430px) and (min-aspect-ratio: 1/1) {
     .hero { padding: 3px 7px 4px; } .hero .hn { font-size: 14px; }
@@ -228,7 +231,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -396,18 +399,18 @@ const okTxt = ok => ok ? 'Povedlo se!' : 'Nevyšlo to.';
 function abilityChance(h, stat, mod = 0) { return clamp(h.st[stat] + mod, 1, 19) / 20; }
 function checkAbility(h, stat, mod = 0) {
   const need = clamp(h.st[stat] + mod, 1, 19), r = rnd(20), ok = r <= need;
-  rollFx(20, r, `${h.name}: ${STAT_NAME[stat]}, k20 = ${r} (potřeba ${need} nebo méně). ${okTxt(ok)}`, ok);
+  rollFx(20, r, `${h.name} – ${STAT_NAME[stat]}: padlo ${r}, stačí ${need} nebo méně. ${okTxt(ok)}`, ok);
   return ok;
 }
 function skillChance(h, k) { return h.cls === 'thief' ? thiefSkill(h, k) / 100 : 0; }
 function checkSkill(h, k) {
   const need = thiefSkill(h, k), r = rnd(100), ok = r <= need;
-  rollFx(100, r, `${h.name}: ${SKILL_NAMES[k]}, k100 = ${r} (potřeba ${need} nebo méně). ${okTxt(ok)}`, ok);
+  rollFx(100, r, `${h.name} – ${SKILL_NAMES[k]}: padlo ${r} ze 100, stačí ${need} nebo méně. ${okTxt(ok)}`, ok);
   return ok;
 }
 function checkSave(h, kind, mod = 0, fast) {
   const need = saveOf(h, kind), r = rnd(20), ok = r + mod >= need;
-  rollFx(20, r, `${h.name}: záchrana proti ${SAVE_NAMES[SV[kind]]}, k20 = ${r}${mod ? (mod > 0 ? '+' : '') + mod : ''} (potřeba ${need} nebo víc). ${ok ? 'Zachráněno!' : 'Nevyšlo to.'}`, ok, fast);
+  rollFx(20, r, `${h.name} – záchrana proti ${SAVE_NAMES[SV[kind]]}: padlo ${r}${mod ? (mod > 0 ? ' + ' : ' - ') + Math.abs(mod) : ''}, potřeba ${need} nebo víc. ${ok ? 'Zachráněno!' : 'Nevyšlo to.'}`, ok, fast);
   return ok;
 }
 const pct = c => Math.round(c * 100) + ' %';
@@ -509,7 +512,7 @@ const ROOMS = {
       { label: 'Vyptat se na klepy', ic: '💬', if: () => !f().rumour, ...pickWho('Kdo se vyptává? (hod na Charisma)', h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
           f().rumour = 2;
-          say('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám jazyk, ale nic neochutnám…“');
+          say('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám srdce, a přece nežiju…“');
           say('„A ty kosti pod kostelem? Meč po nich jen sklouzne. Lepší je pořádná rána palcátem.“');
         } else {
           f().rumour = 1;
@@ -611,17 +614,17 @@ const ROOMS = {
   door: {
     title: 'Bronzové dveře', set: 'crypt', view: 'door', film: 'door',
     text: 'Na konci krypty jsou obrovské bronzové dveře. Je na nich zvon a vlny. Uprostřed je kovová pusa a kolem ní nápis:\n' +
-          '„Mám jazyk, ale nic neochutnám. Mám ústa, ale nic nesním. Volám živé i mrtvé. Řekni mé jméno.“',
-    again: '„Řekni mé jméno,“ šeptají dveře.',
+          '„Mám srdce, a přece nežiju. Nemám ústa, a přece volám živé i mrtvé. Visím vysoko a houpu se. Řekni, kdo jsem.“',
+    again: '„Řekni, kdo jsem,“ šeptají dveře.',
     ask: 'Co dveřím odpovíte?',
     choices: () => [
-      { label: '„Řeka“', act: () => answerDoor('Řeka') },
-      { label: '„Duch“', act: () => answerDoor('Duch') },
+      { label: '„Hodiny“', act: () => answerDoor('Hodiny') },
+      { label: '„Pták“', act: () => answerDoor('Pták') },
       { label: '„Zvon“', act: () => answerDoor('Zvon') },
-      { label: '„Svíčka“', act: () => answerDoor('Svíčka') },
+      { label: '„Duch“', act: () => answerDoor('Duch') },
       { label: 'Přemýšlet', ic: '💭', ...pickWho('Kdo přemýšlí? (hod na Inteligenci)', h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
         h.tried.riddle = 1;
-        if (checkAbility(h, 'int')) say(`${h.name}: „Počkat. To, co se houpe uvnitř zvonu, se přece jmenuje srdce… nebo taky jazyk!“`, '#7aea7a');
+        if (checkAbility(h, 'int')) say(`${h.name}: „Počkat. Co má srdce, ale nežije? Uvnitř zvonu se přece houpe kovové srdce!“`, '#7aea7a');
         else say(`${h.name} kouká na písmena tak dlouho, až se rozmazávají.`);
         then(stay);
       }) },
@@ -707,7 +710,7 @@ function fight(def) {
   if (s === undefined || s === null && !def.boss) {
     const a = rnd(10), b = rnd(10);
     s = a <= 3 && b > 3 ? 'foes' : b <= 3 && a > 3 ? 'party' : null;
-    if (s) rollFx(10, s === 'foes' ? a : b, `Překvapení: k10 = ${s === 'foes' ? a : b} (1 až 3 = překvapení). ${s === 'foes' ? 'Příšery vás překvapily!' : 'Překvapili jste příšery!'}`, s === 'party');
+    if (s) rollFx(10, s === 'foes' ? a : b, `Překvapení: padlo ${s === 'foes' ? a : b} (1 až 3 znamená překvapení). ${s === 'foes' ? 'Příšery vás překvapily!' : 'Překvapili jste příšery!'}`, s === 'party');
   }
   F.free = s || null;
   then(newRound);
@@ -743,7 +746,7 @@ function newRound() {
   } else {
     const a = rnd(10), b = rnd(10);
     const partyFirst = a <= b;
-    rollFx(10, a, `Iniciativa: družina ${a}, příšery ${b} (nižší začíná). ${partyFirst ? 'Začíná družina!' : 'Začínají příšery.'}`, null, true);
+    rollFx(10, a, `Kdo začne? Družině padlo ${a}, příšerám ${b} (nižší začíná). ${partyFirst ? 'Začíná družina!' : 'Začínají příšery.'}`, null, true);
     F.order = partyFirst ? ['party', 'foes', 'slow'] : ['foes', 'party', 'slow'];
   }
   F.step = -1;
@@ -829,7 +832,7 @@ function attack(h, m) {
   if (bk) then(() => tint(u, null));
   const bonus = hitOf(h) + (F.bless ? 1 : 0) + (bk ? 4 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
   const hit = r === 20 || (r !== 1 && tot >= need);
-  rollFx(20, r, `${h.name}${bk ? ' útočí ze stínu' : ''} → ${m.name}: k20 = ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''} (potřeba ${need} nebo víc). ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
+  rollFx(20, r, `${h.name}${bk ? ' útočí ze stínu' : ''} → ${m.name}: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
   if (hit) {
     const w = h.weapon;
     let d = Math.max(1, dice(w.n, w.s, w.b) + dmgOf(h));
@@ -866,14 +869,14 @@ function morale() {
   if (!key || F['m_' + key]) return;
   F['m_' + key] = 1;
   const r = dice(2, 10), M = left[0].morale;
-  rollFx(20, r, `Odvaha příšer: 2k10 = ${r} (víc než ${M}: utečou). ${r > M ? 'Utíkají!' : 'Zůstávají.'}`, r > M);
+  rollFx(20, r, `Odvaha příšer: padlo ${r} (víc než ${M} a utečou). ${r > M ? 'Utíkají!' : 'Zůstávají.'}`, r > M);
   if (r > M) { for (const m of left) { m.state = 'gone'; F.xp += Math.floor(m.xp / 2); const mu = unitOf(m); then(() => fleeAnim(mu)); } say(`Zbylé příšery utíkají pryč!`, '#7aea7a'); }
 }
 function bossMorale(m) {
   if (F.m_boss || m.hp * 2 > m.max) return;
   F.m_boss = 1;
   const r = dice(2, 10);
-  rollFx(20, r, `Malrecova odvaha: 2k10 = ${r} (víc než ${m.morale}: vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, r > m.morale);
+  rollFx(20, r, `Malrecova odvaha: padlo ${r} (víc než ${m.morale} a vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, r > m.morale);
   if (r > m.morale) {
     say('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', '#7aea7a');
     f().surrender = 1;
@@ -922,7 +925,7 @@ function castSpell(h, id) {
   }
   if (id === 'sleep') {
     let hd = dice(2, 4);
-    rollFx(8, hd, `${h.name} sesílá Spánek: 2k4 = ${hd} (tolik síly příšer usne).`, null);
+    rollFx(8, hd, `${h.name} sesílá Spánek: padlo ${hd} (tolik síly příšer usne).`, null);
     const list = foesLeft().filter(m => m.state === 'ok').sort((a, b) => a.hd - b.hd);
     let slept = 0;
     for (const m of list) {
@@ -948,7 +951,7 @@ function turnUndead(h) {
   const und = foesLeft().filter(m => m.undead && m.state === 'ok').sort((a, b) => a.turn - b.turn);
   const need = und[0].turn, r = rnd(20), ok = r >= need;
   play(() => { setPose(u, 'cast'); holyWave(u); sfx('spell'); }, 0.7);
-  rollFx(20, r, `${h.name} zvedá svaté znamení: k20 = ${r} (potřeba ${need} nebo víc). ${ok ? 'Povedlo se!' : 'Nevyšlo to.'}`, ok);
+  rollFx(20, r, `${h.name} zvedá svaté znamení: padlo ${r}, potřeba ${need} nebo víc. ${ok ? 'Povedlo se!' : 'Nevyšlo to.'}`, ok);
   if (ok) {
     let k = dice(2, 6);
     say(`„Odejděte!“ (2k6 = ${k}: tolik nemrtvých uteče)`, '#f0e070');
@@ -970,7 +973,7 @@ function itemMenu(h) {
       const mu = unitOf(m);
       play(() => { setPose(u, 'throw', mu); missile(u, mu, 0xf0e070, true); }, 0.6);
       const bonus = dexMissile(h.st.dex), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus, hit = r === 20 || (r !== 1 && tot >= need);
-      rollFx(20, r, `${h.name} hází svěcenou vodu: k20 = ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''} (potřeba ${need}). ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
+      rollFx(20, r, `${h.name} hází svěcenou vodu: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
       if (hit) { if (m.undead) { say('Zasyčí to a kouří se!', '#f0e070'); then(() => burst(mu.pos, 0xffffff, 30, 1.6)); wound(m, dice(2, 4)); } else say(`${m.name} je teď jen mokrá.`); }
       doneTurn();
     }) },
@@ -1025,7 +1028,7 @@ function foeAttack(m, h, fast, dmg) {
   const mu = unitOf(m), hu = unitOf(h);
   if (!dmg) play(() => strike(mu, hu), 0.3);
   const ac = acOf(h), need = m.thac0 - ac, bonus = h.held ? 4 : 0, r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
-  rollFx(20, r, `${m.name} → ${h.name}: k20 = ${r}${bonus ? ' + 4 (ztuhlý cíl)' : ''} (potřeba ${need} nebo víc). ${hit ? 'Zásah!' : 'Vedle!'}`, !hit, true);
+  rollFx(20, r, `${m.name} → ${h.name}: padlo ${r}${bonus ? ' + 4 (ztuhlý cíl)' : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle!'}`, !hit, true);
   if (!hit) { then(() => floatNum(hu, 'vedle', 'miss')); return; }
   const D = dmg || m.dmg, d = Math.max(1, dice(D[0], D[1], D[2]));
   hurt(h, d);
@@ -1059,10 +1062,14 @@ function resize3d() {
     if (w * h * pr * pr > 2.4e6) pr = Math.sqrt(2.4e6 / (w * h));       // keep phones fast
     renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
   }
-  layout();
+  layout(); applyView(1);
 }
-function applyView() {
-  const w = window.innerWidth, h = window.innerHeight, r = viewRect;
+let shownRect = null;
+function applyView(k = 1) {
+  const w = window.innerWidth, h = window.innerHeight;
+  if (!shownRect || k >= 1) shownRect = Object.assign({}, viewRect);
+  else for (const p of ['x', 'y', 'w', 'h']) shownRect[p] = lerp(shownRect[p], viewRect[p], k);
+  const r = shownRect;
   const fa = r.w / Math.max(1, r.h);
   const want = clamp(2 * Math.atan(Math.tan(33 * Math.PI / 180) / fa) * 180 / Math.PI, 46, 78);   // the free part sees about this much
   camera.fov = 2 * Math.atan(Math.tan(want * Math.PI / 360) * h / Math.max(1, r.h)) * 180 / Math.PI;
@@ -1471,7 +1478,7 @@ const BUILD = {
     mesh(box(0.7, 0.45, 0.06), mat({ color: 0x6a3a1a }), -1.0, 2.15, 1.3, g);
     const lan = new THREE.Sprite(glowMat(0xffc050, dawn ? 0.2 : 0.9)); lan.scale.set(0.6, 0.6, 1); lan.position.set(-0.8, 2.0, 1.4); g.add(lan);
     if (!dawn) { const l = new THREE.PointLight(0xffb050, 3, 9, 1.6); l.position.set(-0.8, 2.0, 1.6); g.add(l); flicker(g, l, 3); }
-    for (const [x, z, r] of [[4, -3, -Math.PI / 2], [-4, -9, Math.PI / 2], [4.5, -10, -Math.PI / 2], [-4.4, 6, Math.PI / 2], [4.2, 5, -Math.PI / 2], [-9, 1, 0.3], [9, -6, -0.2]])
+    for (const [x, z, r] of [[4, -3, -Math.PI / 2], [-4, -9, Math.PI / 2], [4.5, -10, -Math.PI / 2], [-4.4, 6, Math.PI / 2], [7.5, 11, -Math.PI / 2], [-9, 1, 0.3], [9, -6, -0.2]])
       house(g, x, z, 3 + Math.random(), 2.2 + Math.random() * 0.5, 3.4, r, !dawn && Math.random() < 0.7);
     for (let i = 0; i < 26; i++) { const x = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 22), z = -30 + Math.random() * 40; tree(g, x, hfn(x, z), z, 0.8 + Math.random() * 0.8); }
     church(g, 0, hfn(0, -47) - 0.2, -47, 0.55, !dawn);
@@ -1601,10 +1608,11 @@ const BUILD = {
     // the bronze door at the far end
     mesh(box(9, 3.6, 0.6), st, 0, 1.8, -13.1, g);
     const door = new THREE.Group(); door.position.set(0, 0, -12.75); g.add(door); U.door = door;
-    const br = mat({ map: tex('bronze'), metalness: 0.75, roughness: 0.4 });
+    const br = mat({ map: tex('bronze'), metalness: 0.3, roughness: 0.5, color: 0xe0b070 });
+    const dl = new THREE.PointLight(0xffb060, 5, 7, 1.4); dl.position.set(0, 2.4, -10.6); g.add(dl); flicker(g, dl, 5, 3);
     mesh(box(3.0, 3.4, 0.25), br, 0, 1.7, 0, door);
     const bellPts = []; for (let i = 0; i <= 10; i++) { const k = i / 10; bellPts.push(new THREE.Vector2(0.15 + 0.6 * Math.pow(k, 1.6) + (k > 0.9 ? 0.08 : 0), 1 - k)); }
-    const relief = mesh(new THREE.LatheGeometry(bellPts, 16, 0, Math.PI), mat({ map: tex('bronze'), metalness: 0.8, roughness: 0.35, color: 0xd8b070 }), 0, 1.75, 0.12, door);
+    const relief = mesh(new THREE.LatheGeometry(bellPts, 16, 0, Math.PI), mat({ map: tex('bronze'), metalness: 0.35, roughness: 0.4, color: 0xffd890 }), 0, 1.75, 0.12, door);
     relief.rotation.y = -Math.PI / 2; relief.scale.set(1, 1, 0.25);
     for (let i = 0; i < 3; i++) { const w = mesh(new THREE.TorusGeometry(0.28, 0.03, 4, 12, Math.PI), mat({ color: 0x5a9ab0, metalness: 0.6, roughness: 0.4 }), -0.9 + i * 0.6, 0.9, 0.14, door); w.scale.y = 0.5; }
     const mouth = mesh(box(0.6, 0.22, 0.05), mat({ color: 0x050302, emissive: 0x206a50, emissiveIntensity: 0.6 }), 0, 0.5, 0.15, door); mouth.castShadow = false;
@@ -2368,7 +2376,7 @@ function renderChoices() {
     else if (b || !choices.length) { askEl.textContent = inFight ? '…' : ''; choicesEl.className = ''; choicesEl.innerHTML = b ? '<div class="hint">klepni pro přeskočení</div>' : ''; }
     else {
       askEl.textContent = typeof ask === 'function' ? ask() : ask;
-      choicesEl.className = choices.length > 3 && !inFight ? 'two' : '';
+      choicesEl.className = choices.length > (window.innerWidth > window.innerHeight ? 3 : 2) && !inFight ? 'two' : '';
       choicesEl.innerHTML = choices.slice(0, 9).map(btnHTML).join('');
     }
   }
@@ -2410,22 +2418,30 @@ function renderDie(dt) {
 // where the panels go: landscape, the story on the right; upright, at the bottom. In a fight it gets small.
 function layout() {
   const W = window.innerWidth, H = window.innerHeight, battle = !!F, pad = 8;
-  if (state !== 'play') { viewRect = { x: 0, y: 0, w: W, h: H }; applyView(); return; }
+  if (state !== 'play') { viewRect = { x: 0, y: 0, w: W, h: H }; applyView(1); return; }
   const topB = $('top').getBoundingClientRect().bottom || 50;
   const land = W > H * 1.05;
   if (land) {
     const sw = Math.round(battle ? clamp(W * 0.32, 270, 380) : clamp(W * 0.4, 300, 480));
+    storyEl.style.flex = ''; storyEl.style.height = '';
     Object.assign(sideEl.style, { left: '', right: `max(${pad}px, var(--sr))`, top: (topB + 6) + 'px', bottom: `max(${pad}px, var(--sb))`, width: sw + 'px', height: '' });
     viewRect = { x: 0, y: topB, w: W - sw - pad * 2, h: H - topB };
   } else {
-    const sh = Math.round(battle ? clamp(H * 0.36, 270, 340) : H * 0.47);
-    Object.assign(sideEl.style, { left: `max(${pad}px, var(--sl))`, right: `max(${pad}px, var(--sr))`, top: '', bottom: `max(${pad}px, var(--sb))`, width: '', height: sh + 'px' });
-    viewRect = { x: 0, y: topB, w: W, h: H - topB - sh - pad * 2 };
+    Object.assign(sideEl.style, { left: `max(${pad}px, var(--sl))`, right: `max(${pad}px, var(--sr))`, top: '', bottom: `max(${pad}px, var(--sb))`, width: '' });
+    if (battle) { sideEl.style.height = Math.round(clamp(H * 0.36, 270, 340)) + 'px'; storyEl.style.flex = ''; storyEl.style.height = ''; }
+    else {
+      sideEl.style.height = '';
+      const picking = choices.length > 0 && !busy();
+      storyEl.style.flex = '0 0 auto';
+      storyEl.style.height = Math.round(picking ? clamp(H * 0.17, 96, 150) : clamp(H * 0.36, 180, 380)) + 'px';
+    }
+    const sh = sideEl.offsetHeight;
+    viewRect = { x: 0, y: topB, w: W, h: Math.max(120, H - topB - sh - pad * 2) };
   }
-  applyView();
+  if (!shownRect) applyView(1);
 }
 function checkLayout() {
-  const k = [state, !!F, window.innerWidth, window.innerHeight, G ? G.heroes.length : 0].join();
+  const k = [state, !!F, window.innerWidth, window.innerHeight, G ? G.heroes.length : 0, choices.length > 0 && !busy(), choicesVer].join();
   if (k !== layoutKey) { layoutKey = k; layout(); follow(); }
 }
 function fade(on) { $('fade').classList.toggle('on', on); }
@@ -2719,6 +2735,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
   checkLayout();
+  if (shownRect && ['x', 'y', 'w', 'h'].some(p => Math.abs(shownRect[p] - viewRect[p]) > 0.5)) applyView(1 - Math.exp(-dt * 8));
   if (state === 'play' && G) {
     if (!menu && !sheet) pump(dt);
     if (G) {
