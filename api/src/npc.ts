@@ -20,6 +20,23 @@ export const MAX_TURNS = 8;
 export const MAX_TEXT = 300;
 export const PER_DAY = 60;
 export const ALL_PER_DAY = 3000;
+// THE FREE ALLOWANCE: Workers AI gives 10,000 "neurons" a day free (the account's, reset at 00:00 UTC). The server
+// counts its own use (an estimate from the tokens each answer took) and stops at NEURON_BUDGET, before anything costs
+// money; the game then rolls the old way. Neurons per million tokens [input, output]; a model not in the list is
+// counted at the high DEFAULT_RATE, so the estimate errs on the safe side. NPC_NEURONS (a variable) can change the budget.
+export const NEURON_BUDGET = 9000;
+export const RATES: Record<string, [number, number]> = {
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': [26668, 204805],
+};
+export const DEFAULT_RATE: [number, number] = [60000, 300000];
+/** Neurons an answer cost: from the token counts the model reports, or from the text length when it doesn't. */
+export function neuronsUsed(model: string, out: unknown, promptChars: number): number {
+  const u = (out as { usage?: { prompt_tokens?: number; completion_tokens?: number } })?.usage;
+  const inTok = u?.prompt_tokens ?? Math.ceil(promptChars / 3);
+  const outTok = u?.completion_tokens ?? Math.ceil(answerText(out).length / 3) + 300;   // (+ thinking we can't see)
+  const [ri, ro] = RATES[model] ?? DEFAULT_RATE;
+  return Math.ceil((inTok * ri + outTok * ro) / 1e6);
+}
 
 const msgSchema = z.object({ from: z.enum(['player', 'npc']), text: z.string().min(1).max(1200) });
 const bodySchema = z.object({
@@ -83,6 +100,9 @@ npc.post('/v1/npc', async (c) => {
   if (msgs.some((m) => m.from === 'player' && m.text.length > MAX_TEXT)) return c.json({ error: 'bad_request' }, 400);
 
   const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
+  const budget = Number(c.env.NPC_NEURONS) || NEURON_BUDGET;
+  const used = await c.env.DB.prepare("SELECT n FROM npc_usage WHERE day = ? AND k = 'neurons'").bind(today()).first<{ n: number }>();
+  if ((used?.n ?? 0) >= budget) return c.json({ error: 'limit' }, 429);
   if (!(await spend(c.env.DB, 'all', ALL_PER_DAY))) return c.json({ error: 'limit' }, 429);
   if (!(await spend(c.env.DB, 'ip:' + (await sha256hex(today() + ip)).slice(0, 24), PER_DAY))) return c.json({ error: 'limit' }, 429);
 
@@ -107,6 +127,8 @@ npc.post('/v1/npc', async (c) => {
   for (const [model, extra] of tries) {
     try {
       const out = await ai.run(model, { messages, max_tokens: 700, temperature: 0.8, ...extra });
+      const cost = neuronsUsed(model, out, messages.reduce((n, m) => n + m.content.length, 0));
+      await c.env.DB.prepare("INSERT INTO npc_usage (day, k, n) VALUES (?, 'neurons', ?) ON CONFLICT (day, k) DO UPDATE SET n = n + excluded.n").bind(today(), cost).run();
       const reply = parseReply(answerText(out), who.reveals);
       if (reply) return c.json(reply);
       errors.push(`${model}: not an answer: ${answerText(out).slice(0, 120)}`);

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
-import { ALL_PER_DAY, MAX_TURNS, answerText, parseReply } from '../src/npc';
+import { ALL_PER_DAY, MAX_TURNS, NEURON_BUDGET, answerText, neuronsUsed, parseReply } from '../src/npc';
 import { NPCS } from '../src/npcs';
 import { resetTables } from './helpers';
 
@@ -83,6 +83,21 @@ describe('POST /v1/npc with a model', () => {
     const r = await post(ok, { AI: ai });
     expect(r.status).toBe(200);
     expect(calls).toEqual(['@cf/deepseek-ai/deepseek-v4-flash-0731 +json', '@cf/deepseek-ai/deepseek-v4-flash-0731', '@cf/meta/llama-3.3-70b-instruct-fp8-fast']);
+  });
+
+  it('stops before the free allowance runs out', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await env.DB.prepare("INSERT INTO npc_usage (day, k, n) VALUES (?, 'neurons', ?)").bind(day, NEURON_BUDGET).run();
+    const r = await post(ok, KEY);
+    expect(r.status).toBe(429);
+  });
+
+  it('counts the neurons each answer took', async () => {
+    const ai = { run: async () => ({ choices: [{ message: { content: GOOD } }], usage: { prompt_tokens: 2000, completion_tokens: 200 } }) };
+    await post(ok, { AI: ai });
+    const row = await env.DB.prepare("SELECT n FROM npc_usage WHERE k = 'neurons'").first<{ n: number }>();
+    expect(row!.n).toBe(Math.ceil((2000 * 60000 + 200 * 300000) / 1e6));   // DeepSeek: the safe default rate = 180
+    expect(neuronsUsed('@cf/meta/llama-3.3-70b-instruct-fp8-fast', { usage: { prompt_tokens: 1e6, completion_tokens: 0 } }, 0)).toBe(26668);
   });
 
   it('counts the answers of the day', async () => {

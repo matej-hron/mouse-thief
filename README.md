@@ -1379,7 +1379,9 @@ the answer forced into JSON) answers as the character and judges the player's la
 on the server (`api/src/npcs.ts`), so the endpoint can't be used as a free chat bot; the player's words go through
 `censor` first. Limits: 8 player messages a conversation, 60 answers a day per player (by a hash of the day and the IP
 address), 3000 a day for everybody (table `npc_usage`, cleaned up by the nightly cron). Workers AI has a free daily
-allowance and is billed beyond it. To switch the model, change `NPC_MODEL`; to turn the characters off, set the
+allowance (10,000 neurons) and is billed beyond it: the server estimates the neurons each answer took (from the
+token counts) and stops at 9,000 a day (`NEURON_BUDGET`, or the variable `NPC_NEURONS`), so the characters stay free;
+then the game rolls the old way until the next day (00:00 UTC). To switch the model, change `NPC_MODEL`; to turn the characters off, set the
 variable `NPC_OFF` to `"1"` (the game then rolls the old way). The tests use a stand-in for the AI binding
 (`remoteBindings: false` in `vitest.config.ts`).
 
