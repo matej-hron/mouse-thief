@@ -142,6 +142,7 @@
   #film .cap b { display: block; font: 800 italic clamp(26px, 6vw, 46px)/1.1 'Alegreya', Georgia, serif; color: #fff4d8; text-shadow: 0 3px 16px #000, 0 0 30px rgba(0,0,0,.8); letter-spacing: .02em; }
   #film .cap span { display: block; margin-top: 4px; font: 400 italic clamp(15px, 3vw, 20px) 'Alegreya', Georgia, serif; color: #d8cdb8; text-shadow: 0 2px 10px #000; }
   #film .cap.on { opacity: 1; }
+  #film .cap.long b { font-size: clamp(20px, 4.4vw, 34px); max-width: 900px; margin: 0 auto; line-height: 1.25; }
   #film .skip { position: absolute; right: 14px; bottom: 4vh; color: rgba(255,255,255,.45); font-size: 12px; opacity: 0; transition: opacity .6s; }
   #film.on .skip { opacity: 1; }
   #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; }
@@ -183,6 +184,7 @@
   <div class="col">
     <button class="ch go" data-t="new">Nové dobrodružství</button>
     <button class="ch gold" data-t="cont">Pokračovat</button>
+    <button class="ch" data-t="intro">Úvod</button>
     <button class="ch" data-t="rules">Jak se hraje</button>
     <button class="ch" data-t="snd">Zvuk: zapnutý</button>
     <button class="ch" data-t="mus">Hudba: zapnutá</button>
@@ -232,7 +234,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -1271,7 +1273,7 @@ function person(root, o) {
 }
 function hair(root, head, g, col) {
   const hm = fm(root, { color: col });
-  mesh(new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hm, 0, 0.02, -0.01, head);
+  mesh(new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hm, 0, 0.02, -0.01, head).rotation.x = -0.5;   // tilted back: a fringe above the eyes
   if (g === 'f') { mesh(box(0.3, 0.34, 0.09), hm, 0, -0.12, -0.12, head); for (const s of [-1, 1]) mesh(box(0.07, 0.26, 0.08), hm, s * 0.15, -0.1, 0.0, head); }
 }
 function sword(root, hand, len = 0.62, col = 0xd8dce8) {
@@ -1394,6 +1396,44 @@ const FIG = {
     hair(root, P.head, 'f', 0xe8c060);
     root.scale.setScalar(0.78);
     P.armL.rotation.x = 0.3; P.armR.rotation.x = 0.3; P.armL.rotation.z = 0.25; P.armR.rotation.z = -0.25;
+  },
+  king(root) {
+    const P = person(root, { torso: 0x5a2a7a, legs: 0x3a2048, robe: 0x4a1a6a, sleeve: 0x6a3a8a, skin: 0xe8c0a8 });
+    hair(root, P.head, 'm', 0xe8e4dc);
+    mesh(box(0.24, 0.2, 0.08), fm(root, { color: 0xe8e4dc }), 0, -0.13, 0.13, P.head);
+    const gold = fm(root, { color: 0xffd23f, metalness: 0.8, roughness: 0.3, emissive: 0x6a5010, emissiveIntensity: 0.5 });
+    mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.09, 14, 1, true), gold, 0, 0.17, 0, P.head);
+    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; mesh(new THREE.ConeGeometry(0.035, 0.1, 5), gold, Math.sin(a) * 0.17, 0.26, Math.cos(a) * 0.17, P.head); }
+    const cape = mesh(box(0.56, 0.9, 0.04), fm(root, { color: 0x8a1a2a }), 0, 0.5, -0.17, root.userData.rig); cape.rotation.x = 0.1;
+  },
+  prince(root) {
+    const P = person(root, { torso: 0x2a4aa8, legs: 0x2a2a3a, sleeve: 0x22408a, skin: 0xe8b896 });
+    hair(root, P.head, 'm', 0x6a4020);
+    mesh(new THREE.TorusGeometry(0.18, 0.015, 5, 18), fm(root, { color: 0xffd23f, metalness: 0.8, roughness: 0.3 }), 0, 0.1, 0, P.head).rotation.x = Math.PI / 2;
+    const cape = mesh(box(0.5, 0.78, 0.03), fm(root, { color: 0xb82a2a }), 0, 0.5, -0.16, root.userData.rig); cape.rotation.x = 0.08;
+    mesh(box(0.44, 0.05, 0.28), fm(root, { color: 0x3a2a1a }), 0, 0.46, 0, root.userData.rig);
+    sword(root, P.handL, 0.6).rotation.x = Math.PI;
+  },
+  adviser(root) {
+    const P = person(root, { torso: 0x1a2e22, legs: 0x101a14, robe: 0x14261a, sleeve: 0x1a2e22, skin: 0xc8b49a });
+    hair(root, P.head, 'm', 0x8a8a8a);
+    mesh(new THREE.TorusGeometry(0.14, 0.02, 5, 16, Math.PI), fm(root, { color: 0xc8a030, metalness: 0.8, roughness: 0.3 }), 0, 0.78, 0.13, root.userData.rig).rotation.z = Math.PI;
+    P.head.position.z = 0.06; root.userData.rig.rotation.x = 0.12;
+  },
+  goblin(root) {
+    const P = person(root, { skin: 0x6a9a3a, torso: 0x4a3a2a, legs: 0x3a2a1a, sleeve: 0x4a3a2a, noFace: true });
+    const sk = fm(root, { color: 0x6a9a3a });
+    for (const sx of [-1, 1]) { const e = mesh(new THREE.ConeGeometry(0.05, 0.22, 5), sk, sx * 0.2, 0.04, 0, P.head); e.rotation.z = -sx * 1.3; }
+    eyes(root, P.head, 0xffd040, 0.025, 0.02, 0.15, 0.06, 0.6);
+    const w = new THREE.Group(); P.handR.add(w); w.rotation.x = 0.2;
+    mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.5, 5), fm(root, { color: 0x4a3020 }), 0, 0.4, 0, w);
+    mesh(new THREE.ConeGeometry(0.05, 0.18, 5), fm(root, { color: 0x8a8a90, metalness: 0.7, roughness: 0.4 }), 0, 1.2, 0, w);
+    root.scale.setScalar(0.85);
+  },
+  warg(root) {
+    FIG.rat(root);
+    root.userData.mats[0].color.setHex(0x34343c); root.userData.mats[1].color.setHex(0x22222a);
+    root.scale.setScalar(1.9);
   },
 };
 function makeFig(kind, hero) {
@@ -1646,6 +1686,90 @@ const BUILD = {
     U.views.battle = { look: [0, 0, -1.3], yaw: 0, pitch: 0.82, dist: 9.5 };
     U.niche = (i) => { const sx = i % 2 ? 1 : -1, z = [-4, -1, -7, 2, -10][Math.floor(i / 2) % 5]; return [sx * 3.5, z]; };
   },
+  throne(g) {
+    const U = g.userData;
+    U.bg = 0x0e0a10; U.fog = 0x120c14; U.density = 0.035; U.exposure = 1.3;
+    const st = mat({ map: tex('stone', [4, 2]), color: 0xb8a8a0 });
+    const floor = mesh(new THREE.PlaneGeometry(10, 18), mat({ map: tex('flags', [5, 9]), color: 0xa89890 }), 0, 0, -2, g); floor.rotation.x = -Math.PI / 2; floor.castShadow = false;
+    const carpet = mesh(new THREE.PlaneGeometry(1.8, 12), mat({ color: 0x8a1a2a }), 0, 0.01, -1, g); carpet.rotation.x = -Math.PI / 2; carpet.castShadow = false;
+    for (const sx of [-1, 1]) mesh(box(0.6, 7, 18), st, sx * 5.2, 3.5, -2, g);
+    mesh(box(10.4, 7, 0.6), st, 0, 3.5, -10.2, g);
+    mesh(box(4, 0.3, 2.6), st, 0, 0.15, -6.6, g); mesh(box(3, 0.3, 2.0), st, 0, 0.45, -6.8, g);
+    const goldM = mat({ color: 0xd8a830, metalness: 0.6, roughness: 0.35 });
+    mesh(box(1.2, 0.45, 0.9), goldM, 0, 0.82, -7.0, g); mesh(box(1.2, 1.8, 0.2), goldM, 0, 1.5, -7.4, g);
+    mesh(box(0.95, 0.1, 0.75), mat({ color: 0x6a1a3a }), 0, 1.07, -6.98, g);
+    for (const sx of [-1, 1]) for (const z of [-7, -3.5, 0, 3.5]) {
+      mesh(new THREE.CylinderGeometry(0.35, 0.4, 6.6, 12), mat({ map: tex('stone', [1, 3]), color: 0xc8c0c8 }), sx * 3.4, 3.3, z, g);
+      const ban = mesh(new THREE.PlaneGeometry(0.9, 2.4), mat({ color: 0x2a3a8a, side: THREE.DoubleSide }), sx * 4.85, 4.2, z + 1.7, g); ban.rotation.y = -sx * Math.PI / 2; ban.castShadow = false;
+      const cr = mesh(new THREE.PlaneGeometry(0.4, 0.4), mat({ color: 0xffd23f, side: THREE.DoubleSide }), sx * 4.83, 4.6, z + 1.7, g); cr.rotation.y = -sx * Math.PI / 2; cr.castShadow = false;
+    }
+    const win = mesh(archHole(1.4, 3.4), mat({ color: 0x302018, emissive: 0xffa060, emissiveIntensity: 1.1, side: THREE.DoubleSide }), -4.88, 1.0, 1, g); win.rotation.y = Math.PI / 2; win.castShadow = false;
+    const sun = new THREE.SpotLight(0xffb070, 22, 14, 0.5, 0.6, 1.2); sun.position.set(-4.6, 3, 1); sun.target.position.set(-1, 0, 1.5); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); g.add(sun); g.add(sun.target);
+    for (const sx of [-1, 1]) {
+      mesh(new THREE.CylinderGeometry(0.25, 0.15, 0.9, 8), mat({ color: 0x2a2228, metalness: 0.5, roughness: 0.5 }), sx * 2, 0.45, -5.2, g);
+      const fl = new THREE.Sprite(glowMat(0xff8a30, 0.9)); fl.scale.set(0.8, 1.1, 1); fl.position.set(sx * 2, 1.25, -5.2); g.add(fl);
+      const l = new THREE.PointLight(0xff9a40, 6, 9, 1.4); l.position.set(sx * 2, 1.6, -5.2); g.add(l); flicker(g, l, 6);
+    }
+    g.add(new THREE.HemisphereLight(0x8070a0, 0x201418, 0.9));
+    const king = makeFig('king'); king.position.set(0, 0.62, -6.85); g.add(king);
+    const P = king.userData.parts; P.legL.rotation.x = P.legR.rotation.x = -1.45; P.armL.rotation.x = P.armR.rotation.x = -0.6; P.head.rotation.x = 0.15;
+    const adv = makeFig('adviser'); adv.position.set(0.85, 0.6, -6.75); adv.rotation.y = -Math.PI / 2 + 0.3; g.add(adv);
+    U.anims.push(t => { adv.userData.rig.rotation.x = 0.15 + Math.sin(t * 0.9) * 0.08; adv.userData.parts.armR.rotation.x = -0.9 + Math.sin(t * 1.3) * 0.15; king.userData.parts.head.rotation.y = Math.sin(t * 0.4) * 0.15; });
+    const prince = makeFig('prince'); prince.position.set(-3.7, 0, 1); prince.rotation.y = -Math.PI / 2 + 0.75; g.add(prince);
+    U.anims.push(t => { prince.userData.parts.head.rotation.y = Math.sin(t * 0.3) * 0.12; });
+    addMist(g, { count: 8, x: [-4, 4], y: [0.5, 3], z: [-8, 4], scale: [3, 5], opacity: 0.08, speed: 0.1, color: 0xffd0a0 });
+    U.views.main = { look: [0, 1.4, -6], yaw: 0, pitch: 0.1, dist: 7 };
+  },
+  ashen(g) {
+    const U = g.userData;
+    U.bg = 0x140608; U.fog = 0x1c0a0c; U.density = 0.018; U.exposure = 1.4;
+    const ground = mesh(new THREE.PlaneGeometry(200, 200, 40, 40), mat({ map: tex('rock', [20, 20]), color: 0x6a5a5a }), 0, 0, -40, g); ground.rotation.x = -Math.PI / 2; ground.castShadow = false;
+    const rockM = mat({ map: tex('rock', [2, 4]), color: 0x5a4a50 });
+    for (let i = 0; i < 40; i++) { const x = (Math.random() - 0.5) * 160, z = -35 - Math.random() * 70, h = 12 + Math.random() * 34; if (Math.abs(x) < 8 && z > -70) continue; const c = mesh(new THREE.ConeGeometry(5 + Math.random() * 9, h, 6), rockM, x, h / 2 - 1, z, g); c.rotation.y = Math.random() * 3; c.castShadow = false; }
+    mesh(new THREE.ConeGeometry(9, 16, 7), rockM, 0, 7, -62, g).castShadow = false;
+    const tw = mat({ color: 0x18121a, roughness: 0.8 });
+    mesh(new THREE.CylinderGeometry(1.6, 2.6, 26, 8), tw, 0, 27, -62, g);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; mesh(new THREE.ConeGeometry(0.4, 3.5, 4), tw, Math.sin(a) * 1.5, 41.5, -62 + Math.cos(a) * 1.5, g); }
+    mesh(new THREE.ConeGeometry(0.9, 6, 6), tw, 0, 43, -62, g);
+    const winM = mat({ color: 0x300000, emissive: 0xff2010, emissiveIntensity: 3 });
+    mesh(box(0.7, 1.4, 0.2), winM, 0, 34, -60.5, g).castShadow = false;
+    const wg = new THREE.Sprite(glowMat(0xff2010, 0.9)); wg.material.fog = false; wg.scale.set(5, 5, 1); wg.position.set(0, 34, -60.2); g.add(wg);
+    const wl = new THREE.PointLight(0xff3020, 30, 40, 1.4); wl.position.set(0, 33, -58); g.add(wl);
+    U.anims.push(t => { wg.material.opacity = 0.7 + 0.25 * Math.sin(t * 2.3); });
+    for (let i = 0; i < 30; i++) { const c = mesh(new THREE.PlaneGeometry(0.3 + Math.random() * 0.6, 2 + Math.random() * 6), mat({ color: 0x200000, emissive: 0xff4010, emissiveIntensity: 1.6 }), (Math.random() - 0.5) * 40, 0.02, -5 - Math.random() * 50, g); c.rotation.set(-Math.PI / 2, 0, Math.random() * 3); c.castShadow = false; }
+    g.add(new THREE.HemisphereLight(0x604048, 0x100608, 0.8));
+    const ml = moonLight(g, 0xff7050, 1.2, [10, 30, -80], [0, 0, 0], 20);
+    // lightning: now and then the sky and the land flash white
+    const flash = new THREE.DirectionalLight(0xc8d0ff, 0); flash.position.set(-20, 40, -30); g.add(flash);
+    let next = 1.5, fl = 0;
+    U.anims.push((t, dt) => {
+      next -= dt; if (next <= 0) { fl = 1; next = 2.5 + Math.random() * 3.5; if (state === 'intro') sfx('rumble'); }
+      fl = Math.max(0, fl - dt * 3.5);
+      const k = fl > 0.6 ? 1 : fl > 0.35 ? 0.2 : fl > 0.15 ? 0.8 : fl;
+      flash.intensity = k * 6; if (curSet === g && scene.background) scene.background.setRGB(0.078 + k * 0.4, 0.024 + k * 0.4, 0.03 + k * 0.5);
+    });
+    // the army marching out of the dark: skeletons, the drowned, goblins, wargs
+    const kinds = ['skel', 'goblin', 'zomb', 'goblin', 'skel', 'warg'];
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+      const kind = kinds[(r * 2 + c) % kinds.length], f = makeFig(kind);
+      f.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      const x0 = -7.5 + c * 3 + (r % 2) * 1.5, z0 = -26 + r * 3.2;
+      f.position.set(x0, 0, z0); g.add(f);
+      const P = f.userData.parts, ph = Math.random() * 6;
+      U.anims.push(t => {
+        const w = t * 6 + ph;
+        f.position.z = z0 + ((t * 0.9) % 14);
+        if (P.legL) { P.legL.rotation.x = Math.sin(w) * 0.5; P.legR.rotation.x = -Math.sin(w) * 0.5; }
+        if (P.armL && kind !== 'zomb') { P.armL.rotation.x = -Math.sin(w) * 0.4; }
+        if (kind === 'zomb') { P.armL.rotation.x = P.armR.rotation.x = -1.35; }
+        f.userData.rig.position.y = Math.abs(Math.sin(w)) * 0.04;
+        if (kind === 'warg') f.userData.rig.rotation.z = Math.sin(w) * 0.06;
+      });
+    }
+    for (let i = 0; i < 8; i++) { const x = -9 + i * 2.6, z = -18 + (i % 3) * 3; const fl2 = new THREE.Sprite(glowMat(0xff5020, 0.9)); fl2.scale.set(0.5, 0.8, 1); fl2.position.set(x, 2.2, z); g.add(fl2); U.anims.push(t => { fl2.position.z = z + ((t * 0.9) % 14); fl2.scale.y = 0.7 + 0.15 * Math.sin(t * 13 + i); }); }
+    addMist(g, { count: 20, x: [-40, 40], y: [0.3, 4], z: [-50, 10], scale: [6, 12], opacity: 0.25, speed: 0.6, color: 0x8a5050 });
+    U.views.main = { look: [0, 12, -60], yaw: 0, pitch: 0.05, dist: 60 };
+  },
   bell(g) {
     const U = g.userData;
     U.bg = 0x05080a; U.fog = 0x060a0e; U.density = 0.03; U.exposure = 1.6;
@@ -1726,9 +1850,10 @@ let film = null, skipFilms = false;
 const filmEl = $('film'), capEl = filmEl.querySelector('.cap');
 filmEl.querySelector('.skip').textContent = L('klepni pro přeskočení ›', 'tap to skip ›');
 function startFilm(id) {
-  const D = FILMS[id], set = curSet.userData, v = set.views[curView];
+  const D = typeof id === 'string' ? FILMS[id] : id, set = curSet.userData, v = set.views[curView];
   const end = viewPose(v);
-  film = { D, t: 0, fired: 0, keys: D.keys.concat([[D.dur, end.pos.toArray(), end.look.toArray()]]) };
+  film = { D, t: 0, fired: 0, keys: D.free ? D.keys : D.keys.concat([[D.dur, end.pos.toArray(), end.look.toArray()]]) };
+  capEl.classList.toggle('long', !!D.long);
   capEl.querySelector('b').textContent = D.cap; capEl.querySelector('span').textContent = D.sub || '';
   document.body.classList.add('film'); filmEl.classList.add('on');
   fade(false);
@@ -1758,6 +1883,52 @@ function endFilm() {
   finishAnims();
   film = null; capEl.classList.remove('on');
   document.body.classList.remove('film'); filmEl.classList.remove('on');
+}
+
+/* THE INTRO: a minute of film before the first party (and from the title, INTRO). It hints at the big story (the
+   Dark King, his army, the old king and his advisers, the prince who needs heroes) without telling it all. Every shot
+   is a film in its own set; between shots the screen fades to black. A tap skips the whole intro. */
+const INTRO = [
+  { set: 'dawn', view: 'dawn', dur: 7.5, keys: [[0, [-12, 14, 26], [0, 3, -12]], [7.5, [6, 8, 12], [0, 4, -35]]],
+    cap: L('Aldmere. Království řek, lesů a hor.', 'Aldmere. A kingdom of rivers, forests and mountains.'), ev: [[0.3, 'wind']] },
+  { set: 'ashen', view: 'main', dur: 8, keys: [[0, [0, 3, 28], [0, 14, -60]], [8, [0, 9, 4], [0, 26, -60]]],
+    cap: L('Ale daleko na východě, v Popelavých horách, se něco probudilo.', 'But far in the east, in the Ashen Mountains, something has woken.') },
+  { set: 'ashen', view: 'main', dur: 7.5, keys: [[0, [4, 1.4, 6], [0, 1.2, -8]], [7.5, [-3.5, 1.8, 3], [0, 1.4, -12]]],
+    cap: L('Ve tmě se shromažďuje armáda.', 'An army gathers in the dark.'), ev: [[0.8, 'bones'], [2.5, 'groan'], [4, 'bones']] },
+  { set: 'throne', view: 'main', dur: 8.5, keys: [[0, [0, 1.9, 4.5], [0, 1.4, -6]], [8.5, [1.7, 1.5, -3.8], [0.35, 1.35, -6.5]]],
+    cap: L('Starý král to nechce slyšet. Rádci mu šeptají, že je všechno v pořádku.', 'The old king doesn\'t want to hear it. His advisers whisper that all is well.') },
+  { set: 'throne', view: 'main', dur: 7.5, keys: [[0, [-4.55, 1.2, 2.7], [-3.7, 1.05, 0.9]], [7.5, [-4.5, 1.25, 2.0], [-3.7, 1.1, 0.9]]],
+    cap: L('Jen mladý princ Edric vidí, co se blíží. A potřebuje hrdiny.', 'Only young Prince Edric sees what is coming. And he needs heroes.') },
+  { set: 'hill', view: 'hill', dur: 8, keys: [[0, [0.5, -1.5, 24], [0, 1, 0]], [8, [0.8, 1.6, 11], [0, 5, -5]]],
+    cap: L('Tvůj příběh začíná v Thornwallu.', 'Your story begins in Thornwall.'), ev: [[1.2, 'bell'], [4.5, 'bell']] },
+];
+let intro = null;
+function playIntro(done) {
+  state = 'intro';
+  for (const id of SCREENS) $(id).hidden = true;
+  $('side').hidden = true;
+  clearUnits(true);
+  intro = { i: -1, done, wait: 0 };
+  Music.play('intro');
+  fade(true);
+}
+function stepIntro(dt) {
+  if (!intro || film) return;
+  if (intro.wait > 0) { intro.wait -= dt; return; }
+  intro.i++;
+  const S = INTRO[intro.i];
+  if (!S) { endIntro(); return; }
+  showSet(S.set, S.view);
+  startFilm(Object.assign({ free: true, long: true, sub: '' }, S, { ev: (S.ev || []).concat([[S.dur - 0.45, () => fade(true)]]) }));
+  intro.wait = 0.45;
+}
+function endIntro() {
+  if (!intro) return;
+  const done = intro.done; intro = null;
+  if (film) { film = null; capEl.classList.remove('on'); document.body.classList.remove('film'); filmEl.classList.remove('on'); }
+  save.introSeen = 1; store();
+  fade(false);
+  done();
 }
 
 /* --- 11. THE BATTLE ON THE GRID -----------------------------------------------
@@ -2269,7 +2440,7 @@ function renderTitle() {
   const saved = loadGame();
   const b = $('title').querySelector('[data-t="cont"]'); b.disabled = !saved;
   const T = (k, txt) => { $('title').querySelector(`[data-t="${k}"]`).textContent = txt; };
-  T('new', L('Nové dobrodružství', 'New adventure')); T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play'));
+  T('new', L('Nové dobrodružství', 'New adventure')); T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play')); T('intro', L('Úvod: příběh Aldmeru', 'Intro: the story of Aldmere'));
   T('snd', L('Zvuk: ', 'Sound: ') + (save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')));
   T('mus', L('Hudba: ', 'Music: ') + (save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')));
   T('lang', L('English', 'Čeština')); T('games', L('‹ Všechny hry', '‹ All games'));
@@ -2281,7 +2452,8 @@ $('title').addEventListener('click', e => {
   const b = e.target.closest('[data-t]'); if (!b) return;
   PX.Sound.unlock(); sfx('click');
   const a = b.dataset.t;
-  if (a === 'new') { newSetup(); setState('setup'); }
+  if (a === 'new') { newSetup(); if (save.introSeen) setState('setup'); else playIntro(() => setState('setup')); }
+  if (a === 'intro') playIntro(() => setState('title'));
   if (a === 'cont') { const g = loadGame(); if (g) { G = g; startPlay(G.room); } }
   if (a === 'rules') setState('rules');
   if (a === 'snd') { save.sfx = !save.sfx; store(); renderTitle(); }
@@ -2702,6 +2874,12 @@ const TRACKS = {
     if (i % 2 === 0) M.pluck(ch[(i / 2) % 3] + 24, t, 0.03);
   } },
 };
+TRACKS.intro = { bpm: 60, chords: ['Dm', 'Bb', 'Gm', 'A', 'Dm', 'Bb', 'Eb', 'A'], vol: 0.6, step(i, t, ch, bar, sd) {
+  if (i === 0) { M.drone(38, t, sd * 16, 0.08); M.pad(ch, t, sd * 16, 0.018, 700 + bar * 60); if (bar >= 2) M.choir(ch, t, sd * 16, 0.014); M.timp(t, 38, 0.2 + Math.min(bar, 8) * 0.015); }
+  if (bar >= 4 && i % 4 === 0) M.bass(ch[0], t, sd * 3, 0.04, 500);
+  if (bar >= 8 && (i === 8 || i === 12)) M.timp(t, 38, 0.18);
+  if (i === 8 && bar % 4 === 3) M.brass(ch.map(m => m + 12), t, sd * 8, 0.02);
+} };
 const ROOM_MUSIC = { inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
 const roomMusic = () => (G && ROOM_MUSIC[G.room]) || 'hill';
 
@@ -2716,7 +2894,7 @@ worldEl.addEventListener('pointermove', e => {
   drag.moved = true; drag.x = e.clientX; drag.y = e.clientY;
   orbit.uyaw = clamp(orbit.uyaw - dx * 0.006, -1.4, 1.4); orbit.upitch = clamp(orbit.upitch + dy * 0.004, -0.4, 0.5);
 });
-worldEl.addEventListener('pointerup', e => { const d = drag; drag = null; if (d && !d.moved) tapWorld(e.clientX, e.clientY); });
+worldEl.addEventListener('pointerup', e => { const d = drag; drag = null; if (state === 'intro') { endIntro(); return; } if (d && !d.moved) tapWorld(e.clientX, e.clientY); });
 worldEl.addEventListener('wheel', e => { orbit.uzoom = clamp(orbit.uzoom * (e.deltaY > 0 ? 1.08 : 0.93), 0.55, 1.6); }, { passive: true });
 function tapWorld(x, y) {
   if (state !== 'play' || sheet || menu) return;
@@ -2746,6 +2924,7 @@ function tapWorld(x, y) {
 window.addEventListener('keydown', e => {
   PX.Sound.unlock();
   if (e.target && e.target.tagName === 'INPUT') return;
+  if (state === 'intro') { if (['Space', 'Enter', 'Escape'].includes(e.code)) { e.preventDefault(); endIntro(); } return; }
   if (state === 'play' && G) {
     if (e.code === 'Escape') { if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
     if (sheet || menu) return;
@@ -2767,6 +2946,7 @@ function frame(now) {
       renderParty(); renderInv(); renderChoices(); renderBanner(); renderDie(dt); refreshMarks();
     }
   }
+  if (state === 'intro') stepIntro(dt);
   updateWorld(dt, t);
   Music.update();
   updateCamera(dt, t);
@@ -2783,7 +2963,8 @@ window.PQ = {
     for (const h of party) { h.vals = [16, 15, 14, 13, 12, 11]; setClass(h, h.cls); }
     startGame(); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
   },
-  get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
+  introShot(i) { playIntro(() => setState('title')); intro.i = i - 1; },
+  get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
   tileScreen: t => toScreen(tileWorld(t)),
