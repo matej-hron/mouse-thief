@@ -175,8 +175,8 @@ doesn't tell everything:
 
 ## 8. The plan
 
-1. **Now**: this document, and the intro film in the game.
-2. **The campaign frame**: one party for the whole game, levels 1–5, the world map (Aldmere, with the Drowned Bell on
+1. **This document, and the intro film** (built in 0.3.1).
+2. **The campaign frame** (built in 0.4.0; new spells for levels 3+ still to come): one party for the whole game, levels 1–5, the world map (Aldmere, with the Drowned Bell on
    it as the first side mission), the mission map, artefacts (the three of the Drowned Bell, with the hidden
    ossuary), the artefact book. The Drowned Bell gets its clue (the red robe).
 3. **S1, The Prince's Messenger**: we write its scenes here first (like the Drowned Bell: 5–7 scenes, films, fights,
