@@ -186,6 +186,7 @@
     <button class="ch" data-t="rules">Jak se hraje</button>
     <button class="ch" data-t="snd">Zvuk: zapnutý</button>
     <button class="ch" data-t="mus">Hudba: zapnutá</button>
+    <button class="ch" data-t="lang">English</button>
     <button class="ch dim" data-t="games">‹ Všechny hry</button>
   </div>
   <div class="foot"><span id="wins"></span><span id="ver"></span></div>
@@ -203,7 +204,7 @@
 </div>
 <div id="banner" hidden></div>
 <div id="die" hidden><b>20</b><span>k20</span></div>
-<div id="film"><div class="bar t"></div><div class="bar b"></div><div class="cap"><b></b><span></span></div><div class="skip">klepni pro přeskočení ›</div></div>
+<div id="film"><div class="bar t"></div><div class="bar b"></div><div class="cap"><b></b><span></span></div><div class="skip"></div></div>
 <div id="fade"></div>
 <div id="sheet" class="modal" hidden></div>
 <div id="menu" class="modal" hidden></div>
@@ -231,11 +232,16 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.2.4';
+const VERSION = '0.3.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+// the language: the arcade's SETTINGS → LANGUAGE (or the switch on the title). Every text is written twice, L('česky', 'English'):
+// not translated word for word, each language gets what works in it (the riddle on the door is different).
+const LANG = PX.Lang.code() === 'cs' ? 'cs' : 'en';
+const L = (cs, en) => LANG === 'cs' ? cs : en;
+document.documentElement.lang = LANG;
 const profile = PX.Profile.get();
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -249,46 +255,47 @@ const nice = v => String(v).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCas
 
 /* --- 2. RULES ----------------------------------------------------------------- */
 const STATS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
-const STAT_NAME = { str: 'Síla', dex: 'Obratnost', con: 'Odolnost', int: 'Inteligence', wis: 'Moudrost', cha: 'Charisma' };
-const STAT_SHORT = { str: 'SÍL', dex: 'OBR', con: 'ODL', int: 'INT', wis: 'MOU', cha: 'CHA' };
+const STAT_NAME = L({ str: 'Síla', dex: 'Obratnost', con: 'Odolnost', int: 'Inteligence', wis: 'Moudrost', cha: 'Charisma' },
+                    { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' });
+const STAT_SHORT = L({ str: 'SÍL', dex: 'OBR', con: 'ODL', int: 'INT', wis: 'MOU', cha: 'CHA' }, { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' });
 const strHit = s => s <= 3 ? -3 : s <= 5 ? -2 : s <= 7 ? -1 : s <= 16 ? 0 : 1;
 const strDmg = s => s <= 5 ? -1 : s <= 15 ? 0 : s <= 17 ? 1 : 2;
 const dexAC = s => s <= 3 ? 4 : s <= 5 ? 6 - s : s === 6 ? 1 : s <= 14 ? 0 : -(s - 14);
 const dexMissile = s => s <= 3 ? -3 : s <= 5 ? s - 6 : s <= 15 ? 0 : s === 16 ? 1 : 2;
 const conHP = (s, fighter) => s <= 3 ? -2 : s <= 6 ? -1 : s <= 14 ? 0 : s === 15 ? 1 : s === 16 ? 2 : fighter ? s - 14 : 2;
 const THIEF_DEX = { 16: [5, 0, 0, 0], 17: [10, 0, 5, 5], 18: [15, 5, 10, 10] };
-const SAVE_NAMES = ['jedu', 'hůlkám', 'ztuhnutí', 'dechu', 'kouzlům'];
+const SAVE_NAMES = L(['jedu', 'hůlkám', 'ztuhnutí', 'dechu', 'kouzlům'], ['poison', 'wands', 'paralysis', 'breath', 'spells']);
 const SV = { poison: 0, wand: 1, para: 2, breath: 3, spell: 4 };
 // name: [boy, girl]; move: tiles a turn on the battle grid
 const CLASSES = {
-  fighter: { name: ['Válečník', 'Válečnice'], hd: 10, prime: 'str', order: ['str', 'con', 'dex', 'wis', 'cha', 'int'], armour: 4, armourName: 'kroužková zbroj a štít',
-             weapon: { name: 'Dlouhý meč', n: 1, s: 8, b: 0, edged: true }, saves: [14, 16, 15, 17, 17], next: 2000, col: '#e8a040', move: 3,
-             about: 'Silný a odolný, má nejlepší zbroj. Stoupni si dopředu a chraň ostatní.' },
-  cleric:  { name: ['Kněz', 'Kněžka'], hd: 8, prime: 'wis', order: ['wis', 'con', 'str', 'cha', 'dex', 'int'], armour: 4, armourName: 'kroužková zbroj a štít',
-             weapon: { name: 'Palcát', n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless'], move: 3,
-             about: 'Léčí, žehná a svatým znamením zahání kostlivce a utopence.' },
-  mage:    { name: ['Čaroděj', 'Čarodějka'], hd: 4, prime: 'int', order: ['int', 'dex', 'con', 'wis', 'cha', 'str'], armour: 10, armourName: 'plášť',
-             weapon: { name: 'Hůl', n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'], move: 4,
-             about: 'Křehký, ale umí kouzla: Magická střela nikdy nemine, Spánek uspí nepřátele. Drž se vzadu.' },
-  thief:   { name: ['Zloděj', 'Zlodějka'], hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: 'kožená zbroj',
-             weapon: { name: 'Krátký meč', n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a', move: 4,
-             about: 'Otevírá zámky, hledá pasti a plíží se. Ze stínu bodne dvakrát silněji.' },
+  fighter: { name: L(['Válečník', 'Válečnice'], ['Fighter', 'Fighter']), hd: 10, prime: 'str', order: ['str', 'con', 'dex', 'wis', 'cha', 'int'], armour: 4, armourName: L('kroužková zbroj a štít', 'chain mail and shield'),
+             weapon: { name: L('Dlouhý meč', 'Long sword'), n: 1, s: 8, b: 0, edged: true }, saves: [14, 16, 15, 17, 17], next: 2000, col: '#e8a040', move: 3,
+             about: L('Silný a odolný, má nejlepší zbroj. Stoupni si dopředu a chraň ostatní.', 'Strong and tough, with the best armour. Stand in front and protect the others.') },
+  cleric:  { name: L(['Kněz', 'Kněžka'], ['Cleric', 'Cleric']), hd: 8, prime: 'wis', order: ['wis', 'con', 'str', 'cha', 'dex', 'int'], armour: 4, armourName: L('kroužková zbroj a štít', 'chain mail and shield'),
+             weapon: { name: L('Palcát', 'Mace'), n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless'], move: 3,
+             about: L('Léčí, žehná a svatým znamením zahání kostlivce a utopence.', 'Heals, blesses, and drives off skeletons and the drowned with a holy symbol.') },
+  mage:    { name: L(['Čaroděj', 'Čarodějka'], ['Mage', 'Mage']), hd: 4, prime: 'int', order: ['int', 'dex', 'con', 'wis', 'cha', 'str'], armour: 10, armourName: L('plášť', 'robes'),
+             weapon: { name: L('Hůl', 'Staff'), n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'], move: 4,
+             about: L('Křehký, ale umí kouzla: Magická střela nikdy nemine, Spánek uspí nepřátele. Drž se vzadu.', 'Fragile, but knows magic: Magic Missile never misses, Sleep puts enemies to sleep. Stay at the back.') },
+  thief:   { name: L(['Zloděj', 'Zlodějka'], ['Thief', 'Thief']), hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: L('kožená zbroj', 'leather armour'),
+             weapon: { name: L('Krátký meč', 'Short sword'), n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a', move: 4,
+             about: L('Otevírá zámky, hledá pasti a plíží se. Ze stínu bodne dvakrát silněji.', 'Opens locks, finds traps and sneaks. Strikes twice as hard from the shadows.') },
 };
 const CLASS_IDS = ['fighter', 'cleric', 'mage', 'thief'];
 const SPELLS = {
-  missile: { name: 'Magická střela', target: 'foe', info: '1k4+1 zranění, nikdy nemine', ic: '✦' },
-  sleep:   { name: 'Spánek', target: 'none', info: 'uspí pár nepřátel (ne nemrtvé)', ic: '☾' },
-  cure:    { name: 'Léčení', target: 'hero', info: 'vyléčí 1k8 životů, dotykem', calm: true, ic: '✚' },
-  bless:   { name: 'Požehnání', target: 'none', info: '+1 k útoku pro celou družinu', ic: '☀' },
+  missile: { name: L('Magická střela', 'Magic Missile'), target: 'foe', info: L('1k4+1 zranění, nikdy nemine', '1d4+1 damage, never misses'), ic: '✦' },
+  sleep:   { name: L('Spánek', 'Sleep'), target: 'none', info: L('uspí pár nepřátel (ne nemrtvé)', 'puts a few enemies to sleep (not the undead)'), ic: '☾' },
+  cure:    { name: L('Léčení', 'Cure Wounds'), target: 'hero', info: L('vyléčí 1k8 životů, dotykem', 'heals 1d8 HP, by touch'), calm: true, ic: '✚' },
+  bless:   { name: L('Požehnání', 'Bless'), target: 'none', info: L('+1 k útoku pro celou družinu', '+1 to hit for the whole party'), ic: '☀' },
 };
 // monsters: hp = [dice, sides, bonus], dmg the same; turn = what a 1st level cleric needs on d20 to turn it
 const MON = {
-  rat:    { name: 'Krysa', hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, move: 4, fell: 'je poražená', ran: 'utíká pryč', squeak: true },
-  skel:   { name: 'Kostlivec', hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, move: 3, fell: 'se rozsypal na hromádku kostí', ran: 'prchá před světlem' },
-  zomb:   { name: 'Utopenec', hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: 'se rozpadl v louži vody', ran: 'couvá zpátky do tůně' },
-  malrec: { name: 'Bratr Malrec', hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: 'padá k zemi', ran: '' },
+  rat:    { name: L('Krysa', 'Rat'), hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, move: 4, fell: L('je poražená', 'is beaten'), ran: L('utíká pryč', 'runs away'), squeak: true },
+  skel:   { name: L('Kostlivec', 'Skeleton'), hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, move: 3, fell: L('se rozsypal na hromádku kostí', 'falls apart into a heap of bones'), ran: L('prchá před světlem', 'flees from the light') },
+  zomb:   { name: L('Utopenec', 'Drowned one'), hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: L('se rozpadl v louži vody', 'collapses into a puddle of water'), ran: L('couvá zpátky do tůně', 'backs away into the pool') },
+  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '' },
 };
-const ITEMS = { potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'Jídlo' };
+const ITEMS = L({ potion: L('Léčivý lektvar', 'Healing potion'), holy: 'Svěcená voda', food: 'Jídlo' }, { potion: 'Healing potion', holy: 'Holy water', food: 'Food' });
 
 /* --- 3. HEROES ------------------------------------------------------------- */
 const NAMES = [['Bran', 'm'], ['Mira', 'f'], ['Oswin', 'm'], ['Tess', 'f'], ['Garrick', 'm'], ['Elwyn', 'f'], ['Hob', 'm'], ['Sable', 'f'],
@@ -318,7 +325,7 @@ function thiefSkill(h, k) {                                 // k: 0 open locks, 
   const base = [35, 25, 35, 25][k], adj = THIEF_DEX[Math.min(18, h.st.dex)] || [0, 0, 0, 0];
   return base + adj[k];
 }
-const SKILL_NAMES = ['Otevírání zámků', 'Hledání pastí', 'Tiché plížení', 'Schovat se ve stínu'];
+const SKILL_NAMES = L(['Otevírání zámků', 'Hledání pastí', 'Tiché plížení', 'Schovat se ve stínu'], ['Open locks', 'Find traps', 'Move silently', 'Hide in shadows']);
 const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]];
 const gv = (h, boy, girl) => h.g === 'f' ? girl : boy;     // Czech words that change for a girl hero
 
@@ -395,30 +402,30 @@ function pump(dt) {
 const busy = () => !!cur || Q.length > 0;
 
 // checks: they roll, show the roll, and give back true or false
-const okTxt = ok => ok ? 'Povedlo se!' : 'Nevyšlo to.';
+const okTxt = ok => ok ? L('Povedlo se!', 'Success!') : L('Nevyšlo to.', 'No luck.');
 function abilityChance(h, stat, mod = 0) { return clamp(h.st[stat] + mod, 1, 19) / 20; }
 function checkAbility(h, stat, mod = 0) {
   const need = clamp(h.st[stat] + mod, 1, 19), r = rnd(20), ok = r <= need;
-  rollFx(20, r, `${h.name} – ${STAT_NAME[stat]}: padlo ${r}, stačí ${need} nebo méně. ${okTxt(ok)}`, ok);
+  rollFx(20, r, L(`${h.name} – ${STAT_NAME[stat]}: padlo ${r}, stačí ${need} nebo méně. ${okTxt(ok)}`, `${h.name} – ${STAT_NAME[stat]}: rolled ${r}, needs ${need} or less. ${okTxt(ok)}`), ok);
   return ok;
 }
 function skillChance(h, k) { return h.cls === 'thief' ? thiefSkill(h, k) / 100 : 0; }
 function checkSkill(h, k) {
   const need = thiefSkill(h, k), r = rnd(100), ok = r <= need;
-  rollFx(100, r, `${h.name} – ${SKILL_NAMES[k]}: padlo ${r} ze 100, stačí ${need} nebo méně. ${okTxt(ok)}`, ok);
+  rollFx(100, r, L(`${h.name} – ${SKILL_NAMES[k]}: padlo ${r} ze 100, stačí ${need} nebo méně. ${okTxt(ok)}`, `${h.name} – ${SKILL_NAMES[k]}: rolled ${r} of 100, needs ${need} or less. ${okTxt(ok)}`), ok);
   return ok;
 }
 function checkSave(h, kind, mod = 0, fast) {
   const need = saveOf(h, kind), r = rnd(20), ok = r + mod >= need;
-  rollFx(20, r, `${h.name} – záchrana proti ${SAVE_NAMES[SV[kind]]}: padlo ${r}${mod ? (mod > 0 ? ' + ' : ' - ') + Math.abs(mod) : ''}, potřeba ${need} nebo víc. ${ok ? 'Zachráněno!' : 'Nevyšlo to.'}`, ok, fast);
+  rollFx(20, r, L(`${h.name} – záchrana proti ${SAVE_NAMES[SV[kind]]}: padlo ${r}${mod ? (mod > 0 ? ' + ' : ' - ') + Math.abs(mod) : ''}, potřeba ${need} nebo víc. ${ok ? 'Zachráněno!' : 'Nevyšlo to.'}`, `${h.name} – save vs ${SAVE_NAMES[SV[kind]]}: rolled ${r}${mod ? (mod > 0 ? ' + ' : ' - ') + Math.abs(mod) : ''}, needs ${need} or more. ${ok ? 'Saved!' : 'No luck.'}`), ok, fast);
   return ok;
 }
 const pct = c => Math.round(c * 100) + ' %';
 // the party picks who does it: a button for every hero who can, with their chance
 function choose(q, chance, fn, back) {
   const list = G.heroes.filter(h => up(h) && chance(h) > 0).map(h => ({ label: h.name, note: pct(chance(h)), act: () => fn(h) }));
-  if (!list.length) { say('To nikdo z družiny neumí.', '#ff7a6a'); then(back); return; }
-  list.push({ label: 'Nic, zpátky', act: back, dim: true });
+  if (!list.length) { say(L('To nikdo z družiny neumí.', 'Nobody in the party can do that.'), '#ff7a6a'); then(back); return; }
+  list.push({ label: L('Nic, zpátky', 'Never mind'), act: back, dim: true });
   setChoices(q, list);
 }
 // hurt a hero: the number changes at once, what you see (the card, the bar) when the queue gets there
@@ -440,7 +447,7 @@ function giveXP(n, why) {
   if (!live.length || n <= 0) return;
   const each = Math.floor(n / live.length);
   for (const h of live) h.xp += each;
-  say(`${why}: ${each} zkušeností pro každého hrdinu.`, '#ffd23f');
+  say(L(`${why}: ${each} zkušeností pro každého hrdinu.`, `${why}: ${each} XP for every hero.`), '#ffd23f');
 }
 
 /* --- 5. THE ADVENTURE: UTOPENÝ ZVON (THE DROWNED BELL) ---------------------------------------------
@@ -471,214 +478,221 @@ function enter(id) {
   if (R.enter) R.enter(first);
   then(stay);
 }
-function showChoices() { const R = ROOMS[G.room]; setChoices(typeof R.ask === 'function' ? R.ask() : R.ask || 'Co družina udělá?', R.choices()); }
+function showChoices() { const R = ROOMS[G.room]; setChoices(typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?'), R.choices()); }
 function needle(h) {
-  say(`Au! Do ruky se zabodne malá jehla. ${h.name} sykne bolestí.`, '#ff7a6a');
+  say(L(`Au! Do ruky se zabodne malá jehla. ${h.name} sykne bolestí.`, `Ouch! A tiny needle jabs ${h.name}\'s hand.`), '#ff7a6a');
   f().trapGone = 1;
-  if (checkSave(h, 'poison')) { hurt(h, 1, true); say('Jen škrábnutí. 1 zranění.'); }
-  else { const d = dice(2, 4); hurt(h, d, true); say(`Jed pálí. ${d} zranění.`, '#ff7a6a'); }
+  if (checkSave(h, 'poison')) { hurt(h, 1, true); say(L('Jen škrábnutí. 1 zranění.', 'Just a scratch. 1 damage.')); }
+  else { const d = dice(2, 4); hurt(h, d, true); say(L(`Jed pálí. ${d} zranění.`, `The poison burns. ${d} damage.`), '#ff7a6a'); }
 }
 function openTrapdoor() {
-  f().open = 1; say('Dvířka se otevřou. Zespodu stoupá studený vzduch a vůně svíček.');
+  f().open = 1; say(L('Dvířka se otevřou. Zespodu stoupá studený vzduch a vůně svíček.', 'The trapdoor swings open. Cold air and the smell of candles rise from below.'));
   play(() => openTrap(), 1.0);
   then(() => go('crypt'));
 }
-function answerDoor(word) {
-  if (word === 'Zvon') {
-    say(`„Zvon.“ Bronzová pusa to slovo pomalu zopakuje. Dveře zaskřípou a otevírají se.`, '#7aea7a'); sfx('ok');
+function answerDoor(word, right) {
+  if (right) {
+    say(L(`„Zvon.“ Bronzová pusa to slovo pomalu zopakuje. Dveře zaskřípou a otevírají se.`, `"A bell." The bronze mouth slowly says the word back. The door grinds open.`), '#7aea7a'); sfx('ok');
     play(() => openDoor(), 1.6);
     then(() => go('bell')); return;
   }
-  say(`„${word}.“ Bronzová pusa vyplivne na družinu proud ledové černé vody!`, '#ff7a6a');
+  say(L(`„${word}.“ Bronzová pusa vyplivne na družinu proud ledové černé vody!`, `"${word}." The bronze mouth spits a jet of icy black water at the party!`), '#ff7a6a');
   play(() => waterJet(), 0.7);
   f().alarm = (f().alarm || 0) + 1;
-  for (const h of G.heroes) if (up(h)) { if (!checkSave(h, 'breath', 0, true)) { const d = rnd(4); hurt(h, d, true); say(`${h.name}: ${d} zranění.`, '#ff7a6a'); } }
+  for (const h of G.heroes) if (up(h)) { if (!checkSave(h, 'breath', 0, true)) { const d = rnd(4); hurt(h, d, true); say(L(`${h.name}: ${d} zranění.`, `${h.name}: ${d} damage.`), '#ff7a6a'); } }
   then(stay);
 }
 function endText() {
-  let t = 'Odvážete Milu. Chytí se nejbližšího hrdiny a nechce ho pustit.\n';
-  t += 'Zelený zvon se naposledy zhoupne. Pak tiše pukne a už nikdy nezazvoní.\n';
-  t += f().surrender ? 'Bratr Malrec jde s vámi dolů z kopce. Pláče pro svého bratra a prosí o odpuštění.\n' : '';
-  t += 'Svítá, když vedete Milu dolů do vesnice. Mlynář pláče radostí. Správce Hollis vám vysype 200 zlaťáků.';
+  let t = L('Odvážete Milu. Chytí se nejbližšího hrdiny a nechce ho pustit.\n', 'You untie Mila. She grabs the nearest hero and won\'t let go.\n');
+  t += L('Zelený zvon se naposledy zhoupne. Pak tiše pukne a už nikdy nezazvoní.\n', 'The green bell swings one last time. Then it quietly cracks, and it will never ring again.\n');
+  t += f().surrender ? L('Bratr Malrec jde s vámi dolů z kopce. Pláče pro svého bratra a prosí o odpuštění.\n', 'Brother Malrec walks down the hill with you, crying for his brother and asking to be forgiven.\n') : '';
+  t += L('Svítá, když vedete Milu dolů do vesnice. Mlynář pláče radostí. Správce Hollis vám vysype 200 zlaťáků.', 'Dawn is breaking as you lead Mila down to the village. The miller weeps with joy. Reeve Hollis counts out 200 gold.');
   return t;
 }
 const ROOMS = {
   inn: {
-    title: 'Thornwall: hostinec U Křivé lucerny', set: 'village', view: 'inn', film: 'village',
-    text: 'Podzimní večer. Už sedm nocí zvoní nahoře na kopci zvon. Jenže ten zvon spadl do řeky před sto lety!\n' +
+    title: L('Thornwall: hostinec U Křivé lucerny', 'Thornwall: the Crooked Lantern Inn'), set: 'village', view: 'inn', film: 'village',
+    text: L('Podzimní večer. Už sedm nocí zvoní nahoře na kopci zvon. Jenže ten zvon spadl do řeky před sto lety!\n' +
           'Včera večer se tam šla podívat Mila, mlynářova dcera. Dodnes se nevrátila. Správce Hollis slibuje 200 zlaťáků tomu, kdo ji přivede domů.',
-    again: 'Oheň v krbu praská. Nahoře na kopci zase zvoní zvon.',
+          'An autumn evening. For seven nights a bell has been ringing up on the hill. But that bell fell into the river a hundred years ago!\n' +
+          'Last night Mila, the miller\'s daughter, went up to look. She hasn\'t come back. Reeve Hollis offers 200 gold to whoever brings her home.'),
+    again: L('Oheň v krbu praská. Nahoře na kopci zase zvoní zvon.', 'The fire crackles. Up on the hill, the bell rings again.'),
     choices: () => [
-      { label: 'Vyptat se na klepy', ic: '💬', if: () => !f().rumour, ...pickWho('Kdo se vyptává? (hod na Charisma)', h => abilityChance(h, 'cha'), h => {
+      { label: L('Vyptat se na klepy', 'Ask around for gossip'), ic: '💬', if: () => !f().rumour, ...pickWho(L('Kdo se vyptává? (hod na Charisma)', 'Who asks around? (Charisma roll)'), h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
           f().rumour = 2;
-          say('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám srdce, a přece nežiju…“');
-          say('„A ty kosti pod kostelem? Meč po nich jen sklouzne. Lepší je pořádná rána palcátem.“');
+          say(L('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám srdce, a přece nežiju…“', 'Old Elva leans in. "Brother Malrec, the sexton, went strange when his brother drowned in the river. He keeps humming an old song: I have a tongue but never taste..."'));
+          say(L('„A ty kosti pod kostelem? Meč po nich jen sklouzne. Lepší je pořádná rána palcátem.“', '"And those bones under the church? A sword just slides off them. A good whack with a mace is better."'));
         } else {
           f().rumour = 1;
-          say('Sedláci jen bručí o krysách v kostele. „Velký jako psi! Ale sežerou všechno, co jim hodíte.“');
+          say(L('Sedláci jen bručí o krysách v kostele. „Velký jako psi! Ale sežerou všechno, co jim hodíte.“', 'The farmers only grumble about the rats in the church. "Big as dogs! But they\'ll eat anything you throw them."'));
         }
         then(stay);
       }) },
-      { label: 'Vyrazit na kopec ke kostelu', ic: '⛰', act: () => go('hill') },
+      { label: L('Vyrazit na kopec ke kostelu', 'Set off up the hill to the church'), ic: '⛰', act: () => go('hill') },
     ],
   },
   hill: {
-    title: 'Kostel na kopci', set: 'hill', view: 'hill', film: 'hill',
-    text: 'Cesta stoupá mezi starými hroby. Mlha je tak hustá, že skoro nevidíte na krok.\n' +
+    title: L('Kostel na kopci', 'The Church on the Hill'), set: 'hill', view: 'hill', film: 'hill',
+    text: L('Cesta stoupá mezi starými hroby. Mlha je tak hustá, že skoro nevidíte na krok.\n' +
           'Pak se z ní vynoří kostel. Rozbitá věž, černá okna. A zevnitř, tiše, jako by z hlubin: zvon.',
-    again: 'Kostel stojí v mlze. Dveře jsou pootevřené.',
+          'The path climbs between old graves. The mist is so thick you can hardly see a step ahead.\n' +
+          'Then the church rises out of it. A broken tower, black windows. And from inside, softly, as if from deep below: a bell.'),
+    again: L('Kostel stojí v mlze. Dveře jsou pootevřené.', 'The church stands in the mist. The door is ajar.'),
     choices: () => [
-      { label: f().open ? 'Dovnitř a dolů do krypty' : 'Vejít do kostela', ic: '⛪', act: () => go(f().open ? (f().skel ? 'door' : 'crypt') : f().rats ? 'altar' : 'nave') },
-      { label: 'Prohledat hřbitov', ic: '🔍', if: () => !f().grave, ...pickWho('Kdo hledá? (hod na Moudrost)', h => h.tried.grave ? 0 : abilityChance(h, 'wis'), h => {
+      { label: f().open ? L('Dovnitř a dolů do krypty', 'Inside and down to the crypt') : L('Vejít do kostela', 'Go into the church'), ic: '⛪', act: () => go(f().open ? (f().skel ? 'door' : 'crypt') : f().rats ? 'altar' : 'nave') },
+      { label: L('Prohledat hřbitov', 'Search the graveyard'), ic: '🔍', if: () => !f().grave, ...pickWho(L('Kdo hledá? (hod na Moudrost)', 'Who searches? (Wisdom roll)'), h => h.tried.grave ? 0 : abilityChance(h, 'wis'), h => {
         h.tried.grave = 1;
         if (checkAbility(h, 'wis')) {
           f().grave = 1; G.items.holy++;
-          say('U hrobu svatého Aldera stojí malá lahvička. Svěcená voda! Na kostlivce a utopence je jako oheň.', '#7aea7a');
-        } else say(`${h.name} najde jen mokrou trávu a mlhu.`);
+          say(L('U hrobu svatého Aldera stojí malá lahvička. Svěcená voda! Na kostlivce a utopence je jako oheň.', 'By Saint Alder\'s grave stands a small flask. Holy water! It burns skeletons and the drowned like fire.'), '#7aea7a');
+        } else say(L(`${h.name} najde jen mokrou trávu a mlhu.`, `${h.name} finds only wet grass and mist.`));
         then(stay);
       }) },
-      { label: 'Zpátky do vesnice', ic: '‹', dim: true, act: () => go('inn') },
+      { label: L('Zpátky do vesnice', 'Back to the village'), ic: '‹', dim: true, act: () => go('inn') },
     ],
   },
   nave: {
-    title: 'Uvnitř kostela', set: 'nave', view: 'nave', film: 'nave',
-    text: () => `Střecha je propadlá a dovnitř svítí měsíc. Na konci lodi stojí oltář.\nJenže mezi vámi a oltářem se něco hýbe. ${ratsN() < 5 ? ratsN() + ' obří krysy, tlusté' : ratsN() + ' obřích krys, tlustých'} a s červenýma očima.`,
-    again: 'Krysy jsou pořád tady, mezi vámi a oltářem.',
+    title: L('Uvnitř kostela', 'Inside the Church'), set: 'nave', view: 'nave', film: 'nave',
+    text: () => L(`Střecha je propadlá a dovnitř svítí měsíc. Na konci lodi stojí oltář.\nJenže mezi vámi a oltářem se něco hýbe. ${ratsN() < 5 ? ratsN() + ' obří krysy, tlusté' : ratsN() + ' obřích krys, tlustých'} a s červenýma očima.`,
+                  `The roof has fallen in and the moon shines inside. At the end of the nave stands the altar.\nBut between you and the altar something is moving: ${ratsN()} giant rats, fat and red-eyed.`),
+    again: L('Krysy jsou pořád tady, mezi vámi a oltářem.', 'The rats are still here, between you and the altar.'),
     foes: () => [['rat', ratsN()]], beaten: () => f().rats,
     choices: () => [
-      { label: 'Bojovat s krysami', ic: '⚔', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') }) },
-      { label: 'Proplížit se kolem', ic: '🤫', act: () => {
-        say('Všichni se snaží jít potichu. (Zloděj: tiché plížení. Ostatní: hod na Obratnost, ve zbroji -4.)');
+      { label: L('Bojovat s krysami', 'Fight the rats'), ic: '⚔', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') }) },
+      { label: L('Proplížit se kolem', 'Sneak past them'), ic: '🤫', act: () => {
+        say(L('Všichni se snaží jít potichu. (Zloděj: tiché plížení. Ostatní: hod na Obratnost, ve zbroji -4.)', 'Everyone tries to walk quietly. (Thief: move silently. The others: Dexterity roll, -4 in armour.)'));
         let ok = 0, all = 0;
         for (const h of G.heroes) if (up(h)) { all++; if (h.cls === 'thief' ? checkSkill(h, 2) : checkAbility(h, 'dex', CLASSES[h.cls].armour <= 4 ? -4 : 0)) ok++; }
-        if (ok * 2 >= all) { say('Proklouznete podél zdi. Krysy ani nezvednou hlavu.', '#7aea7a'); f().rats = 1; then(() => go('altar')); }
-        else { say('Bota zaskřípe o kámen. Všechny červené oči se otočí k vám!', '#ff7a6a'); then(() => fight({ foes: [['rat', ratsN()]], surprise: 'foes', win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') })); }
+        if (ok * 2 >= all) { say(L('Proklouznete podél zdi. Krysy ani nezvednou hlavu.', 'You slip along the wall. The rats never look up.'), '#7aea7a'); f().rats = 1; then(() => go('altar')); }
+        else { say(L('Bota zaskřípe o kámen. Všechny červené oči se otočí k vám!', 'A boot scrapes on stone. Every red eye turns toward you!'), '#ff7a6a'); then(() => fight({ foes: [['rat', ratsN()]], surprise: 'foes', win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') })); }
       } },
-      { label: 'Hodit jim jídlo', ic: '🧀', note: () => `jídlo: ${G.items.food}`, if: () => G.items.food > 0, act: () => {
+      { label: L('Hodit jim jídlo', 'Throw them some food'), ic: '🧀', note: () => L(`jídlo: ${G.items.food}`, `food: ${G.items.food}`), if: () => G.items.food > 0, act: () => {
         G.items.food--; f().rats = 1;
-        say('Hodíte do tmy bochník a kus sýra. Krysy se na něj vrhnou a pištějí. Vy v klidu projdete.', '#7aea7a');
+        say(L('Hodíte do tmy bochník a kus sýra. Krysy se na něj vrhnou a pištějí. Vy v klidu projdete.', 'You toss a loaf and a wedge of cheese into the dark. The rats pour over it, squealing. You walk past.'), '#7aea7a');
         play(() => ratsToFood(), 1.6);
         then(() => go('altar'));
       } },
-      { label: 'Ven z kostela', ic: '‹', dim: true, act: () => go('hill') },
+      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ],
   },
   altar: {
-    title: 'Oltář', set: 'nave', view: 'altar', film: 'altar',
-    text: 'Za oltářem vedou čerstvé stopy k padacím dvířkům v podlaze. Mají nový, lesklý zámek.\nZdola je slyšet zvon. A na chvilku i dívčí hlas.',
-    again: () => f().open ? 'Padací dvířka jsou otevřená. Dolů vedou schody.' : 'Za oltářem čekají zamčená padací dvířka.',
+    title: L('Oltář', 'The Altar'), set: 'nave', view: 'altar', film: 'altar',
+    text: L('Za oltářem vedou čerstvé stopy k padacím dvířkům v podlaze. Mají nový, lesklý zámek.\nZdola je slyšet zvon. A na chvilku i dívčí hlas.', 'Behind the altar, fresh tracks lead to a trapdoor in the floor. Its lock is new and shiny.\nFrom below you hear the bell. And for a moment, a girl\'s voice.'),
+    again: () => f().open ? L('Padací dvířka jsou otevřená. Dolů vedou schody.', 'The trapdoor is open. Steps lead down.') : L('Za oltářem čekají zamčená padací dvířka.', 'Behind the altar the locked trapdoor waits.'),
     choices: () => f().open ? [
-      { label: 'Dolů do krypty', ic: '⬇', act: () => go(f().skel ? 'door' : 'crypt') },
-      { label: 'Ven z kostela', ic: '‹', dim: true, act: () => go('hill') },
+      { label: L('Dolů do krypty', 'Down to the crypt'), ic: '⬇', act: () => go(f().skel ? 'door' : 'crypt') },
+      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ] : [
-      { label: 'Hledat pasti', ic: '🔍', if: () => !f().trapKnown && !f().trapGone, ...pickWho('Kdo hledá? (Zloděj: hledání pastí. Ostatní: Moudrost -8)', h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
+      { label: L('Hledat pasti', 'Search for traps'), ic: '🔍', if: () => !f().trapKnown && !f().trapGone, ...pickWho(L('Kdo hledá? (Zloděj: hledání pastí. Ostatní: Moudrost -8)', 'Who searches? (Thief: find traps. The others: Wisdom -8)'), h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
         h.tried.trap = 1;
-        if (h.cls === 'thief' ? checkSkill(h, 1) : checkAbility(h, 'wis', -8)) { f().trapKnown = 1; say('V zámku je schovaná malinká jehla, mokrá od něčeho tmavého. Past!', '#7aea7a'); }
-        else say('Nic podezřelého nevidíte.');
+        if (h.cls === 'thief' ? checkSkill(h, 1) : checkAbility(h, 'wis', -8)) { f().trapKnown = 1; say(L('V zámku je schovaná malinká jehla, mokrá od něčeho tmavého. Past!', 'Hidden in the lock is a tiny needle, wet with something dark. A trap!'), '#7aea7a'); }
+        else say(L('Nic podezřelého nevidíte.', 'You see nothing suspicious.'));
         then(stay);
       }) },
-      { label: 'Vyndat jehlu', ic: '🪡', if: () => f().trapKnown && !f().trapGone, ...pickWho('Kdo to zkusí? (Zloděj: hledání pastí)', h => skillChance(h, 1), h => {
-        if (checkSkill(h, 1)) { f().trapGone = 1; say('Kousek drátku, cvak, a jehla padá do dlaně.', '#7aea7a'); }
+      { label: L('Vyndat jehlu', 'Remove the needle'), ic: '🪡', if: () => f().trapKnown && !f().trapGone, ...pickWho(L('Kdo to zkusí? (Zloděj: hledání pastí)', 'Who tries? (Thief: find traps)'), h => skillChance(h, 1), h => {
+        if (checkSkill(h, 1)) { f().trapGone = 1; say(L('Kousek drátku, cvak, a jehla padá do dlaně.', 'A bit of wire, click, and the needle drops into your palm.'), '#7aea7a'); }
         else needle(h);
         then(stay);
       }) },
-      { label: 'Odemknout zámek', ic: '🗝', ...pickWho('Kdo odemyká? (jen Zloděj: otevírání zámků)', h => h.tried.lock ? 0 : skillChance(h, 0), h => {
+      { label: L('Odemknout zámek', 'Pick the lock'), ic: '🗝', ...pickWho(L('Kdo odemyká? (jen Zloděj: otevírání zámků)', 'Who picks it? (Thief only: open locks)'), h => h.tried.lock ? 0 : skillChance(h, 0), h => {
         h.tried.lock = 1;
         if (!f().trapGone) needle(h);
         if (checkSkill(h, 0)) { openTrapdoor(); return; }
-        say('Zámek nepovolí. (Každý zloděj má na zámek jen jeden pokus.)', '#ff7a6a');
+        say(L('Zámek nepovolí. (Každý zloděj má na zámek jen jeden pokus.)', 'The lock won\'t give. (Each thief gets one try at a lock.)'), '#ff7a6a');
         then(stay);
       }) },
-      { label: 'Vypáčit dvířka silou', ic: '💪', ...pickWho('Kdo páčí? (Síla -4)', h => abilityChance(h, 'str', -4), h => {
+      { label: L('Vypáčit dvířka silou', 'Force the trapdoor'), ic: '💪', ...pickWho(L('Kdo páčí? (Síla -4)', 'Who heaves? (Strength -4)'), h => abilityChance(h, 'str', -4), h => {
         if (!f().trapGone) needle(h);
         f().alarm = (f().alarm || 0) + 1;
-        if (checkAbility(h, 'str', -4)) { say('Kování s rachotem povolí. Ozvěna se nese dolů do tmy.', '#7aea7a'); openTrapdoor(); return; }
-        say('Nepovolí. Rána se nese dolů do tmy. Něco tam dole teď poslouchá.', '#ff7a6a');
+        if (checkAbility(h, 'str', -4)) { say(L('Kování s rachotem povolí. Ozvěna se nese dolů do tmy.', 'The hasp tears loose with a crash. The echo rolls down into the dark.'), '#7aea7a'); openTrapdoor(); return; }
+        say(L('Nepovolí. Rána se nese dolů do tmy. Něco tam dole teď poslouchá.', 'It holds. The noise rolls down into the dark. Something down there is listening now.'), '#ff7a6a');
         then(stay);
       }) },
-      { label: 'Ven z kostela', ic: '‹', dim: true, act: () => go('hill') },
+      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ],
   },
   crypt: {
-    title: 'Krypta', set: 'crypt', view: 'crypt', film: 'crypt',
-    text: () => 'Kamenné schody vedou dolů do krypty. Ve výklencích hoří svíčky a v každém leží kostra starého mnicha.\nKdyž sejdete poslední schod, kosti se začnou hýbat. Zvedají se a jdou k vám.' +
-      (f().alarm ? ' Už na vás čekaly.' : ''),
-    again: 'Kostlivci vám stojí v cestě.',
+    title: L('Krypta', 'The Crypt'), set: 'crypt', view: 'crypt', film: 'crypt',
+    text: () => L('Kamenné schody vedou dolů do krypty. Ve výklencích hoří svíčky a v každém leží kostra starého mnicha.\nKdyž sejdete poslední schod, kosti se začnou hýbat. Zvedají se a jdou k vám.',
+                  'Stone steps lead down into a crypt. Candles burn in the wall niches, and in each lies the skeleton of an old monk.\nAs you step off the last stair, the bones begin to move. They get up and come toward you.') +
+      (f().alarm ? L(' Už na vás čekaly.', ' They were already waiting for you.') : ''),
+    again: L('Kostlivci vám stojí v cestě.', 'The skeletons stand in your way.'),
     foes: () => [['skel', skelN()]], beaten: () => f().skel,
     choices: () => [
-      { label: 'Do boje!', ic: '⚔', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('door'); }, flee: () => go('altar') }) },
-      { label: 'Utéct nahoru', ic: '‹', dim: true, act: () => go('altar') },
+      { label: L('Do boje!', 'Fight!'), ic: '⚔', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('door'); }, flee: () => go('altar') }) },
+      { label: L('Utéct nahoru', 'Run back up'), ic: '‹', dim: true, act: () => go('altar') },
     ],
   },
   door: {
-    title: 'Bronzové dveře', set: 'crypt', view: 'door', film: 'door',
-    text: 'Na konci krypty jsou obrovské bronzové dveře. Je na nich zvon a vlny. Uprostřed je kovová pusa a kolem ní nápis:\n' +
+    title: L('Bronzové dveře', 'The Bronze Door'), set: 'crypt', view: 'door', film: 'door',
+    text: L('Na konci krypty jsou obrovské bronzové dveře. Je na nich zvon a vlny. Uprostřed je kovová pusa a kolem ní nápis:\n' +
           '„Mám srdce, a přece nežiju. Nemám ústa, a přece volám živé i mrtvé. Visím vysoko a houpu se. Řekni, kdo jsem.“',
-    again: '„Řekni, kdo jsem,“ šeptají dveře.',
-    ask: 'Co dveřím odpovíte?',
+          'At the end of the crypt stands a huge bronze door, showing a bell sinking under waves. In the middle is a metal mouth, and words run around it:\n' +
+          '"I have a tongue but never taste. I have a mouth but never eat. I call the living and the dead. Speak my name."'),
+    again: L('„Řekni, kdo jsem,“ šeptají dveře.', '"Speak my name," whispers the door.'),
+    ask: L('Co dveřím odpovíte?', 'What do you answer the door?'),
     choices: () => [
-      { label: '„Hodiny“', act: () => answerDoor('Hodiny') },
-      { label: '„Pták“', act: () => answerDoor('Pták') },
-      { label: '„Zvon“', act: () => answerDoor('Zvon') },
-      { label: '„Duch“', act: () => answerDoor('Duch') },
-      { label: 'Přemýšlet', ic: '💭', ...pickWho('Kdo přemýšlí? (hod na Inteligenci)', h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
+      ...L([['Hodiny'], ['Pták'], ['Zvon', 1], ['Duch']], [['The river'], ['A ghost'], ['A bell', 1], ['A candle']]).map(([w, ok]) => ({ label: L(`„${w}“`, `"${w}"`), act: () => answerDoor(w, ok) })),
+      { label: L('Přemýšlet', 'Think it over'), ic: '💭', ...pickWho(L('Kdo přemýšlí? (hod na Inteligenci)', 'Who thinks? (Intelligence roll)'), h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
         h.tried.riddle = 1;
-        if (checkAbility(h, 'int')) say(`${h.name}: „Počkat. Co má srdce, ale nežije? Uvnitř zvonu se přece houpe kovové srdce!“`, '#7aea7a');
-        else say(`${h.name} kouká na písmena tak dlouho, až se rozmazávají.`);
+        if (checkAbility(h, 'int')) say(L(`${h.name}: „Počkat. Co má srdce, ale nežije? Uvnitř zvonu se přece houpe kovové srdce!“`, `${h.name}: "Wait. The thing that swings inside a bell is called its tongue..."`), '#7aea7a');
+        else say(L(`${h.name} kouká na písmena tak dlouho, až se rozmazávají.`, `${h.name} stares at the words until they swim.`));
         then(stay);
       }) },
-      { label: 'Zpátky nahoru', ic: '‹', dim: true, act: () => go('altar') },
+      { label: L('Zpátky nahoru', 'Back up'), ic: '‹', dim: true, act: () => go('altar') },
     ],
   },
   bell: {
-    title: 'Zvon utopených', set: 'bell', view: 'bell', film: 'bell',
-    text: 'Vysoká jeskyně. Nad černou tůní visí zelený zvon a houpe se úplně sám. Mila je přivázaná ke sloupu, tak vyděšená, že ani nepláče.\n' +
+    title: L('Zvon utopených', 'The Bell of the Drowned'), set: 'bell', view: 'bell', film: 'bell',
+    text: L('Vysoká jeskyně. Nad černou tůní visí zelený zvon a houpe se úplně sám. Mila je přivázaná ke sloupu, tak vyděšená, že ani nepláče.\n' +
           'Bratr Malrec se otočí od vody. „Právě včas,“ řekne. „Utopenci potřebují víc hlasů.“ Z tůně lezou mokré postavy.',
-    again: 'Malrec čeká u zvonu.',
+          'A high cave. Over a black pool hangs a green bell, swinging all by itself. Mila is tied to a pillar, too scared even to cry.\n' +
+          'Brother Malrec turns from the water. "Just in time," he says. "The drowned need more voices." Wet shapes climb out of the pool.'),
+    again: L('Malrec čeká u zvonu.', 'Malrec waits by the bell.'),
     foes: () => bossFoes(),
     choices: () => [
-      { label: 'Zaútočit!', ic: '⚔', act: () => bossFight(null) },
-      { label: 'Promluvit s ním', ic: '💬', if: () => !f().talked, ...pickWho(`Kdo s ním mluví? (Charisma${f().rumour === 2 ? ' +2: víte o jeho bratrovi' : ' -2'})`, h => abilityChance(h, 'cha', f().rumour === 2 ? 2 : -2), h => {
+      { label: L('Zaútočit!', 'Attack!'), ic: '⚔', act: () => bossFight(null) },
+      { label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L(`Kdo s ním mluví? (Charisma${f().rumour === 2 ? ' +2: víte o jeho bratrovi' : ' -2'})`, `Who talks to him? (Charisma${f().rumour === 2 ? ' +2: you know about his brother' : ' -2'})`), h => abilityChance(h, 'cha', f().rumour === 2 ? 2 : -2), h => {
         f().talked = 1;
         if (checkAbility(h, 'cha', f().rumour === 2 ? 2 : -2)) {
-          say(`${h.name}: „Tvůj bratr by tohle nechtěl, Malrecu.“ Malrec zaváhá. Zvon vynechá úder. Teď!`, '#7aea7a');
+          say(L(`${h.name}: „Tvůj bratr by tohle nechtěl, Malrecu.“ Malrec zaváhá. Zvon vynechá úder. Teď!`, `${h.name}: "Your brother wouldn\'t want this, Malrec." He falters. The bell misses a beat. Now!`), '#7aea7a');
           then(() => bossFight('party'));
         } else {
-          say('Malrec se jen zasměje a zvon zaburácí. Utopenci se vrhnou vpřed!', '#ff7a6a');
+          say(L('Malrec se jen zasměje a zvon zaburácí. Utopenci se vrhnou vpřed!', 'Malrec just laughs and the bell roars. The drowned surge forward!'), '#ff7a6a');
           then(() => bossFight('foes'));
         }
       }) },
     ],
   },
   end: {
-    title: 'Zvon mlčí', set: 'dawn', view: 'dawn', film: 'dawn',
+    title: L('Zvon mlčí', 'The Bell Is Silent'), set: 'dawn', view: 'dawn', film: 'dawn',
     text: endText,
     enter: () => {
       if (f().paid) return;
       f().paid = 1;
       G.gold += 200;
       gap();
-      giveXP(G.gold, `${G.gold} zlaťáků přinesených domů`);
+      giveXP(G.gold, L(`${G.gold} zlaťáků přinesených domů`, `${G.gold} gold brought home`));
       const first = !save.wins;
       save.wins = (save.wins | 0) + 1; store();
       const stars = first ? 10 : 2;
       PX.Wallet.add(stars);
-      say(`Dobrodružství je vyhrané! +★${stars}`, '#ffd23f');
+      say(L(`Dobrodružství je vyhrané! +★${stars}`, `The adventure is won! +★${stars}`), '#ffd23f');
       sfx('win');
       try { localStorage.removeItem(GAME_KEY); } catch (e) { /* private mode */ }
     },
-    ask: 'Konec',
-    choices: () => [{ label: 'Na titulní obrazovku', act: () => { G = null; setState('title'); } }],
+    ask: L('Konec', 'The end'),
+    choices: () => [{ label: L('Na titulní obrazovku', 'Back to the title'), act: () => { G = null; setState('title'); } }],
   },
   tpk: {
-    title: 'Tma…', set: 'village', view: 'inn',
-    text: 'Všichni hrdinové padli. Ráno se probudíte v hostinci, potlučení, ale živí. Hostinský vás prý našel na cestě pod kopcem.\nNahoře na kopci zvon zvoní dál.',
+    title: L('Tma…', 'Darkness...'), set: 'village', view: 'inn',
+    text: L('Všichni hrdinové padli. Ráno se probudíte v hostinci, potlučení, ale živí. Hostinský vás prý našel na cestě pod kopcem.\nNahoře na kopci zvon zvoní dál.', 'All the heroes have fallen. In the morning you wake up in the inn, bruised but alive. The innkeeper says he found you on the road below the hill.\nUp on the hill, the bell rings on.'),
     enter: () => { sfx('lose'); for (const h of G.heroes) { h.hp = h.shp = h.max; h.spells = h.spellMax; } },
-    ask: 'Co teď?',
+    ask: L('Co teď?', 'What now?'),
     choices: () => [
-      { label: 'Zkusit to znovu', ic: '↻', act: () => go('hill') },
-      { label: 'Na titulní obrazovku', ic: '‹', dim: true, act: () => { store2(); G = null; setState('title'); } },
+      { label: L('Zkusit to znovu', 'Try again'), ic: '↻', act: () => go('hill') },
+      { label: L('Na titulní obrazovku', 'Back to the title'), ic: '‹', dim: true, act: () => { store2(); G = null; setState('title'); } },
     ],
   },
 };
@@ -705,12 +719,12 @@ function fight(def) {
   for (const h of G.heroes) { h.held = 0; h.hidden = false; }
   startBattle(foes);
   gap();
-  say('Boj!', '#ff7a6a'); sfx('fight');
+  say(L('Boj!', 'Fight!'), '#ff7a6a'); sfx('fight');
   let s = def.surprise;
   if (s === undefined || s === null && !def.boss) {
     const a = rnd(10), b = rnd(10);
     s = a <= 3 && b > 3 ? 'foes' : b <= 3 && a > 3 ? 'party' : null;
-    if (s) rollFx(10, s === 'foes' ? a : b, `Překvapení: padlo ${s === 'foes' ? a : b} (1 až 3 znamená překvapení). ${s === 'foes' ? 'Příšery vás překvapily!' : 'Překvapili jste příšery!'}`, s === 'party');
+    if (s) rollFx(10, s === 'foes' ? a : b, L(`Překvapení: padlo ${s === 'foes' ? a : b} (1 až 3 znamená překvapení). ${s === 'foes' ? 'Příšery vás překvapily!' : 'Překvapili jste příšery!'}`, `Surprise: rolled ${s === 'foes' ? a : b} (1 to 3 means surprised). ${s === 'foes' ? 'The monsters surprise you!' : 'You surprise the monsters!'}`), s === 'party');
   }
   F.free = s || null;
   then(newRound);
@@ -725,10 +739,10 @@ function endCheck() {
 }
 function winFight() {
   gap();
-  say('Vítězství!', '#7aea7a'); sfx('win');
-  giveXP(F.xp, 'Za poražené příšery');
+  say(L('Vítězství!', 'Victory!'), '#7aea7a'); sfx('win');
+  giveXP(F.xp, L('Za poražené příšery', 'For the monsters beaten'));
   for (const h of G.heroes) {
-    if (h.hp <= 0) { say(`${h.name} se zase zvedá. Pořádně potlučen${gv(h, 'ý', 'á')}, ale v pořádku. (1 život)`); heal(h, 1); }
+    if (h.hp <= 0) { say(L(`${h.name} se zase zvedá. Pořádně potlučen${gv(h, 'ý', 'á')}, ale v pořádku. (1 život)`, `${h.name} gets up again, badly bruised but all right. (1 HP)`)); heal(h, 1); }
     h.held = 0; h.hidden = false;
   }
   const win = F.def.win;
@@ -739,14 +753,14 @@ function newRound() {
   if (endCheck()) return;
   F.round++;
   gap();
-  say(`Kolo ${F.round}`, '#c8b8ff');
+  say(L(`Kolo ${F.round}`, `Round ${F.round}`), '#c8b8ff');
   if (F.free) {
     F.order = F.free === 'party' ? ['party'] : ['foes', 'slow'];
     F.free = null;
   } else {
     const a = rnd(10), b = rnd(10);
     const partyFirst = a <= b;
-    rollFx(10, a, `Kdo začne? Družině padlo ${a}, příšerám ${b} (nižší začíná). ${partyFirst ? 'Začíná družina!' : 'Začínají příšery.'}`, null, true);
+    rollFx(10, a, L(`Kdo začne? Družině padlo ${a}, příšerám ${b} (nižší začíná). ${partyFirst ? 'Začíná družina!' : 'Začínají příšery.'}`, `Who goes first? The party rolled ${a}, the monsters ${b} (lower goes first). ${partyFirst ? 'The party goes first!' : 'The monsters go first.'}`), null, true);
     F.order = partyFirst ? ['party', 'foes', 'slow'] : ['foes', 'party', 'slow'];
   }
   F.step = -1;
@@ -771,7 +785,7 @@ function nextHero() {
     if (F.hi >= G.heroes.length) { F.actor = null; nextPhase(); return; }
     const h = G.heroes[F.hi];
     if (!up(h)) continue;
-    if (h.held > 0) { h.held--; say(`${h.name} je ztuhl${gv(h, 'ý', 'á')} a nemůže se hnout.`, '#c8b8ff'); if (!h.held) then(() => tint(unitOf(h), null)); continue; }
+    if (h.held > 0) { h.held--; say(L(`${h.name} je ztuhl${gv(h, 'ý', 'á')} a nemůže se hnout.`, `${h.name} is held and can't move.`), '#c8b8ff'); if (!h.held) then(() => tint(unitOf(h), null)); continue; }
     F.actor = h; F.moved = false;
     then(() => focusOn(unitOf(h)));
     heroMenu(h); return;
@@ -785,32 +799,32 @@ function heroMenu(h) {
   const canHit = attackable(u).length > 0;
   F.target = { kind: 'foe', ok: m => attackable(u).includes(m), fn: m => meleeAttack(h, m) };   // tapping a monster attacks it
   const list = [
-    { label: 'Útok', ic: '⚔', note: h.weapon.name, if: () => canHit, keep: true, act: () => pickFoe(h, 'Na koho útočíš? (klepni na nepřítele)', m => attackable(u).includes(m), m => meleeAttack(h, m)) },
-    { label: 'Kouzla', ic: '✦', note: `${h.spells}×`, if: () => h.spells > 0, act: () => spellMenu(h) },
-    { label: 'Zahnat nemrtvé', ic: '☀', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
-    { label: 'Schovat se', ic: '◐', note: thiefSkill(h, 3) + ' %', if: () => h.cls === 'thief' && !h.hidden, act: () => {
-      if (checkSkill(h, 3)) { h.hidden = true; say(`${h.name} mizí ve stínu. Příští útok bude zezadu: +4 k zásahu a dvojnásobné zranění.`, '#7aea7a'); then(() => tint(u, 'hide')); }
-      else say(`${h.name} nemůže najít dost tmavý kout.`);
+    { label: L('Útok', 'Attack'), ic: '⚔', note: h.weapon.name, if: () => canHit, keep: true, act: () => pickFoe(h, L('Na koho útočíš? (klepni na nepřítele)', 'Attack who? (tap an enemy)'), m => attackable(u).includes(m), m => meleeAttack(h, m)) },
+    { label: L('Kouzla', 'Spells'), ic: '✦', note: `${h.spells}×`, if: () => h.spells > 0, act: () => spellMenu(h) },
+    { label: L('Zahnat nemrtvé', 'Turn undead'), ic: '☀', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
+    { label: L('Schovat se', 'Hide'), ic: '◐', note: thiefSkill(h, 3) + ' %', if: () => h.cls === 'thief' && !h.hidden, act: () => {
+      if (checkSkill(h, 3)) { h.hidden = true; say(L(`${h.name} mizí ve stínu. Příští útok bude zezadu: +4 k zásahu a dvojnásobné zranění.`, `${h.name} melts into the shadows. Next attack is a backstab: +4 to hit and double damage.`), '#7aea7a'); then(() => tint(u, 'hide')); }
+      else say(L(`${h.name} nemůže najít dost tmavý kout.`, `${h.name} can't find a dark enough corner.`));
       doneTurn();
     } },
-    { label: 'Předměty', ic: '⚱', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
-    { label: 'Čekat', ic: '⏸', dim: true, act: () => { say(`${h.name} čeká.`, '#c8b8ff'); doneTurn(); } },
-    { label: 'Utéct', ic: '🏃', if: () => !!F.def.flee, dim: true, act: () => runAway() },
+    { label: L('Předměty', 'Items'), ic: '⚱', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
+    { label: L('Čekat', 'Wait'), ic: '⏸', dim: true, act: () => { say(L(`${h.name} čeká.`, `${h.name} waits.`), '#c8b8ff'); doneTurn(); } },
+    { label: L('Utéct', 'Run away'), ic: '🏃', if: () => !!F.def.flee, dim: true, act: () => runAway() },
   ];
-  setChoices(F.moved ? `${h.name} (${clsName(h)}): co teď?` : `${h.name} (${clsName(h)}): klepni na pole, nebo vyber`, list);
+  setChoices(F.moved ? L(`${h.name} (${clsName(h)}): co teď?`, `${h.name} (${clsName(h)}): what now?`) : L(`${h.name} (${clsName(h)}): klepni na pole, nebo vyber`, `${h.name} (${clsName(h)}): tap a tile, or pick`), list);
   F.menuTop = true;
 }
 function back(h) { return () => heroMenu(h); }
 function pickFoe(h, q, ok, fn) {
   F.target = { kind: 'foe', ok, fn };
-  const list = foesLeft().filter(ok).map(m => ({ label: m.name, note: m.state === 'asleep' ? 'spí' : `${m.shp}/${m.max}`, act: () => fn(m) }));
-  list.push({ label: 'Zpět', ic: '‹', act: back(h), dim: true });
+  const list = foesLeft().filter(ok).map(m => ({ label: m.name, note: m.state === 'asleep' ? L('spí', 'asleep') : `${m.shp}/${m.max}`, act: () => fn(m) }));
+  list.push({ label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true });
   setChoices(q, list);
 }
 function pickHero(h, q, ok, fn) {
   F.target = { kind: 'hero', ok, fn };
   const list = G.heroes.filter(ok).map(x => ({ label: x.name, note: `${Math.max(0, x.hp)}/${x.max} ❤`, act: () => fn(x) }));
-  list.push({ label: 'Zpět', ic: '‹', act: back(h), dim: true });
+  list.push({ label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true });
   setChoices(q, list);
 }
 // walk next to someone first if needed (and allowed), then do it
@@ -825,36 +839,36 @@ function attack(h, m) {
   const u = unitOf(h), mu = unitOf(m);
   play(() => strike(u, mu), 0.3);
   if (m.state === 'asleep') {
-    say(`${h.name} udeří. ${m.name} se už neprobudí.`, '#7aea7a');
+    say(L(`${h.name} udeří. ${m.name} se už neprobudí.`, `${h.name} strikes. ${m.name} never wakes up.`), '#7aea7a');
     kill(m); doneTurn(); return;
   }
   const bk = h.hidden; h.hidden = false;
   if (bk) then(() => tint(u, null));
   const bonus = hitOf(h) + (F.bless ? 1 : 0) + (bk ? 4 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
   const hit = r === 20 || (r !== 1 && tot >= need);
-  rollFx(20, r, `${h.name}${bk ? ' útočí ze stínu' : ''} → ${m.name}: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
+  rollFx(20, r, L(`${h.name}${bk ? ' útočí ze stínu' : ''} → ${m.name}: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, `${h.name}${bk ? ' backstabs' : ''} → ${m.name}: rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
   if (hit) {
     const w = h.weapon;
     let d = Math.max(1, dice(w.n, w.s, w.b) + dmgOf(h));
     if (bk) d *= 2;
-    if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say('Čepel sklouzne po kostech: jen poloviční zranění.', '#c8b8ff'); }
+    if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say(L('Čepel sklouzne po kostech: jen poloviční zranění.', 'The blade slides off the bones: only half damage.'), '#c8b8ff'); }
     wound(m, d);
-  } else then(() => floatNum(mu, 'vedle', 'miss'));
+  } else then(() => floatNum(mu, L('vedle', 'miss'), 'miss'));
   doneTurn();
 }
 function wound(m, d) {
   m.hp -= d;
   const hp = Math.max(0, m.hp), u = unitOf(m);
   then(() => { m.shp = hp; hitFlash(u); floatNum(u, '-' + d, 'dmg'); sfx('hit'); });
-  if (m.hp <= 0) { say(`${d} zranění. ${m.name} ${m.fell}!`, '#7aea7a'); kill(m); }
-  else { say(`${d} zranění. (${m.name}: ${m.hp} životů)`); if (m.boss) bossMorale(m); }
+  if (m.hp <= 0) { say(L(`${d} zranění. ${m.name} ${m.fell}!`, `${d} damage. ${m.name} ${m.fell}!`), '#7aea7a'); kill(m); }
+  else { say(L(`${d} zranění. (${m.name}: ${m.hp} životů)`, `${d} damage. (${m.name}: ${m.hp} HP left)`)); if (m.boss) bossMorale(m); }
 }
 function kill(m) {
   m.state = 'dead'; m.hp = Math.min(m.hp, 0); F.xp += m.xp;
   const u = unitOf(m);
   then(() => { m.shp = 0; deathAnim(u); });
   if (m.boss) {
-    say('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', '#7aea7a');
+    say(L('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', 'Malrec falls to his knees. The bell goes quiet and the drowned sink back into the pool.'), '#7aea7a');
     goneAll();
     return;
   }
@@ -869,16 +883,16 @@ function morale() {
   if (!key || F['m_' + key]) return;
   F['m_' + key] = 1;
   const r = dice(2, 10), M = left[0].morale;
-  rollFx(20, r, `Odvaha příšer: padlo ${r} (víc než ${M} a utečou). ${r > M ? 'Utíkají!' : 'Zůstávají.'}`, r > M);
-  if (r > M) { for (const m of left) { m.state = 'gone'; F.xp += Math.floor(m.xp / 2); const mu = unitOf(m); then(() => fleeAnim(mu)); } say(`Zbylé příšery utíkají pryč!`, '#7aea7a'); }
+  rollFx(20, r, L(`Odvaha příšer: padlo ${r} (víc než ${M} a utečou). ${r > M ? 'Utíkají!' : 'Zůstávají.'}`, `Monster morale: rolled ${r} (over ${M} and they run). ${r > M ? 'They run!' : 'They stand.'}`), r > M);
+  if (r > M) { for (const m of left) { m.state = 'gone'; F.xp += Math.floor(m.xp / 2); const mu = unitOf(m); then(() => fleeAnim(mu)); } say(L(`Zbylé příšery utíkají pryč!`, `The rest of the monsters run away!`), '#7aea7a'); }
 }
 function bossMorale(m) {
   if (F.m_boss || m.hp * 2 > m.max) return;
   F.m_boss = 1;
   const r = dice(2, 10);
-  rollFx(20, r, `Malrecova odvaha: padlo ${r} (víc než ${m.morale} a vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, r > m.morale);
+  rollFx(20, r, L(`Malrecova odvaha: padlo ${r} (víc než ${m.morale} a vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, `Malrec's morale: rolled ${r} (over ${m.morale} and he gives up). ${r > m.morale ? 'He gives up!' : 'He fights on.'}`), r > m.morale);
   if (r > m.morale) {
-    say('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', '#7aea7a');
+    say(L('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', 'Malrec drops his mace and falls to his knees. "Enough... I only wanted my brother back." The bell stops. The drowned sink into the pool.'), '#7aea7a');
     f().surrender = 1;
     m.state = 'gone'; F.xp += m.xp;
     const mu = unitOf(m); then(() => setPose(mu, 'kneel'));
@@ -890,26 +904,26 @@ function spellMenu(h) {
     const sp = SPELLS[id];
     return { label: sp.name, ic: sp.ic, note: sp.info, act: () => castSpell(h, id) };
   });
-  list.push({ label: 'Zpět', ic: '‹', act: back(h), dim: true });
+  list.push({ label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true });
   F.target = null;
-  setChoices(`${h.name}: které kouzlo? (zbývá ${h.spells}×)`, list);
+  setChoices(L(`${h.name}: které kouzlo? (zbývá ${h.spells}×)`, `${h.name}: which spell? (${h.spells} left)`), list);
 }
 const touchable = h => x => x === h || dist(unitOf(h).tile, unitOf(x).tile) <= 1 || (!F.moved && !!approachPath(unitOf(h), unitOf(x)));
 function castSpell(h, id) {
   const sp = SPELLS[id], u = unitOf(h);
   if (sp.target === 'foe') {
-    pickFoe(h, `${sp.name}: na koho? (klepni na nepřítele)`, () => true, m => {
+    pickFoe(h, L(`${sp.name}: na koho? (klepni na nepřítele)`, `${sp.name}: at who? (tap an enemy)`), () => true, m => {
       h.spells--; const mu = unitOf(m);
       play(() => { sfx('spell'); setPose(u, 'cast', mu); missile(u, mu, 0x7ab8ff); }, 0.6);
       const d = dice(1, 4, 1);
-      say(`${h.name} sesílá Magickou střelu. Zářivý blesk zasáhne cíl: ${m.name}.`, '#6aa8ff');
+      say(L(`${h.name} sesílá Magickou střelu. Zářivý blesk zasáhne cíl: ${m.name}.`, `${h.name} casts Magic Missile. A bolt of light strikes ${m.name}.`), '#6aa8ff');
       if (m.state === 'asleep') m.state = 'ok';
       wound(m, d); doneTurn();
     });
     return;
   }
   if (sp.target === 'hero') {
-    pickHero(h, `${sp.name}: koho vyléčit? (dotykem: klepni na hrdinu)`, x => x.hp < x.max && touchable(h)(x), x => {
+    pickHero(h, L(`${sp.name}: koho vyléčit? (dotykem: klepni na hrdinu)`, `${sp.name}: heal who? (by touch: tap a hero)`), x => x.hp < x.max && touchable(h)(x), x => {
       h.spells--; approach(h, unitOf(x));
       play(() => { sfx('spell'); setPose(u, 'cast', unitOf(x)); }, 0.4);
       cure(h, x); doneTurn();
@@ -921,21 +935,21 @@ function castSpell(h, id) {
   if (id === 'bless') {
     F.bless = true;
     then(() => { for (const x of G.heroes) { const xu = unitOf(x); if (xu) burst(xu.pos, 0xffe070, 30, 1.5); } });
-    say(`${h.name} sesílá Požehnání. Teplé světlo: +1 k útoku pro celou družinu až do konce boje.`, '#6aa8ff'); doneTurn(); return;
+    say(L(`${h.name} sesílá Požehnání. Teplé světlo: +1 k útoku pro celou družinu až do konce boje.`, `${h.name} casts Bless. A warm light: +1 to hit for the whole party until the fight ends.`), '#6aa8ff'); doneTurn(); return;
   }
   if (id === 'sleep') {
     let hd = dice(2, 4);
-    rollFx(8, hd, `${h.name} sesílá Spánek: padlo ${hd} (tolik síly příšer usne).`, null);
+    rollFx(8, hd, L(`${h.name} sesílá Spánek: padlo ${hd} (tolik síly příšer usne).`, `${h.name} casts Sleep: rolled ${hd} (that much monster strength falls asleep).`), null);
     const list = foesLeft().filter(m => m.state === 'ok').sort((a, b) => a.hd - b.hd);
     let slept = 0;
     for (const m of list) {
-      if (m.undead || m.noSleep) { say(`${m.name} neusne${m.undead ? ': mrtví nikdy nespí' : ': jeho amulet zazáří'}.`, '#c8b8ff'); continue; }
+      if (m.undead || m.noSleep) { say(L(`${m.name} neusne${m.undead ? ': mrtví nikdy nespí' : ': jeho amulet zazáří'}.`, `${m.name} doesn't fall asleep${m.undead ? ': the dead never sleep' : ': his amulet glows'}.`), '#c8b8ff'); continue; }
       const c = Math.max(1, Math.ceil(m.hd));
       if (c > hd) break;
       hd -= c; m.state = 'asleep'; slept++;
       const mu = unitOf(m);
       then(() => { burst(mu.pos, 0x9cc4ff, 20, 1); setPose(mu, 'sleep'); });
-      say(`${m.name} usíná.`, '#6aa8ff');
+      say(L(`${m.name} usíná.`, `${m.name} falls asleep.`), '#6aa8ff');
     }
     if (!slept) say('Nikdo neusnul.');
     doneTurn();
@@ -943,7 +957,7 @@ function castSpell(h, id) {
 }
 function cure(h, x) {
   const got = heal(x, dice(1, 8));
-  say(`${h.name} léčí: ${x.name} +${got} ${got === 1 ? 'život' : got < 5 ? 'životy' : 'životů'} (${x.hp}/${x.max}).`, '#6aa8ff');
+  say(L(`${h.name} léčí: ${x.name} +${got} ${got === 1 ? 'život' : got < 5 ? 'životy' : 'životů'} (${x.hp}/${x.max}).`, `${h.name} heals ${x.name}: +${got} HP (${x.hp}/${x.max}).`), '#6aa8ff');
 }
 function turnUndead(h) {
   F.turned[h.name] = 1;
@@ -951,39 +965,39 @@ function turnUndead(h) {
   const und = foesLeft().filter(m => m.undead && m.state === 'ok').sort((a, b) => a.turn - b.turn);
   const need = und[0].turn, r = rnd(20), ok = r >= need;
   play(() => { setPose(u, 'cast'); holyWave(u); sfx('spell'); }, 0.7);
-  rollFx(20, r, `${h.name} zvedá svaté znamení: padlo ${r}, potřeba ${need} nebo víc. ${ok ? 'Povedlo se!' : 'Nevyšlo to.'}`, ok);
+  rollFx(20, r, L(`${h.name} zvedá svaté znamení: padlo ${r}, potřeba ${need} nebo víc. ${ok ? 'Povedlo se!' : 'Nevyšlo to.'}`, `${h.name} raises the holy symbol: rolled ${r}, needs ${need} or more. ${ok ? 'Success!' : 'No luck.'}`), ok);
   if (ok) {
     let k = dice(2, 6);
-    say(`„Odejděte!“ (2k6 = ${k}: tolik nemrtvých uteče)`, '#f0e070');
+    say(L(`„Odejděte!“ (2k6 = ${k}: tolik nemrtvých uteče)`, `"Begone!" (2d6 = ${k}: that many undead flee)`), '#f0e070');
     for (const m of und) { if (k <= 0 || m.turn > need) break; m.state = 'gone'; F.xp += m.xp; k--; const mu = unitOf(m); then(() => fleeAnim(mu)); say(`${m.name} ${m.ran}.`, '#7aea7a'); }
-  } else say('Mrtví jdou dál.');
+  } else say(L('Mrtví jdou dál.', 'The dead keep coming.'));
   doneTurn();
 }
 function itemMenu(h) {
   const u = unitOf(h);
   const list = [
-    { label: `Léčivý lektvar`, ic: '🧪', note: `${G.items.potion}×`, if: () => G.items.potion > 0, act: () => pickHero(h, 'Komu dát lektvar? (sobě, nebo hrdinovi vedle sebe)', x => x.hp < x.max && touchable(h)(x), x => {
+    { label: `Léčivý lektvar`, ic: '🧪', note: `${G.items.potion}×`, if: () => G.items.potion > 0, act: () => pickHero(h, L('Komu dát lektvar? (sobě, nebo hrdinovi vedle sebe)', 'Give the potion to who? (yourself, or a hero next to you)'), x => x.hp < x.max && touchable(h)(x), x => {
       G.items.potion--; approach(h, unitOf(x));
       const got = heal(x, dice(2, 4, 2));
-      say(`${x.name} vypije lektvar: +${got} (${x.hp}/${x.max}).`, '#7aea7a');
+      say(L(`${x.name} vypije lektvar: +${got} (${x.hp}/${x.max}).`, `${x.name} drinks the potion: +${got} (${x.hp}/${x.max}).`), '#7aea7a');
       doneTurn();
     }) },
-    { label: `Hodit svěcenou vodu`, ic: '💧', note: `${G.items.holy}×`, if: () => G.items.holy > 0, act: () => pickFoe(h, 'Na koho hodit? (dohodíš 6 polí, pálí jen nemrtvé)', m => dist(u.tile, unitOf(m).tile) <= 6, m => {
+    { label: L(`Hodit svěcenou vodu`, `Throw holy water`), ic: '💧', note: `${G.items.holy}×`, if: () => G.items.holy > 0, act: () => pickFoe(h, L('Na koho hodit? (dohodíš 6 polí, pálí jen nemrtvé)', 'Throw it at who? (reaches 6 tiles, only burns the undead)'), m => dist(u.tile, unitOf(m).tile) <= 6, m => {
       G.items.holy--;
       const mu = unitOf(m);
       play(() => { setPose(u, 'throw', mu); missile(u, mu, 0xf0e070, true); }, 0.6);
       const bonus = dexMissile(h.st.dex), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus, hit = r === 20 || (r !== 1 && tot >= need);
-      rollFx(20, r, `${h.name} hází svěcenou vodu: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, hit);
-      if (hit) { if (m.undead) { say('Zasyčí to a kouří se!', '#f0e070'); then(() => burst(mu.pos, 0xffffff, 30, 1.6)); wound(m, dice(2, 4)); } else say(`${m.name} je teď jen mokrá.`); }
+      rollFx(20, r, L(`${h.name} hází svěcenou vodu: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, `${h.name} throws holy water: rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
+      if (hit) { if (m.undead) { say(L('Zasyčí to a kouří se!', 'It hisses and smokes!'), '#f0e070'); then(() => burst(mu.pos, 0xffffff, 30, 1.6)); wound(m, dice(2, 4)); } else say(L(`${m.name} je teď jen mokrá.`, `${m.name} is just wet now.`)); }
       doneTurn();
     }) },
-    { label: 'Zpět', ic: '‹', act: back(h), dim: true },
+    { label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true },
   ];
   F.target = null;
-  setChoices(`${h.name}: co použiješ?`, list);
+  setChoices(L(`${h.name}: co použiješ?`, `${h.name}: use what?`), list);
 }
 function runAway() {
-  say('Družina utíká! Příšery, které stojí hned vedle, se ještě ohnou po zádech.', '#ff7a6a');
+  say(L('Družina utíká! Příšery, které stojí hned vedle, se ještě ohnou po zádech.', 'The party runs! Monsters standing right next to someone get one more swing.'), '#ff7a6a');
   F.over = true;
   for (const m of F.foes.filter(x => x.state === 'ok')) {
     const mu = unitOf(m), near = G.heroes.filter(h => up(h) && dist(unitOf(h).tile, mu.tile) <= 1);
@@ -1006,17 +1020,17 @@ function foeAct(m) {
     if (!F.cast.hold) {
       F.cast.hold = 1;
       play(() => { setPose(mu, 'cast', hu); beam(mu, hu, 0xb06aff); sfx('spell'); }, 0.6);
-      say(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, '#c06aff');
-      if (!checkSave(h, 'spell')) { h.held = 2; say(`${h.name} ztuhne na 2 kola.`, '#ff7a6a'); then(() => tint(hu, 'held')); } else say(`${h.name} se z toho vytřese.`);
+      say(L(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, `Malrec points at ${h.name}: "Be still!"`), '#c06aff');
+      if (!checkSave(h, 'spell')) { h.held = 2; say(L(`${h.name} ztuhne na 2 kola.`, `${h.name} is held for 2 rounds.`), '#ff7a6a'); then(() => tint(hu, 'held')); } else say(L(`${h.name} se z toho vytřese.`, `${h.name} shakes it off.`));
       return;
     }
     F.cast.wound = 1;
     play(() => { setPose(mu, 'cast', hu); missile(mu, hu, 0x9a3aff); sfx('spell'); }, 0.6);
-    say('Malrecova ruka zčerná a vyletí z ní temný blesk!', '#c06aff');
+    say(L('Malrecova ruka zčerná a vyletí z ní temný blesk!', 'Malrec\'s hand turns black and a dark bolt flies from it!'), '#c06aff');
     foeAttack(m, h, true, [1, 8, 0]);
     return;
   }
-  if (!route) { say(`${m.name} se nemůže dostat blíž.`, '#c8b8ff'); return; }
+  if (!route) { say(L(`${m.name} se nemůže dostat blíž.`, `${m.name} can't get any closer.`), '#c8b8ff'); return; }
   if (route.path.length) {
     const steps = route.path.slice(0, m.move);
     walk(mu, steps);
@@ -1028,13 +1042,13 @@ function foeAttack(m, h, fast, dmg) {
   const mu = unitOf(m), hu = unitOf(h);
   if (!dmg) play(() => strike(mu, hu), 0.3);
   const ac = acOf(h), need = m.thac0 - ac, bonus = h.held ? 4 : 0, r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
-  rollFx(20, r, `${m.name} → ${h.name}: padlo ${r}${bonus ? ' + 4 (ztuhlý cíl)' : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle!'}`, !hit, true);
-  if (!hit) { then(() => floatNum(hu, 'vedle', 'miss')); return; }
+  rollFx(20, r, L(`${m.name} → ${h.name}: padlo ${r}${bonus ? ' + 4 (ztuhlý cíl)' : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle!'}`, `${m.name} → ${h.name}: rolled ${r}${bonus ? ' + 4 (held target)' : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss!'}`), !hit, true);
+  if (!hit) { then(() => floatNum(hu, L('vedle', 'miss'), 'miss')); return; }
   const D = dmg || m.dmg, d = Math.max(1, dice(D[0], D[1], D[2]));
   hurt(h, d);
   then(() => sfx('ouch'));
-  if (h.hp <= 0) say(`${d} zranění. ${h.name} padá k zemi a nemůže bojovat! Pomoc: lektvar nebo léčení.`, '#ff7a6a');
-  else say(`${d} zranění. (${h.name}: ${h.hp}/${h.max} životů)`, '#ffaa8a');
+  if (h.hp <= 0) say(L(`${d} zranění. ${h.name} padá k zemi a nemůže bojovat! Pomoc: lektvar nebo léčení.`, `${d} damage. ${h.name} falls and can't fight! Help: a potion or a cure.`), '#ff7a6a');
+  else say(L(`${d} zranění. (${h.name}: ${h.hp}/${h.max} životů)`, `${d} damage. (${h.name}: ${h.hp}/${h.max} HP)`), '#ffaa8a');
 }
 
 /* --- 7. THE 3D WORLD ---------------------------------------------------------
@@ -1683,33 +1697,34 @@ const BUILD = {
    A few seconds of film the first time a scene opens: keys are [second, camera position, the point it looks at]; the
    film always ends where the scene's view starts, so it flows into the game. ev: [second, what happens]. Tap skips. */
 const FILMS = {
-  village: { dur: 8, cap: 'Thornwall', sub: 'sedmá noc, kdy zvoní zvon, který neexistuje',
+  village: { dur: 8, cap: 'Thornwall', sub: L('sedmá noc, kdy zvoní zvon, který neexistuje', 'the seventh night a bell rings that isn\'t there'),
     keys: [[0, [1.5, 1.0, 14], [0, 1.4, 0]], [3, [1.2, 1.5, 5], [-3, 1.8, -1]], [5.8, [0.6, 2.0, 2.5], [0, 7, -46]]],
     ev: [[0, 'wind'], [1.2, 'bell'], [4.6, 'bell']] },
-  hill: { dur: 8, cap: 'Kostel na kopci', sub: 'mlha je tak hustá, že není vidět na krok',
+  hill: { dur: 8, cap: L('Kostel na kopci', 'The Church on the Hill'), sub: L('mlha je tak hustá, že není vidět na krok', 'the mist is so thick you can\'t see a step'),
     keys: [[0, [0.6, -2.6, 25], [0, -1, 12]], [3.2, [-1.4, -0.8, 14], [0, 2.5, -2]], [6, [1.0, 1.4, 6.5], [0, 6, -5]]],
     ev: [[0, 'wind'], [2.2, 'bell'], [5.6, 'owl']] },
-  nave: { dur: 7, cap: 'Uvnitř kostela', sub: 'střecha je pryč a dovnitř svítí měsíc',
+  nave: { dur: 7, cap: L('Uvnitř kostela', 'Inside the Church'), sub: L('střecha je pryč a dovnitř svítí měsíc', 'the roof is gone and the moon shines in'),
     keys: [[0, [0, 1.6, 11.5], [0, 1.6, 0]], [2.6, [0, 1.4, 7], [0, 1.6, -6]], [4.6, [0.5, 1.0, 5], [0, 0.3, -0.5]]],
     ev: [[0, 'wind'], [3.8, 'squeak'], [4.6, 'squeak']] },
-  altar: { dur: 4.5, cap: 'Oltář', sub: 'a za ním padací dvířka',
+  altar: { dur: 4.5, cap: L('Oltář', 'The Altar'), sub: L('a za ním padací dvířka', 'and behind it, a trapdoor'),
     keys: [[0, [2.8, 2.2, -2], [0, 1.0, -6.2]], [2.5, [1.6, 1.4, -4.6], [0, 0.4, -7.2]]],
     ev: [[1.2, 'bellFar']] },
-  crypt: { dur: 8, cap: 'Krypta', sub: 'kde spí staří mniši… nebo spali',
+  crypt: { dur: 8, cap: L('Krypta', 'The Crypt'), sub: L('kde spí staří mniši… nebo spali', 'where the old monks sleep... or used to'),
     keys: [[0, [0.3, 2.0, 8.6], [-0.4, 0.6, 5]], [2.0, [0, 1.7, 7.4], [0, 1.4, 3]], [3.6, [0, 1.4, 4.6], [0, 1.2, -6]], [6.2, [0.8, 1.8, 4.2], [0, 0.8, -3]]],
     ev: [[0, () => cryptRise(0)], [0.3, 'wind'], [3.4, () => cryptRise(1)], [3.6, 'bones'], [4.4, 'bones']] },
-  door: { dur: 4.5, cap: 'Bronzové dveře', sub: '',
+  door: { dur: 4.5, cap: L('Bronzové dveře', 'The Bronze Door'), sub: '',
     keys: [[0, [0, 1.6, 0], [0, 1.6, -12]], [2.8, [0.4, 1.6, -7], [0, 1.8, -12.5]]],
     ev: [[1, 'bellFar']] },
-  bell: { dur: 10, cap: 'Zvon utopených', sub: '',
+  bell: { dur: 10, cap: L('Zvon utopených', 'The Bell of the Drowned'), sub: '',
     keys: [[0, [0, 1.6, 13], [0, 3, -6]], [2.6, [0, 2.2, 8], [0, 3.5, -7]], [4.4, [1.6, 1.4, 2.4], [3.9, 1.0, -0.8]], [6.2, [-0.8, 1.6, 3.6], [0, 1.2, 1.5]], [8, [0, 2.6, 6.5], [0, 0.6, -2]]],
     ev: [[0, () => bellRise(0)], [1.0, 'bell'], [3.4, 'bell'], [5.8, () => bellRise(1)], [6.8, () => bellRise(2)], [7.0, 'splash']] },
-  dawn: { dur: 6, cap: 'Svítání', sub: '',
+  dawn: { dur: 6, cap: L('Svítání', 'Dawn'), sub: '',
     keys: [[0, [0, 9, -34], [0, 2, 0]], [3, [0, 5, -6], [0, 4, -40]]],
     ev: [[0.5, 'win']] },
 };
 let film = null, skipFilms = false;
 const filmEl = $('film'), capEl = filmEl.querySelector('.cap');
+filmEl.querySelector('.skip').textContent = L('klepni pro přeskočení ›', 'tap to skip ›');
 function startFilm(id) {
   const D = FILMS[id], set = curSet.userData, v = set.views[curView];
   const end = viewPose(v);
@@ -2253,10 +2268,14 @@ function setState(s) {
 function renderTitle() {
   const saved = loadGame();
   const b = $('title').querySelector('[data-t="cont"]'); b.disabled = !saved;
-  $('title').querySelector('[data-t="snd"]').textContent = 'Zvuk: ' + (save.sfx ? 'zapnutý' : 'vypnutý');
-  $('title').querySelector('[data-t="mus"]').textContent = 'Hudba: ' + (save.music !== false ? 'zapnutá' : 'vypnutá');
-  $('ver').textContent = 'V' + VERSION + ' · zkušební verze';
-  $('wins').textContent = save.wins ? 'Vyhraná dobrodružství: ' + save.wins : '';
+  const T = (k, txt) => { $('title').querySelector(`[data-t="${k}"]`).textContent = txt; };
+  T('new', L('Nové dobrodružství', 'New adventure')); T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play'));
+  T('snd', L('Zvuk: ', 'Sound: ') + (save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')));
+  T('mus', L('Hudba: ', 'Music: ') + (save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')));
+  T('lang', L('English', 'Čeština')); T('games', L('‹ Všechny hry', '‹ All games'));
+  $('title').querySelector('.sub').textContent = L('Utopený zvon', 'The Drowned Bell');
+  $('ver').textContent = 'V' + VERSION + L(' · zkušební verze', ' · test version');
+  $('wins').textContent = save.wins ? L('Vyhraná dobrodružství: ', 'Adventures won: ') + save.wins : '';
 }
 $('title').addEventListener('click', e => {
   const b = e.target.closest('[data-t]'); if (!b) return;
@@ -2266,6 +2285,7 @@ $('title').addEventListener('click', e => {
   if (a === 'cont') { const g = loadGame(); if (g) { G = g; startPlay(G.room); } }
   if (a === 'rules') setState('rules');
   if (a === 'snd') { save.sfx = !save.sfx; store(); renderTitle(); }
+  if (a === 'lang') { const d = PX.Settings.load(); d.lang = LANG === 'cs' ? 'en' : 'cs'; PX.Settings.save(d); location.reload(); return; }
   if (a === 'mus') { save.music = save.music === false; store(); renderTitle(); }
   if (a === 'games') location.href = './';
 });
@@ -2278,19 +2298,19 @@ function newSetup() {
 const cleanHeroName = v => { const x = String(v || '').replace(/[^A-Za-zÁ-žÀ-ÿ0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10); return PX.censor ? PX.censor(x) : x; };
 function renderSetup() {
   const el = $('setup');
-  el.innerHTML = `<div class="card"><h2>Vaše družina</h2>
-    <div class="row"><span class="muted">Kolik hrdinů?</span>${[1, 2, 3, 4].map(k => `<button class="pill${party.size === k ? ' on' : ''}" data-n="${k}">${k}</button>`).join('')}
-      <span class="muted">${['1: velmi těžké', '2: těžké', '3: akorát', '4: klasika'][party.size - 1]}</span></div>
+  el.innerHTML = `<div class="card"><h2>${L('Vaše družina', 'Your party')}</h2>
+    <div class="row"><span class="muted">${L('Kolik hrdinů?', 'How many heroes?')}</span>${[1, 2, 3, 4].map(k => `<button class="pill${party.size === k ? ' on' : ''}" data-n="${k}">${k}</button>`).join('')}
+      <span class="muted">${L(['1: velmi těžké', '2: těžké', '3: akorát', '4: klasika'], ['1: very hard', '2: hard', '3: fair', '4: classic'])[party.size - 1]}</span></div>
     ${party.slice(0, party.size).map((h, i) => {
       const C = CLASSES[h.cls];
       return `<div class="heroRow" style="--c:${C.col}"><img class="pt" src="${portrait(h)}" alt="">
-        <div class="row"><input data-name="${i}" value="${esc(h.name)}" maxlength="10" aria-label="Jméno">
-          <button class="pill${h.g === 'm' ? ' on' : ''}" data-g="${i}m">kluk</button><button class="pill${h.g === 'f' ? ' on' : ''}" data-g="${i}f">holka</button></div>
-        <button class="pill" data-rr="${i}" title="Hodit znovu">🎲 znovu</button>
+        <div class="row"><input data-name="${i}" value="${esc(h.name)}" maxlength="10" aria-label="${L('Jméno', 'Name')}">
+          <button class="pill${h.g === 'm' ? ' on' : ''}" data-g="${i}m">${L('kluk', 'boy')}</button><button class="pill${h.g === 'f' ? ' on' : ''}" data-g="${i}f">${L('holka', 'girl')}</button></div>
+        <button class="pill" data-rr="${i}" title="${L('Hodit znovu', 'Reroll')}">🎲 ${L('znovu', 'reroll')}</button>
         <div class="cls">${CLASS_IDS.map(c => `<button class="pill${h.cls === c ? ' on' : ''}" style="--c:${CLASSES[c].col}" data-c="${i}${c}">${CLASSES[c].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
-        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · obrana <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i></div></div>`;
+        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · ${L('obrana', 'AC')} <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i></div></div>`;
     }).join('')}
-    <div class="btns"><button class="ch dim" data-a="back">‹ Zpět</button><button class="ch go" data-a="go">Začít dobrodružství ›</button></div></div>`;
+    <div class="btns"><button class="ch dim" data-a="back">‹ ${L('Zpět', 'Back')}</button><button class="ch go" data-a="go">${L('Začít dobrodružství', 'Start the adventure')} ›</button></div></div>`;
 }
 $('setup').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -2321,14 +2341,19 @@ function startPlay(room) {
 function store2() { if (G && G.room !== 'end' && G.room !== 'tpk') try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
 function loadGame() { try { const g = JSON.parse(localStorage.getItem(GAME_KEY)); return g && g.heroes && ROOMS[g.room] ? g : null; } catch (e) { return null; } }
 function renderRules() {
-  $('rules').innerHTML = `<div class="card"><h2>Jak se hraje</h2>
-    <h4>Hra je vypravěč</h4><p>Řekne vám, kde jste a co vidíte. Družina se poradí a vybere, co udělá. Telefon si posílejte: v boji hraje každý hrdina sám za sebe.</p>
+  $('rules').innerHTML = `<div class="card"><h2>${L('Jak se hraje', 'How to play')}</h2>
+    ${L(`<h4>Hra je vypravěč</h4><p>Řekne vám, kde jste a co vidíte. Družina se poradí a vybere, co udělá. Telefon si posílejte: v boji hraje každý hrdina sám za sebe.</p>
     <h4>Kostky rozhodují</h4><p>Každý hod je vidět. Hod na vlastnost (třeba Sílu): k20, musí padnout tvoje číslo nebo méně. Útok: k20 plus bonusy, musí padnout aspoň tolik, kolik hra napíše.</p>
     <h4>Boj</h4><p>Kdo je na tahu, má pod sebou zlatý kruh. Klepni na modré pole a hrdina tam dojde. Pak vyber z nabídky, co udělá, nebo rovnou klepni na příšeru a zaútočí na ni. Táhnutím prstu se rozhlédneš.</p>
     <h4>Když hrdina padne</h4><p>Při 0 životech padne a nemůže bojovat. Lektvar nebo léčení ho postaví na nohy. Po vyhraném boji vstane sám. Když padnou všichni, ráno se probudí v hostinci a mohou to zkusit znovu.</p>
     <h4>Hrdinové</h4><p>Válečník: silný, nejlepší zbroj, jde dopředu. Kněz: léčí, žehná a zahání nemrtvé. Čaroděj: křehký, ale umí Spánek a Magickou střelu. Zloděj: zámky, pasti, plížení a útok ze stínu.</p>
-    <h4>Kouzla</h4><p>Kouzel je málo. Klepni na hrdinu nahoře a uvidíš jeho kartu: i mezi boji se tam dá léčit a pít lektvary.</p>
-    <div class="btns"><button class="ch" data-a="back">‹ Zpět</button></div></div>`;
+    <h4>Kouzla</h4><p>Kouzel je málo. Klepni na hrdinu nahoře a uvidíš jeho kartu: i mezi boji se tam dá léčit a pít lektvary.</p>`, `<h4>The game is the storyteller</h4><p>It tells you where you are and what you see. The party talks it over and picks what to do. Pass the phone around: in a fight every hero takes their own turn.</p>
+    <h4>The dice decide</h4><p>Every roll is shown. An ability roll (say, Strength): roll a d20, you need your number or less. An attack: a d20 plus bonuses, you need at least what the game says.</p>
+    <h4>Fighting</h4><p>Whoever's turn it is has a gold ring. Tap a blue tile and the hero walks there. Then pick what they do, or just tap a monster to attack it. Drag your finger to look around.</p>
+    <h4>When a hero falls</h4><p>At 0 HP a hero falls and can't fight. A potion or a cure gets them up. After a won fight they get up by themselves. If everyone falls, they wake up at the inn in the morning and can try again.</p>
+    <h4>The heroes</h4><p>Fighter: strong, the best armour, goes in front. Cleric: heals, blesses and turns the undead. Mage: fragile, but knows Sleep and Magic Missile. Thief: locks, traps, sneaking and backstabs.</p>
+    <h4>Spells</h4><p>Spells are few. Tap a hero at the top to see their sheet: between fights you can heal and drink potions there too.</p>`)}
+    <div class="btns"><button class="ch" data-a="back">‹ ${L('Zpět', 'Back')}</button></div></div>`;
 }
 $('rules').addEventListener('click', e => { if (e.target.closest('[data-a="back"]')) { sfx('click'); setState('title'); } });
 
@@ -2343,8 +2368,8 @@ function renderParty() {
   partyKey = key;
   partyEl.innerHTML = G.heroes.map((h, i) => {
     const st = heroState(h), hp = Math.max(0, h.shp);
-    const tag = h.held ? '<i class="tag">ztuhlý</i>' : h.hidden ? '<i class="tag hid">ve stínu</i>' : '';
-    const hpTxt = hp <= 0 ? 'padl' + gv(h, '', 'a') : `❤ ${hp} / ${h.max}`;
+    const tag = h.held ? `<i class="tag">${L('ztuhlý', 'held')}</i>` : h.hidden ? `<i class="tag hid">${L('ve stínu', 'hidden')}</i>` : '';
+    const hpTxt = hp <= 0 ? L('padl' + gv(h, '', 'a'), 'down') : `❤ ${hp} / ${h.max}`;
     return `<button class="hero ${st}${h === actor ? ' turn' : ''}" data-hero="${i}" style="--c:${CLASSES[h.cls].col}">
       <img class="pt" src="${portrait(h)}" alt="">
       <span class="hn">${esc(h.name)}${tag}</span>
@@ -2363,8 +2388,8 @@ function renderInv() {
   const key = [G.gold, G.items.food, G.items.potion, G.items.holy, F && F.round, F && F.bless].join();
   if (key === invKey) return;
   invKey = key;
-  invEl.innerHTML = `<span class="gold">${G.gold} zl.</span><span>🧀 jídlo ${G.items.food}</span><span class="good">🧪 lektvary ${G.items.potion}</span><span class="holy">💧 svěcená voda ${G.items.holy}</span>` +
-    (F ? `<span>kolo ${F.round}${F.bless ? ' · požehnání +1' : ''}</span>` : '');
+  invEl.innerHTML = `<span class="gold">${G.gold} ${L('zl.', 'gold')}</span><span>🧀 ${L('jídlo', 'food')} ${G.items.food}</span><span class="good">🧪 ${L('lektvary', 'potions')} ${G.items.potion}</span><span class="holy">💧 ${L('svěcená voda', 'holy water')} ${G.items.holy}</span>` +
+    (F ? `<span>${L('kolo', 'round')} ${F.round}${F.bless ? L(' · požehnání +1', ' · blessed +1') : ''}</span>` : '');
 }
 const btnHTML = (c, i) => `<button class="ch${c.dim ? ' dim' : ''}" data-i="${i}"><kbd>${i + 1}</kbd>${c.ic ? `<span class="ic">${c.ic}</span>` : ''}<span>${esc(c.label)}</span>${c.note ? `<small>${esc(typeof c.note === 'function' ? c.note() : c.note)}</small>` : ''}</button>`;
 function renderChoices() {
@@ -2372,8 +2397,8 @@ function renderChoices() {
   const key = choicesVer + '|' + (wait ? 'w' : b ? 'b' : '') + (inFight ? 'F' : '');
   if (key !== choiceKey) {
     choiceKey = key;
-    if (wait) { askEl.textContent = ''; choicesEl.className = ''; choicesEl.innerHTML = '<button class="ch go" data-go="1"><kbd>␣</kbd>Dál ›</button>'; }
-    else if (b || !choices.length) { askEl.textContent = inFight ? '…' : ''; choicesEl.className = ''; choicesEl.innerHTML = b ? '<div class="hint">klepni pro přeskočení</div>' : ''; }
+    if (wait) { askEl.textContent = ''; choicesEl.className = ''; choicesEl.innerHTML = `<button class="ch go" data-go="1"><kbd>␣</kbd>${L('Dál', 'Go on')} ›</button>`; }
+    else if (b || !choices.length) { askEl.textContent = inFight ? '…' : ''; choicesEl.className = ''; choicesEl.innerHTML = b ? `<div class="hint">${L('klepni pro přeskočení', 'tap to skip')}</div>` : ''; }
     else {
       askEl.textContent = typeof ask === 'function' ? ask() : ask;
       choicesEl.className = choices.length > (window.innerWidth > window.innerHeight ? 3 : 2) && !inFight ? 'two' : '';
@@ -2398,9 +2423,9 @@ function choose1(i) { const c = choices[i]; if (!c || busy()) return; doChoice(c
 function renderBanner() {
   let txt = '';
   if (F && !film) {
-    if (F.actor && choices.length && !busy()) txt = `Kolo ${F.round} · na tahu: ${F.actor.name}`;
-    else if (F.order && F.order[F.step] !== 'party' && F.round) txt = `Kolo ${F.round} · tah příšer`;
-    else if (F.round) txt = `Kolo ${F.round}`;
+    if (F.actor && choices.length && !busy()) txt = L(`Kolo ${F.round} · na tahu: ${F.actor.name}`, `Round ${F.round} · ${F.actor.name}'s turn`);
+    else if (F.order && F.order[F.step] !== 'party' && F.round) txt = L(`Kolo ${F.round} · tah příšer`, `Round ${F.round} · the monsters' turn`);
+    else if (F.round) txt = L(`Kolo ${F.round}`, `Round ${F.round}`);
   }
   if (bannerEl.textContent !== txt) bannerEl.textContent = txt;
   bannerEl.hidden = !txt;
@@ -2450,33 +2475,33 @@ function openSheet(h) {
   sheet = h;
   const C = CLASSES[h.cls], w = h.weapon, calm = !F && !busy() && G.room !== 'end' && G.room !== 'tpk';
   const notes = {
-    str: `${sign(strHit(h.st.str))} k útoku, ${sign(strDmg(h.st.str))} zranění`,
-    dex: `${sign(-dexAC(h.st.dex))} obrana, ${sign(dexMissile(h.st.dex))} k hodu`,
-    con: `${sign(conHP(h.st.con, h.cls === 'fighter'))} životy`,
-    wis: h.cls === 'cleric' && h.st.wis >= 13 ? '+1 kouzlo denně' : '',
+    str: L(`${sign(strHit(h.st.str))} k útoku, ${sign(strDmg(h.st.str))} zranění`, `${sign(strHit(h.st.str))} to hit, ${sign(strDmg(h.st.str))} damage`),
+    dex: L(`${sign(-dexAC(h.st.dex))} obrana, ${sign(dexMissile(h.st.dex))} k hodu`, `${sign(dexAC(h.st.dex))} AC, ${sign(dexMissile(h.st.dex))} thrown`),
+    con: `${sign(conHP(h.st.con, h.cls === 'fighter'))} ${L('životy', 'HP')}`,
+    wis: h.cls === 'cleric' && h.st.wis >= 13 ? L('+1 kouzlo denně', '+1 spell a day') : '',
   };
   const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => x.hp < x.max);
   const canDrink = calm && G.items.potion > 0 && h.hp < h.max;
   $('sheet').innerHTML = `<div class="card" style="--c:${C.col}">
-    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${clsName(h)}, 1. úroveň · ${h.xp} / ${C.next} zkušeností do 2. úrovně</div></div></div>
+    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${L(`${clsName(h)}, 1. úroveň · ${h.xp} / ${C.next} zkušeností do 2. úrovně`, `Level 1 ${clsName(h)} · ${h.xp} / ${C.next} XP to level 2`)}</div></div></div>
     <div class="sh-cols">
       <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
       <div class="combat">
-        <div><b class="${heroState(h)}">❤ ${Math.max(0, h.hp)} / ${h.max} životů</b></div>
-        <div>Obrana ${acOf(h)} <span class="muted">(${C.armourName}; čím menší, tím lepší)</span></div>
-        <div>${w.name} <span class="muted">${w.n}k${w.s}${w.b ? '+' + w.b : ''}${w.hit ? ', +' + w.hit + ' k útoku' : ''}</span></div>
-        <div>Chůze v boji: ${C.move} pole</div>
-        ${h.spellMax ? `<div class="magic">Kouzla ${h.spells} / ${h.spellMax} dnes</div>` : ''}
+        <div><b class="${heroState(h)}">❤ ${Math.max(0, h.hp)} / ${h.max} ${L('životů', 'HP')}</b></div>
+        <div>${L('Obrana', 'Armour class')} ${acOf(h)} <span class="muted">(${C.armourName}; ${L('čím menší, tím lepší', 'lower is better')})</span></div>
+        <div>${w.name} <span class="muted">${w.n}${L('k', 'd')}${w.s}${w.b ? '+' + w.b : ''}${w.hit ? ', +' + w.hit + L(' k útoku', ' to hit') : ''}</span></div>
+        <div>${L('Chůze v boji', 'Move in a fight')}: ${C.move} ${L('pole', 'tiles')}</div>
+        ${h.spellMax ? `<div class="magic">${L('Kouzla', 'Spells')} ${h.spells} / ${h.spellMax} ${L('dnes', 'today')}</div>` : ''}
       </div>
     </div>
-    <h4>Záchranné hody <span class="muted">(k20, tohle nebo víc)</span></h4>
-    <div class="chips">${['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'].map((nm, i) => `<span>${nm} <b>${C.saves[i]}</b></span>`).join('')}</div>
-    ${h.cls === 'thief' ? `<h4>Zlodějské dovednosti <span class="muted">(k100, tohle nebo méně)</span></h4><div class="chips">${SKILL_NAMES.map((nm, k) => `<span>${nm} <b>${thiefSkill(h, k)} %</b></span>`).join('')}</div>` : ''}
-    ${C.spells ? `<h4>Kouzla</h4><ul class="spells">${C.spells.map(id => `<li><b>${SPELLS[id].name}</b> <span class="muted">${SPELLS[id].info}</span></li>`).join('')}</ul>` : ''}
+    <h4>${L('Záchranné hody', 'Saving throws')} <span class="muted">(${L('k20, tohle nebo víc', 'd20, this or more')})</span></h4>
+    <div class="chips">${L(['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'], ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells']).map((nm, i) => `<span>${nm} <b>${C.saves[i]}</b></span>`).join('')}</div>
+    ${h.cls === 'thief' ? `<h4>${L('Zlodějské dovednosti', 'Thief skills')} <span class="muted">(${L('k100, tohle nebo méně', 'd100, this or less')})</span></h4><div class="chips">${SKILL_NAMES.map((nm, k) => `<span>${nm} <b>${thiefSkill(h, k)} %</b></span>`).join('')}</div>` : ''}
+    ${C.spells ? `<h4>${L('Kouzla', 'Spells')}</h4><ul class="spells">${C.spells.map(id => `<li><b>${SPELLS[id].name}</b> <span class="muted">${SPELLS[id].info}</span></li>`).join('')}</ul>` : ''}
     <div class="btns">
-      ${canCure ? '<button class="ch" data-a="cure">✚ Seslat Léčení</button>' : ''}
-      ${canDrink ? '<button class="ch" data-a="drink">🧪 Vypít lektvar</button>' : ''}
-      <button class="ch dim" data-a="close">Zavřít</button>
+      ${canCure ? `<button class="ch" data-a="cure">✚ ${L('Seslat Léčení', 'Cast Cure Wounds')}</button>` : ''}
+      ${canDrink ? `<button class="ch" data-a="drink">🧪 ${L('Vypít lektvar', 'Drink a potion')}</button>` : ''}
+      <button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button>
     </div>
   </div>`;
   $('sheet').hidden = false;
@@ -2493,17 +2518,17 @@ $('sheet').addEventListener('click', e => {
   }
   if (a === 'drink') {
     G.items.potion--; const got = heal(h, dice(2, 4, 2)); sfx('ok');
-    say(`${h.name} vypije léčivý lektvar: +${got}.`, '#7aea7a'); then(stay); choices = []; choicesVer++;
+    say(L(`${h.name} vypije léčivý lektvar: +${got}.`, `${h.name} drinks a healing potion: +${got}.`), '#7aea7a'); then(stay); choices = []; choicesVer++;
   }
   closeSheet();
 });
 function openMenu() {
   menu = true;
-  $('menu').innerHTML = `<div class="card small"><h2>Pauza</h2>
-    <button class="ch" data-m="resume">Pokračovat</button>
-    <button class="ch" data-m="sfx">Zvuk: ${save.sfx ? 'zapnutý' : 'vypnutý'}</button>
-    <button class="ch" data-m="mus">Hudba: ${save.music !== false ? 'zapnutá' : 'vypnutá'}</button>
-    <button class="ch dim" data-m="quit">Uložit a odejít</button></div>`;
+  $('menu').innerHTML = `<div class="card small"><h2>${L('Pauza', 'Paused')}</h2>
+    <button class="ch" data-m="resume">${L('Pokračovat', 'Continue')}</button>
+    <button class="ch" data-m="sfx">${L('Zvuk', 'Sound')}: ${save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')}</button>
+    <button class="ch" data-m="mus">${L('Hudba', 'Music')}: ${save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')}</button>
+    <button class="ch dim" data-m="quit">${L('Uložit a odejít', 'Save and quit')}</button></div>`;
   $('menu').hidden = false;
 }
 function closeMenu() { menu = false; $('menu').hidden = true; }
