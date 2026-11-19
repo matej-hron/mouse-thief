@@ -277,7 +277,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.5.1';
+const VERSION = '0.5.2';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -2885,7 +2885,7 @@ function startPlay(room) {
   fade(true);
   go(room);
 }
-function store2() { if (G && !(G.f && G.f.over)) try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
+function store2() { if (G && !G.test && !(G.f && G.f.over)) try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
 function loadGame() {
   try {
     const g = JSON.parse(localStorage.getItem(GAME_KEY));
@@ -3602,6 +3602,20 @@ window.PQ = {
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
   tileScreen: t => toScreen(tileWorld(t)),
 };
+// TESTING A SCENE: adad?scena=bell (or ?scene=) starts a throwaway party of 4 straight in that scene of the Drowned
+// Bell, without films. A test game is never saved, so the real campaign stays as it was. Scenes: inn, hill, nave,
+// altar, crypt, door, ossuary, bell, pool, end.
+{
+  const sc = new URLSearchParams(location.search).get('scena') || new URLSearchParams(location.search).get('scene');
+  if (sc && ROOMS[sc]) {
+    const keep = localStorage.getItem(GAME_KEY);
+    PQ.quick(4, sc);
+    G.test = true;
+    try { if (keep === null) localStorage.removeItem(GAME_KEY); else localStorage.setItem(GAME_KEY, keep); } catch (e) { /* private mode */ }
+    if (sc === 'bell' || sc === 'pool') { G.f.rumour = 2; }
+    say(L('(Zkušební hra: nic se neukládá.)', '(A test game: nothing is saved.)'), '#c8b8ff');
+  }
+}
 </script>
 </body>
 </html>
