@@ -1383,7 +1383,7 @@ PRIVACY AND POLICY in the arcade.
 
 `adad.html`, at https://pixelgames.online/adad. Not in the arcade's menu, not in the service worker's cache, and
 `noindex`: a proof of concept for an old-school tabletop-style adventure where the game is the dungeon master.
-Version 0.2 is **in Czech, for children, and in 3D**, in a fantasy world (fantasy names for people and places) (three.js from `vendor/`; everything is built in code, no image
+Version 0.3 is **for children, in 3D, in Czech and English** (the arcade's SETTINGS → LANGUAGE, or the switch on the title screen), in a fantasy world (fantasy names for people and places). Every text is written for each language, not translated word for word: `L('česky', 'English')` in the code; the riddle on the bronze door is a different riddle in each language (Czech: the bell's heart, srdce; English: its tongue and mouth), with the same answer (three.js from `vendor/`; everything is built in code, no image
 or model files).
 
 - **Party:** 1 to 4 heroes (VÁLEČNÍK, KNĚZ, ČARODĚJ, ZLODĚJ; each a boy or a girl, so the class names and the words
