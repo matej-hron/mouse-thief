@@ -277,7 +277,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.5.4';
+const VERSION = '0.5.5';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -899,7 +899,17 @@ const ROOMS = {
           if (t && t.reveals.includes('stranger')) findClue('stranger');
           if (bonus === null) bonus = f().rumour === 2 ? 2 : -2;          // no connection: the old way
           gap();
-          if (checkAbility(h, 'cha', bonus)) {
+          const ok = checkAbility(h, 'cha', bonus);
+          if (ok && t && t.mood === 'moved') {
+            // the best talk: Malrec gives up, no fight
+            f().talkOk = 1; f().surrender = 1; f().won = 1;
+            say(L('Malrec dlouho mlčí. Pak mu palcát vyklouzne z ruky a zazvoní o kámen. Padne na kolena. „Tobine… odpusť mi.“', 'Malrec is silent for a long time. Then the mace slips from his hand and rings on the stone. He falls to his knees. "Tobin... forgive me."'), '#7aea7a');
+            say(L('Zvon se zakymácí a ztichne. Utopenci se bez jediného zvuku propadnou zpátky do tůně.', 'The bell lurches and falls silent. The drowned sink back into the pool without a sound.'), '#7aea7a');
+            giveXP(bossFoes().reduce((n, [id, k]) => n + MON[id].xp * k, 0), L('Za zvon umlčený slovy', 'For a bell silenced with words'));
+            then(() => go('pool'));
+            return;
+          }
+          if (ok) {
             f().talkOk = 1;
             say(L('Malrec zaváhá. Ruka s rudým rukávem se mu třese. Zvon vynechá úder. Teď!', 'Malrec falters. The hand in the red sleeve shakes. The bell misses a beat. Now!'), '#7aea7a');
             then(() => bossFight('party'));
