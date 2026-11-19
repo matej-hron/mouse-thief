@@ -17,6 +17,8 @@ In every game the pause button is two thick bars and the sound button a speaker 
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
 MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat),
 **CHAT POP-UPS** on or off (see Chat in the games), and the **LANGUAGE** (top right: ENGLISH or ČEŠTINA, see Languages).
+At its bottom: who made the games (with love, by a son and his dad) and the arcade's version (PIXEL GAMES V2.73.0).
+Versions are written the same way everywhere: `V` and the number, at the bottom right of each game's title screen.
 
 | Game | |
 |---|---|
@@ -1274,6 +1276,7 @@ New players get an interactive tutorial after the intro (replay it any time via 
   In the Hall of the Mountain King, Can-Can,
   Korobeiniki, Ode to Joy, Jingle Bells (★300–450 each). Boss fights keep their own music (Bossy Devil fights to a faster Toccata).
 - **Shields** are used up: buy them one by one (★50, up to 9); each one you raise is gone for good.
+- **Dev mode:** SETTINGS → DEV CODE unlocks everything for testing; your real progress is kept aside and comes back when you leave it.
 - **Your name:** SETTINGS → NAME (a nickname, 2–10 letters). Friends see it in multiplayer and on the leaderboard.
 - **Leaderboard** (menu): you and every friend you've played online with, by most stars and by longest run. (The arcade's
   global TOP is separate.) Here there is no server: phones swap names, stars and best times whenever they meet in multiplayer.
@@ -1383,4 +1386,4 @@ The game is an installable Progressive Web App and works offline.
 - **Android / Chrome / Edge:** open the link and tap **INSTALL APP** in the menu (or the browser's "Install app" / "Add to Home screen").
 - **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
 
-When releasing a new version, bump `CACHE` in `sw.js` and the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html` / `snake.html`; online play checks it).
+When releasing a new version, bump the arcade's `VERSION` (`index.html`), set `CACHE` in `sw.js` to the same number (`pixel-arcade-v<VERSION>`), and bump the game's `VERSION` (`thief.html` / `racer.html` / `pong.html` / `football.html` / `wings.html` / `fish.html` / `skate.html` / `ski.html` / `boxfight.html` / `bike.html` / `cook.html` / `runs.html` / `skygp.html` / `moto.html` / `defense.html` / `hook.html` / `miner.html` / `horde.html` / `snake.html`; online play checks it).
