@@ -2,8 +2,8 @@
 // Pages and the games' own scripts are fetched network-first, skipping the browser's HTTP cache (GitHub Pages
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
-// Bump CACHE on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.120.0';
+// CACHE is the arcade's VERSION (index.html): bump both together on every release (of any game) so old files get cleaned up.
+const CACHE = 'pixel-arcade-v2.73.0';
 const ASSETS = [
   './',
   './index.html',
