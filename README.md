@@ -1413,7 +1413,17 @@ or model files).
 - **Look:** the title, party and rules screens are HTML over the 3D world (the church in the mist); the play screen is
   the 3D scene with the party cards on top and the story in a book font (Alegreya) on the right (a phone held upright:
   at the bottom). The camera's view is shifted so the scene stays centred in the part of the screen you can see.
-- Saved after every step in `pixelQuest.game2` (POKRAČOVAT on the title). Winning gives ★10 the first time, ★2 after.
+- **The campaign** (0.4): one party for the whole game, on the **world map** of Aldmere (a 3D model of the kingdom;
+  missions are markers, crowns for story missions; each has a card with its level, what it needs ✔/✖, and the
+  artefacts found in it). A mission opens only when it can be finished (level, key artefacts, missions done; never
+  bonus artefacts). **Levels 1–5** (more HP, better hits and saves, more spells, better thief skills; a replay gives
+  half the experience). **Artefacts**: bonus ones are hidden and missable (the Drowned Bell has three: Saint Alder's
+  Hammer in a hidden ossuary, the Shard of the Bell in the pool, Malrec's Amulet if he gives up or is talked down),
+  one per hero, swapped in the hero's sheet; **the book** shows them (the missing ones as "?" with a hint), the
+  clues and the allies. **The mission map** (🗺 at the top): a parchment plan of the scenes, "?" for unexplored
+  exits, tap a visited place to go back there. The world, the people and the plan of the missions are in
+  `docs/pixel-quest-world.md`.
+- Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
 ## Install as an app (PWA)

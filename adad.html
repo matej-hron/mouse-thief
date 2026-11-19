@@ -84,6 +84,7 @@
   .hero.turn { background: rgba(58,47,92,.95); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 14px rgba(255,210,63,.35); }
   .tag { font-style: normal; font-size: 11px; font-weight: 700; margin-left: 6px; padding: 0 5px; border-radius: 3px; background: #4a2a6a; color: #e0b0ff; }
   .tag.hid { background: #1e4a2a; color: #9af59a; }
+  #mapBtn { width: 44px; flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; font-size: 19px; }
   #pause { width: 44px; flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; font-weight: 800; letter-spacing: 1px; }
   #side { position: fixed; display: flex; flex-direction: column; gap: 6px; pointer-events: none; box-sizing: border-box; }
   #side > * { pointer-events: auto; }
@@ -149,6 +150,38 @@
   #fade.on { opacity: 1; }
   body.film #play, body.film #side, body.film #banner, body.film #die, body.film #fx { visibility: hidden; }
 
+  /* the world map */
+  #map .mtop { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; padding: max(8px, var(--st)) max(10px, var(--sr)) 0 max(10px, var(--sl)); pointer-events: none; }
+  #map .mtop > * { pointer-events: auto; }
+  .mparty { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mh { display: flex; gap: 6px; align-items: center; padding: 4px 9px 4px 4px; background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 8px; text-align: left; }
+  .mh img { width: 34px; height: 34px; border-radius: 6px; }
+  .mh b { display: block; font-size: 14px; } .mh i { display: block; font-style: normal; font-size: 12px; color: var(--muted); }
+  .mbtns { display: flex; gap: 6px; align-items: center; } .mbtns .ch { min-height: 36px; padding: 5px 11px; font-size: 14.5px; }
+  .mgold { color: var(--gold); font-weight: 800; text-shadow: 0 1px 3px #000; margin-right: 4px; }
+  .mtitle { position: absolute; left: 0; right: 0; bottom: max(10px, var(--sb)); text-align: center; font: 800 italic clamp(20px, 4vw, 32px) 'Alegreya', Georgia, serif; color: #fff4d8; text-shadow: 0 2px 10px #000; pointer-events: none; }
+  #mlabels { position: absolute; inset: 0; pointer-events: none; }
+  .mreg { position: absolute; transform: translate(-50%, -50%); font: 700 italic 14px 'Alegreya', Georgia, serif; color: rgba(255,248,225,.75); text-shadow: 0 1px 4px #000, 0 0 8px #000; white-space: nowrap; letter-spacing: .04em; }
+  .mpin { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; display: flex; gap: 5px; align-items: center; padding: 4px 9px; border-radius: 16px; white-space: nowrap;
+          background: rgba(27,22,40,.92); border: 1px solid var(--line); font-weight: 800; font-size: 13.5px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  .mpin i { font-style: normal; } .mpin em { font-style: normal; font-size: 12px; color: var(--muted); }
+  .mpin.story { border-color: #c8a030; }
+  .mpin.open { border: 2px solid var(--gold); animation: pinPulse 1.4s ease-in-out infinite; } .mpin.open em { color: var(--gold); }
+  .mpin.done em { color: var(--good); } .mpin.locked { opacity: .75; } .mpin.soon { opacity: .6; border-style: dashed; }
+  @keyframes pinPulse { 50% { box-shadow: 0 0 0 4px rgba(255,210,63,.25), 0 4px 14px rgba(0,0,0,.5); } }
+  .mcard .needs div { font-weight: 700; margin: 2px 0; } .needs .ok { color: var(--good); } .needs .no { color: var(--bad); }
+  .bk { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.25); }
+  .bk > b { font-size: 22px; width: 30px; text-align: center; } .bk.no > b { color: var(--muted); }
+  .card h4.big { font-size: 17px; margin-top: 16px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+  .card.parch { background: linear-gradient(#e8d8b0, #d8c494); color: #3a2a18; border-top-color: #8a6a3a; }
+  .card.parch .muted { color: #6a5a40; }
+  .mmap { position: relative; width: 100%; aspect-ratio: 16 / 10; margin: 8px 0; border-radius: 8px; background: radial-gradient(ellipse, rgba(255,255,255,.25), rgba(120,90,40,.15)); }
+  .mmap svg { position: absolute; inset: 0; width: 100%; height: 100%; } .mmap line { stroke: #7a5a30; stroke-width: .8; }
+  .mn { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; color: #3a2a18; }
+  .mn b { width: 26px; height: 26px; line-height: 26px; border-radius: 50%; background: #f4e8c8; border: 2px solid #7a5a30; font-size: 13px; }
+  .mn span { font: 700 12px 'Alegreya Sans', sans-serif; white-space: nowrap; margin-top: 1px; text-shadow: 0 0 3px #f4e8c8; }
+  .mn.here b { background: #ffd23f; } .mn.go b { background: #fff; box-shadow: 0 0 0 3px rgba(90,60,20,.3); } .mn.unk { opacity: .7; } .mn.unk b { border-style: dashed; }
+  .art { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.72); padding: 16px; box-sizing: border-box; pointer-events: auto; }
   .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
   .sh-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
@@ -195,8 +228,9 @@
 </div>
 <div id="setup" class="layer screen" hidden></div>
 <div id="rules" class="layer screen" hidden></div>
+<div id="map" class="layer" hidden></div>
 <div id="play" class="layer" hidden>
-  <div id="top"><div id="party"></div><button id="pause" aria-label="Pauza">II</button></div>
+  <div id="top"><div id="party"></div><button id="mapBtn" aria-label="Map">🗺</button><button id="pause" aria-label="Pauza">II</button></div>
 </div>
 <div id="side" hidden>
   <div id="story"><div id="storyIn"></div></div>
@@ -234,8 +268,8 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.3.1';
-const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
+const VERSION = '0.4.0';
+const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
@@ -297,7 +331,7 @@ const MON = {
   zomb:   { name: L('Utopenec', 'Drowned one'), hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: L('se rozpadl v louži vody', 'collapses into a puddle of water'), ran: L('couvá zpátky do tůně', 'backs away into the pool') },
   malrec: { name: L('Bratr Malrec', 'Brother Malrec'), hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '' },
 };
-const ITEMS = L({ potion: L('Léčivý lektvar', 'Healing potion'), holy: 'Svěcená voda', food: 'Jídlo' }, { potion: 'Healing potion', holy: 'Holy water', food: 'Food' });
+const ITEMS = L({ potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'Jídlo' }, { potion: 'Healing potion', holy: 'Holy water', food: 'Food' });
 
 /* --- 3. HEROES ------------------------------------------------------------- */
 const NAMES = [['Bran', 'm'], ['Mira', 'f'], ['Oswin', 'm'], ['Tess', 'f'], ['Garrick', 'm'], ['Elwyn', 'f'], ['Hob', 'm'], ['Sable', 'f'],
@@ -314,22 +348,130 @@ function setClass(h, cls) {
   h.max = Math.max(1, C.hd + conHP(h.st.con, cls === 'fighter'));
   h.hp = h.shp = h.max;
   h.weapon = Object.assign({}, C.weapon);
-  h.spellMax = cls === 'mage' ? 1 : cls === 'cleric' ? 1 + (h.st.wis >= 13 ? 1 : 0) : 0;
+  h.level = 1; h.xp = 0;
+  h.spellMax = spellMaxOf(h);
   h.spells = h.spellMax;
 }
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
 const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex);
-const thac0Of = () => 20;
+const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
 const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0);
 const dmgOf = h => strDmg(h.st.str);
 const up = h => h.hp > 0;                                   // can act (if not held)
 function thiefSkill(h, k) {                                 // k: 0 open locks, 1 find traps, 2 move silently, 3 hide in shadows
   const base = [35, 25, 35, 25][k], adj = THIEF_DEX[Math.min(18, h.st.dex)] || [0, 0, 0, 0];
-  return base + adj[k];
+  return base + adj[k] + 5 * (lvl(h) - 1);
 }
 const SKILL_NAMES = L(['Otevírání zámků', 'Hledání pastí', 'Tiché plížení', 'Schovat se ve stínu'], ['Open locks', 'Find traps', 'Move silently', 'Hide in shadows']);
-const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]];
+const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]] - Math.floor((lvl(h) - 1) / 2);
 const gv = (h, boy, girl) => h.g === 'f' ? girl : boy;     // Czech words that change for a girl hero
+
+/* --- 3b. LEVELS: one party for the whole campaign, levels 1 to 5 ------------------------------
+   Experience (shared out at the end of fights and missions) raises the level: more HP (a roll of the class's die),
+   better hits (THAC0), better saving throws, more spells a day, better thief skills. Replaying a mission gives
+   half the experience. */
+const XP_LEVEL = [0, 150, 450, 1000, 2000];             // the experience each level starts at
+const MAX_LEVEL = 5;
+const lvl = h => h.level || 1;
+function spellMaxOf(h) {
+  const L1 = lvl(h);
+  if (h.cls === 'mage') return Math.min(L1, 4);
+  if (h.cls === 'cleric') return Math.min(L1, 4) + (h.st.wis >= 13 ? 1 : 0);
+  return 0;
+}
+function levelUp(h) {
+  const C = CLASSES[h.cls];
+  h.level = lvl(h) + 1;
+  const gain = Math.max(1, rnd(C.hd) + conHP(h.st.con, h.cls === 'fighter'));
+  h.max += gain; h.hp = Math.min(h.max, Math.max(1, h.hp) + gain); h.shp = h.hp;
+  h.spellMax = spellMaxOf(h); h.spells = h.spellMax;
+  return gain;
+}
+// after a mission: whoever has enough experience goes up a level (maybe more than one)
+function checkLevels() {
+  for (const h of G.heroes) while (lvl(h) < MAX_LEVEL && h.xp >= XP_LEVEL[lvl(h)]) {
+    const gain = levelUp(h);
+    say(L(`${h.name} postupuje na ${lvl(h)}. úroveň! +${gain} životů${h.spellMax ? ', víc kouzel' : ''}, lepší útok.`,
+          `${h.name} reaches level ${lvl(h)}! +${gain} HP${h.spellMax ? ', more spells' : ''}, better attacks.`), '#ffd23f');
+    then(() => sfx('win'));
+  }
+}
+
+/* --- 3c. ARTEFACTS ---------------------------------------------------------------------------
+   Unique magic things hidden in the missions. Key artefacts: the reward of a story mission's main goal (they can't be
+   missed, and they open the next missions). Bonus artefacts: hidden (a search, a hidden room, a choice), missable,
+   never needed, they make things easier. One per hero; the book shows all of them, the missing ones as "?". */
+const ART = {
+  hammer: { mission: 'bell', kind: 'bonus', ic: '🔨', name: L('Kladivo svatého Aldera', 'Saint Alder\'s Hammer'),
+            info: L('Zbraň: 1k6+1, +1 k útoku a +2 zranění proti nemrtvým. Po kostech neklouže.', 'Weapon: 1d6+1, +1 to hit and +2 damage against the undead. It doesn\'t slide off bones.'),
+            hint: L('Něco se skrývá pod kryptou…', 'Something is hidden under the crypt...'),
+            weapon: { name: L('Kladivo sv. Aldera', 'St Alder\'s Hammer'), n: 1, s: 6, b: 1, hit: 1, blessed: true } },
+  shard:  { mission: 'bell', kind: 'bonus', ic: '🔔', name: L('Úlomek zvonu', 'Shard of the Bell'),
+            info: L('Jednou za misi ho rozezni: každý nemrtvý může utéct (polovina šance).', 'Ring it once per mission: every undead may flee (a half chance each).'),
+            hint: L('Co zůstalo na dně tůně?', 'What is left at the bottom of the pool?') },
+  amulet: { mission: 'bell', kind: 'bonus', ic: '🧿', name: L('Malrecův amulet', 'Malrec\'s Amulet'),
+            info: L('Toho, kdo ho nosí, nikdo nezmrazí kouzlem.', 'Whoever wears it can\'t be held by magic.'),
+            hint: L('Malrec by ho dal jen po dobrém…', 'Malrec would only give it up of his own will...') },
+};
+const CLUES = {
+  robe: { ic: '🟥', name: L('Rudé roucho', 'The red robe'), info: L('Malrecovo roucho. Na rukávu je vyšitá pečeť: kostěná ruka. Kdo za ním doopravdy stál?', 'Malrec\'s robe. A seal is stitched on the sleeve: a bony hand. Who was really behind him?') },
+};
+const hasArt = (h, id) => !!G.arts && G.arts[id] === G.heroes.indexOf(h);
+const artOf = h => Object.keys(G.arts || {}).find(id => G.arts[id] === G.heroes.indexOf(h));
+function equip(h, id) {
+  const i = G.heroes.indexOf(h), old = artOf(h);
+  if (old) unequip(h);
+  for (const x of G.heroes) if (G.arts[id] === G.heroes.indexOf(x)) unequip(x);
+  G.arts[id] = i;
+  if (ART[id].weapon) { h.baseWeapon = h.baseWeapon || h.weapon; h.weapon = Object.assign({}, ART[id].weapon); }
+}
+function unequip(h) {
+  const id = artOf(h); if (!id) return;
+  G.arts[id] = -1;
+  if (ART[id].weapon && h.baseWeapon) { h.weapon = h.baseWeapon; delete h.baseWeapon; }
+}
+// found! It goes to whoever has no artefact yet (the party can swap them in the hero sheets)
+function findArt(id) {
+  if (G.arts[id] !== undefined) return;
+  G.arts[id] = -1;
+  const free = G.heroes.find(h => !artOf(h) && (!ART[id].weapon || h.cls === 'fighter' || h.cls === 'cleric')) || G.heroes.find(h => !artOf(h));
+  if (free) equip(free, id);
+  say(L(`Nový artefakt: ${ART[id].ic} ${ART[id].name}! ${ART[id].info}`, `A new artefact: ${ART[id].ic} ${ART[id].name}! ${ART[id].info}`), '#ffd23f');
+  if (free) say(L(`Nese ho ${free.name}. (Vyměnit se dá v kartě hrdiny.)`, `${free.name} carries it. (Swap it in a hero's sheet.)`), '#c8b8ff');
+  then(() => sfx('coin'));
+}
+function findClue(id) {
+  if (G.clues[id]) return;
+  G.clues[id] = 1;
+  say(L(`Nová stopa: ${CLUES[id].ic} ${CLUES[id].name}. ${CLUES[id].info}`, `A new clue: ${CLUES[id].ic} ${CLUES[id].name}. ${CLUES[id].info}`), '#d79aff');
+}
+
+/* --- 3d. THE CAMPAIGN: the missions on the world map ----------------------------------------
+   A mission: kind (story: a crown; side: a plain marker), where it is on the map, its level, what it needs (level,
+   key artefacts, missions done: never bonus artefacts), the scene it starts in. 'soon' = written but not built yet. */
+const MISSIONS = [
+  { id: 'bell', kind: 'side', at: [-19.5, 4.2], level: 1, start: 'inn', title: L('Utopený zvon', 'The Drowned Bell'),
+    about: L('Na kopci nad Thornwallem zvoní zvon, který neexistuje. A mlynářova dcera zmizela.', 'On the hill above Thornwall a bell rings that isn\'t there. And the miller\'s daughter is missing.') },
+  { id: 's1', kind: 'story', at: [-8, 0.5], level: 1, needs: { done: ['bell'] }, soon: true, title: L('Princův posel', 'The Prince\'s Messenger'),
+    about: L('Do Thornwallu přijíždí jezdec od prince Edrika. V patách má Popelavé jezdce.', 'A rider from Prince Edric reaches Thornwall, with the Ash Riders on his heels.') },
+  { id: 'troll', kind: 'side', at: [-13, 6.5], level: 1, soon: true, title: L('Troll pod mostem', 'The Troll Under the Bridge'),
+    about: L('Na mostě přes řeku vybírá mýto troll. A chce, aby mu říkali „pane“.', 'A troll takes a toll on the river bridge. And he wants to be called "sir".') },
+  { id: 'forest', kind: 'side', at: [-14, -8.5], level: 2, soon: true, title: L('Šeptající les', 'The Whispering Forest'),
+    about: L('Z pastvin u Elderwoodu mizí ovce. Les v noci šeptá.', 'Sheep keep vanishing from the meadows by Elderwood. At night the forest whispers.') },
+  { id: 's2', kind: 'story', at: [9, 11.5], level: 2, needs: { arts: ['signet'] }, soon: true, title: L('Kostěný opat', 'The Bone Abbot'),
+    about: L('V opatství uprostřed Lucerních bažin svítí v noci rudá okna.', 'In the abbey in the middle of the Lantern Marsh, red windows glow at night.') },
+];
+ART.signet = { mission: 's1', kind: 'key', ic: '💍', name: L('Princův pečetní prsten', 'The Prince\'s Signet'), info: L('Znamení, že jednáte z pověření prince Edrika.', 'A sign that you act for Prince Edric.'), hint: '' };
+const missionOf = id => MISSIONS.find(m => m.id === id);
+const partyLevel = () => Math.max(...G.heroes.map(lvl));
+function missionNeeds(M) {
+  const out = [{ ok: partyLevel() >= M.level, txt: L(`úroveň ${M.level}`, `level ${M.level}`) }];
+  for (const d of (M.needs && M.needs.done) || []) out.push({ ok: !!G.done[d], txt: L(`dokončit: ${missionOf(d).title}`, `finish: ${missionOf(d).title}`) });
+  for (const a of (M.needs && M.needs.arts) || []) out.push({ ok: G.arts[a] !== undefined, txt: `${ART[a].ic} ${ART[a].name} (${L('z mise', 'from')} ${missionOf(ART[a].mission).title})` });
+  return out;
+}
+const missionOpen = M => !M.soon && missionNeeds(M).every(x => x.ok);
+const missionArts = M => Object.keys(ART).filter(id => ART[id].mission === M.id && ART[id].kind === 'bonus');
 
 /* --- 4. THE STORY QUEUE -------------------------------------------------------
    Everything the game says or shows goes through a queue, one piece at a time: text, a dice roll (the die spins, then
@@ -447,9 +589,10 @@ function heal(h, n) {
 function giveXP(n, why) {
   const live = G.heroes;
   if (!live.length || n <= 0) return;
-  const each = Math.floor(n / live.length);
+  const again = G.mission && G.done && G.done[G.mission];
+  const each = Math.floor(n / live.length / (again ? 2 : 1));
   for (const h of live) h.xp += each;
-  say(L(`${why}: ${each} zkušeností pro každého hrdinu.`, `${why}: ${each} XP for every hero.`), '#ffd23f');
+  say(L(`${why}: ${each} zkušeností pro každého hrdinu.`, `${why}: ${each} XP for every hero.`) + (again ? L(' (Opakovaná mise: polovina.)', ' (A replay: half.)') : ''), '#ffd23f');
 }
 
 /* --- 5. THE ADVENTURE: UTOPENÝ ZVON (THE DROWNED BELL) ---------------------------------------------
@@ -642,7 +785,37 @@ const ROOMS = {
         else say(L(`${h.name} kouká na písmena tak dlouho, až se rozmazávají.`, `${h.name} stares at the words until they swim.`));
         then(stay);
       }) },
+      { label: L('Prohledat kryptu', 'Search the crypt'), ic: '🔍', if: () => !f().ossOpen, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.crypt ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.crypt = 1;
+        if (checkAbility(h, 'wis')) {
+          f().ossOpen = 1;
+          say(L(`${h.name} si všimne, že jeden kámen ve zdi je čistší než ostatní. Když na něj zatlačí, odsune se. Za ním vede úzká chodba.`, `${h.name} notices one stone in the wall is cleaner than the rest. When pushed, it slides back. A narrow passage lies behind it.`), '#7aea7a');
+          then(() => go('ossuary')); return;
+        }
+        say(L(`${h.name} najde jen prach a pavučiny.`, `${h.name} finds only dust and cobwebs.`));
+        then(stay);
+      }) },
+      { label: L('Do skryté kostnice', 'Into the hidden ossuary'), ic: '💀', if: () => f().ossOpen, act: () => go('ossuary') },
       { label: L('Zpátky nahoru', 'Back up'), ic: '‹', dim: true, act: () => go('altar') },
+    ],
+  },
+  ossuary: {
+    title: L('Skrytá kostnice', 'The Hidden Ossuary'), set: 'crypt', view: 'ossuary',
+    text: L('Chodba vede do malé kostnice. Zdi jsou poskládané z lebek a podlahu zalévá černá voda po kolena. Pod hladinou se něco leskne.', 'The passage leads to a small ossuary. Its walls are built of skulls, and black water stands knee-deep on the floor. Something glints under the surface.'),
+    again: L('Lebky se dívají do černé vody.', 'The skulls stare down into the black water.'),
+    choices: () => [
+      { label: L('Prohledat vodu', 'Search the water'), ic: '🔍', if: () => !f().hammer, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.water ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.water = 1;
+        if (checkAbility(h, 'wis')) {
+          f().hammer = 1;
+          if (G.arts.hammer === undefined) {
+            say(L('Ve vodě leží válečné kladivo. Hlavu má okovanou stříbrem a na násadě je vyryté jméno: Alder. Je na dotek teplé.', 'In the water lies a war hammer. Its head is bound in silver, and a name is carved on the handle: Alder. It is warm to the touch.'), '#7aea7a');
+            findArt('hammer');
+          } else { G.gold += 25; say(L('Ve vodě najdete hrst starých stříbrných mincí: 25 zlaťáků.', 'In the water you find a handful of old silver coins: 25 gold.'), '#7aea7a'); then(() => sfx('coin')); }
+        } else say(L(`${h.name} nahmátne jen studené bahno a staré zuby.`, `${h.name} finds only cold mud and old teeth.`));
+        then(stay);
+      }) },
+      { label: L('Zpátky ke dveřím', 'Back to the door'), ic: '‹', dim: true, act: () => go('door') },
     ],
   },
   bell: {
@@ -658,6 +831,7 @@ const ROOMS = {
       { label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L(`Kdo s ním mluví? (Charisma${f().rumour === 2 ? ' +2: víte o jeho bratrovi' : ' -2'})`, `Who talks to him? (Charisma${f().rumour === 2 ? ' +2: you know about his brother' : ' -2'})`), h => abilityChance(h, 'cha', f().rumour === 2 ? 2 : -2), h => {
         f().talked = 1;
         if (checkAbility(h, 'cha', f().rumour === 2 ? 2 : -2)) {
+          f().talkOk = 1;
           say(L(`${h.name}: „Tvůj bratr by tohle nechtěl, Malrecu.“ Malrec zaváhá. Zvon vynechá úder. Teď!`, `${h.name}: "Your brother wouldn\'t want this, Malrec." He falters. The bell misses a beat. Now!`), '#7aea7a');
           then(() => bossFight('party'));
         } else {
@@ -665,6 +839,34 @@ const ROOMS = {
           then(() => bossFight('foes'));
         }
       }) },
+    ],
+  },
+  pool: {
+    title: L('Ticho', 'Silence'), set: 'bell', view: 'bell',
+    text: () => L('Zvon se zastaví. Utopenci zmizí v tůni a voda se uklidní. Rozvážete Milu a ona se vás drží jako klíště.', 'The bell stops. The drowned vanish into the pool and the water goes still. You untie Mila, and she clings to you like a burr.') +
+      (f().surrender ? L(' Malrec klečí u vody a pláče.', ' Malrec kneels by the water, crying.') : ''),
+    again: L('V jeskyni je ticho. Tůň je černá a klidná.', 'The cave is silent. The pool lies black and still.'),
+    enter: first => {
+      if (curSet && curSet.userData.bellAmp !== undefined) curSet.userData.bellAmp = 0.03;
+      if (!first) return;
+      if (f().surrender || f().talkOk) {
+        say(L('Malrec si sundá z krku amulet a podá vám ho. „Vezměte si ho. Mně už k ničemu není.“', 'Malrec takes an amulet from his neck and hands it to you. "Take it. It is no use to me any more."'));
+        findArt('amulet');
+      }
+      say(L('Na rukávu Malrecova rudého roucha je vyšitá pečeť: kostěná ruka.', 'On the sleeve of Malrec\'s red robe a seal is stitched: a bony hand.'));
+      findClue('robe');
+    },
+    choices: () => [
+      { label: L('Prohledat tůň', 'Search the pool'), ic: '🔍', if: () => !f().pooled, ...pickWho(L('Kdo se ponoří? (Síla)', 'Who dives in? (Strength)'), h => h.tried.pool ? 0 : abilityChance(h, 'str'), h => {
+        h.tried.pool = 1;
+        if (checkAbility(h, 'str')) {
+          f().pooled = 1;
+          if (G.arts.shard === undefined) { say(L(`${h.name} nahmátne v bahně na dně kus zeleného bronzu. Je teplý a tiše zvoní.`, `In the mud at the bottom ${h.name} finds a piece of green bronze. It is warm and rings softly.`), '#7aea7a'); findArt('shard'); }
+          else { G.gold += 25; say(L('Na dně leží pár starých mincí: 25 zlaťáků.', 'A few old coins lie on the bottom: 25 gold.'), '#7aea7a'); then(() => sfx('coin')); }
+        } else say(L(`${h.name} se vynoří s prázdnýma rukama. Voda je ledová.`, `${h.name} comes up empty-handed. The water is icy.`));
+        then(stay);
+      }) },
+      { label: L('Odvést Milu domů', 'Take Mila home'), ic: '🏠', act: () => go('end') },
     ],
   },
   end: {
@@ -675,17 +877,19 @@ const ROOMS = {
       f().paid = 1;
       G.gold += 200;
       gap();
-      giveXP(G.gold, L(`${G.gold} zlaťáků přinesených domů`, `${G.gold} gold brought home`));
+      giveXP(200, L('200 zlaťáků přinesených domů', '200 gold brought home'));
+      checkLevels();
+      G.done[G.mission] = (G.done[G.mission] || 0) + 1;
       const first = !save.wins;
       save.wins = (save.wins | 0) + 1; store();
       const stars = first ? 10 : 2;
       PX.Wallet.add(stars);
-      say(L(`Dobrodružství je vyhrané! +★${stars}`, `The adventure is won! +★${stars}`), '#ffd23f');
+      say(L(`Mise je splněná! +★${stars}`, `Mission accomplished! +★${stars}`), '#ffd23f');
       sfx('win');
-      try { localStorage.removeItem(GAME_KEY); } catch (e) { /* private mode */ }
+      store2();
     },
-    ask: L('Konec', 'The end'),
-    choices: () => [{ label: L('Na titulní obrazovku', 'Back to the title'), act: () => { G = null; setState('title'); } }],
+    ask: L('Mise splněná', 'Mission accomplished'),
+    choices: () => [{ label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', act: () => endMission() }],
   },
   tpk: {
     title: L('Tma…', 'Darkness...'), set: 'village', view: 'inn',
@@ -694,7 +898,7 @@ const ROOMS = {
     ask: L('Co teď?', 'What now?'),
     choices: () => [
       { label: L('Zkusit to znovu', 'Try again'), ic: '↻', act: () => go('hill') },
-      { label: L('Na titulní obrazovku', 'Back to the title'), ic: '‹', dim: true, act: () => { store2(); G = null; setState('title'); } },
+      { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => endMission() },
     ],
   },
 };
@@ -705,7 +909,7 @@ function bossFoes() {
   const foes = [['malrec', 1]]; if (z) foes.push(['zomb', z]);
   return foes;
 }
-function bossFight(surprise) { fight({ foes: bossFoes(), surprise, boss: true, win: () => go('end'), flee: null }); }
+function bossFight(surprise) { fight({ foes: bossFoes(), surprise, boss: true, win: () => { f().won = 1; go('pool'); }, flee: null }); }
 
 /* --- 6. FIGHTS ---------------------------------------------------------------
    Every round: initiative (d10 for each side, low first; a surprise gives one side a free round). The heroes act one
@@ -809,6 +1013,16 @@ function heroMenu(h) {
       else say(L(`${h.name} nemůže najít dost tmavý kout.`, `${h.name} can't find a dark enough corner.`));
       doneTurn();
     } },
+    { label: L('Rozeznít úlomek zvonu', 'Ring the bell shard'), ic: '🔔', if: () => hasArt(h, 'shard') && !G.used.shard && undead, act: () => {
+      G.used.shard = 1;
+      play(() => { setPose(u, 'cast'); holyWave(u); sfx('bell'); }, 0.9);
+      say(L(`${h.name} rozezní úlomek zvonu. Čistý tón se nese jeskyní.`, `${h.name} rings the bell shard. A clear note fills the air.`), '#f0e070');
+      for (const m of foesLeft().filter(x => x.undead && x.state === 'ok')) {
+        if (rnd(2) === 1) { m.state = 'gone'; F.xp += m.xp; const mu = unitOf(m); then(() => fleeAnim(mu)); say(`${m.name} ${m.ran}.`, '#7aea7a'); }
+        else say(L(`${m.name} odolá.`, `${m.name} holds on.`), '#c8b8ff');
+      }
+      doneTurn();
+    } },
     { label: L('Předměty', 'Items'), ic: '⚱', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
     { label: L('Čekat', 'Wait'), ic: '⏸', dim: true, act: () => { say(L(`${h.name} čeká.`, `${h.name} waits.`), '#c8b8ff'); doneTurn(); } },
     { label: L('Utéct', 'Run away'), ic: '🏃', if: () => !!F.def.flee, dim: true, act: () => runAway() },
@@ -853,6 +1067,7 @@ function attack(h, m) {
     const w = h.weapon;
     let d = Math.max(1, dice(w.n, w.s, w.b) + dmgOf(h));
     if (bk) d *= 2;
+    if (w.blessed && m.undead) d += 2;
     if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say(L('Čepel sklouzne po kostech: jen poloviční zranění.', 'The blade slides off the bones: only half damage.'), '#c8b8ff'); }
     wound(m, d);
   } else then(() => floatNum(mu, L('vedle', 'miss'), 'miss'));
@@ -1023,7 +1238,8 @@ function foeAct(m) {
       F.cast.hold = 1;
       play(() => { setPose(mu, 'cast', hu); beam(mu, hu, 0xb06aff); sfx('spell'); }, 0.6);
       say(L(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, `Malrec points at ${h.name}: "Be still!"`), '#c06aff');
-      if (!checkSave(h, 'spell')) { h.held = 2; say(L(`${h.name} ztuhne na 2 kola.`, `${h.name} is held for 2 rounds.`), '#ff7a6a'); then(() => tint(hu, 'held')); } else say(L(`${h.name} se z toho vytřese.`, `${h.name} shakes it off.`));
+      if (hasArt(h, 'amulet')) say(L(`Amulet na krku hrdiny ${h.name} zazáří a kouzlo se rozplyne.`, `The amulet around ${h.name}'s neck glows and the spell fades.`), '#7aea7a');
+      else if (!checkSave(h, 'spell')) { h.held = 2; say(L(`${h.name} ztuhne na 2 kola.`, `${h.name} is held for 2 rounds.`), '#ff7a6a'); then(() => tint(hu, 'held')); } else say(L(`${h.name} se z toho vytřese.`, `${h.name} shakes it off.`));
       return;
     }
     F.cast.wound = 1;
@@ -1683,8 +1899,91 @@ const BUILD = {
     U.arena = { cx: 0, cz: -1.5, w: 7, d: 8, y: 0, blocked: [[3, 3], [3, 4]], heroes: [[3, 6], [2, 6], [4, 7], [3, 7]], foes: [[2, 0], [4, 0], [3, 1], [1, 1], [5, 1]] };
     U.views.crypt = { look: [0, 1.0, -2.5], yaw: 0, pitch: 0.3, dist: 8.5 };
     U.views.door = { look: [0, 1.6, -11.8], yaw: 0.25, pitch: 0.12, dist: 5.2 };
+    U.views.ossuary = { look: [-3.8, 0.8, -7], yaw: 1.2, pitch: 0.18, dist: 3.2 };
     U.views.battle = { look: [0, 0, -1.3], yaw: 0, pitch: 0.82, dist: 9.5 };
     U.niche = (i) => { const sx = i % 2 ? 1 : -1, z = [-4, -1, -7, 2, -10][Math.floor(i / 2) % 5]; return [sx * 3.5, z]; };
+  },
+  world(g) {
+    const U = g.userData;
+    U.bg = 0x1a2436; U.fog = 0x1e2a3c; U.density = 0.006; U.exposure = 1.25;
+    const W = 60, D = 40;
+    const hfn = (x, z) => {
+      let h = 0;
+      if (x > 20) h += Math.max(0, (x - 20) * 0.35) * (0.6 + 0.4 * Math.sin(z * 0.7) * Math.cos(x * 0.5));      // the Ashen Mountains
+      const ip = Math.hypot(x - 2, z + 15); if (ip < 7) h += (7 - ip) * 0.45;                                        // Ironpeak
+      const th = Math.hypot(x + 20, z - 4); if (th < 2.2) h += (2.2 - th) * 0.6;                                     // the church hill
+      if (z > 15.5 && x < -4) h -= 0.6;                                                                              // the sea
+      return Math.max(-0.6, h);
+    };
+    U.mapH = hfn;
+    // the land, painted: regions, the river, the roads, the sea
+    const map = canvasTex(1024, 683, (c, w, h) => {
+      const P = (x, z) => [(x + W / 2) / W * w, (z + D / 2) / D * h];
+      c.fillStyle = '#5c7a48'; c.fillRect(0, 0, w, h);
+      const blob = (x, z, r, col) => { const [px, py] = P(x, z), g2 = c.createRadialGradient(px, py, 0, px, py, r / W * w); g2.addColorStop(0, col); g2.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g2; c.fillRect(0, 0, w, h); };
+      blob(-14, -11, 10, 'rgba(30,70,40,0.95)');  blob(-20, -6, 6, 'rgba(30,70,40,0.8)');                // Elderwood
+      blob(2, -15, 9, 'rgba(120,110,100,0.9)');                                                            // Ironpeak
+      blob(9, 12, 8, 'rgba(60,80,60,0.95)');                                                               // the marsh
+      blob(13, -7, 9, 'rgba(170,150,80,0.7)');                                                             // the steppe
+      blob(26, 0, 14, 'rgba(50,40,44,0.95)');                                                              // the Ashen Mountains
+      blob(-18, 5, 6, 'rgba(120,150,80,0.6)');                                                             // the Riverlands
+      c.fillStyle = '#2c5a7a'; c.beginPath(); const [sx, sy] = P(-30, 15); c.moveTo(sx, sy);
+      for (let x = -30; x <= -4; x += 1) { const [px, py] = P(x, 15.5 + Math.sin(x * 0.8) * 0.6); c.lineTo(px, py); }
+      const [ex, ey] = P(-4, 20), [fx, fy] = P(-30, 20); c.lineTo(ex, ey); c.lineTo(fx, fy); c.fill();
+      for (let i = 0; i < 400; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
+      c.strokeStyle = '#3a78a0'; c.lineWidth = 7; c.lineCap = 'round'; c.beginPath();
+      [[2, -9], [-3, -4], [-8, 1], [-13, 5.5], [-17, 7], [-20, 11], [-21, 15.5]].forEach(([x, z], i) => { const [px, py] = P(x, z); i ? c.lineTo(px, py) : c.moveTo(px, py); }); c.stroke();
+      c.strokeStyle = 'rgba(150,110,70,0.9)'; c.lineWidth = 3; c.setLineDash([10, 7]);
+      for (const road of [[[-18, 6], [-8, 1], [-2, 2]], [[-2, 2], [2, -10]], [[-2, 2], [8, 10]], [[-2, 2], [-12, 15]], [[-2, 2], [12, -4], [20, -1]], [[-18, 6], [-14, -6]]]) {
+        c.beginPath(); road.forEach(([x, z], i) => { const [px, py] = P(x, z); i ? c.lineTo(px, py) : c.moveTo(px, py); }); c.stroke();
+      }
+    });
+    const geo = new THREE.PlaneGeometry(W, D, 120, 80); geo.rotateX(-Math.PI / 2);
+    const pp = geo.attributes.position; for (let i = 0; i < pp.count; i++) pp.setY(i, hfn(pp.getX(i), pp.getZ(i))); geo.computeVertexNormals();
+    const land = mesh(geo, mat({ map, roughness: 0.95 })); land.castShadow = false; g.add(land);
+    const sea = mesh(new THREE.PlaneGeometry(200, 200), mat({ color: 0x1e4a66, metalness: 0.3, roughness: 0.4 }), 0, -0.35, 0, g); sea.rotation.x = -Math.PI / 2; sea.castShadow = false;
+    const rock = mat({ map: tex('rock', [1, 2]), color: 0x8a8088 }), dark = mat({ map: tex('rock', [1, 2]), color: 0x4a3a40 });
+    for (let i = 0; i < 46; i++) { const x = 20 + Math.random() * 10, z = -18 + Math.random() * 36, h = 1.5 + Math.random() * 3.5; mesh(new THREE.ConeGeometry(0.8 + Math.random(), h, 6), dark, x, hfn(x, z) + h / 2 - 0.3, z, g); }
+    for (let i = 0; i < 22; i++) { const a = Math.random() * 6.3, r = Math.random() * 5.5, x = 2 + Math.cos(a) * r, z = -15 + Math.sin(a) * r * 0.8, h = 1 + Math.random() * 2; mesh(new THREE.ConeGeometry(0.6 + Math.random() * 0.6, h, 6), rock, x, hfn(x, z) + h / 2 - 0.2, z, g); }
+    const leaf = mat({ color: 0x1e4a2a }), leaf2 = mat({ color: 0x2a5a30 });
+    for (let i = 0; i < 160; i++) { const x = -24 + Math.random() * 18, z = -17 + Math.random() * 14; if (Math.hypot(x + 14, z + 11) > 9 && Math.hypot(x + 20, z + 6) > 5) continue; mesh(new THREE.ConeGeometry(0.35, 1 + Math.random() * 0.6, 5), i % 2 ? leaf : leaf2, x, hfn(x, z) + 0.5, z, g); }
+    // Highcrown: the royal castle
+    const cst = mat({ color: 0xd8d0c0 }), roof = mat({ color: 0x3a4a9a });
+    const cx = -2, cz = 2;
+    mesh(box(2.4, 0.8, 2.4), cst, cx, 0.4, cz, g);
+    for (const [dx, dz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) { mesh(new THREE.CylinderGeometry(0.28, 0.3, 1.4, 8), cst, cx + dx, 0.7, cz + dz, g); mesh(new THREE.ConeGeometry(0.36, 0.6, 8), roof, cx + dx, 1.7, cz + dz, g); }
+    mesh(box(0.9, 1.8, 0.9), cst, cx, 0.9, cz, g); mesh(new THREE.ConeGeometry(0.7, 0.9, 4), roof, cx, 2.25, cz, g);
+    const flag = mesh(new THREE.PlaneGeometry(0.5, 0.3), mat({ color: 0x2a3a8a, side: THREE.DoubleSide }), cx + 0.25, 3.0, cz, g); flag.castShadow = false;
+    mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 4), cst, cx, 2.8, cz, g);
+    U.anims.push(t => { flag.rotation.y = Math.sin(t * 2) * 0.4; });
+    // Thornwall and its church on the hill; Saltreach by the sea
+    const wall = mat({ color: 0xc8b898 }), red = mat({ color: 0x8a3a2a });
+    const hamlet = (x0, z0, n) => { for (let i = 0; i < n; i++) { const x = x0 + (i % 3) * 0.7 - 0.7, z = z0 + Math.floor(i / 3) * 0.7, y = hfn(x, z); mesh(box(0.45, 0.35, 0.45), wall, x, y + 0.17, z, g); const r = mesh(new THREE.ConeGeometry(0.4, 0.35, 4), red, x, y + 0.52, z, g); r.rotation.y = Math.PI / 4; } };
+    hamlet(-17.5, 5.5, 6); hamlet(-12, 16.2, 4);
+    const ch = new THREE.Group(); ch.position.set(-20, hfn(-20, 4), 4); g.add(ch);
+    mesh(box(0.5, 0.45, 0.9), mat({ color: 0x8a8490 }), 0, 0.22, 0, ch); mesh(box(0.3, 0.9, 0.3), mat({ color: 0x8a8490 }), 0, 0.45, 0.5, ch);
+    // the abbey in the marsh, the hunting lodge
+    mesh(box(0.9, 0.6, 0.6), mat({ color: 0x5a5a60 }), 9, 0.3, 11.5, g); mesh(box(0.25, 1.1, 0.25), mat({ color: 0x5a5a60 }), 9.3, 0.55, 11.3, g);
+    const aw = new THREE.Sprite(glowMat(0xff3020, 0.7)); aw.scale.set(0.6, 0.6, 1); aw.position.set(9.3, 1.0, 11.45); g.add(aw);
+    addMist(g, { count: 10, x: [4, 14], y: [0.2, 0.8], z: [8, 15], scale: [2, 4], opacity: 0.35, speed: 0.15, color: 0x9ab0a0 });
+    // Morgrath's tower, his shadow over the east
+    const tw = mat({ color: 0x14101a });
+    mesh(new THREE.CylinderGeometry(0.3, 0.55, 5, 7), tw, 26, hfn(26, -1) + 2.2, -1, g);
+    const tg = new THREE.Sprite(glowMat(0xff2010, 0.9)); tg.material.fog = false; tg.scale.set(1.4, 1.4, 1); tg.position.set(26, hfn(26, -1) + 4.4, -0.7); g.add(tg);
+    U.anims.push(t => { tg.material.opacity = 0.6 + 0.3 * Math.sin(t * 2.2); });
+    const shadowTex = canvasTex(256, 256, (c, w, h) => { const g2 = c.createRadialGradient(128, 128, 10, 128, 128, 128); g2.addColorStop(0, 'rgba(10,0,10,0.85)'); g2.addColorStop(0.6, 'rgba(20,0,20,0.55)'); g2.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g2; c.fillRect(0, 0, w, h); });
+    for (const [x, z, r] of [[26, 0, 26], [20, -6, 14], [21, 8, 12]]) {
+      const sh = new THREE.Mesh(new THREE.PlaneGeometry(r, r), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+      sh.rotation.x = -Math.PI / 2; sh.position.set(x, 3.2, z); sh.renderOrder = 3; g.add(sh);
+      U.anims.push(t => { sh.rotation.z = t * 0.02; sh.material.opacity = 0.75 + 0.15 * Math.sin(t * 0.5 + x); });
+    }
+    addMist(g, { count: 16, x: [16, 32], y: [1, 5], z: [-18, 18], scale: [5, 9], opacity: 0.35, speed: 0.25, color: 0x3a2a3a });
+    // the party: their leader stands where they are (Thornwall)
+    U.token = null;
+    g.add(new THREE.HemisphereLight(0xdde4ff, 0x405030, 1.0));
+    moonLight(g, 0xfff0d8, 1.8, [-20, 30, 20], [0, 0, 0], 34);
+    U.views.world = { look: [-1, 0, 1.5], yaw: 0, pitch: 1.0, dist: 44 };
+    U.views.worldTall = { look: [0, 0, 0.5], yaw: -Math.PI / 2, pitch: 1.05, dist: 50 };   // an upright phone: home at the bottom, the dark east at the top
   },
   throne(g) {
     const U = g.userData;
@@ -2361,7 +2660,8 @@ function updateWorld(dt, t) {
 function updateCamera(dt, t) {
   if (film) { stepFilm(dt); }
   else if (curSet) {
-    const S = curSet.userData, v = (F && S.views.battle) || S.views[curView] || Object.values(S.views)[0];
+    const S = curSet.userData, tall = curView === 'world' && window.innerHeight > window.innerWidth;
+    const v = (F && S.views.battle) || (tall ? S.views.worldTall : S.views[curView]) || Object.values(S.views)[0];
     if (state === 'title' || state === 'setup' || state === 'rules') orbit.uyaw = Math.sin(t * 0.05) * 0.5;
     const p = viewPose(v, orbit.uyaw + Math.sin(t * 0.13) * 0.03, orbit.upitch, orbit.uzoom);
     if (orbit.focus && F) { const d = V().subVectors(orbit.focus, p.look).multiplyScalar(0.35); d.y = 0; p.look.add(d); p.pos.add(d); }
@@ -2419,17 +2719,24 @@ function portrait(h) {
   } catch (e) { return iconURL[h.cls]; }
 }
 (() => { const c = $('logo'), g = c.getContext('2d'); PX.drawLogo(g, 'PIXEL', 100, 4, 3); PX.drawLogo(g, 'QUEST', 100, 24, 5); })();
-const SCREENS = ['title', 'setup', 'rules', 'play'];
+const SCREENS = ['title', 'setup', 'rules', 'play', 'map'];
 function setState(s) {
   state = s;
-  if (s !== 'play') Music.play('hill');
+  if (s !== 'play') Music.play(s === 'map' ? 'dawn' : 'hill');
   for (const id of SCREENS) $(id).hidden = id !== s;
   $('side').hidden = s !== 'play';
   if (s !== 'play') {
     sheet = null; menu = false; $('sheet').hidden = true; $('menu').hidden = true; $('banner').hidden = true; $('die').hidden = true;
     F = null; Q.length = 0; cur = null; film = null; document.body.classList.remove('film', 'battle'); filmEl.classList.remove('on'); fade(false);
     showGrid(false); markTiles(null);
-    showSet('hill', 'title'); clearUnits(true);
+    showSet(s === 'map' ? 'world' : 'hill', s === 'map' ? 'world' : 'title'); clearUnits(true);
+  }
+  if (s === 'map') {
+    renderMap();
+    const U = SETS.world.userData;
+    if (U.token) SETS.world.remove(U.token);
+    const lead = G.heroes[0]; U.token = makeFig(lead.cls, lead); U.token.scale.multiplyScalar(0.9);
+    U.token.position.set(-17.2, U.mapH(-17.2, 7.4), 7.4); SETS.world.add(U.token);
   }
   if (s === 'title') renderTitle();
   if (s === 'setup') renderSetup();
@@ -2440,21 +2747,24 @@ function renderTitle() {
   const saved = loadGame();
   const b = $('title').querySelector('[data-t="cont"]'); b.disabled = !saved;
   const T = (k, txt) => { $('title').querySelector(`[data-t="${k}"]`).textContent = txt; };
-  T('new', L('Nové dobrodružství', 'New adventure')); T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play')); T('intro', L('Úvod: příběh Aldmeru', 'Intro: the story of Aldmere'));
+  T('new', L('Nové tažení', 'New campaign')); T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play')); T('intro', L('Úvod: příběh Aldmeru', 'Intro: the story of Aldmere'));
   T('snd', L('Zvuk: ', 'Sound: ') + (save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')));
   T('mus', L('Hudba: ', 'Music: ') + (save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')));
   T('lang', L('English', 'Čeština')); T('games', L('‹ Všechny hry', '‹ All games'));
-  $('title').querySelector('.sub').textContent = L('Utopený zvon', 'The Drowned Bell');
+  $('title').querySelector('.sub').textContent = L('Kroniky Aldmeru', 'The Chronicles of Aldmere');
   $('ver').textContent = 'V' + VERSION + L(' · zkušební verze', ' · test version');
-  $('wins').textContent = save.wins ? L('Vyhraná dobrodružství: ', 'Adventures won: ') + save.wins : '';
+  $('wins').textContent = save.wins ? L('Splněné mise: ', 'Missions won: ') + save.wins : '';
 }
 $('title').addEventListener('click', e => {
   const b = e.target.closest('[data-t]'); if (!b) return;
   PX.Sound.unlock(); sfx('click');
   const a = b.dataset.t;
-  if (a === 'new') { newSetup(); if (save.introSeen) setState('setup'); else playIntro(() => setState('setup')); }
+  if (a === 'new') {
+    if (loadGame() && !confirm(L('Začít nové tažení? Současná družina a její postup se ztratí.', 'Start a new campaign? The current party and its progress will be lost.'))) return;
+    newSetup(); if (save.introSeen) setState('setup'); else playIntro(() => setState('setup'));
+  }
   if (a === 'intro') playIntro(() => setState('title'));
-  if (a === 'cont') { const g = loadGame(); if (g) { G = g; startPlay(G.room); } }
+  if (a === 'cont') { const g = loadGame(); if (g) { G = g; if (G.mission && ROOMS[G.room]) startPlay(G.room); else { G.mission = null; setState('map'); } } }
   if (a === 'rules') setState('rules');
   if (a === 'snd') { save.sfx = !save.sfx; store(); renderTitle(); }
   if (a === 'lang') { const d = PX.Settings.load(); d.lang = LANG === 'cs' ? 'en' : 'cs'; PX.Settings.save(d); location.reload(); return; }
@@ -2499,8 +2809,9 @@ $('setup').addEventListener('click', e => {
 $('setup').addEventListener('change', e => { const i = e.target.dataset.name; if (i !== undefined) { const v = cleanHeroName(e.target.value); if (v) party[+i].name = nice(v); renderSetup(); } });
 function startGame() {
   const heroes = party.slice(0, party.size).map(h => JSON.parse(JSON.stringify(h)));
-  G = { heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: 2 }, f: {}, room: null };
-  startPlay('inn');
+  G = { heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: 2 }, arts: {}, clues: {}, allies: {}, done: {}, mission: null, f: {}, used: {}, room: null };
+  store2();
+  setState('map');
 }
 function startPlay(room) {
   for (const h of G.heroes) { h.shp = h.hp; if (h.hair === undefined) h.hair = 0; }
@@ -2510,8 +2821,16 @@ function startPlay(room) {
   fade(true);
   go(room);
 }
-function store2() { if (G && G.room !== 'end' && G.room !== 'tpk') try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
-function loadGame() { try { const g = JSON.parse(localStorage.getItem(GAME_KEY)); return g && g.heroes && ROOMS[g.room] ? g : null; } catch (e) { return null; } }
+function store2() { if (G) try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
+function loadGame() {
+  try {
+    const g = JSON.parse(localStorage.getItem(GAME_KEY));
+    if (!g || !Array.isArray(g.heroes)) return null;
+    for (const k of ['arts', 'clues', 'allies', 'done', 'f', 'used']) g[k] = g[k] || {};
+    for (const h of g.heroes) { h.level = h.level || 1; h.tried = h.tried || {}; }
+    return g;
+  } catch (e) { return null; }
+}
 function renderRules() {
   $('rules').innerHTML = `<div class="card"><h2>${L('Jak se hraje', 'How to play')}</h2>
     ${L(`<h4>Hra je vypravěč</h4><p>Řekne vám, kde jste a co vidíte. Družina se poradí a vybere, co udělá. Telefon si posílejte: v boji hraje každý hrdina sám za sebe.</p>
@@ -2645,7 +2964,8 @@ function fade(on) { $('fade').classList.toggle('on', on); }
 const sign = v => (v >= 0 ? '+' : '') + v;
 function openSheet(h) {
   sheet = h;
-  const C = CLASSES[h.cls], w = h.weapon, calm = !F && !busy() && G.room !== 'end' && G.room !== 'tpk';
+  const C = CLASSES[h.cls], w = h.weapon, calm = state === 'play' && !F && !busy() && G.room !== 'end' && G.room !== 'tpk';
+  const own = artOf(h), canSwap = !F && !busy(), spare = Object.keys(G.arts).filter(id => id !== own && ART[id].kind === 'bonus');
   const notes = {
     str: L(`${sign(strHit(h.st.str))} k útoku, ${sign(strDmg(h.st.str))} zranění`, `${sign(strHit(h.st.str))} to hit, ${sign(strDmg(h.st.str))} damage`),
     dex: L(`${sign(-dexAC(h.st.dex))} obrana, ${sign(dexMissile(h.st.dex))} k hodu`, `${sign(dexAC(h.st.dex))} AC, ${sign(dexMissile(h.st.dex))} thrown`),
@@ -2655,21 +2975,25 @@ function openSheet(h) {
   const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => x.hp < x.max);
   const canDrink = calm && G.items.potion > 0 && h.hp < h.max;
   $('sheet').innerHTML = `<div class="card" style="--c:${C.col}">
-    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${L(`${clsName(h)}, 1. úroveň · ${h.xp} / ${C.next} zkušeností do 2. úrovně`, `Level 1 ${clsName(h)} · ${h.xp} / ${C.next} XP to level 2`)}</div></div></div>
+    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${lvl(h) < MAX_LEVEL ? L(`${clsName(h)}, ${lvl(h)}. úroveň · ${h.xp} / ${XP_LEVEL[lvl(h)]} zkušeností do ${lvl(h) + 1}. úrovně`, `Level ${lvl(h)} ${clsName(h)} · ${h.xp} / ${XP_LEVEL[lvl(h)]} XP to level ${lvl(h) + 1}`) : L(`${clsName(h)}, ${lvl(h)}. úroveň (nejvyšší)`, `Level ${lvl(h)} ${clsName(h)} (the highest)`)}</div></div></div>
     <div class="sh-cols">
       <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
       <div class="combat">
         <div><b class="${heroState(h)}">❤ ${Math.max(0, h.hp)} / ${h.max} ${L('životů', 'HP')}</b></div>
         <div>${L('Obrana', 'Armour class')} ${acOf(h)} <span class="muted">(${C.armourName}; ${L('čím menší, tím lepší', 'lower is better')})</span></div>
         <div>${w.name} <span class="muted">${w.n}${L('k', 'd')}${w.s}${w.b ? '+' + w.b : ''}${w.hit ? ', +' + w.hit + L(' k útoku', ' to hit') : ''}</span></div>
+        <div>${L('Útok: potřeba', 'To hit: THAC0')} ${thac0Of(h)} <span class="muted">${L('mínus obrana cíle', 'minus the target\'s AC')}</span></div>
         <div>${L('Chůze v boji', 'Move in a fight')}: ${C.move} ${L('pole', 'tiles')}</div>
         ${h.spellMax ? `<div class="magic">${L('Kouzla', 'Spells')} ${h.spells} / ${h.spellMax} ${L('dnes', 'today')}</div>` : ''}
       </div>
     </div>
     <h4>${L('Záchranné hody', 'Saving throws')} <span class="muted">(${L('k20, tohle nebo víc', 'd20, this or more')})</span></h4>
-    <div class="chips">${L(['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'], ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells']).map((nm, i) => `<span>${nm} <b>${C.saves[i]}</b></span>`).join('')}</div>
+    <div class="chips">${L(['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'], ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells']).map((nm, i) => `<span>${nm} <b>${saveOf(h, ['poison', 'wand', 'para', 'breath', 'spell'][i])}</b></span>`).join('')}</div>
     ${h.cls === 'thief' ? `<h4>${L('Zlodějské dovednosti', 'Thief skills')} <span class="muted">(${L('k100, tohle nebo méně', 'd100, this or less')})</span></h4><div class="chips">${SKILL_NAMES.map((nm, k) => `<span>${nm} <b>${thiefSkill(h, k)} %</b></span>`).join('')}</div>` : ''}
     ${C.spells ? `<h4>${L('Kouzla', 'Spells')}</h4><ul class="spells">${C.spells.map(id => `<li><b>${SPELLS[id].name}</b> <span class="muted">${SPELLS[id].info}</span></li>`).join('')}</ul>` : ''}
+    <h4>${L('Artefakt', 'Artefact')}</h4>
+    <div class="art">${own ? `<span>${ART[own].ic} <b>${esc(ART[own].name)}</b> <span class="muted">${esc(ART[own].info)}</span></span>${canSwap ? `<button class="pill" data-uneq="1">${L('Odložit', 'Take off')}</button>` : ''}` : `<span class="muted">${L('Žádný.', 'None.')}</span>`}</div>
+    ${canSwap && spare.length ? `<div class="art" style="margin-top:6px">${spare.map(id => `<button class="pill" data-eq="${id}">${ART[id].ic} ${esc(ART[id].name)}${G.arts[id] >= 0 ? ` <span class="muted">(${esc(G.heroes[G.arts[id]].name)})</span>` : ''}</button>`).join('')}</div>` : ''}
     <div class="btns">
       ${canCure ? `<button class="ch" data-a="cure">✚ ${L('Seslat Léčení', 'Cast Cure Wounds')}</button>` : ''}
       ${canDrink ? `<button class="ch" data-a="drink">🧪 ${L('Vypít lektvar', 'Drink a potion')}</button>` : ''}
@@ -2680,10 +3004,11 @@ function openSheet(h) {
 }
 function closeSheet() { sheet = null; $('sheet').hidden = true; }
 $('sheet').addEventListener('click', e => {
-  const b = e.target.closest('[data-a]');
+  const b = e.target.closest('[data-a], [data-eq], [data-uneq]');
   if (!b) { if (e.target === $('sheet')) closeSheet(); return; }
   const h = sheet, a = b.dataset.a;
   sfx('click');
+  if (b.dataset.eq || b.dataset.uneq) { if (b.dataset.eq) equip(h, b.dataset.eq); else unequip(h); store2(); partyKey = ''; if (state === 'map') renderMap(); openSheet(h); return; }
   if (a === 'cure') {
     const who = G.heroes.filter(x => x.hp < x.max).sort((p, q) => p.hp / p.max - q.hp / q.max)[0];
     h.spells--; sfx('spell'); cure(h, who); then(stay); choices = []; choicesVer++;
@@ -2700,6 +3025,7 @@ function openMenu() {
     <button class="ch" data-m="resume">${L('Pokračovat', 'Continue')}</button>
     <button class="ch" data-m="sfx">${L('Zvuk', 'Sound')}: ${save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')}</button>
     <button class="ch" data-m="mus">${L('Hudba', 'Music')}: ${save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')}</button>
+    <button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>
     <button class="ch dim" data-m="quit">${L('Uložit a odejít', 'Save and quit')}</button></div>`;
   $('menu').hidden = false;
 }
@@ -2709,17 +3035,146 @@ $('menu').addEventListener('click', e => {
   if (!b) { if (e.target === $('menu')) closeMenu(); return; }
   sfx('click');
   if (b.dataset.m === 'resume') closeMenu();
+  if (b.dataset.m === 'book') { closeMenu(); openBook(); }
   if (b.dataset.m === 'sfx') { save.sfx = !save.sfx; store(); openMenu(); }
   if (b.dataset.m === 'mus') { save.music = save.music === false; store(); openMenu(); }
   if (b.dataset.m === 'quit') { closeMenu(); if (F) endBattle(); store2(); setState('title'); }
 });
 $('pause').addEventListener('click', () => { sfx('click'); openMenu(); });
+$('mapBtn').addEventListener('click', () => { sfx('click'); openMissionMap(); });
 // tap the story to skip ahead
 sideEl.addEventListener('pointerdown', e => {
   PX.Sound.unlock();
   if (e.target.closest('button') || sheet || menu || !busy()) return;
   if (cur && cur.k === 'wait') tapped = true; else skip = true;
 });
+
+/* --- 12b. THE CAMPAIGN SCREENS: the world map, a mission's card, the book, the mission map ------------------
+   The world map is a 3D set like the others (BUILD.world): Aldmere painted on a table-sized land, with mountains,
+   forests, the royal castle, Thornwall, Morgrath's tower in the east under a dark shadow. Missions and regions are
+   HTML labels pinned to points of the land (they follow the camera). */
+const REGIONS = [
+  [[-18, 9.5], L('Thornwall', 'Thornwall')], [[-2, 5], L('Highcrown', 'Highcrown')], [[-15, -13], L('Elderwood', 'Elderwood')],
+  [[2, -16], L('Ironpeak', 'Ironpeak')], [[9, 15.5], L('Lucerní bažiny', 'The Lantern Marsh')], [[-14, 17.5], L('Saltreach', 'Saltreach')],
+  [[13, -8], L('Divoká step', 'The Wild Steppe')], [[25, 7], L('Popelavé hory', 'The Ashen Mountains')],
+];
+let mapEls = null;
+function renderMap() {
+  const el = $('map');
+  el.innerHTML = `<div class="mtop">
+      <div class="mparty">${G.heroes.map((h, i) => `<button class="mh" data-hero="${i}" style="--c:${CLASSES[h.cls].col}"><img class="pt" src="${portrait(h)}" alt=""><span><b>${esc(h.name)}</b><i>${L('úr.', 'lv')} ${lvl(h)} · ❤ ${h.max}</i></span></button>`).join('')}</div>
+      <div class="mbtns"><span class="mgold">${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button><button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
+    </div>
+    <div class="mtitle">${L('Království Aldmere', 'The Kingdom of Aldmere')}</div>
+    <div id="mlabels"></div>`;
+  const lab = el.querySelector('#mlabels');
+  mapEls = [];
+  for (const [at, name] of REGIONS) { const d = document.createElement('div'); d.className = 'mreg'; d.textContent = name; lab.appendChild(d); mapEls.push({ el: d, at, y: 0.3 }); }
+  for (const M of MISSIONS) {
+    const st = M.soon ? 'soon' : G.done[M.id] ? 'done' : missionOpen(M) ? 'open' : 'locked';
+    const b = document.createElement('button');
+    b.className = 'mpin ' + st + ' ' + M.kind; b.dataset.mis = M.id;
+    b.innerHTML = `<i>${M.kind === 'story' ? '👑' : '◆'}</i><span>${esc(M.title)}</span><em>${st === 'done' ? '✔' : st === 'locked' ? '🔒' : st === 'soon' ? '…' : L('nová!', 'new!')}</em>`;
+    lab.appendChild(b); mapEls.push({ el: b, at: M.at, y: 1.6 });
+  }
+}
+function updateMapLabels() {
+  if (!mapEls || state !== 'map') return;
+  const A = curSet && curSet.userData.mapH;
+  for (const m of mapEls) {
+    const s = toScreen(V(m.at[0], (A ? A(m.at[0], m.at[1]) : 0) + m.y, m.at[1]));
+    m.el.style.display = s.ok ? '' : 'none';
+    m.el.style.left = Math.round(s.x) + 'px'; m.el.style.top = Math.round(s.y) + 'px';
+  }
+}
+$('map').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  sfx('click');
+  if (b.dataset.hero) { openSheet(G.heroes[+b.dataset.hero]); return; }
+  if (b.dataset.mis) { openCard(missionOf(b.dataset.mis)); return; }
+  if (b.dataset.m === 'book') openBook();
+  if (b.dataset.m === 'title') { store2(); setState('title'); }
+});
+// a mission's card: what it is, what it needs (✔ / ✖), the artefacts found in it, START
+function openCard(M) {
+  const needs = missionNeeds(M), open = missionOpen(M), arts = missionArts(M), done = G.done[M.id] || 0;
+  $('menu').innerHTML = `<div class="card mcard" style="--c:${M.kind === 'story' ? '#ffd23f' : '#8a7ad8'}">
+    <div class="muted">${M.kind === 'story' ? L('👑 Příběhová mise', '👑 Story mission') : L('◆ Vedlejší mise', '◆ Side mission')}</div>
+    <h2>${esc(M.title)}</h2><p>${esc(M.about)}</p>
+    ${M.soon ? `<p class="muted">${L('Tuhle misi teprve píšeme. Brzy!', 'We are still writing this mission. Soon!')}</p>` : ''}
+    <h4>${L('Potřeba', 'Needs')}</h4><div class="needs">${needs.map(x => `<div class="${x.ok ? 'ok' : 'no'}">${x.ok ? '✔' : '✖'} ${esc(x.txt)}</div>`).join('')}</div>
+    ${arts.length ? `<h4>${L('Artefakty', 'Artefacts')} <span class="muted">${arts.filter(id => G.arts[id] !== undefined).length} / ${arts.length}</span></h4>
+      <div class="chips">${arts.map(id => G.arts[id] !== undefined ? `<span>${ART[id].ic} ${esc(ART[id].name)}</span>` : `<span class="muted">? ${L('nenalezeno', 'not found')}</span>`).join('')}</div>` : ''}
+    ${done ? `<p class="muted">${L(`Splněno ${done}×. Další hraní dá poloviční zkušenosti, ale můžete najít, co jste minule přehlédli.`, `Done ${done}×. Playing again gives half the experience, but you can find what you missed.`)}</p>` : ''}
+    <div class="btns"><button class="ch dim" data-c="close">${L('Zavřít', 'Close')}</button>${open ? `<button class="ch go" data-c="go">${done ? L('Hrát znovu', 'Play again') : L('Vyrazit!', 'Set off!')} ›</button>` : ''}</div>
+  </div>`;
+  $('menu').hidden = false; menu = true;
+  $('menu').onclick = e => {
+    const b = e.target.closest('[data-c]');
+    if (!b) { if (e.target === $('menu')) closeCard(); return; }
+    sfx('click');
+    if (b.dataset.c === 'go') { closeCard(); startMission(M); } else closeCard();
+  };
+}
+function closeCard() { $('menu').hidden = true; $('menu').onclick = null; menu = false; }
+// the book: artefacts (found ones and "?"), clues, allies
+function openBook() {
+  const sec = MISSIONS.filter(M => !M.soon).map(M => {
+    const arts = missionArts(M);
+    return `<h4>${esc(M.title)} <span class="muted">${arts.filter(id => G.arts[id] !== undefined).length} / ${arts.length}</span></h4>` +
+      arts.map(id => {
+        const A = ART[id], got = G.arts[id] !== undefined, who = got && G.arts[id] >= 0 ? G.heroes[G.arts[id]] : null;
+        return got ? `<div class="bk"><b>${A.ic}</b><div><b>${esc(A.name)}</b>${who ? ` <span class="muted">· ${L('nese', 'carried by')} ${esc(who.name)}</span>` : ''}<br><span class="muted">${esc(A.info)}</span></div></div>`
+                   : `<div class="bk no"><b>?</b><div><b>${L('Nenalezeno', 'Not found yet')}</b><br><span class="muted">${esc(A.hint)}</span></div></div>`;
+      }).join('');
+  }).join('');
+  const clues = Object.keys(G.clues).map(id => `<div class="bk"><b>${CLUES[id].ic}</b><div><b>${esc(CLUES[id].name)}</b><br><span class="muted">${esc(CLUES[id].info)}</span></div></div>`).join('');
+  $('sheet').innerHTML = `<div class="card"><h2>📖 ${L('Kniha dobrodruhů', 'The Adventurers\' Book')}</h2>
+    <h4 class="big">${L('Artefakty', 'Artefacts')}</h4>${sec}
+    <h4 class="big">${L('Stopy', 'Clues')}</h4>${clues || `<p class="muted">${L('Zatím žádné.', 'None yet.')}</p>`}
+    <h4 class="big">${L('Spojenci', 'Allies')}</h4><p class="muted">${L('Zatím žádní. Elfové, trpaslíci a další čekají, až si je získáte.', 'None yet. Elves, dwarves and others are waiting to be won over.')}</p>
+    <div class="btns"><button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button></div></div>`;
+  $('sheet').hidden = false; sheet = 'book';
+}
+// the mission map: a parchment plan of the scenes; visited ones can be travelled to, unexplored exits show "?"
+const MAPS = {
+  bell: { nodes: { inn: [8, 76], hill: [26, 56], nave: [42, 44], altar: [58, 30], crypt: [60, 58], ossuary: [40, 80], door: [78, 66], bell: [90, 44], pool: [92, 18] },
+          edges: [['inn', 'hill'], ['hill', 'nave'], ['nave', 'altar'], ['altar', 'crypt'], ['crypt', 'door'], ['door', 'ossuary'], ['door', 'bell'], ['bell', 'pool']],
+          short: { inn: L('Hostinec', 'The inn'), hill: L('Kostel na kopci', 'Church on the hill'), nave: L('Loď kostela', 'The nave'), altar: L('Oltář', 'The altar'), crypt: L('Krypta', 'The crypt'), ossuary: L('Kostnice', 'Ossuary'), door: L('Bronzové dveře', 'Bronze door'), bell: L('Zvon', 'The bell'), pool: L('Tůň', 'The pool') } },
+};
+function openMissionMap() {
+  const D = MAPS[G.mission]; if (!D) return;
+  const seen = id => !!f()['seen_' + id];
+  const canGo = id => seen(id) && id !== G.room && !F && !busy() && G.room !== 'end' && G.room !== 'tpk' && !(id === 'bell' && f().won) && !(id === 'pool' && !f().won);
+  const near = id => D.edges.some(([a, b]) => (a === id && seen(b)) || (b === id && seen(a)));
+  const shown = id => seen(id) || near(id);
+  const lines = D.edges.filter(([a, b]) => shown(a) && shown(b)).map(([a, b]) => {
+    const [x1, y1] = D.nodes[a], [x2, y2] = D.nodes[b], dash = seen(a) && seen(b) ? '' : ' stroke-dasharray="2 2"';
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${dash}/>`;
+  }).join('');
+  const nodes = Object.keys(D.nodes).filter(shown).map(id => {
+    const [x, y] = D.nodes[id], here = id === G.room, sn = seen(id);
+    return `<button class="mn${here ? ' here' : ''}${sn ? '' : ' unk'}${canGo(id) ? ' go' : ''}" style="left:${x}%;top:${y}%" ${canGo(id) ? `data-go="${id}"` : 'disabled'}><b>${here ? '★' : sn ? '●' : '?'}</b><span>${sn ? esc(D.short[id]) : '?'}</span></button>`;
+  }).join('');
+  $('sheet').innerHTML = `<div class="card parch"><h2>🗺 ${esc(missionOf(G.mission).title)}</h2>
+    <div class="mmap"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>${nodes}</div>
+    <p class="muted">${F ? L('V boji se cestovat nedá.', 'You can\'t travel during a fight.') : L('Klepni na místo, kde už jste byli, a družina se tam vrátí. „?“ je místo, kam jste ještě nedošli.', 'Tap a place you have been to and the party goes back there. "?" is a place you haven\'t reached yet.')}</p>
+    <div class="btns"><button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button></div></div>`;
+  $('sheet').hidden = false; sheet = 'map';
+  $('sheet').querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); closeSheet(); choices = []; choicesVer++; go(b.dataset.go); }));
+}
+// starting and ending a mission: the party rests in between (full HP and spells)
+function startMission(M) {
+  for (const h of G.heroes) { h.hp = h.shp = h.max; h.spells = h.spellMax; h.tried = {}; h.held = 0; h.hidden = false; }
+  G.mission = M.id; G.f = {}; G.used = {};
+  startPlay(M.start);
+}
+function endMission() {
+  G.mission = null; G.f = {}; G.room = null;
+  for (const h of G.heroes) { h.hp = h.shp = h.max; h.spells = h.spellMax; }
+  store2();
+  setState('map');
+}
 
 /* --- 13. SOUND --------------------------------------------------------------------------- */
 function sfx(k) {
@@ -2947,6 +3402,7 @@ function frame(now) {
     }
   }
   if (state === 'intro') stepIntro(dt);
+  if (state === 'map') updateMapLabels();
   updateWorld(dt, t);
   Music.update();
   updateCamera(dt, t);
@@ -2961,7 +3417,7 @@ window.PQ = {
   quick(nh = 4, room = 'inn', films = false) {
     skipFilms = !films; newSetup(); party.size = nh;
     for (const h of party) { h.vals = [16, 15, 14, 13, 12, 11]; setClass(h, h.cls); }
-    startGame(); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
+    startGame(); startMission(missionOf('bell')); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
   },
   introShot(i) { playIntro(() => setState('title')); intro.i = i - 1; },
   get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
