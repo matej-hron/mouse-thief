@@ -21,6 +21,7 @@ export type Env = {
   AI?: Ai;                       // Workers AI: Pixel Quest's talking characters (npc.ts)
   NPC_MODEL?: string;            // which Workers AI model they use (a variable in wrangler.jsonc)
   NPC_OFF?: string;              // '1' turns them off
+  NPC_NEURONS?: string;          // their daily budget of Workers AI neurons (default: under the free allowance)
 };
 
 const ALLOWED_ORIGIN = /^(https:\/\/matej-hron\.github\.io|https:\/\/(www\.)?pixelgames\.online|http:\/\/(localhost|127\.0\.0\.1):\d+)$/;
