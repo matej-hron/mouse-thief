@@ -66,7 +66,23 @@ describe('POST /v1/npc with a model', () => {
 
   it('a model that answers nonsense is an error, not a crash', async () => {
     expect((await post(ok, { AI: fakeAi('Sorry, I cannot.') })).status).toBe(502);
-    expect((await post(ok, { AI: { run: async () => { throw new Error('down'); } } })).status).toBe(502);
+    const r = await post(ok, { AI: { run: async (m: string) => { throw new Error('no model ' + m); } } });
+    expect(r.status).toBe(502);
+    const body = (await r.json()) as { detail: string };
+    expect(body.detail).toContain('deepseek');
+    expect(body.detail).toContain('llama-3.3');
+  });
+
+  it('falls back: plain call when the forced JSON fails, then the backup model', async () => {
+    const calls: string[] = [];
+    const ai = { run: async (m: string, i: Record<string, unknown>) => {
+      calls.push(m + (i.response_format ? ' +json' : ''));
+      if (m.includes('deepseek')) throw new Error('unsupported');
+      return { response: 'Sure: ' + GOOD };
+    } };
+    const r = await post(ok, { AI: ai });
+    expect(r.status).toBe(200);
+    expect(calls).toEqual(['@cf/deepseek-ai/deepseek-v4-flash-0731 +json', '@cf/deepseek-ai/deepseek-v4-flash-0731', '@cf/meta/llama-3.3-70b-instruct-fp8-fast']);
   });
 
   it('counts the answers of the day', async () => {
