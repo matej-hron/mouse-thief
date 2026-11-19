@@ -59,9 +59,10 @@
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .pill { padding: 6px 12px; border-radius: 20px; background: #1d1830; border: 1px solid var(--line); font-weight: 800; min-width: 38px; }
   .pill.on { background: #3a2f5c; border-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--c, var(--gold)); }
-  .heroRow { display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 10px; margin-top: 8px; border-radius: 8px;
+  .heroRow { display: grid; grid-template-columns: 76px 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 10px; margin-top: 8px; border-radius: 8px;
              background: #1d1830; border: 1px solid var(--line); border-left: 4px solid var(--c); }
-  .heroRow img { grid-row: 1 / 4; width: 40px; height: 40px; image-rendering: pixelated; }
+  .heroRow img { grid-row: 1 / 4; width: 76px; height: 76px; }
+  .pt { border-radius: 10px; background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--c) 45%, #2a2340), #120f1c 72%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
   .heroRow input { width: 120px; font: 800 17px 'Alegreya Sans', sans-serif; background: #0b0912; color: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; user-select: text; -webkit-user-select: text; }
   .heroRow .cls { grid-column: 2 / 4; display: flex; gap: 5px; flex-wrap: wrap; }
   .heroRow .cls .pill { padding: 4px 9px; font-size: 14px; }
@@ -72,9 +73,9 @@
   #play { display: grid; grid-template-columns: 1fr; grid-template-rows: auto 1fr; padding: max(6px, var(--st)) max(8px, var(--sr)) max(6px, var(--sb)) max(8px, var(--sl)); box-sizing: border-box; pointer-events: none; }
   #top { display: flex; gap: 6px; pointer-events: auto; }
   #party { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  .hero { display: grid; grid-template-columns: 22px 1fr; column-gap: 7px; align-items: center; text-align: left; padding: 4px 8px 5px; background: var(--panel);
+  .hero { display: grid; grid-template-columns: 38px 1fr; column-gap: 7px; align-items: center; text-align: left; padding: 4px 8px 5px; background: var(--panel);
           border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 7px; min-width: 0; backdrop-filter: blur(4px); }
-  .hero img { grid-row: 1 / 4; width: 22px; height: 22px; image-rendering: pixelated; }
+  .hero img { grid-row: 1 / 4; width: 38px; height: 38px; }
   .hero .hn { font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hero .hs { display: flex; justify-content: space-between; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
   .hero .bar { height: 4px; background: #0b0912; border-radius: 2px; overflow: hidden; margin-top: 2px; }
@@ -150,7 +151,7 @@
   .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.72); padding: 16px; box-sizing: border-box; pointer-events: auto; }
   .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
   .sh-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
-  .sh-head img { width: 40px; height: 40px; image-rendering: pixelated; }
+  .sh-head img { width: 96px; height: 96px; }
   .sh-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .stats { border-collapse: collapse; font-size: 15px; }
   .stats th { text-align: left; padding: 1px 8px 1px 0; color: var(--muted); } .stats td { padding: 1px 8px 1px 0; font-weight: 800; } .stats td.muted { font-size: 13px; font-weight: 500; }
@@ -226,7 +227,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game2';
 const save = { sfx: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -2189,6 +2190,37 @@ for (const k in ICONS) {
   ICONS[k].rows.forEach((row, y) => [...row].forEach((ch, x) => { const col = ICONS[k].pal[ch]; if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } }));
   iconURL[k] = c.toDataURL();
 }
+let pRen = null, pScene = null, pCam = null;
+const portraits = {};
+function portrait(h) {
+  const key = [h.cls, h.g, h.hair].join();
+  if (portraits[key]) return portraits[key];
+  if (!renderer) return iconURL[h.cls];
+  try {
+    if (!pRen) {
+      pRen = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: true, alpha: true, preserveDrawingBuffer: true });
+      pRen.setSize(192, 192, false); pRen.setClearColor(0x000000, 0);
+      pRen.outputColorSpace = THREE.SRGBColorSpace; pRen.toneMapping = THREE.ACESFilmicToneMapping; pRen.toneMappingExposure = 1.2;
+      pScene = new THREE.Scene();
+      pScene.add(new THREE.HemisphereLight(0xdde4ff, 0x302838, 1.4));
+      const k = new THREE.DirectionalLight(0xfff0dd, 2.6); k.position.set(1.5, 2.5, 3); pScene.add(k);
+      const r = new THREE.DirectionalLight(0x9ab8ff, 1.6); r.position.set(-2, 1.5, -2); pScene.add(r);
+      pCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+    }
+    const fig = makeFig(h.cls, h);
+    fig.rotation.y = -0.4;
+    const P = fig.userData.parts;
+    if (P.armL && h.cls !== 'fighter') P.armL.rotation.x = -0.15;
+    if (P.armR) P.armR.rotation.x = -0.45;
+    pScene.add(fig);
+    const tall = h.cls === 'mage';
+    pCam.position.set(0.45, tall ? 1.22 : 1.08, tall ? 1.8 : 1.55); pCam.lookAt(0, tall ? 1.08 : 0.92, 0);
+    pRen.render(pScene, pCam);
+    portraits[key] = pRen.domElement.toDataURL();
+    pScene.remove(fig);
+    return portraits[key];
+  } catch (e) { return iconURL[h.cls]; }
+}
 (() => { const c = $('logo'), g = c.getContext('2d'); PX.drawLogo(g, 'PIXEL', 100, 4, 3); PX.drawLogo(g, 'QUEST', 100, 24, 5); })();
 const SCREENS = ['title', 'setup', 'rules', 'play'];
 function setState(s) {
@@ -2237,7 +2269,7 @@ function renderSetup() {
       <span class="muted">${['1: velmi těžké', '2: těžké', '3: akorát', '4: klasika'][party.size - 1]}</span></div>
     ${party.slice(0, party.size).map((h, i) => {
       const C = CLASSES[h.cls];
-      return `<div class="heroRow" style="--c:${C.col}"><img src="${iconURL[h.cls]}" alt="">
+      return `<div class="heroRow" style="--c:${C.col}"><img class="pt" src="${portrait(h)}" alt="">
         <div class="row"><input data-name="${i}" value="${esc(h.name)}" maxlength="10" aria-label="Jméno">
           <button class="pill${h.g === 'm' ? ' on' : ''}" data-g="${i}m">kluk</button><button class="pill${h.g === 'f' ? ' on' : ''}" data-g="${i}f">holka</button></div>
         <button class="pill" data-rr="${i}" title="Hodit znovu">🎲 znovu</button>
@@ -2300,7 +2332,7 @@ function renderParty() {
     const tag = h.held ? '<i class="tag">ztuhlý</i>' : h.hidden ? '<i class="tag hid">ve stínu</i>' : '';
     const hpTxt = hp <= 0 ? 'padl' + gv(h, '', 'a') : `❤ ${hp} / ${h.max}`;
     return `<button class="hero ${st}${h === actor ? ' turn' : ''}" data-hero="${i}" style="--c:${CLASSES[h.cls].col}">
-      <img src="${iconURL[h.cls]}" alt="">
+      <img class="pt" src="${portrait(h)}" alt="">
       <span class="hn">${esc(h.name)}${tag}</span>
       <span class="hs"><span>${hpTxt}</span><span>${h.spellMax ? '✦' + h.spells : '🛡' + acOf(h)}</span></span>
       <span class="bar"><span style="width:${Math.round(100 * hp / h.max)}%"></span></span>
@@ -2404,7 +2436,7 @@ function openSheet(h) {
   const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => x.hp < x.max);
   const canDrink = calm && G.items.potion > 0 && h.hp < h.max;
   $('sheet').innerHTML = `<div class="card" style="--c:${C.col}">
-    <div class="sh-head"><img src="${iconURL[h.cls]}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${clsName(h)}, 1. úroveň · ${h.xp} / ${C.next} zkušeností do 2. úrovně</div></div></div>
+    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${clsName(h)}, 1. úroveň · ${h.xp} / ${C.next} zkušeností do 2. úrovně</div></div></div>
     <div class="sh-cols">
       <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
       <div class="combat">
