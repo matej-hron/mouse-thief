@@ -1273,7 +1273,7 @@ function person(root, o) {
 }
 function hair(root, head, g, col) {
   const hm = fm(root, { color: col });
-  mesh(new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hm, 0, 0.02, -0.01, head);
+  mesh(new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hm, 0, 0.02, -0.01, head).rotation.x = -0.5;   // tilted back: a fringe above the eyes
   if (g === 'f') { mesh(box(0.3, 0.34, 0.09), hm, 0, -0.12, -0.12, head); for (const s of [-1, 1]) mesh(box(0.07, 0.26, 0.08), hm, s * 0.15, -0.1, 0.0, head); }
 }
 function sword(root, hand, len = 0.62, col = 0xd8dce8) {
@@ -1715,7 +1715,7 @@ const BUILD = {
     const P = king.userData.parts; P.legL.rotation.x = P.legR.rotation.x = -1.45; P.armL.rotation.x = P.armR.rotation.x = -0.6; P.head.rotation.x = 0.15;
     const adv = makeFig('adviser'); adv.position.set(0.85, 0.6, -6.75); adv.rotation.y = -Math.PI / 2 + 0.3; g.add(adv);
     U.anims.push(t => { adv.userData.rig.rotation.x = 0.15 + Math.sin(t * 0.9) * 0.08; adv.userData.parts.armR.rotation.x = -0.9 + Math.sin(t * 1.3) * 0.15; king.userData.parts.head.rotation.y = Math.sin(t * 0.4) * 0.15; });
-    const prince = makeFig('prince'); prince.position.set(-3.7, 0, 1); prince.rotation.y = -Math.PI / 2; g.add(prince);
+    const prince = makeFig('prince'); prince.position.set(-3.7, 0, 1); prince.rotation.y = -Math.PI / 2 + 0.75; g.add(prince);
     U.anims.push(t => { prince.userData.parts.head.rotation.y = Math.sin(t * 0.3) * 0.12; });
     addMist(g, { count: 8, x: [-4, 4], y: [0.5, 3], z: [-8, 4], scale: [3, 5], opacity: 0.08, speed: 0.1, color: 0xffd0a0 });
     U.views.main = { look: [0, 1.4, -6], yaw: 0, pitch: 0.1, dist: 7 };
@@ -1897,7 +1897,7 @@ const INTRO = [
     cap: L('Ve tmě se shromažďuje armáda.', 'An army gathers in the dark.'), ev: [[0.8, 'bones'], [2.5, 'groan'], [4, 'bones']] },
   { set: 'throne', view: 'main', dur: 8.5, keys: [[0, [0, 1.9, 4.5], [0, 1.4, -6]], [8.5, [1.7, 1.5, -3.8], [0.35, 1.35, -6.5]]],
     cap: L('Starý král to nechce slyšet. Rádci mu šeptají, že je všechno v pořádku.', 'The old king doesn\'t want to hear it. His advisers whisper that all is well.') },
-  { set: 'throne', view: 'main', dur: 7.5, keys: [[0, [-4.45, 1.5, 2.9], [-3.6, 1.35, 1]], [7.5, [-4.4, 1.55, 2.0], [-3.6, 1.45, 1]]],
+  { set: 'throne', view: 'main', dur: 7.5, keys: [[0, [-4.55, 1.2, 2.7], [-3.7, 1.05, 0.9]], [7.5, [-4.5, 1.25, 2.0], [-3.7, 1.1, 0.9]]],
     cap: L('Jen mladý princ Edric vidí, co se blíží. A potřebuje hrdiny.', 'Only young Prince Edric sees what is coming. And he needs heroes.') },
   { set: 'hill', view: 'hill', dur: 8, keys: [[0, [0.5, -1.5, 24], [0, 1, 0]], [8, [0.8, 1.6, 11], [0, 5, -5]]],
     cap: L('Tvůj příběh začíná v Thornwallu.', 'Your story begins in Thornwall.'), ev: [[1.2, 'bell'], [4.5, 'bell']] },
@@ -2963,6 +2963,7 @@ window.PQ = {
     for (const h of party) { h.vals = [16, 15, 14, 13, 12, 11]; setClass(h, h.cls); }
     startGame(); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
   },
+  introShot(i) { playIntro(() => setState('title')); intro.i = i - 1; },
   get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
