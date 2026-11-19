@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Quest: an old-school dungeon adventure for a party of 1 to 4 heroes, taking turns on one phone.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Quest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,700;0,800;1,400&family=Alegreya+Sans:wght@500;700;800&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  /* the play screen: HTML over a dark background, the scene in crisp pixels, the story in a book font */
+  :root { --ink: #ece3d0; --muted: #a99fc4; --gold: #ffd23f; --good: #8ff08f; --bad: #ff8a78; --line: #3a2f52; }
+  #play { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; color: var(--ink);
+          padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+          background: radial-gradient(ellipse at 50% -10%, #2a2142 0%, #0d0b13 65%); font: 500 15px/1.3 'Alegreya Sans', system-ui, sans-serif;
+          max-width: 1180px; margin: 0 auto; touch-action: manipulation; }
+  #play button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #top { display: flex; gap: 6px; }
+  #party { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .hero { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto auto; column-gap: 7px; align-items: center; text-align: left;
+          padding: 5px 8px 6px; background: #1d1830; border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 6px; min-width: 0; }
+  .hero img { grid-row: 1 / 4; width: 22px; height: 22px; image-rendering: pixelated; }
+  .hero .hn { font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hero .hs { display: flex; justify-content: space-between; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .hero .bar { height: 4px; background: #0b0912; border-radius: 2px; overflow: hidden; margin-top: 2px; }
+  .hero .bar span { display: block; height: 100%; background: var(--good); transition: width .3s; }
+  .hero.low .bar span { background: #ffb03a; } .hero.down .bar span { background: #ff3a3a; }
+  .hero.down .hs span:first-child { color: var(--bad); font-weight: 700; }
+  .hero.dead { opacity: .45; filter: grayscale(1); }
+  .hero.turn { background: #3a2f5c; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 14px rgba(255,210,63,.35); }
+  .tag { font-style: normal; font-size: 11px; font-weight: 700; margin-left: 6px; padding: 0 5px; border-radius: 3px; background: #4a2a6a; color: #e0b0ff; }
+  .tag.hid { background: #1e4a2a; color: #9af59a; }
+  #pause { width: 44px; flex: none; background: #1d1830; border: 1px solid var(--line); border-radius: 6px; font-weight: 800; letter-spacing: 1px; }
+  #stage { flex: 1; min-height: 0; display: flex; gap: 10px; }
+  #sceneCol { flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 0; max-width: 46vw; }
+  #scene { flex: 0 1 auto; min-height: 0; height: min(calc(100% - 26px), calc(46vw * 3 / 4)); width: auto; align-self: flex-start; aspect-ratio: 4 / 3; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges;
+           border: 3px solid #0b0912; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0,0,0,.5); background: #000; }
+  #inv { width: 0; min-width: 100%; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); }
+  #story { flex: 1; min-width: 0; overflow-y: auto; padding: 12px 18px; border-radius: 6px; border: 1px solid var(--line);
+           background: linear-gradient(180deg, #241d33, #1b1626); box-shadow: inset 0 0 40px rgba(0,0,0,.45);
+           font: 400 17.5px/1.5 'Alegreya', Georgia, 'Times New Roman', serif; color: var(--ink); user-select: text; -webkit-user-select: text;
+           scrollbar-width: thin; scrollbar-color: #4a3e70 transparent; }
+  #story h3 { margin: 2px 0 6px; font: 800 13px/1.4 'Alegreya Sans', system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+  #story p { margin: 0 0 9px; }
+  #story p:empty, #story .gap { margin: 0; height: 6px; }
+  #story .good { color: var(--good); } #story .bad { color: var(--bad); } #story .hurt { color: #ffb8a0; } #story .gold { color: var(--gold); }
+  #story .muted { color: var(--muted); font: 700 12px 'Alegreya Sans', sans-serif; letter-spacing: .1em; text-transform: uppercase; margin: 10px 0 4px; }
+  #story .magic { color: #9cc4ff; } #story .holy { color: #f5e68a; } #story .evil { color: #d79aff; font-style: italic; }
+  .roll { display: flex; gap: 9px; align-items: flex-start; margin: 3px 0 7px; padding: 4px 9px; border-radius: 4px; border-left: 3px solid;
+          background: rgba(0,0,0,.28); font: 500 14px/1.35 'Alegreya Sans', system-ui, sans-serif; }
+  .roll b { flex: none; min-width: 24px; padding: 1px 4px; text-align: center; border-radius: 3px; background: #f0e8d8; color: #1a1018; font-weight: 800; }
+  .roll.ok { color: var(--good); border-color: #4ac24a; } .roll.no { color: var(--bad); border-color: #d84a3a; } .roll.info { color: #ffe07a; border-color: #c8a030; }
+  #bottom { flex: none; }
+  #ask { text-align: center; font-weight: 800; color: var(--gold); font-size: 14px; letter-spacing: .03em; min-height: 18px; margin-bottom: 4px; }
+  #choices { display: grid; gap: 6px; grid-template-columns: 1fr; min-height: 40px; }
+  #choices.two { grid-template-columns: 1fr 1fr; }
+  .ch { display: flex; align-items: center; gap: 9px; text-align: left; padding: 8px 12px; min-height: 40px; box-sizing: border-box;
+        background: linear-gradient(#2e2648, #241d3a); border: 1px solid #4a3e70; border-bottom: 3px solid #8a7ad8; border-radius: 7px;
+        font-weight: 700 !important; font-size: 16px !important; transition: background .1s, transform .05s; }
+  .ch:hover { background: #3a2f5c; } .ch:active { transform: translateY(1px); }
+  .ch kbd { flex: none; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 4px; background: #0b0912; color: var(--muted); font: 700 12px system-ui, sans-serif; }
+  .ch.dim { border-bottom-color: #5b5275; color: #c8bfdc; }
+  .ch.go { justify-content: center; border-bottom-color: #5ad43f; }
+  .hint { text-align: center; color: #5b5275; font-size: 13px; padding: 10px; }
+  .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.75); padding: 16px; box-sizing: border-box; }
+  .modal[hidden] { display: none; }
+  .card { width: 100%; max-width: 560px; max-height: 100%; overflow: auto; box-sizing: border-box; padding: 16px 18px; border-radius: 10px;
+          background: linear-gradient(#251e38, #1b1628); border: 1px solid var(--line); border-top: 3px solid var(--c, #8a7ad8); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
+  .card h2 { margin: 0; font: 800 22px 'Alegreya', Georgia, serif; }
+  .card h4 { margin: 12px 0 5px; font-size: 14px; color: var(--gold); }
+  .card .muted { color: var(--muted); font-weight: 500; }
+  .sh-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .sh-head img { width: 40px; height: 40px; image-rendering: pixelated; }
+  .sh-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .stats { border-collapse: collapse; font-size: 15px; }
+  .stats th { text-align: left; padding: 1px 8px 1px 0; color: var(--muted); } .stats td { padding: 1px 8px 1px 0; font-weight: 800; } .stats td.muted { font-size: 13px; font-weight: 500; }
+  .stats tr.prime th, .stats tr.prime td:nth-child(2) { color: var(--gold); }
+  .combat { display: flex; flex-direction: column; gap: 3px; } .combat .ok { color: var(--good); } .combat .low { color: #ffb03a; } .combat .down, .combat .dead { color: var(--bad); }
+  .magic { color: #9cc4ff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; } .chips span { padding: 2px 8px; border-radius: 4px; background: #0b0912; font-size: 13.5px; }
+  .spells { margin: 0; padding-left: 18px; font-size: 14.5px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+  /* a phone held upright: the scene on top, the story under it */
+  @media (max-aspect-ratio: 1/1) {
+    #stage { flex-direction: column; }
+    #sceneCol { flex: none; }
+    #scene { flex: none; align-self: center; width: min(100%, calc(32vh * 4 / 3)); height: auto; max-width: none; }
+    #sceneCol { align-items: stretch; max-width: none; }
+    #choices.two { grid-template-columns: 1fr; }
+    #party { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #story { font-size: 16.5px; padding: 10px 14px; }
+    .sh-cols { grid-template-columns: 1fr; }
+  }
+  /* small landscape phones: tighter */
+  @media (max-height: 430px) and (min-aspect-ratio: 1/1) {
+    #play { gap: 6px; } .hero { padding: 3px 7px 4px; } .hero .hn { font-size: 14px; }
+    #story { font-size: 16px; padding: 8px 14px; } .ch { min-height: 34px; padding: 5px 10px; font-size: 15px !important; } #ask { margin-bottom: 3px; }
+  }
+  #name { position: fixed; display: none; box-sizing: border-box; text-transform: uppercase; padding: 0 0.3em;
+          font: bold 16px ui-monospace, Menlo, Consolas, monospace; color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="play" style="display:none">
+  <div id="top"><div id="party"></div><button id="pause" aria-label="Pause">II</button></div>
+  <div id="stage">
+    <div id="sceneCol"><canvas id="scene" width="128" height="96"></canvas><div id="inv"></div></div>
+    <div id="story"><div id="storyIn"></div></div>
+  </div>
+  <div id="bottom"><div id="ask"></div><div id="choices"></div></div>
+  <div id="sheet" class="modal" hidden></div>
+  <div id="menu" class="modal" hidden></div>
+</div>
+<input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="done" aria-label="Hero name">
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL QUEST: an old-school dungeon adventure (part of the PIXEL GAMES). A proof of concept, not in the arcade's menu
+   yet: it lives at /adad.
+   A party of 1 to 4 heroes (FIGHTER, CLERIC, MAGE, THIEF) takes turns on one phone. The game is the dungeon master:
+   it tells you where you are, you pick what the party does, and the dice decide. Every roll is shown.
+   The rules are the classic 1st-level ones, cut down:
+     - six abilities (STR DEX CON INT WIS CHA), 4d6 drop the lowest, put where the class needs them most
+     - descending armour class (10 = no armour, lower is better) and THAC0: to hit, roll d20 + bonuses >= THAC0 - AC
+     - five saving throws (POISON, WANDS, PARALYSIS, BREATH, SPELLS): roll d20 >= the number
+     - ability checks: roll d20 <= the ability. Thief skills: roll d100 <= the skill
+     - initiative: d10 for each side every round, low goes first. Zombies always go last
+     - 0 HP: down and dying (lose 1 HP a round), -10: dead. After a won fight the downed wake up at 1 HP
+     - morale: 2d10 above a monster's morale and it runs (or gives up)
+     - XP for monsters beaten, and 1 XP for every gold piece brought home
+   THE ADVENTURE IS DATA: ROOMS (section 5) is a list of rooms, each with its text and its choices. A choice can ask
+   for a check (who tries it is up to the party), start a fight, give an item, set a flag. A new adventure is a new
+   ROOMS list; new rules go into section 2.
+     1. Setup   2. Rules   3. Heroes   4. The story queue   5. The adventure   6. Fights   7. Drawing   8. Screens
+     9. Sound   10. Input   11. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '0.1.0';
+const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game';
+const save = { sfx: true, wins: 0 };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+let ctx = S.ctx; const H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rnd = n => 1 + Math.floor(Math.random() * n);                  // one die
+const dice = (n, s, b = 0) => { let t = b; for (let i = 0; i < n; i++) t += rnd(s); return t; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const nice = v => String(v).split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');    // BRAN -> Bran
+
+/* --- 2. RULES ----------------------------------------------------------------- */
+const STATS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const STAT_NAME = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
+// STR: to hit and damage
+const strHit = s => s <= 3 ? -3 : s <= 5 ? -2 : s <= 7 ? -1 : s <= 16 ? 0 : 1;
+const strDmg = s => s <= 5 ? -1 : s <= 15 ? 0 : s <= 17 ? 1 : 2;
+// DEX: armour class (lower is better) and thrown weapons
+const dexAC = s => s <= 3 ? 4 : s <= 5 ? 6 - s : s === 6 ? 1 : s <= 14 ? 0 : -(s - 14);
+const dexMissile = s => s <= 3 ? -3 : s <= 5 ? s - 6 : s <= 15 ? 0 : s === 16 ? 1 : 2;
+// CON: hit points (only fighters get more than +2)
+const conHP = (s, fighter) => s <= 3 ? -2 : s <= 6 ? -1 : s <= 14 ? 0 : s === 15 ? 1 : s === 16 ? 2 : fighter ? s - 14 : 2;
+// thief skills by DEX
+const THIEF_DEX = { 16: [5, 0, 0, 0], 17: [10, 0, 5, 5], 18: [15, 5, 10, 10] };
+const SAVE_NAMES = ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells'];
+const SV = { poison: 0, wand: 1, para: 2, breath: 3, spell: 4 };
+const CLASSES = {
+  fighter: { name: 'Fighter', hd: 10, prime: 'str', order: ['str', 'con', 'dex', 'wis', 'cha', 'int'], armour: 4, armourName: 'Chain mail, shield',
+             weapon: { name: 'Long sword', n: 1, s: 8, b: 0, edged: true }, saves: [14, 16, 15, 17, 17], next: 2000, col: '#e8a040' },
+  cleric:  { name: 'Cleric', hd: 8, prime: 'wis', order: ['wis', 'con', 'str', 'cha', 'dex', 'int'], armour: 4, armourName: 'Chain mail, shield',
+             weapon: { name: 'Mace', n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless'] },
+  mage:    { name: 'Mage', hd: 4, prime: 'int', order: ['int', 'dex', 'con', 'wis', 'cha', 'str'], armour: 10, armourName: 'Robes',
+             weapon: { name: 'Staff', n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'] },
+  thief:   { name: 'Thief', hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: 'Leather',
+             weapon: { name: 'Short sword', n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a' },
+};
+const CLASS_IDS = ['fighter', 'cleric', 'mage', 'thief'];
+const SPELLS = {
+  missile: { name: 'Magic Missile', target: 'foe', info: '1d4+1, never misses' },
+  sleep:   { name: 'Sleep', target: 'none', info: '2d4 hit dice of foes fall asleep' },
+  cure:    { name: 'Cure Light Wounds', target: 'hero', info: 'Heals 1d8', calm: true },
+  bless:   { name: 'Bless', target: 'none', info: '+1 to hit for the party' },
+};
+// monsters: hp = [dice, sides, bonus], dmg the same; turn = what a 1st level cleric needs on d20 to turn it
+const MON = {
+  rat:    { name: 'Giant rat', hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, spr: 'rat' },
+  skel:   { name: 'Skeleton', hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, spr: 'skel' },
+  cent:   { name: 'Centipede', hd: 0.5, hp: [1, 3, 0], ac: 9, thac0: 20, dmg: [1, 1, 0], morale: 8, xp: 35, poison: true, spr: 'cent' },
+  zomb:   { name: 'Zombie', hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, spr: 'zomb' },
+  malrec: { name: 'Malrec', hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, spr: 'cult' },
+};
+const ITEMS = { potion: 'Healing potion', holy: 'Holy water', food: 'Food' };
+
+/* --- 3. HEROES ------------------------------------------------------------- */
+const NAMES = ['Bran', 'Mira', 'Oswin', 'Tess', 'Garrick', 'Elwyn', 'Hob', 'Sable', 'Rowan', 'Ida', 'Corvin', 'Nell', 'August', 'Wren'];
+function rollStats() { return Array.from({ length: 6 }, () => { const r = [rnd(6), rnd(6), rnd(6), rnd(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; }).sort((a, b) => b - a); }
+function makeHero(name, cls, vals) {
+  const h = { name, cls, vals, st: {}, xp: 0, tried: {} };
+  setClass(h, cls);
+  return h;
+}
+function setClass(h, cls) {
+  const C = CLASSES[cls]; h.cls = cls;
+  C.order.forEach((k, i) => { h.st[k] = h.vals[i]; });
+  h.max = Math.max(1, C.hd + conHP(h.st.con, cls === 'fighter'));
+  h.hp = h.max;
+  h.weapon = Object.assign({}, C.weapon);
+  h.spellMax = cls === 'mage' ? 1 : cls === 'cleric' ? 1 + (h.st.wis >= 13 ? 1 : 0) : 0;
+  h.spells = h.spellMax;
+}
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex);
+const thac0Of = () => 20;
+const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0);
+const dmgOf = h => strDmg(h.st.str);
+const up = h => h.hp > 0 && !h.dead;                       // can act (if not held)
+const alive = h => !h.dead;
+function thiefSkill(h, k) {                                 // k: 0 open locks, 1 find traps, 2 move silently, 3 hide in shadows
+  const base = [35, 25, 35, 25][k], adj = THIEF_DEX[Math.min(18, h.st.dex)] || [0, 0, 0, 0];
+  return base + adj[k];
+}
+const SKILL_NAMES = ['Open locks', 'Find traps', 'Move silently', 'Hide in shadows'];
+const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]];
+
+/* --- 4. THE STORY QUEUE -------------------------------------------------------
+   Everything the game says goes through a queue, so it shows up one piece at a time: text, a dice roll (a die spins,
+   then the result), or a function to run when its turn comes (the next room, the next hero's turn...).
+   The choices only show when the queue is empty. Tap to skip ahead. */
+let G = null;                       // the adventure in progress (saved): heroes, gold, items, flags, room
+let F = null;                       // the fight in progress (not saved)
+const Q = [];
+let cur = null;                     // the queue entry being shown
+let choices = [], ask = '', choicesVer = 0;   // the buttons and the question above them
+let die = null;                     // the big die in the picture { sides, shown, value, ok, t }
+let skip = false, tapped = false;
+const say = (txt, col) => Q.push({ k: 'say', txt, col });
+const head = txt => Q.push({ k: 'say', txt, cls: 'title' });
+const then = fn => Q.push({ k: 'fn', fn });
+const gap = () => Q.push({ k: 'say', txt: '', cls: 'gap' });
+function rollFx(sides, value, txt, ok, fast) { Q.push({ k: 'roll', sides, value, txt, ok, fast }); }
+// a choice somebody has to try (a check): only shown while some hero can still try it
+function setChoices(q, list) { ask = q; choicesVer++; choices = list.filter(c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0))); }
+const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, fn, stay) });
+
+// the story is real text (HTML): it can be long, scroll back, and has proper letters
+const storyEl = document.getElementById('story'), storyIn = document.getElementById('storyIn');
+const COLS = { '#7aea7a': 'good', '#ff7a6a': 'bad', '#ff3a3a': 'bad', '#ffaa8a': 'hurt', '#ffd23f': 'gold', '#c8b8ff': 'muted', '#6aa8ff': 'magic', '#f0e070': 'holy', '#c06aff': 'evil' };
+let stick = true;
+storyEl.addEventListener('scroll', () => { stick = storyEl.scrollTop + storyEl.clientHeight >= storyEl.scrollHeight - 40; });
+function clearText() { storyIn.textContent = ''; stick = true; }
+const hasText = () => storyIn.childElementCount > 0;
+function addLine(tag, cls) { const el = document.createElement(tag); if (cls) el.className = cls; storyIn.appendChild(el); return el; }
+function follow() { if (stick) storyEl.scrollTop = storyEl.scrollHeight; }
+const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// the canvas screens (title, rules) still use the pixel font: wrap() cuts their text into lines
+function wrap(str, w) {
+  const out = [];
+  for (const para of String(str).toUpperCase().split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const t = line ? line + ' ' + word : word;
+      if (line && PX.textWidth(t) > w) { out.push(line); line = word; } else line = t;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function pump(dt) {
+  for (let guard = 0; guard < 200; guard++) {
+    if (!cur) {
+      if (!Q.length) { skip = false; return; }
+      cur = Q.shift(); cur.t = 0;
+      if (cur.k === 'say') {
+        cur.paras = cur.txt.split('\n').map((x, i) => ({ x, el: addLine(cur.cls === 'title' ? 'h3' : 'p', cur.cls || COLS[cur.col] || '') }));
+      }
+      if (cur.k === 'roll') { die = { sides: cur.sides, value: cur.value, ok: cur.ok, t: 0, shown: rnd(cur.sides) }; sfx('dice'); }
+    }
+    cur.t += dt;
+    if (cur.k === 'fn') { const fn = cur.fn; cur = null; fn(); continue; }
+    if (cur.k === 'wait') { skip = false; if (!tapped) return; tapped = false; cur = null; continue; }
+    if (cur.k === 'say') {
+      const total = cur.txt.length, chars = skip || cur.cls ? total : Math.floor(cur.t * 260);
+      let left = chars;
+      for (const p of cur.paras) { p.el.textContent = p.x.slice(0, clamp(left, 0, p.x.length)); left -= p.x.length + 1; }
+      follow();
+      if (chars >= total) { cur = null; continue; }
+      return;
+    }
+    if (cur.k === 'roll') {
+      const dur = cur.fast ? 0.28 : 0.55;
+      die.t = cur.t;
+      if (cur.t < dur && !skip) { if (Math.floor(cur.t * 18) !== Math.floor((cur.t - dt) * 18)) die.shown = rnd(cur.sides); return; }
+      die.shown = cur.value; die.done = true;
+      const el = addLine('div', 'roll ' + (cur.ok === true ? 'ok' : cur.ok === false ? 'no' : 'info'));
+      el.innerHTML = `<b title="d${cur.sides}">${cur.value}</b><span>${esc(cur.txt)}</span>`;
+      follow();
+      if (cur.ok === true) sfx('ok'); else if (cur.ok === false) sfx('bad');
+      cur = null;
+      continue;
+    }
+  }
+}
+const busy = () => !!cur || Q.length > 0;
+
+// checks: they roll, show the roll, and give back true or false
+function abilityChance(h, stat, mod = 0) { return clamp(h.st[stat] + mod, 1, 19) / 20; }
+function checkAbility(h, stat, mod = 0) {
+  const need = clamp(h.st[stat] + mod, 1, 19), r = rnd(20), ok = r <= need;
+  rollFx(20, r, `${h.name}: ${STAT_NAME[stat]} check, d20 = ${r} (need ${need} or less) ${ok ? 'Success' : 'Fail'}`, ok);
+  return ok;
+}
+function skillChance(h, k) { return h.cls === 'thief' ? thiefSkill(h, k) / 100 : 0; }
+function checkSkill(h, k) {
+  const need = thiefSkill(h, k), r = rnd(100), ok = r <= need;
+  rollFx(100, r, `${h.name}: ${SKILL_NAMES[k]}, d100 = ${r} (need ${need} or less) ${ok ? 'Success' : 'Fail'}`, ok);
+  return ok;
+}
+function saveChance(h, kind, mod = 0) { return clamp(21 - saveOf(h, kind) + mod, 1, 20) / 20; }
+function checkSave(h, kind, mod = 0, fast) {
+  const need = saveOf(h, kind), r = rnd(20), ok = r + mod >= need;
+  rollFx(20, r, `${h.name}: save vs ${SAVE_NAMES[SV[kind]]}, d20 = ${r}${mod ? (mod > 0 ? '+' : '') + mod : ''} (need ${need}) ${ok ? 'Saved' : 'Failed'}`, ok, fast);
+  return ok;
+}
+const pct = c => Math.round(c * 100) + '%';
+// the party picks who does it: a button for every hero who can, with their chance
+function choose(q, chance, fn, back) {
+  const list = G.heroes.filter(h => up(h) && chance(h) > 0).map(h => ({ label: `${h.name} (${pct(chance(h))})`, act: () => fn(h) }));
+  if (!list.length) { say('Nobody in the party can do that.', '#ff7a6a'); then(back); return; }
+  list.push({ label: 'Never mind', act: back, dim: true });
+  setChoices(q, list);
+}
+function hurt(h, n, floor1) {
+  h.hp -= n;
+  if (floor1 && h.hp < 1) h.hp = 1;
+  if (h.hp <= -10) { h.hp = -10; h.dead = true; }
+}
+function giveXP(n, why) {
+  const live = G.heroes.filter(alive);
+  if (!live.length || n <= 0) return;
+  const each = Math.floor(n / live.length);
+  for (const h of live) h.xp += each;
+  say(`${why}: ${each} XP for every hero.`, '#ffd23f');
+}
+
+/* --- 5. THE ADVENTURE: THE DROWNED BELL ---------------------------------------------
+   An original intro adventure for 1st level heroes. Each room: pic (the picture), text (the first visit), again (when
+   you come back), choices(). Flags (G.f) remember what happened. */
+const f = () => G.f;
+const n = () => G.heroes.length;
+const stay = () => { store2(); showChoices(); };
+function go(id) {
+  // a new room: first let the party read what just happened (tap to go on), then a clean page
+  if (G.room !== id && hasText()) { Q.push({ k: 'wait' }); then(() => { clearText(); enter(id); }); return; }
+  if (G.room !== id) clearText();
+  enter(id);
+}
+function enter(id) {
+  const R = ROOMS[id];
+  G.room = id;
+  const first = !f()['seen_' + id];
+  f()['seen_' + id] = 1;
+  head(R.title);
+  say(first || !R.again ? (typeof R.text === 'function' ? R.text() : R.text) : (typeof R.again === 'function' ? R.again() : R.again));
+  if (R.enter) R.enter(first);
+  then(stay);
+}
+function showChoices() { const R = ROOMS[G.room]; setChoices(R.ask || 'What does the party do?', R.choices()); }
+function buy(item, price) {
+  if (G.gold < price) { say(`You have only ${G.gold} gold.`, '#ff7a6a'); then(stay); return; }
+  G.gold -= price; G.items[item]++;
+  say(`You buy: ${ITEMS[item].toLowerCase()}. (${G.gold} gold left)`); sfx('coin'); then(stay);
+}
+function needle(h) {
+  say(`A needle jabs ${h.name}'s hand!`, '#ff7a6a');
+  f().trapGone = 1;
+  if (checkSave(h, 'poison')) { hurt(h, 1, true); say('Just a scratch. 1 damage.'); }
+  else { const d = dice(2, 4); hurt(h, d, true); say(`The poison burns. ${d} damage.`, '#ff7a6a'); }
+}
+function openTrapdoor() { f().open = 1; say('The trapdoor swings up. Cold air and candle smoke rise from below.'); then(() => go('stairs')); }
+function rest() {
+  G.items.food--; f().rested = 1;
+  const r = rnd(6);
+  rollFx(6, r, `Wandering monsters: d6 = ${r} (1 or 2: something comes)`, r > 2);
+  if (r <= 2) {
+    say('You have barely closed your eyes when bones clatter in the dark.', '#ff7a6a');
+    then(() => fight({ foes: [['skel', 2]], surprise: 'foes', win: () => go('junction'), flee: () => go('altar') }));
+    return;
+  }
+  say('You eat, bandage your cuts and sleep in turns. Nothing comes. Spells come back to the cleric and the mage.');
+  for (const h of G.heroes) if (alive(h)) { const d = rnd(3); h.hp = Math.min(h.max, Math.max(1, h.hp) + d); h.spells = h.spellMax; }
+  then(stay);
+}
+function answerDoor(word) {
+  if (word === 'Bell') {
+    say(`"A bell." The bronze mouth speaks the word back, slowly, and the door grinds open.`, '#7aea7a'); sfx('ok');
+    then(() => go('bell')); return;
+  }
+  say(`"${word}." The bronze mouth spits a jet of icy black water at the party!`, '#ff7a6a');
+  f().alarm = (f().alarm || 0) + 1;
+  for (const h of G.heroes) if (up(h)) { if (!checkSave(h, 'breath', 0, true)) { const d = rnd(4); hurt(h, d, true); say(`${h.name} takes ${d} damage.`, '#ff7a6a'); } }
+  then(stay);
+}
+function endText() {
+  const hammer = G.heroes.find(h => h.weapon.blessed && up(h));
+  let t = 'You cut Mila free. She holds on to the nearest hero and will not let go.\n';
+  t += hammer ? `${hammer.name} lifts Saint Alder's Hammer and strikes the bell. It cracks with a sound like a long sigh, and is silent for good.\n`
+              : 'The bell stops swinging. For now, at least.\n';
+  t += f().surrender ? 'Malrec goes down the hill with you, hands tied, crying for his brother.\n' : '';
+  t += 'Dawn is breaking when you walk Mila down the hill. The miller weeps. Reeve Hollis counts out 200 gold.';
+  return t;
+}
+const ROOMS = {
+  inn: {
+    title: 'Thornwall: The Crooked Lantern Inn', pic: 'village',
+    text: 'An autumn evening. For seven nights a bell has tolled under the old chapel on the hill, though its bell fell into the river a hundred years ago.\n' +
+          'Last night Mila, the miller\'s daughter, went up the hill to see. She did not come back. Reeve Hollis offers 200 gold to whoever brings her home.',
+    again: 'The fire crackles. Up on the hill, the bell tolls again.',
+    choices: () => [
+      { label: 'Ask for rumours', if: () => !f().rumour, ...pickWho('Who asks around? (CHA check)', h => abilityChance(h, 'cha'), h => {
+        if (checkAbility(h, 'cha')) {
+          f().rumour = 2;
+          say('Old Wren leans in. "Brother Malrec, the sexton, went strange when his brother drowned. He keeps humming the old bell hymn: I have a tongue but never taste..."');
+          say('"And the dead monks under that chapel? Blades slide off old bones. Take a hammer."');
+        } else {
+          f().rumour = 1;
+          say('The farmers only grumble about the rats up in the chapel. "Big as dogs," one says. "They\'ll follow anything you can eat."');
+        }
+        then(stay);
+      }) },
+      { label: 'Visit Granny Sedge', act: () => go('shop') },
+      { label: f().open ? 'Back down into the crypt' : 'Climb up to the chapel', act: () => f().open ? (say('You hurry back up the hill and down the crypt stairs.'), then(() => go('junction'))) : go('chapel') },
+    ],
+  },
+  shop: {
+    title: 'Granny Sedge, Herb-Wife', pic: 'shop',
+    text: 'A hut that smells of smoke and mint. Granny Sedge looks you over. "Going up the hill? Then you\'ll want some of these."',
+    again: '"Back already?" Granny Sedge says.',
+    ask: () => 'What do you buy?',
+    choices: () => [
+      { label: `Healing potion: 30 gold`, act: () => buy('potion', 30) },
+      { label: `Holy water: 25 gold`, act: () => buy('holy', 25) },
+      { label: `Food for a day: 2 gold`, act: () => buy('food', 2) },
+      { label: 'Back to the inn', act: () => go('inn'), dim: true },
+    ],
+  },
+  chapel: {
+    title: 'The Ruined Chapel', pic: 'chapel',
+    text: () => `The chapel is a shell of broken arches under the moon. At the far end stands the altar.\nBetween you and it, the floor is moving: ${ratsN()} giant rats, fat and red-eyed, chewing something you would rather not look at.`,
+    again: 'The rats are still here, between you and the altar.',
+    choices: () => [
+      { label: 'Fight the rats', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('inn') }) },
+      { label: 'Sneak past them', act: () => {
+        say('Everyone tries to walk quietly. (Thieves: move silently. The others: DEX check, -4 in chain mail.)');
+        let ok = 0, all = 0;
+        for (const h of G.heroes) if (up(h)) { all++; if (h.cls === 'thief' ? checkSkill(h, 2) : checkAbility(h, 'dex', CLASSES[h.cls].armour <= 4 ? -4 : 0)) ok++; }
+        if (ok * 2 >= all) { say('You slip along the wall. The rats never look up.', '#7aea7a'); f().rats = 1; then(() => go('altar')); }
+        else { say('A boot scrapes on stone. Every red eye turns toward you.', '#ff7a6a'); then(() => fight({ foes: [['rat', ratsN()]], surprise: 'foes', win: () => { f().rats = 1; go('altar'); }, flee: () => go('inn') })); }
+      } },
+      { label: 'Throw them some food', if: () => G.items.food > 0, act: () => {
+        G.items.food--; f().rats = 1;
+        say('You toss a loaf and a wedge of cheese into the dark. The rats pour over it, squealing. You walk past.', '#7aea7a');
+        then(() => go('altar'));
+      } },
+      { label: 'Back to the inn', act: () => go('inn'), dim: true },
+    ],
+  },
+  altar: {
+    title: 'The Altar', pic: 'altar',
+    text: 'Behind the altar, fresh drag marks lead to a trapdoor. Its iron lock is new and shiny.\nFrom below, faintly: the bell. And for a moment, a girl\'s voice.',
+    again: 'The trapdoor waits behind the altar, locked.',
+    choices: () => [
+      { label: 'Search for traps', if: () => !f().trapKnown && !f().trapGone, ...pickWho('Who searches? (Thieves: find traps. Others: WIS check -8)', h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
+        h.tried.trap = 1;
+        if (h.cls === 'thief' ? checkSkill(h, 1) : checkAbility(h, 'wis', -8)) { f().trapKnown = 1; say('In the keyhole: a tiny needle, wet with something dark.', '#7aea7a'); }
+        else say('Nothing that you can see.');
+        then(stay);
+      }) },
+      { label: 'Remove the needle', if: () => f().trapKnown && !f().trapGone, ...pickWho('Who tries? (Find/remove traps)', h => skillChance(h, 1), h => {
+        if (checkSkill(h, 1)) { f().trapGone = 1; say('A twist of wire, and the needle drops into your palm.', '#7aea7a'); }
+        else needle(h);
+        then(stay);
+      }) },
+      { label: 'Pick the lock', ...pickWho('Who picks it? (Thieves only: open locks)', h => h.tried.lock ? 0 : skillChance(h, 0), h => {
+        h.tried.lock = 1;
+        if (!f().trapGone) needle(h);
+        if (checkSkill(h, 0)) { openTrapdoor(); return; }
+        say('The lock will not give. (A thief gets one try at a lock.)', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'Force the trapdoor', ...pickWho('Who heaves? (STR check -4)', h => abilityChance(h, 'str', -4), h => {
+        if (!f().trapGone) needle(h);
+        f().alarm = (f().alarm || 0) + 1;
+        if (checkAbility(h, 'str', -4)) { say('The hasp tears out of the wood with a crash that echoes below.', '#7aea7a'); openTrapdoor(); return; }
+        say('It holds. The noise echoes down into the dark. Something down there is listening now.', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'Back to the inn', act: () => go('inn'), dim: true },
+    ],
+  },
+  stairs: {
+    title: 'The Crypt Stairs', pic: 'crypt',
+    text: () => 'Stone steps spiral down into a crypt. Candles burn in the wall niches, and in each niche lies a monk\'s skeleton.\nAs your foot touches the last step, the bones begin to move.' +
+      (f().alarm ? ' They were already waiting for you.' : ''),
+    again: 'The skeletons stand in your way.',
+    choices: () => [
+      { label: 'Fight!', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('junction'); }, flee: () => go('altar') }) },
+      { label: 'Run back up', act: () => go('altar'), dim: true },
+    ],
+  },
+  junction: {
+    title: 'The Crossroads', pic: 'junction',
+    text: 'Three passages meet in a round room. To the west, water drips on bones. To the east, a row of old cells.\nTo the north, a bronze door. Behind it the bell tolls, so loud now that you feel it in your teeth.',
+    again: 'The round room. The bell tolls behind the bronze door.',
+    choices: () => [
+      { label: 'West: the ossuary', if: () => !f().ossDone, act: () => go('ossuary') },
+      { label: 'East: the cells', if: () => !f().cellDone, act: () => go('cells') },
+      { label: 'North: the bronze door', act: () => go('door') },
+      { label: G.items.food ? 'Rest (eat 1 food)' : 'Rest (no food left)', if: () => !f().rested, act: () => G.items.food > 0 ? rest() : (say('You have no food. You can\'t rest on an empty stomach.', '#ff7a6a'), then(stay)) },
+      { label: 'Up to the village', act: () => { say('You climb out and walk down the hill to Thornwall.'); then(() => go('inn')); }, dim: true },
+    ],
+  },
+  ossuary: {
+    title: 'The Ossuary', pic: 'ossuary',
+    text: 'Walls built of skulls, and a floor of black water, knee-deep. Something clicks and scuttles in the bones.',
+    again: () => f().cent ? 'The skulls grin down at the black water. Something still glints under it.' : 'Something clicks and scuttles in the bones.',
+    choices: () => f().cent ? [
+      { label: 'Search the water', if: () => (f().found || 0) < 3, ...pickWho('Who searches? (WIS check)', h => h.tried.water ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.water = 1;
+        if (!checkAbility(h, 'wis')) { say(`${h.name} finds only cold mud and old teeth.`); then(stay); return; }
+        const k = f().found = (f().found || 0) + 1;
+        if (k === 1) {
+          say('A war hammer, its head wrapped in silver, a saint\'s name on the handle: Alder. It is warm to the touch.', '#7aea7a');
+          say('Saint Alder\'s Hammer: +1 to hit, 1d6+1 damage, +2 more against the undead. Not a blade: old bones can\'t shrug it off.', '#ffd23f');
+          then(() => setChoices('Who takes the hammer?', G.heroes.filter(up).map(x => ({ label: `${x.name} (${CLASSES[x.cls].name}, now: ${x.weapon.name})`, act: () => {
+            x.weapon = { name: 'Alder\'s Hammer', n: 1, s: 6, b: 1, hit: 1, blessed: true };
+            say(`${x.name} takes the hammer.`); then(stay);
+          } }))));
+          return;
+        }
+        if (k === 2) { G.items.potion++; say('A stoppered bottle in a rotten pouch: a healing potion!', '#7aea7a'); }
+        else { G.gold += 30; say('A handful of old silver coins: 30 gold.', '#7aea7a'); sfx('coin'); }
+        then(stay);
+      }) },
+      { label: 'Back to the crossroads', act: () => { if ((f().found || 0) >= 3 || G.heroes.filter(up).every(h => h.tried.water)) f().ossDone = 1; go('junction'); }, dim: true },
+    ] : [
+      { label: 'Wade in', act: () => fight({ foes: [['cent', [1, 2, 3, 4][n() - 1]]], win: () => { f().cent = 1; say('With the centipedes dead, you notice something glinting under the water.'); then(stay); }, flee: () => go('junction') }) },
+      { label: 'Back to the crossroads', act: () => go('junction'), dim: true },
+    ],
+  },
+  cells: {
+    title: 'The Monks\' Cells', pic: 'cells',
+    text: 'A hall of monks\' cells, their doors rotted away. In the last one, a shape in a wet robe turns toward your light.\nIts face is grey and swollen. Someone drowned here, and then got up again.',
+    again: () => f().zomb ? 'Malrec\'s cell: a straw bed, a desk, a diary, a small iron chest.' : 'The drowned thing shuffles toward you.',
+    choices: () => f().zomb ? [
+      { label: 'Read the diary', if: () => !f().diary, act: () => {
+        f().diary = 1;
+        say('Malrec\'s diary. The last pages:', '#ffd23f');
+        say('"The river took my brother. But the old bell of the drowned lies down here, and it can call him back, if I feed it a living voice.');
+        say('The door to it answers only to the bell\'s own name. Forgive me, Brother Alder, for what I must do."');
+        then(stay);
+      } },
+      { label: 'Open the chest', if: () => !f().chest, ...pickWho('Who opens it? (Thief: open locks. Others: STR check -2)', h => h.tried.chest ? 0 : h.cls === 'thief' ? skillChance(h, 0) : abilityChance(h, 'str', -2), h => {
+        h.tried.chest = 1;
+        if (h.cls === 'thief' ? checkSkill(h, 0) : checkAbility(h, 'str', -2)) {
+          f().chest = 1; G.gold += 60; G.items.holy++;
+          say('Inside: 60 gold and a flask of holy water, stolen from the chapel.', '#7aea7a'); sfx('coin');
+        } else say('The chest won\'t open.', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'Back to the crossroads', act: () => { if (f().diary && (f().chest || G.heroes.filter(up).every(h => h.tried.chest))) f().cellDone = 1; go('junction'); }, dim: true },
+    ] : [
+      { label: 'Fight it', act: () => fight({ foes: [['zomb', n() >= 3 ? 2 : 1]], win: () => { f().zomb = 1; say('In the cell: a straw bed, a desk, a diary and a small iron chest. This was Malrec\'s room.'); then(stay); }, flee: () => go('junction') }) },
+      { label: 'Back to the crossroads', act: () => go('junction'), dim: true },
+    ],
+  },
+  door: {
+    title: 'The Bronze Door', pic: 'door',
+    text: 'The door shows a bell sinking under waves. A mouth is cast in the metal, and words run around it:\n"I have a tongue but never taste. I have a mouth but never eat. I call the living and the dead. Speak my name."',
+    again: '"Speak my name," says the door.',
+    choices: () => [
+      { label: 'Say "the river"', act: () => answerDoor('The river') },
+      { label: 'Say "a ghost"', act: () => answerDoor('A ghost') },
+      { label: 'Say "a bell"', act: () => answerDoor('Bell') },
+      { label: 'Say "a candle"', act: () => answerDoor('A candle') },
+      { label: 'Think it over', ...pickWho('Who thinks about it? (INT check)', h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
+        h.tried.riddle = 1;
+        if (checkAbility(h, 'int')) say(`${h.name}: "Wait. The thing that swings inside a bell is called its tongue..."`, '#7aea7a');
+        else say(`${h.name} stares at the words until they swim.`);
+        then(stay);
+      }) },
+      { label: 'Back', act: () => go('junction'), dim: true },
+    ],
+  },
+  bell: {
+    title: 'The Bell of the Drowned', pic: 'bell',
+    text: 'A high cave. A green bronze bell hangs over a black pool, swinging all by itself. Mila is tied to a pillar, too scared to cry.\n' +
+          'Brother Malrec turns from the water. "Just in time," he says. "The drowned need more voices." Wet shapes climb out of the pool.',
+    again: 'Malrec waits by the bell.',
+    choices: () => [
+      { label: 'Attack!', act: () => bossFight(null) },
+      { label: 'Talk him down', if: () => !f().talked, ...pickWho(`Who talks? (CHA check${f().diary ? ', +2: you read his diary' : ' -2'})`, h => abilityChance(h, 'cha', f().diary ? 2 : -2), h => {
+        f().talked = 1;
+        if (checkAbility(h, 'cha', f().diary ? 2 : -2)) {
+          say(`${h.name}: "Your brother wouldn't want this, Malrec." He falters. The bell misses a beat. Now!`, '#7aea7a');
+          then(() => bossFight('party'));
+        } else {
+          say('Malrec laughs and the bell roars. The drowned surge forward.', '#ff7a6a');
+          then(() => bossFight('foes'));
+        }
+      }) },
+    ],
+  },
+  end: {
+    title: 'The Bell Is Silent', pic: 'dawn',
+    text: endText,
+    enter: () => {
+      if (f().paid) return;
+      f().paid = 1;
+      G.gold += 200;
+      gap();
+      giveXP(G.gold, `${G.gold} gold brought home`);
+      const first = !save.wins;
+      save.wins = (save.wins | 0) + 1; store();
+      const stars = first ? 10 : 2;
+      PX.Wallet.add(stars);
+      say(`The adventure is won! +★${stars}`, '#ffd23f');
+      sfx('win');
+      localStorage.removeItem(GAME_KEY);
+    },
+    ask: 'The end',
+    choices: () => [{ label: 'Back to the title', act: () => { G = null; state = 'title'; } }],
+  },
+  tpk: {
+    title: 'The Party Has Fallen', pic: 'grave',
+    text: 'Darkness. Under Thornwall the bell tolls on, and now it has new voices.',
+    enter: () => { sfx('lose'); localStorage.removeItem(GAME_KEY); },
+    ask: 'The end',
+    choices: () => [
+      { label: 'New party', act: () => { G = null; newSetup(); state = 'setup'; } },
+      { label: 'Back to the title', act: () => { G = null; state = 'title'; }, dim: true },
+    ],
+  },
+};
+const ratsN = () => [2, 3, 4, 5][n() - 1];
+const skelN = () => Math.min(4, [1, 2, 2, 3][n() - 1] + (f().alarm ? 1 : 0));
+function bossFight(surprise) {
+  const z = Math.min(3, [0, 1, 2, 2][n() - 1] + (f().alarm >= 2 ? 1 : 0));
+  const foes = [['malrec', 1]]; if (z) foes.push(['zomb', z]);
+  fight({ foes, surprise, boss: true, win: () => go('end'), flee: null });
+}
+
+/* --- 6. FIGHTS ---------------------------------------------------------------
+   Every round: initiative (d10 for each side, low first; a surprise gives one side a free round). The party's heroes
+   act one after another, the monsters attack, zombies always last. Downed heroes bleed 1 HP a round. */
+function fight(def) {
+  const foes = [];
+  for (const [id, cnt] of def.foes) for (let i = 0; i < cnt; i++) {
+    const M = MON[id], hp = Math.max(1, dice(M.hp[0], M.hp[1], M.hp[2]) - (M.boss ? (4 - G.heroes.length) * 3 : 0));
+    foes.push(Object.assign({}, M, { id, hp, max: hp, name: M.name + (cnt > 1 ? ' ' + (i + 1) : ''), state: 'ok', fx: 0 }));
+  }
+  F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false };
+  for (const h of G.heroes) { h.held = 0; h.hidden = false; }
+  gap();
+  say('Fight!', '#ff7a6a'); sfx('fight');
+  let s = def.surprise;
+  if (s === undefined || s === null && !def.boss) {
+    const a = rnd(10), b = rnd(10);
+    s = a <= 3 && b > 3 ? 'foes' : b <= 3 && a > 3 ? 'party' : null;
+    if (s) rollFx(10, s === 'foes' ? a : b, `Surprise roll: d10 = ${s === 'foes' ? a : b} (1-3: surprised). ${s === 'foes' ? 'The party is' : 'The monsters are'} surprised!`, s === 'party');
+  }
+  F.free = s || null;
+  then(newRound);
+}
+const active = m => m.state === 'ok' || m.state === 'asleep';
+const foesLeft = () => F.foes.filter(active);
+function endCheck() {
+  if (F.over) return true;
+  if (!foesLeft().length) { F.over = true; winFight(); return true; }
+  if (!G.heroes.some(up)) { F.over = true; then(() => { F = null; go('tpk'); }); return true; }
+  return false;
+}
+function winFight() {
+  gap();
+  say('Victory!', '#7aea7a'); sfx('win');
+  giveXP(F.xp, 'Monsters beaten');
+  for (const h of G.heroes) {
+    if (!h.dead && h.hp <= 0) { h.hp = 1; say(`${h.name} comes to, bruised but alive. (1 HP)`); }
+    h.held = 0; h.hidden = false;
+  }
+  const win = F.def.win;
+  then(() => { F = null; win(); });
+}
+function newRound() {
+  if (endCheck()) return;
+  F.round++;
+  gap();
+  say(`Round ${F.round}`, '#c8b8ff');
+  if (F.free) {
+    F.order = F.free === 'party' ? ['party'] : ['foes', 'slow'];
+    F.free = null;
+  } else {
+    const a = rnd(10), b = rnd(10);
+    const partyFirst = a <= b;
+    rollFx(10, a, `Initiative: party ${a}, monsters ${b}. ${partyFirst ? 'The party goes first.' : 'The monsters go first.'}`, null, true);
+    F.order = partyFirst ? ['party', 'foes', 'slow'] : ['foes', 'party', 'slow'];
+  }
+  F.step = -1;
+  then(nextPhase);
+}
+function nextPhase() {
+  if (endCheck()) return;
+  F.step++;
+  if (F.step >= F.order.length) { bleed(); then(newRound); return; }
+  const p = F.order[F.step];
+  if (p === 'party') { F.hi = -1; nextHero(); }
+  else {
+    const list = F.foes.filter(m => m.state === 'ok' && !!m.slow === (p === 'slow'));
+    for (const m of list) then(() => { if (!F.over && m.state === 'ok' && !endCheck()) foeAct(m); });
+    then(nextPhase);
+  }
+}
+function nextHero() {
+  if (endCheck()) return;
+  for (;;) {
+    F.hi++;
+    if (F.hi >= G.heroes.length) { nextPhase(); return; }
+    const h = G.heroes[F.hi];
+    if (!up(h)) continue;
+    if (h.held > 0) { h.held--; say(`${h.name} is held and can't move.`, '#c8b8ff'); continue; }
+    heroMenu(h); return;
+  }
+}
+const doneTurn = () => then(nextHero);
+function heroMenu(h) {
+  F.actor = h;
+  const undead = foesLeft().some(m => m.undead && m.state === 'ok');
+  const list = [
+    { label: 'Attack', act: () => pickFoe(h, `${h.name} attacks who?`, m => attack(h, m)) },
+    { label: `Cast a spell (${h.spells})`, if: () => h.spells > 0, act: () => spellMenu(h) },
+    { label: 'Turn undead', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
+    { label: 'Hide in shadows', if: () => h.cls === 'thief' && !h.hidden, act: () => {
+      if (checkSkill(h, 3)) { h.hidden = true; say(`${h.name} melts into the shadows. Next attack: a backstab (+4 to hit, double damage).`, '#7aea7a'); }
+      else say(`${h.name} can't find a dark enough corner.`);
+      doneTurn();
+    } },
+    { label: 'Use an item', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
+    { label: 'Run away', if: () => !!F.def.flee, dim: true, act: () => runAway() },
+  ];
+  setChoices(`${h.name} the ${CLASSES[h.cls].name}: your turn`, list);
+}
+function back(h) { return () => heroMenu(h); }
+function pickFoe(h, q, fn) {
+  const list = foesLeft().map(m => ({ label: `${m.name} ${m.state === 'asleep' ? '(asleep)' : ''}`, act: () => fn(m), foe: m }));
+  list.push({ label: 'Back', act: back(h), dim: true });
+  setChoices(q, list);
+}
+function pickHero(h, q, fn, filter = up) {
+  const list = G.heroes.filter(x => !x.dead && filter(x)).map(x => ({ label: `${x.name} (${x.hp}/${x.max} HP)`, act: () => fn(x) }));
+  list.push({ label: 'Back', act: back(h), dim: true });
+  setChoices(q, list);
+}
+function attack(h, m) {
+  if (m.state === 'asleep') {
+    say(`${h.name} strikes the sleeping ${m.name}. It never wakes.`, '#7aea7a');
+    kill(m); doneTurn(); return;
+  }
+  const back = h.hidden; h.hidden = false;
+  const bonus = hitOf(h) + (F.bless ? 1 : 0) + (back ? 4 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+  const hit = r === 20 || (r !== 1 && tot >= need);
+  rollFx(20, r, `${h.name}${back ? ' backstabs' : ' attacks'} ${m.name}: d20 ${r}${bonus ? (bonus > 0 ? '+' : '') + bonus : ''} = ${tot} (need ${need}) ${hit ? 'Hit!' : 'Miss'}`, hit);
+  if (hit) {
+    const w = h.weapon;
+    let d = Math.max(1, dice(w.n, w.s, w.b) + dmgOf(h));
+    if (w.blessed && m.undead) d += 2;
+    if (back) d *= 2;
+    if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say(`The blade slides off the bones: half damage.`, '#c8b8ff'); }
+    wound(m, d);
+  }
+  doneTurn();
+}
+function wound(m, d) {
+  m.hp -= d; m.fx = 0.3;
+  if (m.hp <= 0) { say(`${d} damage. ${m.name} ${m.undead ? 'collapses into bones and rags' : 'is dead'}!`, '#7aea7a'); kill(m); }
+  else { say(`${d} damage. (${m.name}: ${m.hp} HP left)`); if (m.boss) bossMorale(m); }
+  sfx('hit');
+}
+function kill(m) {
+  m.state = 'dead'; m.hp = Math.min(m.hp, 0); F.xp += m.xp;
+  if (m.boss) {
+    say('As Malrec falls, the bell goes quiet, and the drowned sink back into the pool.', '#7aea7a');
+    for (const o of F.foes) if (active(o)) { o.state = 'gone'; F.xp += o.xp; }
+    return;
+  }
+  morale();
+}
+// when the first of a group falls, and when half are gone: 2d10 over their morale and the rest run
+function morale() {
+  const all = F.foes.filter(m => !m.boss), left = all.filter(active), lost = all.length - left.length;
+  if (!left.length || left[0].morale >= 99 || left.some(m => m.boss)) return;
+  const key = lost === 1 ? 'first' : lost * 2 >= all.length ? 'half' : null;
+  if (!key || F['m_' + key]) return;
+  F['m_' + key] = 1;
+  const r = dice(2, 10), M = left[0].morale;
+  rollFx(20, r, `Morale: 2d10 = ${r} (over ${M}: they run) ${r > M ? 'They flee!' : 'They stand.'}`, r > M);
+  if (r > M) for (const m of left) { m.state = 'gone'; F.xp += Math.floor(m.xp / 2); }
+}
+function bossMorale(m) {
+  if (F.m_boss || m.hp * 2 > m.max) return;
+  F.m_boss = 1;
+  const r = dice(2, 10);
+  rollFx(20, r, `Malrec's morale: 2d10 = ${r} (over ${m.morale}: he gives up) ${r > m.morale ? 'He gives up!' : 'He fights on.'}`, r > m.morale);
+  if (r > m.morale) {
+    say('Malrec drops his mace and falls to his knees. "Enough... I only wanted my brother back." The bell stops. The drowned sink into the pool.', '#7aea7a');
+    f().surrender = 1;
+    for (const o of F.foes) if (active(o)) { o.state = 'gone'; F.xp += o.xp; }
+  }
+}
+function spellMenu(h) {
+  const list = CLASSES[h.cls].spells.map(id => {
+    const sp = SPELLS[id];
+    return { label: `${sp.name}`, act: () => castSpell(h, id) };
+  });
+  list.push({ label: 'Back', act: back(h), dim: true });
+  setChoices(`${h.name}: which spell? (${h.spells} left today)`, list);
+}
+function castSpell(h, id) {
+  const sp = SPELLS[id];
+  if (sp.target === 'foe') { pickFoe(h, `${sp.name} at who?`, m => { h.spells--; sfx('spell'); const d = dice(1, 4, 1); say(`${h.name} casts ${sp.name}. A bolt of light strikes ${m.name}.`, '#6aa8ff'); if (m.state === 'asleep') m.state = 'ok'; wound(m, d); doneTurn(); }); return; }
+  if (sp.target === 'hero') { pickHero(h, `${sp.name} on who?`, x => { h.spells--; sfx('spell'); cure(h, x); doneTurn(); }, x => x.hp < x.max); return; }
+  h.spells--; sfx('spell');
+  if (id === 'bless') { F.bless = true; say(`${h.name} casts Bless. A warm light: +1 to hit for the party for the rest of the fight.`, '#6aa8ff'); doneTurn(); return; }
+  if (id === 'sleep') {
+    let hd = dice(2, 4);
+    rollFx(8, hd, `${h.name} casts Sleep: 2d4 = ${hd} hit dice of monsters.`, null);
+    const list = foesLeft().filter(m => m.state === 'ok').sort((a, b) => a.hd - b.hd);
+    let slept = 0;
+    for (const m of list) {
+      if (m.undead || m.noSleep) { say(`${m.name} doesn't sleep${m.undead ? ': the dead never do' : ': his amulet glows'}.`, '#c8b8ff'); continue; }
+      const c = Math.max(1, Math.ceil(m.hd));
+      if (c > hd) break;
+      hd -= c; m.state = 'asleep'; slept++;
+      say(`${m.name} falls asleep.`, '#6aa8ff');
+    }
+    if (!slept) say('Nothing falls asleep.');
+    doneTurn();
+  }
+}
+function cure(h, x) {
+  const d = dice(1, 8), was = x.hp;
+  x.hp = Math.min(x.max, x.hp + d);
+  say(`${h.name} casts Cure Light Wounds on ${x.name}: +${x.hp - was} HP (${x.hp}/${x.max}).`, '#6aa8ff');
+}
+function turnUndead(h) {
+  F.turned[h.name] = 1;
+  const und = foesLeft().filter(m => m.undead && m.state === 'ok').sort((a, b) => a.turn - b.turn);
+  const need = und[0].turn, r = rnd(20), ok = r >= need;
+  rollFx(20, r, `${h.name} raises the holy symbol: Turn Undead, d20 = ${r} (need ${need}) ${ok ? 'Success!' : 'Fail'}`, ok);
+  if (ok) {
+    let k = dice(2, 6);
+    say(`"Begone!" (2d6 = ${k}: so many undead turn)`, '#f0e070');
+    for (const m of und) { if (k <= 0 || m.turn > need) break; m.state = 'gone'; F.xp += m.xp; k--; say(`${m.name} flees from the light.`, '#7aea7a'); }
+  } else say('The dead keep coming.');
+  doneTurn();
+}
+function itemMenu(h) {
+  const list = [
+    { label: `Healing potion (${G.items.potion})`, if: () => G.items.potion > 0, act: () => pickHero(h, 'Give the potion to who? (Fallen heroes too)', x => {
+      G.items.potion--;
+      const d = dice(2, 4, 2), was = x.hp;
+      x.hp = Math.min(x.max, Math.max(x.hp, 0) + d);
+      say(`${x.name} drinks the potion: ${x.hp - was > 0 ? '+' + (x.hp - was) : 0} HP (${x.hp}/${x.max}).`, '#7aea7a');
+      doneTurn();
+    }, x => !x.dead && x.hp < x.max) },
+    { label: `Throw holy water (${G.items.holy})`, if: () => G.items.holy > 0, act: () => pickFoe(h, 'Throw it at who? (It only hurts the undead)', m => {
+      G.items.holy--;
+      const bonus = dexMissile(h.st.dex), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus, hit = r === 20 || (r !== 1 && tot >= need);
+      rollFx(20, r, `${h.name} throws holy water: d20 ${r}${bonus ? (bonus > 0 ? '+' : '') + bonus : ''} (need ${need}) ${hit ? 'Hit!' : 'Miss'}`, hit);
+      if (hit) { if (m.undead) { say('It hisses and smokes!', '#f0e070'); wound(m, dice(2, 4)); } else say(`${m.name} is just wet now.`); }
+      doneTurn();
+    }) },
+    { label: 'Back', act: back(h), dim: true },
+  ];
+  setChoices(`${h.name}: use what?`, list);
+}
+function runAway() {
+  say('The party runs! The monsters get a parting blow.', '#ff7a6a');
+  F.over = true;
+  for (const m of F.foes.filter(x => x.state === 'ok')) foeAttack(m, true);
+  const flee = F.def.flee;
+  then(() => {
+    F = null;
+    if (!G.heroes.some(up)) { go('tpk'); return; }
+    for (const h of G.heroes) if (!h.dead && h.hp <= 0) h.hp = 1;
+    flee();
+  });
+}
+function targetHero() {
+  const live = G.heroes.filter(up);
+  if (!live.length) return null;
+  const front = live.slice(0, 2);
+  return Math.random() < 0.7 ? pick(front) : pick(live);
+}
+function foeAct(m) {
+  if (m.boss) {
+    if (!F.cast.hold) {
+      F.cast.hold = 1;
+      const h = targetHero();
+      say(`Malrec points at ${h.name}: "Be still!" (Hold Person)`, '#c06aff'); sfx('spell');
+      if (!checkSave(h, 'spell')) { h.held = 2; say(`${h.name} freezes, held for 2 rounds.`, '#ff7a6a'); } else say(`${h.name} shakes it off.`);
+      return;
+    }
+    if (!F.cast.wound) {
+      F.cast.wound = 1;
+      say('Malrec\'s hand glows black: Cause Wounds!', '#c06aff');
+      foeAttack(m, false, [1, 8, 0]);
+      return;
+    }
+  }
+  foeAttack(m);
+}
+function foeAttack(m, fast, dmg) {
+  const h = targetHero();
+  if (!h) return;
+  const ac = acOf(h), need = m.thac0 - ac, bonus = h.held ? 4 : 0, r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
+  rollFx(20, r, `${m.name} attacks ${h.name}: d20 ${r}${bonus ? '+4 (held)' : ''} (need ${need}) ${hit ? 'Hit' : 'Miss'}`, !hit, true);
+  if (!hit) return;
+  const D = dmg || m.dmg, d = Math.max(1, dice(D[0], D[1], D[2]));
+  hurt(h, d);
+  sfx('ouch');
+  if (h.dead) say(`${d} damage. ${h.name} is dead.`, '#ff3a3a');
+  else if (h.hp <= 0) say(`${d} damage. ${h.name} falls and lies bleeding! (${h.hp} HP)`, '#ff7a6a');
+  else say(`${d} damage to ${h.name}. (${h.hp}/${h.max} HP)`, '#ffaa8a');
+  if (m.poison && h.hp > 0) {
+    if (!checkSave(h, 'poison', 4, true)) { const p = rnd(3); hurt(h, p); say(`Poison! ${p} more damage.`, '#ff7a6a'); }
+  }
+}
+function bleed() {
+  for (const h of G.heroes) if (!h.dead && h.hp <= 0) {
+    hurt(h, 1);
+    say(h.dead ? `${h.name} has bled to death.` : `${h.name} is bleeding: ${h.hp} HP. (-10 is death)`, '#ff3a3a');
+  }
+}
+
+/* --- 7. DRAWING ---------------------------------------------------------------
+   Pixel pictures: sprites are rows of letters, each letter a colour from its palette ('.' is see-through). */
+function spr(rows, pal, x, y, k = 1) {
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) {
+    const col = pal[rows[r][c]]; if (!col) continue;
+    ctx.fillStyle = col; ctx.fillRect(x + c * k, y + r * k, k, k);
+  }
+}
+const SPR = {
+  rat: { pal: { k: '#1a1018', g: '#7a6a62', l: '#a8988a', r: '#ff3030', p: '#e8a0a0' }, rows: [
+    '................',
+    '.........kk.....',
+    '........kppk....',
+    '...kkkkkkgggk...',
+    '..kggggggggrgk..',
+    '.kgggllllggggpk.',
+    'kpkgggggggggkk..',
+    '...kgk..kgk.....',
+  ] },
+  skel: { pal: { k: '#1a1018', w: '#e8e0c8', d: '#a89878', e: '#ff4040' }, rows: [
+    '...kkkkk....',
+    '..kwwwwwk...',
+    '..kwekewk...',
+    '..kwwwwwk...',
+    '...kwdwk....',
+    '....kwk.....',
+    '.kkwwwwwkk..',
+    '.kw.kdk.wk..',
+    '.kw.wdw.wk..',
+    '.kw.kdk.wk..',
+    '..k.wdw.k...',
+    '...kwkwk....',
+    '...kw.wk....',
+    '...kw.wk....',
+    '..kww.wwk...',
+  ] },
+  cent: { pal: { k: '#1a1018', o: '#b85a28', y: '#e8a040', r: '#ff3030' }, rows: [
+    '..................',
+    '.kk.kk.kk.kk.kk...',
+    'koookoookoookooork',
+    'kyoyyoyyoyyoyyoyok',
+    '.k.k.k.k.k.k.k.kk.',
+  ] },
+  zomb: { pal: { k: '#1a1018', g: '#7aa070', d: '#4a6a48', b: '#3a3a5a', c: '#5a5a7a', e: '#ffe060' }, rows: [
+    '...kkkkk....',
+    '..kgggggk...',
+    '..kgegegk...',
+    '..kgggggk...',
+    '..kgkkkgk...',
+    '...kgggk....',
+    '.kkbbbbbkk..',
+    'kgkbcbbcbkgk',
+    'kgkbbcbbbkgk',
+    '.kgkbbbbkgk.',
+    '..k.bbcbk...',
+    '...kbbbbk...',
+    '...kb.kbk...',
+    '...kd.kdk...',
+    '..kdd.kddk..',
+  ] },
+  cult: { pal: { k: '#1a1018', r: '#8a1a2a', d: '#5a0a1a', s: '#e8c0a0', e: '#60ff80', y: '#ffd23f' }, rows: [
+    '....kkkk....',
+    '...krrrrk...',
+    '..krrddrrk..',
+    '..krdeedrk..',
+    '..krdssdrk..',
+    '...kdddrk...',
+    '..krryrrrk..',
+    '.krrrrrrrrk.',
+    'ksrrrrrrrrsk',
+    'k.krrrdrrk.k',
+    '..krrrdrrk..',
+    '..krrrdrrk..',
+    '..krrdddrk..',
+    '.krrrdddrrk.',
+    '.kkkkkkkkkk.',
+  ] },
+};
+const ICONS = {
+  fighter: { pal: { k: '#1a1018', s: '#c8c8d8', d: '#7a7a8a', b: '#202030' }, rows: ['.kkkkkk.', 'kssssssk', 'ksddddsk', 'kbbbbbbk', 'ksbbbbsk', 'kssddssk', 'kssddssk', '.kkkkkk.'] },
+  cleric: { pal: { k: '#1a1018', w: '#f0f0e0', y: '#ffd23f' }, rows: ['.kkkkkk.', 'kwwyywwk', 'kwwyywwk', 'kyyyyyyk', 'kwwyywwk', 'kwwyywwk', 'kwwyywwk', '.kkkkkk.'] },
+  mage: { pal: { k: '#1a1018', b: '#3a5ad8', y: '#ffd23f', s: '#e8c0a0' }, rows: ['....kk..', '...kbbk.', '..kbybk.', '..kbbbk.', '.kbbbbbk', 'kkkkkkkk', '.kskskk.', '..kssk..'] },
+  thief: { pal: { k: '#1a1018', g: '#3a8a4a', d: '#1a4a2a', e: '#ffffff' }, rows: ['..kkkk..', '.kggggk.', 'kggggggk', 'kgddddgk', 'kgdedegk', 'kgddddgk', '.kggggk.', '..kkkk..'] },
+};
+const PIC_W = 128, PIC_H = 96;
+function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function stars(seed, n, h) { let s = seed; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; const x = s % PIC_W; s = (s * 9301 + 49297) % 233280; px(x, s % h, 1, 1, i % 3 ? '#8a8ab8' : '#fff'); } }
+function bricks(x0, y0, w, h, a, b) {
+  px(x0, y0, w, h, a);
+  for (let y = y0; y < y0 + h; y += 6) for (let x = x0 + ((y / 6) % 2 ? 0 : 5); x < x0 + w; x += 10) px(x, y, 1, 6, b);
+  for (let y = y0; y < y0 + h; y += 6) px(x0, y, w, 1, b);
+}
+function candle(x, y, t) { px(x, y, 2, 5, '#e8e0c8'); px(x, y - 3 - (Math.sin(t * 9 + x) > 0.6 ? 1 : 0), 2, 3, '#ffb030'); px(x, y - 2, 2, 1, '#fff6a0'); }
+function skull(x, y) { px(x, y, 5, 4, '#d8d0b0'); px(x + 1, y + 1, 1, 1, '#1a1018'); px(x + 3, y + 1, 1, 1, '#1a1018'); px(x + 1, y + 4, 3, 1, '#b8b090'); }
+const PICS = {
+  village(t) {
+    px(0, 0, PIC_W, PIC_H, '#141a3a'); stars(3, 30, 50);
+    px(98, 10, 8, 8, '#f0f0d0'); px(100, 10, 6, 6, '#141a3a');                      // the moon
+    px(60, 28, 68, 30, '#1a2048'); px(80, 22, 40, 8, '#1a2048');                      // the hill
+    px(92, 14, 14, 10, '#2a2a40'); px(97, 9, 4, 6, '#2a2a40'); px(96, 18, 3, 6, '#141a3a');   // the chapel
+    px(0, 58, PIC_W, 38, '#1e3a24');
+    px(14, 36, 54, 30, '#5a3a2a'); px(10, 30, 62, 8, '#7a3020'); px(18, 24, 46, 8, '#7a3020');  // the inn
+    for (const x of [20, 34, 50]) { px(x, 44, 8, 8, Math.sin(t * 3 + x) > -0.8 ? '#ffc040' : '#e0a030'); px(x + 3, 44, 1, 8, '#5a3a2a'); }
+    px(38, 56, 8, 10, '#2a1a10');
+    px(60, 40, 2, 26, '#3a2a1a'); px(56, 38, 10, 4, '#ffd23f');                      // the lantern sign
+    px(0, 74, PIC_W, 4, '#2a4a30');
+  },
+  shop(t) {
+    px(0, 0, PIC_W, PIC_H, '#2a1e18');
+    for (let i = 0; i < 4; i++) px(8, 14 + i * 16, 112, 3, '#5a3a24');
+    const cols = ['#d84a4a', '#4ad8a8', '#e8e070', '#a86ad8', '#6aa8ff', '#e8a040'];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 9; j++) { const c = cols[(i * 5 + j * 3) % 6]; px(12 + j * 12, 6 + i * 16, 5, 8, c); px(13 + j * 12, 4 + i * 16, 3, 2, '#c8b8a0'); }
+    px(0, 74, PIC_W, 22, '#4a3020'); px(0, 74, PIC_W, 2, '#6a4a30');
+    px(54, 50, 20, 24, '#3a3a5a'); px(58, 40, 12, 12, '#e8c0a0'); px(56, 38, 16, 5, '#8a8aa8'); px(61, 45, 2, 2, '#1a1018'); px(65, 45, 2, 2, '#1a1018');
+    px(90, 64, 10, 10, '#2a2a2a'); px(92, 60 + Math.sin(t * 2) * 1, 6, 4, '#6a8a6a');
+  },
+  chapel(t) {
+    px(0, 0, PIC_W, PIC_H, '#101830'); stars(7, 25, 40);
+    for (const x of [8, 40, 72, 104]) { px(x, 18, 14, 60, '#4a4a5a'); px(x + 2, 18, 2, 60, '#5a5a6a'); }
+    px(8, 14, 110, 6, '#4a4a5a'); px(30, 14, 26, 6, '#101830');                      // broken arches
+    px(0, 78, PIC_W, 18, '#2a2a34');
+    px(52, 64, 24, 14, '#6a6a7a'); px(50, 62, 28, 3, '#7a7a8a');                      // the altar
+    for (const [x, y] of [[14, 84], [40, 88], [70, 85], [96, 89], [110, 83]]) { px(x, y, 7, 3, '#5a4a48'); px(x + 5 + (Math.sin(t * 4 + x) > 0 ? 1 : 0), y, 1, 1, '#ff3030'); }
+  },
+  altar(t) {
+    px(0, 0, PIC_W, PIC_H, '#181826'); bricks(0, 0, PIC_W, 60, '#2a2a3a', '#20202c');
+    px(0, 60, PIC_W, 36, '#30303e');
+    px(24, 38, 80, 24, '#6a6a7a'); px(20, 34, 88, 5, '#8a8a9a');
+    candle(30, 29, t); candle(96, 29, t);
+    px(40, 74, 48, 16, '#5a3a24'); px(40, 74, 48, 2, '#7a5a34'); px(60, 80, 8, 6, '#c8c8d8'); px(63, 82, 2, 3, '#1a1018');
+    for (let i = 0; i < 4; i++) px(30 + i * 22, 66, 14, 1, '#4a3a2a');
+  },
+  crypt(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 80, '#24202c', '#18141e');
+    for (const x of [8, 40, 72, 104]) { px(x, 20, 18, 34, '#0a080c'); px(x + 2, 44, 14, 3, '#d8d0b0'); skull(x + 3, 39); candle(x + 8, 18, t); }
+    px(0, 80, PIC_W, 16, '#1e1a22');
+  },
+  junction(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 76, '#26222e', '#1a1620');
+    for (const [x, c] of [[6, '#0a1418'], [52, '#140c08'], [98, '#0a080c']]) { px(x, 22, 24, 54, c); px(x, 18, 24, 4, '#3a3444'); }
+    px(58, 34, 12, 30, '#8a6a34'); px(62, 40, 4, 6, '#5a4a24');                        // bronze door far away
+    px(0, 76, PIC_W, 20, '#1e1a22'); candle(38, 64, t); candle(88, 64, t);
+    const ring = (Math.sin(t * 2) + 1) / 2;
+    for (let i = 0; i < 3; i++) px(52 - i * 4 - ring * 3, 14 - i * 3, 2, 2, 'rgba(255,210,63,' + (0.5 - i * 0.15) + ')');
+  },
+  ossuary(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14');
+    for (let y = 2; y < 64; y += 7) for (let x = (y % 2) * 3; x < PIC_W; x += 8) skull(x, y);
+    px(0, 64, PIC_W, 32, '#0a1418');
+    for (let i = 0; i < 8; i++) px((i * 37 + t * 8) % PIC_W, 70 + (i * 7) % 22, 10, 1, '#1a3440');
+    if (!G || !G.f.found) px(60, 84, 4, 2, Math.sin(t * 5) > 0 ? '#e8e8f8' : '#8a8aa8');
+  },
+  cells(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 76, '#26222e', '#1a1620');
+    for (const x of [8, 48, 88]) { px(x, 20, 32, 56, '#0a080c'); for (let i = 0; i < 5; i++) px(x + 3 + i * 6, 20, 2, 56, '#4a4a54'); px(x, 20, 32, 2, '#4a4a54'); }
+    px(0, 76, PIC_W, 20, '#1e1a22');
+    px(96, 60, 16, 10, '#5a3a24');
+  },
+  door(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 84, '#26222e', '#1a1620');
+    px(30, 6, 68, 80, '#6a4a1a'); px(32, 8, 64, 76, '#9a7a3a'); px(63, 8, 2, 76, '#6a4a1a');
+    px(50, 16, 28, 4, '#c8a050'); px(46, 20, 36, 22, '#c8a050'); px(42, 42, 44, 4, '#c8a050');     // the bell relief
+    for (let i = 0; i < 4; i++) px(36 + i * 14, 52 + (i % 2) * 2, 12, 2, '#5a8aa0');               // the waves
+    px(54, 62, 20, 12, '#3a2a10'); px(56, 66, 16, 4, Math.sin(t * 2) > 0 ? '#1a1018' : '#0a0a0a'); // the mouth
+    px(0, 84, PIC_W, 12, '#1e1a22');
+  },
+  bell(t) {
+    px(0, 0, PIC_W, PIC_H, '#0c0a14');
+    for (let i = 0; i < 10; i++) px(i * 13, 0, 7, 8 + (i * 7) % 12, '#1a1624');
+    const sw = Math.sin(t * 1.6) * 6;
+    px(63, 6, 2, 12, '#3a3444');
+    ctx.save(); ctx.translate(64, 18); ctx.rotate(sw * Math.PI / 180);
+    px(-10, 0, 20, 4, '#4a8a6a'); px(-14, 4, 28, 18, '#4a8a6a'); px(-18, 22, 36, 4, '#5aa07a'); px(-12, 6, 3, 14, '#6ac08a'); px(-2, 26, 4, 4, '#3a6a4a');
+    ctx.restore();
+    px(0, 66, PIC_W, 30, '#06121a');
+    for (let i = 0; i < 6; i++) px((i * 29 + t * 5) % PIC_W, 72 + (i * 5) % 18, 12, 1, '#123040');
+    px(108, 30, 8, 40, '#3a3444'); px(104, 46, 8, 14, '#c86a8a'); px(105, 40, 6, 6, '#e8c0a0'); px(103, 50, 12, 2, '#a88a5a');    // Mila
+  },
+  dawn(t) {
+    px(0, 0, PIC_W, 30, '#e8a070'); px(0, 30, PIC_W, 20, '#f0c890'); px(52, 40, 24, 12, '#fff0c0');
+    px(0, 50, PIC_W, 46, '#3a6a3a'); px(0, 50, PIC_W, 3, '#5a8a4a');
+    px(14, 50, 30, 18, '#7a5a3a'); px(10, 44, 38, 7, '#9a4a2a');
+    for (const [x, c] of [[60, '#e8c0a0'], [72, '#c86a8a'], [84, '#e8c0a0'], [96, '#e8c0a0']]) { px(x, 70, 6, 14, '#4a4a6a'); px(x, 62, 6, 7, c); }
+  },
+  grave(t) {
+    px(0, 0, PIC_W, PIC_H, '#0a0a12'); stars(11, 20, 50);
+    px(0, 70, PIC_W, 26, '#141a14');
+    px(50, 34, 28, 40, '#4a4a5a'); px(54, 30, 20, 6, '#4a4a5a'); px(62, 40, 4, 16, '#2a2a34'); px(57, 45, 14, 4, '#2a2a34');
+  },
+};
+// the scene: its own small canvas (128 x 96), blown up with crisp pixels by CSS
+const sceneEl = document.getElementById('scene'), sceneCtx = sceneEl.getContext('2d');
+sceneCtx.imageSmoothingEnabled = false;
+function drawScene(id, t) {
+  const keep = ctx; ctx = sceneCtx;
+  ctx.clearRect(0, 0, PIC_W, PIC_H);
+  (PICS[id] || PICS.crypt)(t);
+  if (F) drawFoes(t);
+  if (die && (busy() || die.t < 1.2)) drawDie(t);
+  ctx = keep;
+}
+function drawFoes(t) {
+  px(0, 0, PIC_W, PIC_H, 'rgba(8,6,12,0.55)');
+  const list = F.foes, nn = list.length, cols = nn <= 3 ? nn : Math.ceil(nn / 2), rows = nn <= 3 ? 1 : 2;
+  list.forEach((m, i) => {
+    const r = Math.floor(i / cols), c = i % cols, cw = PIC_W / cols, ch = PIC_H / rows;
+    const S0 = SPR[m.spr], k = m.boss ? 3 : nn > 3 ? 2 : 3, w = S0.rows[0].length * k, h = S0.rows.length * k;
+    const x = Math.round(c * cw + cw / 2 - w / 2), y = Math.round(r * ch + ch - h - 12) + (m.state === 'ok' ? Math.round(Math.sin(t * 3 + i)) : 0);
+    if (m.state === 'dead' || m.state === 'gone') { T(m.state === 'dead' ? 'X' : '-', x + w / 2, y + h / 2, '#5b5275', 2, 'center'); }
+    else {
+      if (m.fx > 0) { m.fx -= 1 / 60; if (Math.floor(m.fx * 30) % 2) { px(x - 1, y - 1, w + 2, h + 2, '#ff3030'); } }
+      spr(S0.rows, S0.pal, x, y, k);
+      if (m.state === 'asleep') T('Z', x + w, y - 4 - (Math.floor(t * 2) % 2) * 2, '#6aa8ff');
+      px(x, y + h + 2, w, 3, '#1a1018'); px(x, y + h + 2, Math.max(1, Math.round(w * Math.max(0, m.hp) / m.max)), 3, '#e8303a');
+    }
+    T(String(i + 1), Math.round(c * cw + 3), Math.round(r * ch + 3), '#c8b8ff');
+  });
+}
+function drawDie(t) {
+  const d = die, cx = PIC_W - 24, cy = 5;
+  px(cx - 2, cy - 2, 24, 25, '#0b0912');
+  px(cx, cy, 20, 21, d.done ? (d.ok === true ? '#2a6a3a' : d.ok === false ? '#7a2a2a' : '#5a4a1a') : '#f0e8d8');
+  T(String(d.shown), cx + 10, cy + 3, d.done ? '#fff' : '#1a1018', d.shown >= 100 ? 1 : 2, 'center');
+  T('D' + d.sides, cx + 10, cy + 15, d.done ? '#ddd' : '#5a4a3a', 1, 'center');
+}
+// the hero icons as little pictures for the HTML
+const iconURL = {};
+for (const k in ICONS) {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+  const keep = ctx; ctx = c.getContext('2d'); spr(ICONS[k].rows, ICONS[k].pal, 0, 0, 1); ctx = keep;
+  iconURL[k] = c.toDataURL();
+}
+const partyEl = document.getElementById('party'), invEl = document.getElementById('inv'), askEl = document.getElementById('ask'), choicesEl = document.getElementById('choices');
+let partyKey = '', invKey = '', choiceKey = '';
+function heroState(h) { return h.dead ? 'dead' : h.hp <= 0 ? 'down' : h.hp * 3 <= h.max ? 'low' : 'ok'; }
+function renderParty() {
+  const actor = F && !busy() && choices.length ? F.actor : null;
+  const key = JSON.stringify(G.heroes.map(h => [h.name, h.cls, h.hp, h.max, h.dead, h.held, h.hidden, acOf(h), h === actor]));
+  if (key === partyKey) return;
+  partyKey = key;
+  partyEl.innerHTML = G.heroes.map((h, i) => {
+    const st = heroState(h), hp = Math.max(0, h.hp);
+    const tag = h.held ? '<i class="tag held">held</i>' : h.hidden ? '<i class="tag hid">hidden</i>' : '';
+    const hpTxt = h.dead ? 'dead' : h.hp <= 0 ? `down (${h.hp})` : `${h.hp} / ${h.max} HP`;
+    return `<button class="hero ${st}${h === actor ? ' turn' : ''}" data-hero="${i}" style="--c:${CLASSES[h.cls].col}">
+      <img src="${iconURL[h.cls]}" alt="">
+      <span class="hn">${esc(h.name)}${tag}</span>
+      <span class="hs"><span>${hpTxt}</span><span>AC ${acOf(h)}</span></span>
+      <span class="bar"><span style="width:${Math.round(100 * hp / h.max)}%"></span></span>
+    </button>`;
+  }).join('');
+}
+partyEl.addEventListener('click', e => { const b = e.target.closest('[data-hero]'); if (b) { sfx('click'); openSheet(G.heroes[+b.dataset.hero]); } });
+function renderInv() {
+  const key = [G.gold, G.items.food, G.items.potion, G.items.holy, F && F.round, F && F.bless].join();
+  if (key === invKey) return;
+  invKey = key;
+  invEl.innerHTML = `<span class="gold">${G.gold} gold</span><span>food ${G.items.food}</span><span class="good">potions ${G.items.potion}</span><span class="holy">holy water ${G.items.holy}</span>` +
+    (F ? `<span class="muted">round ${F.round}${F.bless ? ' · blessed +1' : ''}</span>` : '');
+}
+function renderChoices() {
+  const wait = cur && cur.k === 'wait', b = busy();
+  const key = choicesVer + '|' + (wait ? 'w' : b ? 'b' : '');
+  if (key === choiceKey) return;
+  choiceKey = key;
+  if (wait) {
+    askEl.textContent = '';
+    choicesEl.className = 'one';
+    choicesEl.innerHTML = '<button class="ch go" data-go="1"><kbd>␣</kbd>Go on ›</button>';
+    return;
+  }
+  if (b || !choices.length) { askEl.textContent = ''; choicesEl.className = 'one'; choicesEl.innerHTML = b ? '<div class="hint">tap to skip</div>' : ''; return; }
+  askEl.textContent = typeof ask === 'function' ? ask() : ask;
+  choicesEl.className = choices.length > 3 ? 'two' : 'one';
+  choicesEl.innerHTML = choices.slice(0, 9).map((c, i) => `<button class="ch${c.dim ? ' dim' : ''}" data-i="${i}"><kbd>${i + 1}</kbd><span>${esc(c.label)}</span></button>`).join('');
+}
+choicesEl.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.go) { tapped = true; sfx('click'); return; }
+  choose1(+b.dataset.i);
+});
+function choose1(i) {
+  const c = choices[i]; if (!c || busy()) return;
+  sfx('click');
+  choices = []; choicesVer++;
+  c.act();
+}
+
+/* --- 8. SCREENS ---------------------------------------------------------------------- */
+let state = 'title';            // title | setup | rules | play
+let sheet = null, menu = false;
+let party = [];                 // the heroes being made in setup
+function newSetup() {
+  const names = NAMES.slice().sort(() => Math.random() - 0.5);
+  party = CLASS_IDS.map((cls, i) => makeHero(i === 0 ? (nice(PX.cleanName(profile.name)) || names[0]) : names[i], cls, rollStats()));
+  party.size = party.size || 4;
+}
+function startGame() {
+  const heroes = party.slice(0, party.size).map(h => JSON.parse(JSON.stringify(h)));
+  G = { heroes, gold: 20 + 15 * heroes.length, items: { potion: 0, holy: 0, food: 2 }, f: {}, room: null };
+  clearText(); Q.length = 0; cur = null; F = null; die = null;
+  state = 'play';
+  go('inn');
+}
+function store2() { if (G && G.room !== 'end' && G.room !== 'tpk') try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
+function loadGame() { try { const g = JSON.parse(localStorage.getItem(GAME_KEY)); return g && g.heroes ? g : null; } catch (e) { return null; } }
+function bg(t) {
+  ctx.save(); ctx.scale(S.W / PIC_W, H / PIC_H); PICS.crypt(t); ctx.restore();
+  px(0, 0, S.W, H, 'rgba(10,8,16,0.55)');
+}
+function drawTitle(t) {
+  const W = S.W;
+  bg(t);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); PX.Lang.raw(() => T(profile.name, 40, 16, '#fff', 2, 'left', '#000'));
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 36, 3);
+  PX.drawLogo(ctx, 'QUEST', W / 2, 54, 7);
+  T('THE DROWNED BELL: AN ADVENTURE FOR 1 TO 4 HEROES', W / 2, 100, '#ffd23f', 1, 'center', '#000');
+  const bw = 200, bx = Math.round(W / 2 - bw / 2), saved = loadGame();
+  if (UI.button('new', bx, 114, bw, 24, 'NEW ADVENTURE', { size: 1, accent: '#5ad43f' })) { sfx('click'); newSetup(); state = 'setup'; }
+  if (UI.button('cont', bx, 142, bw, 22, 'CONTINUE', { size: 1, accent: '#ffd23f', disabled: !saved })) {
+    sfx('click'); G = saved; clearText(); Q.length = 0; cur = null; F = null; die = null; state = 'play';
+    const room = G.room; G.room = null; go(room);
+  }
+  if (UI.button('rules', bx, 168, bw, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); state = 'rules'; }
+  if (UI.button('games', bx, 194, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION + '  PROOF OF CONCEPT', W - 4, H - 9, '#8a7ad8', 1, 'right');
+  if (save.wins) T('ADVENTURES WON: ' + save.wins, 6, H - 9, '#c8b8ff');
+}
+const RULES_TEXT = [
+  ['THE GAME IS THE DUNGEON MASTER', 'IT TELLS YOU WHERE YOU ARE AND WHAT YOU SEE. THE PARTY TALKS IT OVER AND PICKS WHAT TO DO. PASS THE PHONE AROUND: EVERY HERO TAKES THEIR OWN TURN IN A FIGHT.'],
+  ['THE DICE DECIDE', 'EVERY ROLL IS SHOWN. ABILITY CHECK: D20, ROLL YOUR ABILITY OR LESS. THIEF SKILLS: D100, THE SKILL OR LESS. SAVING THROW: D20, THE NUMBER OR MORE.'],
+  ['FIGHTING', 'TO HIT: D20 + BONUSES MUST REACH THAC0 MINUS THE TARGET\'S ARMOUR CLASS. LOWER AC IS BETTER. INITIATIVE: D10 FOR EACH SIDE, LOW GOES FIRST.'],
+  ['FALLING', 'AT 0 HP A HERO FALLS AND BLEEDS 1 HP A ROUND. A POTION OR A CURE SPELL SAVES THEM. AT -10 THEY ARE DEAD. WIN THE FIGHT AND THE FALLEN WAKE UP.'],
+  ['THE HEROES', 'FIGHTER: TOUGH, BEST ARMOUR. CLERIC: HEALS, BLESSES, TURNS THE UNDEAD. MAGE: FRAGILE, BUT SLEEP AND MAGIC MISSILE. THIEF: LOCKS, TRAPS, SNEAKING, BACKSTABS.'],
+  ['SPELLS', 'SPELLS ARE FEW: REST TO GET THEM BACK. TAP A HERO AT THE TOP TO SEE THEIR SHEET, AND TO HEAL BETWEEN FIGHTS.'],
+];
+function drawRules(t) {
+  const W = S.W;
+  bg(t);
+  T('HOW TO PLAY', W / 2, 8, '#fff', 2, 'center', '#000');
+  let y = 26;
+  for (const [h, txt] of RULES_TEXT) {
+    T(h, 10, y, '#ffd23f'); y += 8;
+    for (const l of wrap(txt, W - 20)) { T(l, 10, y, '#efe9ff'); y += 7; }
+    y += 4;
+  }
+  if (UI.button('back', W / 2 - 50, H - 26, 100, 20, '< BACK', { size: 1 }) || UI.back) { sfx('click'); state = 'title'; }
+}
+const nameIn = document.getElementById('name');
+let naming = -1;
+function editName(i) {
+  naming = i; nameIn.value = party[i].name;
+  nameIn.style.display = 'block'; nameIn.focus(); nameIn.select();
+}
+function endName() {
+  if (naming < 0) return;
+  const v = PX.censor ? PX.censor(PX.cleanName(nameIn.value)) : PX.cleanName(nameIn.value);
+  if (v) party[naming].name = nice(v);
+  naming = -1; nameIn.style.display = 'none'; nameIn.blur();
+}
+nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') endName(); e.stopPropagation(); });
+nameIn.addEventListener('blur', endName);
+function drawSetup(t) {
+  const W = S.W;
+  bg(t);
+  T('MAKE YOUR PARTY', 8, 8, '#fff', 2, 'left', '#000');
+  T('HEROES:', W - 150, 12, '#c8b8ff');
+  for (let k = 1; k <= 4; k++) if (UI.button('n' + k, W - 112 + (k - 1) * 26, 6, 22, 18, String(k), { size: 1, on: party.size === k, accent: '#5ad43f' })) { sfx('click'); party.size = k; }
+  const rh = 44;
+  for (let i = 0; i < party.size; i++) {
+    const h = party[i], y = 30 + i * rh;
+    px(4, y - 2, W - 8, rh - 4, '#1d1830'); px(4, y - 2, 2, rh - 4, CLASSES[h.cls].col);
+    const I = ICONS[h.cls]; spr(I.rows, I.pal, 10, y + 2, 2);
+    if (UI.button('nm' + i, 30, y, 76, 16, h.name, { size: 1 })) { sfx('click'); editName(i); }
+    if (naming === i) S.placeInput(nameIn, 30, y, 76, 16);
+    CLASS_IDS.forEach((c, j) => {
+      if (UI.button('cl' + i + c, 110 + j * 54, y, 50, 16, CLASSES[c].name, { size: 1, on: h.cls === c, accent: CLASSES[c].col })) { sfx('click'); setClass(h, c); }
+    });
+    if (UI.button('rr' + i, W - 62, y, 54, 16, 'REROLL', { size: 1, accent: '#ffd23f' })) { sfx('dice'); h.vals = rollStats(); setClass(h, h.cls); }
+    const st = STATS.map(k => `${STAT_NAME[k]} ${h.st[k]}`).join('  ');
+    T(st, 30, y + 22, '#efe9ff');
+    T(`HP ${h.max}  AC ${acOf(h)}  ${h.weapon.name}`, 30, y + 30, '#c8b8ff');
+  }
+  if (naming < 0) nameIn.style.display = 'none';
+  T(['1 HERO: VERY HARD', '2 HEROES: HARD', '3 HEROES: FAIR', '4 HEROES: CLASSIC'][party.size - 1], (W - 70) / 2, H - 19, '#8a7ad8', 1, 'center');
+  if (UI.button('back', 6, H - 26, 80, 20, '< BACK', { size: 1 }) || UI.back) { sfx('click'); endName(); state = 'title'; }
+  if (UI.button('go', W - 156, H - 26, 150, 20, 'START THE ADVENTURE', { size: 1, accent: '#5ad43f' })) { sfx('click'); endName(); startGame(); }
+}
+// the play screen is HTML (#play): the party, the scene canvas, the story, the choices
+const playEl = document.getElementById('play'), sheetEl = document.getElementById('sheet'), menuEl = document.getElementById('menu');
+let shownPlay = false;
+function showPlay(on) {
+  if (on === shownPlay) return;
+  shownPlay = on;
+  playEl.style.display = on ? '' : 'none';
+  canvas.style.display = on ? 'none' : '';
+  partyKey = invKey = choiceKey = '';
+  if (!on) { sheet = null; menu = false; sheetEl.hidden = true; menuEl.hidden = true; }
+}
+function drawPlay(t) {
+  drawScene((ROOMS[G.room] || {}).pic, t);
+  renderParty();
+  renderInv();
+  renderChoices();
+}
+const sign = v => (v >= 0 ? '+' : '') + v;
+function openSheet(h) {
+  sheet = h;
+  const C = CLASSES[h.cls], w = h.weapon, calm = !F && !busy() && G.room !== 'end' && G.room !== 'tpk';
+  const notes = {
+    str: `${sign(strHit(h.st.str))} to hit, ${sign(strDmg(h.st.str))} damage`,
+    dex: `${sign(dexAC(h.st.dex))} AC, ${sign(dexMissile(h.st.dex))} thrown`,
+    con: `${sign(conHP(h.st.con, h.cls === 'fighter'))} HP`,
+    wis: h.cls === 'cleric' && h.st.wis >= 13 ? '+1 spell a day' : '',
+  };
+  const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => !x.dead && x.hp < x.max);
+  const canDrink = calm && G.items.potion > 0 && !h.dead && h.hp < h.max;
+  sheetEl.innerHTML = `<div class="card" style="--c:${C.col}">
+    <div class="sh-head"><img src="${iconURL[h.cls]}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">Level 1 ${C.name} · ${h.xp} / ${C.next} XP to level 2</div></div></div>
+    <div class="sh-cols">
+      <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
+      <div class="combat">
+        <div><b class="${heroState(h)}">${h.dead ? 'Dead' : h.hp + ' / ' + h.max + ' HP'}</b></div>
+        <div>AC ${acOf(h)} <span class="muted">(${C.armourName.toLowerCase()})</span></div>
+        <div>THAC0 ${thac0Of(h)}</div>
+        <div>${w.name} <span class="muted">${w.n}d${w.s}${w.b ? '+' + w.b : ''}${w.hit ? ', +' + w.hit + ' to hit' : ''}</span></div>
+        ${h.spellMax ? `<div class="magic">Spells ${h.spells} / ${h.spellMax} today</div>` : ''}
+      </div>
+    </div>
+    <h4>Saving throws <span class="muted">(d20, this or more)</span></h4>
+    <div class="chips">${SAVE_NAMES.map((n, i) => `<span>${n} <b>${C.saves[i]}</b></span>`).join('')}</div>
+    ${h.cls === 'thief' ? `<h4>Thief skills <span class="muted">(d100, this or less)</span></h4><div class="chips">${SKILL_NAMES.map((n, k) => `<span>${n} <b>${thiefSkill(h, k)}%</b></span>`).join('')}</div>` : ''}
+    ${C.spells ? `<h4>Spells</h4><ul class="spells">${C.spells.map(id => `<li><b>${SPELLS[id].name}</b> <span class="muted">${SPELLS[id].info.toLowerCase()}</span></li>`).join('')}</ul>` : ''}
+    <div class="btns">
+      ${canCure ? '<button class="ch" data-a="cure">Cast Cure Light Wounds</button>' : ''}
+      ${canDrink ? '<button class="ch" data-a="drink">Drink a potion</button>' : ''}
+      <button class="ch dim" data-a="close">Close</button>
+    </div>
+  </div>`;
+  sheetEl.hidden = false;
+}
+function closeSheet() { sheet = null; sheetEl.hidden = true; }
+sheetEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-a]');
+  if (!b) { if (e.target === sheetEl) closeSheet(); return; }
+  const h = sheet, a = b.dataset.a;
+  sfx('click');
+  if (a === 'cure') {
+    const who = G.heroes.filter(x => !x.dead && x.hp < x.max).sort((p, q) => p.hp / p.max - q.hp / q.max)[0];
+    h.spells--; sfx('spell'); cure(h, who); then(stay);
+  }
+  if (a === 'drink') {
+    G.items.potion--; const d = dice(2, 4, 2), was = h.hp; h.hp = Math.min(h.max, h.hp + d); sfx('ok');
+    say(`${h.name} drinks a healing potion: +${h.hp - was} HP.`, '#7aea7a'); then(stay);
+  }
+  closeSheet();
+});
+function openMenu() {
+  menu = true;
+  menuEl.innerHTML = `<div class="card small"><h2>Paused</h2>
+    <button class="ch" data-m="resume">Continue</button>
+    <button class="ch" data-m="sfx">Sound: ${save.sfx ? 'on' : 'off'}</button>
+    <button class="ch dim" data-m="quit">Save and quit</button></div>`;
+  menuEl.hidden = false;
+}
+function closeMenu() { menu = false; menuEl.hidden = true; }
+menuEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-m]');
+  if (!b) { if (e.target === menuEl) closeMenu(); return; }
+  sfx('click');
+  if (b.dataset.m === 'resume') closeMenu();
+  if (b.dataset.m === 'sfx') { save.sfx = !save.sfx; store(); openMenu(); }
+  if (b.dataset.m === 'quit') { closeMenu(); state = 'title'; F = null; Q.length = 0; cur = null; }
+});
+document.getElementById('pause').addEventListener('click', () => { sfx('click'); openMenu(); });
+// tap the story (or anywhere that is not a button) to skip ahead
+playEl.addEventListener('pointerdown', e => {
+  PX.Sound.unlock();
+  if (e.target.closest('button') || sheet || menu || !busy()) return;
+  if (cur && cur.k === 'wait') tapped = true; else skip = true;
+});
+
+/* --- 9. SOUND --------------------------------------------------------------------------- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone(660, 0.05, { vol: 0.05 });
+  else if (k === 'dice') { s.noise(0.08, { vol: 0.05 }); s.noise(0.06, { vol: 0.04, delay: 0.1 }); }
+  else if (k === 'ok') s.tone([523, 784], 0.12, { vol: 0.06 });
+  else if (k === 'bad') s.tone([300, 200], 0.15, { vol: 0.06 });
+  else if (k === 'hit') s.tone([180, 90], 0.12, { vol: 0.1, type: 'sawtooth' });
+  else if (k === 'ouch') s.tone([140, 70], 0.15, { vol: 0.1, type: 'sawtooth' });
+  else if (k === 'spell') s.tone([400, 1200, 800], 0.3, { vol: 0.06, type: 'triangle' });
+  else if (k === 'coin') { s.tone(988, 0.06, { vol: 0.06 }); s.tone(1319, 0.1, { vol: 0.06, delay: 0.07 }); }
+  else if (k === 'fight') s.tone([220, 330, 220], 0.3, { vol: 0.08, type: 'sawtooth' });
+  else if (k === 'win') [523, 659, 784, 1047].forEach((fq, i) => s.tone(fq, 0.15, { vol: 0.06, delay: i * 0.1 }));
+  else if (k === 'lose') [392, 330, 262, 196].forEach((fq, i) => s.tone(fq, 0.3, { vol: 0.07, delay: i * 0.25, type: 'triangle' }));
+}
+
+/* --- 10. INPUT: tap a button; tap anywhere else to skip the text. Keys: 1-9 pick, Space/Enter skip, Esc menu --- */
+UI.onDown = () => { PX.Sound.unlock(); };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (naming >= 0) return;
+  if (state === 'play' && G) {
+    if (e.code === 'Escape') { if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
+    if (sheet || menu) return;
+    if (/^(Digit|Numpad)[1-9]$/.test(e.code)) { choose1(+e.code.slice(-1) - 1); return; }
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (cur && cur.k === 'wait') tapped = true; else if (busy()) skip = true; return; }
+    return;
+  }
+  if (e.code === 'Escape') UI.back = true;
+});
+
+/* --- 11. MAIN LOOP ---------------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  const playing = state === 'play' && !!G;
+  showPlay(playing);
+  if (playing) {
+    if (!menu && !sheet) pump(dt);
+    if (die && !busy()) die.t += dt;
+    if (state === 'play' && G) drawPlay(t);
+  } else {
+    UI.begin();
+    if (state === 'setup') drawSetup(t);
+    else if (state === 'rules') drawRules(t);
+    else drawTitle(t);
+    UI.end();
+    S.blit('#0d0b13');
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+</script>
+</body>
+</html>
