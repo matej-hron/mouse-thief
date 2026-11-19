@@ -1376,6 +1376,23 @@ not keep IP addresses, names, accounts or stars for this, and nothing is counted
 scores are a separate thing: see Accounts.) The details are in
 PRIVACY AND POLICY in the arcade.
 
+## Pixel Quest (experiment, hidden)
+
+`adad.html`, at https://pixelgames.online/adad. Not in the arcade's menu, not in the service worker's cache, and
+`noindex`: a proof of concept for an old-school tabletop-style adventure where the game is the dungeon master.
+
+- **Party:** 1 to 4 heroes (FIGHTER, CLERIC, MAGE, THIEF) taking turns on one phone. 4d6 drop the lowest for the six
+  abilities, put where the class needs them most; REROLL as often as you like; tap a name to change it.
+- **Rules** (classic 1st level, cut down): descending AC and THAC0 (d20 + bonuses >= THAC0 - AC), five saving throws,
+  ability checks (d20 <= the ability), thief skills in % (d100), d10 initiative per side, surprise, morale (2d10),
+  dying at 0 HP and dead at -10, spells per day (MAGIC MISSILE, SLEEP, CURE LIGHT WOUNDS, BLESS), TURN UNDEAD,
+  backstab from hiding, XP for monsters and for gold brought home. Every roll is shown on a die and in the text.
+- **The adventure:** THE DROWNED BELL, an original intro adventure (village, shop, ruined chapel, trapped trapdoor,
+  crypt, ossuary, cells, a riddle door, the boss). Each room is data in `ROOMS`: its text and its choices; a choice can
+  ask the party who tries a check (with each hero's chance), start a fight, give items, set flags. A new adventure is a
+  new `ROOMS` list; new rules go in section 2 (RULES).
+- Saved after every step in `pixelQuest.game` (CONTINUE on the title). Winning gives ★10 the first time, ★2 after.
+
 ## Install as an app (PWA)
 
 The game is an installable Progressive Web App and works offline.

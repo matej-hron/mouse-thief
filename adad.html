@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Pixel Quest: an old-school dungeon adventure for a party of 1 to 4 heroes, taking turns on one phone.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d0b13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Pixel Quest</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b13; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #screen { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; outline: none; }
+  #name { position: fixed; display: none; box-sizing: border-box; text-transform: uppercase; padding: 0 0.3em;
+          font: bold 16px ui-monospace, Menlo, Consolas, monospace; color: #111; background: #fbf9f3; border: 3px solid #111; border-radius: 0; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<input id="name" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="done" aria-label="Hero name">
+<script src="common.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   PIXEL QUEST: an old-school dungeon adventure (part of the PIXEL GAMES). A proof of concept, not in the arcade's menu
+   yet: it lives at /adad.
+   A party of 1 to 4 heroes (FIGHTER, CLERIC, MAGE, THIEF) takes turns on one phone. The game is the dungeon master:
+   it tells you where you are, you pick what the party does, and the dice decide. Every roll is shown.
+   The rules are the classic 1st-level ones, cut down:
+     - six abilities (STR DEX CON INT WIS CHA), 4d6 drop the lowest, put where the class needs them most
+     - descending armour class (10 = no armour, lower is better) and THAC0: to hit, roll d20 + bonuses >= THAC0 - AC
+     - five saving throws (POISON, WANDS, PARALYSIS, BREATH, SPELLS): roll d20 >= the number
+     - ability checks: roll d20 <= the ability. Thief skills: roll d100 <= the skill
+     - initiative: d10 for each side every round, low goes first. Zombies always go last
+     - 0 HP: down and dying (lose 1 HP a round), -10: dead. After a won fight the downed wake up at 1 HP
+     - morale: 2d10 above a monster's morale and it runs (or gives up)
+     - XP for monsters beaten, and 1 XP for every gold piece brought home
+   THE ADVENTURE IS DATA: ROOMS (section 5) is a list of rooms, each with its text and its choices. A choice can ask
+   for a check (who tries it is up to the party), start a fight, give an item, set a flag. A new adventure is a new
+   ROOMS list; new rules go into section 2.
+     1. Setup   2. Rules   3. Heroes   4. The story queue   5. The adventure   6. Fights   7. Drawing   8. Screens
+     9. Sound   10. Input   11. Main loop
+   ========================================================================== */
+
+/* --- 1. SETUP --------------------------------------------------------------- */
+const VERSION = '0.1.0';
+const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.game';
+const save = { sfx: true, wins: 0 };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
+const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } };
+const profile = PX.Profile.get();
+
+const canvas = document.getElementById('screen');
+const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
+const ctx = S.ctx, H = S.H;
+const UI = PX.makeUI(S, canvas);
+const T = (str, x, y, color = '#fff', size = 1, align = 'left', shadow = null) => PX.drawText(ctx, str, x, y, color, size, align, shadow);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const rnd = n => 1 + Math.floor(Math.random() * n);                  // one die
+const dice = (n, s, b = 0) => { let t = b; for (let i = 0; i < n; i++) t += rnd(s); return t; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+/* --- 2. RULES ----------------------------------------------------------------- */
+const STATS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const STAT_NAME = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
+// STR: to hit and damage
+const strHit = s => s <= 3 ? -3 : s <= 5 ? -2 : s <= 7 ? -1 : s <= 16 ? 0 : 1;
+const strDmg = s => s <= 5 ? -1 : s <= 15 ? 0 : s <= 17 ? 1 : 2;
+// DEX: armour class (lower is better) and thrown weapons
+const dexAC = s => s <= 3 ? 4 : s <= 5 ? 6 - s : s === 6 ? 1 : s <= 14 ? 0 : -(s - 14);
+const dexMissile = s => s <= 3 ? -3 : s <= 5 ? s - 6 : s <= 15 ? 0 : s === 16 ? 1 : 2;
+// CON: hit points (only fighters get more than +2)
+const conHP = (s, fighter) => s <= 3 ? -2 : s <= 6 ? -1 : s <= 14 ? 0 : s === 15 ? 1 : s === 16 ? 2 : fighter ? s - 14 : 2;
+// thief skills by DEX
+const THIEF_DEX = { 16: [5, 0, 0, 0], 17: [10, 0, 5, 5], 18: [15, 5, 10, 10] };
+const SAVE_NAMES = ['POISON', 'WANDS', 'PARALYSIS', 'BREATH', 'SPELLS'];
+const SV = { poison: 0, wand: 1, para: 2, breath: 3, spell: 4 };
+const CLASSES = {
+  fighter: { name: 'FIGHTER', hd: 10, prime: 'str', order: ['str', 'con', 'dex', 'wis', 'cha', 'int'], armour: 4, armourName: 'CHAIN MAIL, SHIELD',
+             weapon: { name: 'LONG SWORD', n: 1, s: 8, b: 0, edged: true }, saves: [14, 16, 15, 17, 17], next: 2000, col: '#e8a040' },
+  cleric:  { name: 'CLERIC', hd: 8, prime: 'wis', order: ['wis', 'con', 'str', 'cha', 'dex', 'int'], armour: 4, armourName: 'CHAIN MAIL, SHIELD',
+             weapon: { name: 'MACE', n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless'] },
+  mage:    { name: 'MAGE', hd: 4, prime: 'int', order: ['int', 'dex', 'con', 'wis', 'cha', 'str'], armour: 10, armourName: 'ROBES',
+             weapon: { name: 'STAFF', n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'] },
+  thief:   { name: 'THIEF', hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: 'LEATHER',
+             weapon: { name: 'SHORT SWORD', n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a' },
+};
+const CLASS_IDS = ['fighter', 'cleric', 'mage', 'thief'];
+const SPELLS = {
+  missile: { name: 'MAGIC MISSILE', target: 'foe', info: '1D4+1, NEVER MISSES' },
+  sleep:   { name: 'SLEEP', target: 'none', info: '2D4 HIT DICE OF FOES FALL ASLEEP' },
+  cure:    { name: 'CURE LIGHT WOUNDS', target: 'hero', info: 'HEALS 1D8', calm: true },
+  bless:   { name: 'BLESS', target: 'none', info: '+1 TO HIT FOR THE PARTY' },
+};
+// monsters: hp = [dice, sides, bonus], dmg the same; turn = what a 1st level cleric needs on d20 to turn it
+const MON = {
+  rat:    { name: 'GIANT RAT', hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, spr: 'rat' },
+  skel:   { name: 'SKELETON', hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, spr: 'skel' },
+  cent:   { name: 'CENTIPEDE', hd: 0.5, hp: [1, 3, 0], ac: 9, thac0: 20, dmg: [1, 1, 0], morale: 8, xp: 35, poison: true, spr: 'cent' },
+  zomb:   { name: 'ZOMBIE', hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, spr: 'zomb' },
+  malrec: { name: 'MALREC', hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, spr: 'cult' },
+};
+const ITEMS = { potion: 'HEALING POTION', holy: 'HOLY WATER', food: 'FOOD' };
+
+/* --- 3. HEROES ------------------------------------------------------------- */
+const NAMES = ['BRAN', 'MIRA', 'OSWIN', 'TESS', 'GARRICK', 'ELWYN', 'HOB', 'SABLE', 'ROWAN', 'IDA', 'CORVIN', 'NELL', 'AUGUST', 'WREN'];
+function rollStats() { return Array.from({ length: 6 }, () => { const r = [rnd(6), rnd(6), rnd(6), rnd(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; }).sort((a, b) => b - a); }
+function makeHero(name, cls, vals) {
+  const h = { name, cls, vals, st: {}, xp: 0, tried: {} };
+  setClass(h, cls);
+  return h;
+}
+function setClass(h, cls) {
+  const C = CLASSES[cls]; h.cls = cls;
+  C.order.forEach((k, i) => { h.st[k] = h.vals[i]; });
+  h.max = Math.max(1, C.hd + conHP(h.st.con, cls === 'fighter'));
+  h.hp = h.max;
+  h.weapon = Object.assign({}, C.weapon);
+  h.spellMax = cls === 'mage' ? 1 : cls === 'cleric' ? 1 + (h.st.wis >= 13 ? 1 : 0) : 0;
+  h.spells = h.spellMax;
+}
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex);
+const thac0Of = () => 20;
+const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0);
+const dmgOf = h => strDmg(h.st.str);
+const up = h => h.hp > 0 && !h.dead;                       // can act (if not held)
+const alive = h => !h.dead;
+function thiefSkill(h, k) {                                 // k: 0 open locks, 1 find traps, 2 move silently, 3 hide in shadows
+  const base = [35, 25, 35, 25][k], adj = THIEF_DEX[Math.min(18, h.st.dex)] || [0, 0, 0, 0];
+  return base + adj[k];
+}
+const SKILL_NAMES = ['OPEN LOCKS', 'FIND TRAPS', 'MOVE SILENTLY', 'HIDE IN SHADOWS'];
+const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]];
+
+/* --- 4. THE STORY QUEUE -------------------------------------------------------
+   Everything the game says goes through a queue, so it shows up one piece at a time: text, a dice roll (a die spins,
+   then the result), or a function to run when its turn comes (the next room, the next hero's turn...).
+   The choices only show when the queue is empty. Tap to skip ahead. */
+let G = null;                       // the adventure in progress (saved): heroes, gold, items, flags, room
+let F = null;                       // the fight in progress (not saved)
+const Q = [];
+let lines = [];                     // the text panel: { txt, col }
+let cur = null;                     // the queue entry being shown
+let choices = [], ask = '';         // the buttons and the question above them
+let die = null;                     // the big die in the picture { sides, shown, value, ok, t }
+let skip = false, tapped = false;
+const say = (txt, col = '#efe9ff') => Q.push({ k: 'say', txt, col });
+const then = fn => Q.push({ k: 'fn', fn });
+const gap = () => Q.push({ k: 'say', txt: '', col: '#fff' });
+function rollFx(sides, value, txt, ok, fast) { Q.push({ k: 'roll', sides, value, txt, ok, fast }); }
+// a choice somebody has to try (a check): only shown while some hero can still try it
+function setChoices(q, list) { ask = q; choices = list.filter(c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0))); }
+const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, fn, stay) });
+function clearText() { lines = []; }
+
+function textW() { return S.W - 146 - 8; }
+function wrap(str, w) {
+  const out = [];
+  for (const para of String(str).toUpperCase().split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const t = line ? line + ' ' + word : word;
+      if (line && PX.textWidth(t) > w) { out.push(line); line = word; } else line = t;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function pump(dt) {
+  for (let guard = 0; guard < 200; guard++) {
+    if (!cur) {
+      if (!Q.length) { skip = false; return; }
+      cur = Q.shift(); cur.t = 0;
+      if (cur.k === 'say') { cur.lines = wrap(cur.txt, textW()); cur.n = 0; for (const l of cur.lines) lines.push({ txt: '', col: cur.col }); cur.at = lines.length - cur.lines.length; }
+      if (cur.k === 'roll') { die = { sides: cur.sides, value: cur.value, ok: cur.ok, t: 0, shown: rnd(cur.sides) }; sfx('dice'); }
+    }
+    cur.t += dt;
+    if (cur.k === 'fn') { const fn = cur.fn; cur = null; fn(); continue; }
+    if (cur.k === 'wait') { skip = false; if (!tapped) return; tapped = false; cur = null; continue; }
+    if (cur.k === 'say') {
+      const total = cur.txt.length, chars = skip ? total : Math.floor(cur.t * 220);
+      let left = chars;
+      cur.lines.forEach((l, i) => { const n = clamp(left, 0, l.length); lines[cur.at + i].txt = l.slice(0, n); left -= l.length + 1; });
+      if (chars >= total) { cur = null; continue; }
+      return;
+    }
+    if (cur.k === 'roll') {
+      const dur = cur.fast ? 0.28 : 0.55;
+      die.t = cur.t;
+      if (cur.t < dur && !skip) { if (Math.floor(cur.t * 18) !== Math.floor((cur.t - dt) * 18)) die.shown = rnd(cur.sides); return; }
+      die.shown = cur.value; die.done = true;
+      lines.push({ txt: '', col: '#fff' });
+      const l = wrap(cur.txt, textW());
+      lines.pop();
+      for (const x of l) lines.push({ txt: x, col: cur.ok === true ? '#7aea7a' : cur.ok === false ? '#ff7a6a' : '#ffd23f' });
+      if (cur.ok === true) sfx('ok'); else if (cur.ok === false) sfx('bad');
+      cur = null;
+      continue;
+    }
+  }
+}
+const busy = () => !!cur || Q.length > 0;
+
+// checks: they roll, show the roll, and give back true or false
+function abilityChance(h, stat, mod = 0) { return clamp(h.st[stat] + mod, 1, 19) / 20; }
+function checkAbility(h, stat, mod = 0) {
+  const need = clamp(h.st[stat] + mod, 1, 19), r = rnd(20), ok = r <= need;
+  rollFx(20, r, `${h.name}: ${STAT_NAME[stat]} CHECK, D20 = ${r} (NEED ${need} OR LESS) ${ok ? 'SUCCESS' : 'FAIL'}`, ok);
+  return ok;
+}
+function skillChance(h, k) { return h.cls === 'thief' ? thiefSkill(h, k) / 100 : 0; }
+function checkSkill(h, k) {
+  const need = thiefSkill(h, k), r = rnd(100), ok = r <= need;
+  rollFx(100, r, `${h.name}: ${SKILL_NAMES[k]}, D100 = ${r} (NEED ${need} OR LESS) ${ok ? 'SUCCESS' : 'FAIL'}`, ok);
+  return ok;
+}
+function saveChance(h, kind, mod = 0) { return clamp(21 - saveOf(h, kind) + mod, 1, 20) / 20; }
+function checkSave(h, kind, mod = 0, fast) {
+  const need = saveOf(h, kind), r = rnd(20), ok = r + mod >= need;
+  rollFx(20, r, `${h.name}: SAVE VS ${SAVE_NAMES[SV[kind]]}, D20 = ${r}${mod ? (mod > 0 ? '+' : '') + mod : ''} (NEED ${need}) ${ok ? 'SAVED' : 'FAILED'}`, ok, fast);
+  return ok;
+}
+const pct = c => Math.round(c * 100) + '%';
+// the party picks who does it: a button for every hero who can, with their chance
+function choose(q, chance, fn, back) {
+  const list = G.heroes.filter(h => up(h) && chance(h) > 0).map(h => ({ label: `${h.name} (${pct(chance(h))})`, act: () => fn(h) }));
+  if (!list.length) { say('NOBODY IN THE PARTY CAN DO THAT.', '#ff7a6a'); then(back); return; }
+  list.push({ label: 'NEVER MIND', act: back, dim: true });
+  setChoices(q, list);
+}
+function hurt(h, n, floor1) {
+  h.hp -= n;
+  if (floor1 && h.hp < 1) h.hp = 1;
+  if (h.hp <= -10) { h.hp = -10; h.dead = true; }
+}
+function giveXP(n, why) {
+  const live = G.heroes.filter(alive);
+  if (!live.length || n <= 0) return;
+  const each = Math.floor(n / live.length);
+  for (const h of live) h.xp += each;
+  say(`${why}: ${each} XP FOR EVERY HERO.`, '#ffd23f');
+}
+
+/* --- 5. THE ADVENTURE: THE DROWNED BELL ---------------------------------------------
+   An original intro adventure for 1st level heroes. Each room: pic (the picture), text (the first visit), again (when
+   you come back), choices(). Flags (G.f) remember what happened. */
+const f = () => G.f;
+const n = () => G.heroes.length;
+const stay = () => { store2(); showChoices(); };
+function go(id) {
+  // a new room: first let the party read what just happened (tap to go on), then a clean page
+  if (G.room !== id && lines.some(l => l.txt)) { Q.push({ k: 'wait' }); then(() => { clearText(); enter(id); }); return; }
+  if (G.room !== id) clearText();
+  enter(id);
+}
+function enter(id) {
+  const R = ROOMS[id];
+  G.room = id;
+  const first = !f()['seen_' + id];
+  f()['seen_' + id] = 1;
+  say(R.title, '#ffd23f');
+  say(first || !R.again ? (typeof R.text === 'function' ? R.text() : R.text) : (typeof R.again === 'function' ? R.again() : R.again));
+  if (R.enter) R.enter(first);
+  then(stay);
+}
+function showChoices() { const R = ROOMS[G.room]; setChoices(R.ask || 'WHAT DOES THE PARTY DO?', R.choices()); }
+function buy(item, price) {
+  if (G.gold < price) { say(`YOU HAVE ONLY ${G.gold} GOLD.`, '#ff7a6a'); then(stay); return; }
+  G.gold -= price; G.items[item]++;
+  say(`YOU BUY ${ITEMS[item]}. (${G.gold} GOLD LEFT)`); sfx('coin'); then(stay);
+}
+function needle(h) {
+  say(`A NEEDLE JABS ${h.name}'S HAND!`, '#ff7a6a');
+  f().trapGone = 1;
+  if (checkSave(h, 'poison')) { hurt(h, 1, true); say('JUST A SCRATCH. 1 DAMAGE.'); }
+  else { const d = dice(2, 4); hurt(h, d, true); say(`THE POISON BURNS. ${d} DAMAGE.`, '#ff7a6a'); }
+}
+function openTrapdoor() { f().open = 1; say('THE TRAPDOOR SWINGS UP. COLD AIR AND CANDLE SMOKE RISE FROM BELOW.'); then(() => go('stairs')); }
+function rest() {
+  G.items.food--; f().rested = 1;
+  const r = rnd(6);
+  rollFx(6, r, `WANDERING MONSTERS: D6 = ${r} (1 OR 2: SOMETHING COMES)`, r > 2);
+  if (r <= 2) {
+    say('YOU HAVE BARELY CLOSED YOUR EYES WHEN BONES CLATTER IN THE DARK.', '#ff7a6a');
+    then(() => fight({ foes: [['skel', 2]], surprise: 'foes', win: () => go('junction'), flee: () => go('altar') }));
+    return;
+  }
+  say('YOU EAT, BANDAGE YOUR CUTS AND SLEEP IN TURNS. NOTHING COMES. SPELLS COME BACK TO THE CLERIC AND THE MAGE.');
+  for (const h of G.heroes) if (alive(h)) { const d = rnd(3); h.hp = Math.min(h.max, Math.max(1, h.hp) + d); h.spells = h.spellMax; }
+  then(stay);
+}
+function answerDoor(word) {
+  if (word === 'BELL') {
+    say(`"A BELL." THE BRONZE MOUTH SPEAKS THE WORD BACK, SLOWLY, AND THE DOOR GRINDS OPEN.`, '#7aea7a'); sfx('ok');
+    then(() => go('bell')); return;
+  }
+  say(`"${word}." THE BRONZE MOUTH SPITS A JET OF ICY BLACK WATER AT THE PARTY!`, '#ff7a6a');
+  f().alarm = (f().alarm || 0) + 1;
+  for (const h of G.heroes) if (up(h)) { if (!checkSave(h, 'breath', 0, true)) { const d = rnd(4); hurt(h, d, true); say(`${h.name} TAKES ${d} DAMAGE.`, '#ff7a6a'); } }
+  then(stay);
+}
+function endText() {
+  const hammer = G.heroes.find(h => h.weapon.blessed && up(h));
+  let t = 'YOU CUT MILA FREE. SHE HOLDS ON TO THE NEAREST HERO AND WILL NOT LET GO.\n';
+  t += hammer ? `${hammer.name} LIFTS SAINT ALDER'S HAMMER AND STRIKES THE BELL. IT CRACKS WITH A SOUND LIKE A LONG SIGH, AND IS SILENT FOR GOOD.\n`
+              : 'THE BELL STOPS SWINGING. FOR NOW, AT LEAST.\n';
+  t += f().surrender ? 'MALREC GOES DOWN THE HILL WITH YOU, HANDS TIED, CRYING FOR HIS BROTHER.\n' : '';
+  t += 'DAWN IS BREAKING WHEN YOU WALK MILA DOWN THE HILL. THE MILLER WEEPS. REEVE HOLLIS COUNTS OUT 200 GOLD.';
+  return t;
+}
+const ROOMS = {
+  inn: {
+    title: 'THORNWALL, THE CROOKED LANTERN INN', pic: 'village',
+    text: 'AN AUTUMN EVENING. FOR SEVEN NIGHTS A BELL HAS TOLLED UNDER THE OLD CHAPEL ON THE HILL, THOUGH ITS BELL FELL INTO THE RIVER A HUNDRED YEARS AGO.\n' +
+          'LAST NIGHT MILA, THE MILLER\'S DAUGHTER, WENT UP THE HILL TO SEE. SHE DID NOT COME BACK. REEVE HOLLIS OFFERS 200 GOLD TO WHOEVER BRINGS HER HOME.',
+    again: 'THE FIRE CRACKLES. UP ON THE HILL, THE BELL TOLLS AGAIN.',
+    choices: () => [
+      { label: 'ASK FOR RUMOURS', if: () => !f().rumour, ...pickWho('WHO ASKS AROUND? (CHA CHECK)', h => abilityChance(h, 'cha'), h => {
+        if (checkAbility(h, 'cha')) {
+          f().rumour = 2;
+          say('OLD WREN LEANS IN. "BROTHER MALREC, THE SEXTON, WENT STRANGE WHEN HIS BROTHER DROWNED. HE KEEPS HUMMING THE OLD BELL HYMN: I HAVE A TONGUE BUT NEVER TASTE..."');
+          say('"AND THE DEAD MONKS UNDER THAT CHAPEL? BLADES SLIDE OFF OLD BONES. TAKE A HAMMER."');
+        } else {
+          f().rumour = 1;
+          say('THE FARMERS ONLY GRUMBLE ABOUT THE RATS UP IN THE CHAPEL. "BIG AS DOGS," ONE SAYS. "THEY\'LL FOLLOW ANYTHING YOU CAN EAT."');
+        }
+        then(stay);
+      }) },
+      { label: 'VISIT GRANNY SEDGE', act: () => go('shop') },
+      { label: f().open ? 'BACK DOWN INTO THE CRYPT' : 'CLIMB UP TO THE CHAPEL', act: () => f().open ? (say('YOU HURRY BACK UP THE HILL AND DOWN THE CRYPT STAIRS.'), then(() => go('junction'))) : go('chapel') },
+    ],
+  },
+  shop: {
+    title: 'GRANNY SEDGE, HERB-WIFE', pic: 'shop',
+    text: 'A HUT THAT SMELLS OF SMOKE AND MINT. GRANNY SEDGE LOOKS YOU OVER. "GOING UP THE HILL? THEN YOU\'LL WANT SOME OF THESE."',
+    again: '"BACK ALREADY?" GRANNY SEDGE SAYS.',
+    ask: () => 'WHAT DO YOU BUY?',
+    choices: () => [
+      { label: `HEALING POTION: 30 GOLD`, act: () => buy('potion', 30) },
+      { label: `HOLY WATER: 25 GOLD`, act: () => buy('holy', 25) },
+      { label: `FOOD FOR A DAY: 2 GOLD`, act: () => buy('food', 2) },
+      { label: 'BACK TO THE INN', act: () => go('inn'), dim: true },
+    ],
+  },
+  chapel: {
+    title: 'THE RUINED CHAPEL', pic: 'chapel',
+    text: () => `THE CHAPEL IS A SHELL OF BROKEN ARCHES UNDER THE MOON. AT THE FAR END STANDS THE ALTAR.\nBETWEEN YOU AND IT, THE FLOOR IS MOVING: ${ratsN()} GIANT RATS, FAT AND RED-EYED, CHEWING SOMETHING YOU WOULD RATHER NOT LOOK AT.`,
+    again: 'THE RATS ARE STILL HERE, BETWEEN YOU AND THE ALTAR.',
+    choices: () => [
+      { label: 'FIGHT THE RATS', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('inn') }) },
+      { label: 'SNEAK PAST THEM', act: () => {
+        say('EVERYONE TRIES TO WALK QUIETLY. (THIEVES: MOVE SILENTLY. THE OTHERS: DEX CHECK, -4 IN CHAIN MAIL.)');
+        let ok = 0, all = 0;
+        for (const h of G.heroes) if (up(h)) { all++; if (h.cls === 'thief' ? checkSkill(h, 2) : checkAbility(h, 'dex', CLASSES[h.cls].armour <= 4 ? -4 : 0)) ok++; }
+        if (ok * 2 >= all) { say('YOU SLIP ALONG THE WALL. THE RATS NEVER LOOK UP.', '#7aea7a'); f().rats = 1; then(() => go('altar')); }
+        else { say('A BOOT SCRAPES ON STONE. EVERY RED EYE TURNS TOWARD YOU.', '#ff7a6a'); then(() => fight({ foes: [['rat', ratsN()]], surprise: 'foes', win: () => { f().rats = 1; go('altar'); }, flee: () => go('inn') })); }
+      } },
+      { label: 'THROW THEM SOME FOOD', if: () => G.items.food > 0, act: () => {
+        G.items.food--; f().rats = 1;
+        say('YOU TOSS A LOAF AND A WEDGE OF CHEESE INTO THE DARK. THE RATS POUR OVER IT, SQUEALING. YOU WALK PAST.', '#7aea7a');
+        then(() => go('altar'));
+      } },
+      { label: 'BACK TO THE INN', act: () => go('inn'), dim: true },
+    ],
+  },
+  altar: {
+    title: 'THE ALTAR', pic: 'altar',
+    text: 'BEHIND THE ALTAR, FRESH DRAG MARKS LEAD TO A TRAPDOOR. ITS IRON LOCK IS NEW AND SHINY.\nFROM BELOW, FAINTLY: THE BELL. AND FOR A MOMENT, A GIRL\'S VOICE.',
+    again: 'THE TRAPDOOR WAITS BEHIND THE ALTAR, LOCKED.',
+    choices: () => [
+      { label: 'SEARCH FOR TRAPS', if: () => !f().trapKnown && !f().trapGone, ...pickWho('WHO SEARCHES? (THIEVES: FIND TRAPS. OTHERS: WIS CHECK -8)', h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
+        h.tried.trap = 1;
+        if (h.cls === 'thief' ? checkSkill(h, 1) : checkAbility(h, 'wis', -8)) { f().trapKnown = 1; say('IN THE KEYHOLE: A TINY NEEDLE, WET WITH SOMETHING DARK.', '#7aea7a'); }
+        else say('NOTHING THAT YOU CAN SEE.');
+        then(stay);
+      }) },
+      { label: 'REMOVE THE NEEDLE', if: () => f().trapKnown && !f().trapGone, ...pickWho('WHO TRIES? (FIND/REMOVE TRAPS)', h => skillChance(h, 1), h => {
+        if (checkSkill(h, 1)) { f().trapGone = 1; say('A TWIST OF WIRE, AND THE NEEDLE DROPS INTO YOUR PALM.', '#7aea7a'); }
+        else needle(h);
+        then(stay);
+      }) },
+      { label: 'PICK THE LOCK', ...pickWho('WHO PICKS IT? (THIEVES ONLY: OPEN LOCKS)', h => h.tried.lock ? 0 : skillChance(h, 0), h => {
+        h.tried.lock = 1;
+        if (!f().trapGone) needle(h);
+        if (checkSkill(h, 0)) { openTrapdoor(); return; }
+        say('THE LOCK WILL NOT GIVE. (A THIEF GETS ONE TRY AT A LOCK.)', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'FORCE THE TRAPDOOR', ...pickWho('WHO HEAVES? (STR CHECK -4)', h => abilityChance(h, 'str', -4), h => {
+        if (!f().trapGone) needle(h);
+        f().alarm = (f().alarm || 0) + 1;
+        if (checkAbility(h, 'str', -4)) { say('THE HASP TEARS OUT OF THE WOOD WITH A CRASH THAT ECHOES BELOW.', '#7aea7a'); openTrapdoor(); return; }
+        say('IT HOLDS. THE NOISE ECHOES DOWN INTO THE DARK. SOMETHING DOWN THERE IS LISTENING NOW.', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'BACK TO THE INN', act: () => go('inn'), dim: true },
+    ],
+  },
+  stairs: {
+    title: 'THE CRYPT STAIRS', pic: 'crypt',
+    text: () => 'STONE STEPS SPIRAL DOWN INTO A CRYPT. CANDLES BURN IN THE WALL NICHES, AND IN EACH NICHE LIES A MONK\'S SKELETON.\nAS YOUR FOOT TOUCHES THE LAST STEP, THE BONES BEGIN TO MOVE.' +
+      (f().alarm ? ' THEY WERE ALREADY WAITING FOR YOU.' : ''),
+    again: 'THE SKELETONS STAND IN YOUR WAY.',
+    choices: () => [
+      { label: 'FIGHT!', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('junction'); }, flee: () => go('altar') }) },
+      { label: 'RUN BACK UP', act: () => go('altar'), dim: true },
+    ],
+  },
+  junction: {
+    title: 'THE CROSSROADS', pic: 'junction',
+    text: 'THREE PASSAGES MEET IN A ROUND ROOM. TO THE WEST, WATER DRIPS ON BONES. TO THE EAST, A ROW OF OLD CELLS.\nTO THE NORTH, A BRONZE DOOR. BEHIND IT THE BELL TOLLS, SO LOUD NOW THAT YOU FEEL IT IN YOUR TEETH.',
+    again: 'THE ROUND ROOM. THE BELL TOLLS BEHIND THE BRONZE DOOR.',
+    choices: () => [
+      { label: 'WEST: THE OSSUARY', if: () => !f().ossDone, act: () => go('ossuary') },
+      { label: 'EAST: THE CELLS', if: () => !f().cellDone, act: () => go('cells') },
+      { label: 'NORTH: THE BRONZE DOOR', act: () => go('door') },
+      { label: G.items.food ? 'REST (EAT 1 FOOD)' : 'REST (NO FOOD LEFT)', if: () => !f().rested, act: () => G.items.food > 0 ? rest() : (say('YOU HAVE NO FOOD. YOU CAN\'T REST ON AN EMPTY STOMACH.', '#ff7a6a'), then(stay)) },
+      { label: 'UP TO THE VILLAGE', act: () => { say('YOU CLIMB OUT AND WALK DOWN THE HILL TO THORNWALL.'); then(() => go('inn')); }, dim: true },
+    ],
+  },
+  ossuary: {
+    title: 'THE OSSUARY', pic: 'ossuary',
+    text: 'WALLS BUILT OF SKULLS, AND A FLOOR OF BLACK WATER, KNEE-DEEP. SOMETHING CLICKS AND SCUTTLES IN THE BONES.',
+    again: () => f().cent ? 'THE SKULLS GRIN DOWN AT THE BLACK WATER. SOMETHING STILL GLINTS UNDER IT.' : 'SOMETHING CLICKS AND SCUTTLES IN THE BONES.',
+    choices: () => f().cent ? [
+      { label: 'SEARCH THE WATER', if: () => (f().found || 0) < 3, ...pickWho('WHO SEARCHES? (WIS CHECK)', h => h.tried.water ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.water = 1;
+        if (!checkAbility(h, 'wis')) { say(`${h.name} FINDS ONLY COLD MUD AND OLD TEETH.`); then(stay); return; }
+        const k = f().found = (f().found || 0) + 1;
+        if (k === 1) {
+          say('A WAR HAMMER, ITS HEAD WRAPPED IN SILVER, A SAINT\'S NAME ON THE HANDLE: ALDER. IT IS WARM TO THE TOUCH.', '#7aea7a');
+          say('SAINT ALDER\'S HAMMER: +1 TO HIT, 1D6+1 DAMAGE, +2 MORE AGAINST THE UNDEAD. NOT A BLADE: OLD BONES CAN\'T SHRUG IT OFF.', '#ffd23f');
+          then(() => setChoices('WHO TAKES THE HAMMER?', G.heroes.filter(up).map(x => ({ label: `${x.name} (${CLASSES[x.cls].name}, NOW: ${x.weapon.name})`, act: () => {
+            x.weapon = { name: 'ALDER\'S HAMMER', n: 1, s: 6, b: 1, hit: 1, blessed: true };
+            say(`${x.name} TAKES THE HAMMER.`); then(stay);
+          } }))));
+          return;
+        }
+        if (k === 2) { G.items.potion++; say('A STOPPERED BOTTLE IN A ROTTEN POUCH: A HEALING POTION!', '#7aea7a'); }
+        else { G.gold += 30; say('A HANDFUL OF OLD SILVER COINS: 30 GOLD.', '#7aea7a'); sfx('coin'); }
+        then(stay);
+      }) },
+      { label: 'BACK TO THE CROSSROADS', act: () => { if ((f().found || 0) >= 3 || G.heroes.filter(up).every(h => h.tried.water)) f().ossDone = 1; go('junction'); }, dim: true },
+    ] : [
+      { label: 'WADE IN', act: () => fight({ foes: [['cent', [1, 2, 3, 4][n() - 1]]], win: () => { f().cent = 1; say('WITH THE CENTIPEDES DEAD, YOU NOTICE SOMETHING GLINTING UNDER THE WATER.'); then(stay); }, flee: () => go('junction') }) },
+      { label: 'BACK TO THE CROSSROADS', act: () => go('junction'), dim: true },
+    ],
+  },
+  cells: {
+    title: 'THE MONKS\' CELLS', pic: 'cells',
+    text: 'A HALL OF MONKS\' CELLS, THEIR DOORS ROTTED AWAY. IN THE LAST ONE, A SHAPE IN A WET ROBE TURNS TOWARD YOUR LIGHT.\nITS FACE IS GREY AND SWOLLEN. SOMEONE DROWNED HERE, AND THEN GOT UP AGAIN.',
+    again: () => f().zomb ? 'MALREC\'S CELL: A STRAW BED, A DESK, A DIARY, A SMALL IRON CHEST.' : 'THE DROWNED THING SHUFFLES TOWARD YOU.',
+    choices: () => f().zomb ? [
+      { label: 'READ THE DIARY', if: () => !f().diary, act: () => {
+        f().diary = 1;
+        say('MALREC\'S DIARY. THE LAST PAGES:', '#ffd23f');
+        say('"THE RIVER TOOK MY BROTHER. BUT THE OLD BELL OF THE DROWNED LIES DOWN HERE, AND IT CAN CALL HIM BACK, IF I FEED IT A LIVING VOICE.');
+        say('THE DOOR TO IT ANSWERS ONLY TO THE BELL\'S OWN NAME. FORGIVE ME, BROTHER ALDER, FOR WHAT I MUST DO."');
+        then(stay);
+      } },
+      { label: 'OPEN THE CHEST', if: () => !f().chest, ...pickWho('WHO OPENS IT? (THIEF: OPEN LOCKS. OTHERS: STR CHECK -2)', h => h.tried.chest ? 0 : h.cls === 'thief' ? skillChance(h, 0) : abilityChance(h, 'str', -2), h => {
+        h.tried.chest = 1;
+        if (h.cls === 'thief' ? checkSkill(h, 0) : checkAbility(h, 'str', -2)) {
+          f().chest = 1; G.gold += 60; G.items.holy++;
+          say('INSIDE: 60 GOLD AND A FLASK OF HOLY WATER, STOLEN FROM THE CHAPEL.', '#7aea7a'); sfx('coin');
+        } else say('THE CHEST WON\'T OPEN.', '#ff7a6a');
+        then(stay);
+      }) },
+      { label: 'BACK TO THE CROSSROADS', act: () => { if (f().diary && (f().chest || G.heroes.filter(up).every(h => h.tried.chest))) f().cellDone = 1; go('junction'); }, dim: true },
+    ] : [
+      { label: 'FIGHT IT', act: () => fight({ foes: [['zomb', n() >= 3 ? 2 : 1]], win: () => { f().zomb = 1; say('IN THE CELL: A STRAW BED, A DESK, A DIARY AND A SMALL IRON CHEST. THIS WAS MALREC\'S ROOM.'); then(stay); }, flee: () => go('junction') }) },
+      { label: 'BACK TO THE CROSSROADS', act: () => go('junction'), dim: true },
+    ],
+  },
+  door: {
+    title: 'THE BRONZE DOOR', pic: 'door',
+    text: 'THE DOOR SHOWS A BELL SINKING UNDER WAVES. A MOUTH IS CAST IN THE METAL, AND WORDS RUN AROUND IT:\n"I HAVE A TONGUE BUT NEVER TASTE. I HAVE A MOUTH BUT NEVER EAT. I CALL THE LIVING AND THE DEAD. SPEAK MY NAME."',
+    again: '"SPEAK MY NAME," SAYS THE DOOR.',
+    choices: () => [
+      { label: 'SAY "THE RIVER"', act: () => answerDoor('THE RIVER') },
+      { label: 'SAY "A GHOST"', act: () => answerDoor('A GHOST') },
+      { label: 'SAY "A BELL"', act: () => answerDoor('BELL') },
+      { label: 'SAY "A CANDLE"', act: () => answerDoor('A CANDLE') },
+      { label: 'THINK IT OVER', ...pickWho('WHO THINKS ABOUT IT? (INT CHECK)', h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
+        h.tried.riddle = 1;
+        if (checkAbility(h, 'int')) say(`${h.name}: "WAIT. THE THING THAT SWINGS INSIDE A BELL IS CALLED ITS TONGUE..."`, '#7aea7a');
+        else say(`${h.name} STARES AT THE WORDS UNTIL THEY SWIM.`);
+        then(stay);
+      }) },
+      { label: 'BACK', act: () => go('junction'), dim: true },
+    ],
+  },
+  bell: {
+    title: 'THE BELL OF THE DROWNED', pic: 'bell',
+    text: 'A HIGH CAVE. A GREEN BRONZE BELL HANGS OVER A BLACK POOL, SWINGING ALL BY ITSELF. MILA IS TIED TO A PILLAR, TOO SCARED TO CRY.\n' +
+          'BROTHER MALREC TURNS FROM THE WATER. "JUST IN TIME," HE SAYS. "THE DROWNED NEED MORE VOICES." WET SHAPES CLIMB OUT OF THE POOL.',
+    again: 'MALREC WAITS BY THE BELL.',
+    choices: () => [
+      { label: 'ATTACK!', act: () => bossFight(null) },
+      { label: 'TALK HIM DOWN', if: () => !f().talked, ...pickWho(`WHO TALKS? (CHA CHECK${f().diary ? ', +2: YOU READ HIS DIARY' : ' -2'})`, h => abilityChance(h, 'cha', f().diary ? 2 : -2), h => {
+        f().talked = 1;
+        if (checkAbility(h, 'cha', f().diary ? 2 : -2)) {
+          say(`${h.name}: "YOUR BROTHER WOULDN'T WANT THIS, MALREC." HE FALTERS. THE BELL MISSES A BEAT. NOW!`, '#7aea7a');
+          then(() => bossFight('party'));
+        } else {
+          say('MALREC LAUGHS AND THE BELL ROARS. THE DROWNED SURGE FORWARD.', '#ff7a6a');
+          then(() => bossFight('foes'));
+        }
+      }) },
+    ],
+  },
+  end: {
+    title: 'THE BELL IS SILENT', pic: 'dawn',
+    text: endText,
+    enter: () => {
+      if (f().paid) return;
+      f().paid = 1;
+      G.gold += 200;
+      gap();
+      giveXP(G.gold, `${G.gold} GOLD BROUGHT HOME`);
+      const first = !save.wins;
+      save.wins = (save.wins | 0) + 1; store();
+      const stars = first ? 10 : 2;
+      PX.Wallet.add(stars);
+      say(`THE ADVENTURE IS WON! +★${stars}`, '#ffd23f');
+      sfx('win');
+      localStorage.removeItem(GAME_KEY);
+    },
+    ask: 'THE END',
+    choices: () => [{ label: 'BACK TO THE TITLE', act: () => { G = null; state = 'title'; } }],
+  },
+  tpk: {
+    title: 'THE PARTY HAS FALLEN', pic: 'grave',
+    text: 'DARKNESS. UNDER THORNWALL THE BELL TOLLS ON, AND NOW IT HAS NEW VOICES.',
+    enter: () => { sfx('lose'); localStorage.removeItem(GAME_KEY); },
+    ask: 'THE END',
+    choices: () => [
+      { label: 'NEW PARTY', act: () => { G = null; newSetup(); state = 'setup'; } },
+      { label: 'BACK TO THE TITLE', act: () => { G = null; state = 'title'; }, dim: true },
+    ],
+  },
+};
+const ratsN = () => [2, 3, 4, 5][n() - 1];
+const skelN = () => Math.min(4, [1, 2, 2, 3][n() - 1] + (f().alarm ? 1 : 0));
+function bossFight(surprise) {
+  const z = Math.min(3, [0, 1, 2, 2][n() - 1] + (f().alarm >= 2 ? 1 : 0));
+  const foes = [['malrec', 1]]; if (z) foes.push(['zomb', z]);
+  fight({ foes, surprise, boss: true, win: () => go('end'), flee: null });
+}
+
+/* --- 6. FIGHTS ---------------------------------------------------------------
+   Every round: initiative (d10 for each side, low first; a surprise gives one side a free round). The party's heroes
+   act one after another, the monsters attack, zombies always last. Downed heroes bleed 1 HP a round. */
+function fight(def) {
+  const foes = [];
+  for (const [id, cnt] of def.foes) for (let i = 0; i < cnt; i++) {
+    const M = MON[id], hp = Math.max(1, dice(M.hp[0], M.hp[1], M.hp[2]) - (M.boss ? (4 - G.heroes.length) * 3 : 0));
+    foes.push(Object.assign({}, M, { id, hp, max: hp, name: M.name + (cnt > 1 ? ' ' + (i + 1) : ''), state: 'ok', fx: 0 }));
+  }
+  F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false };
+  for (const h of G.heroes) { h.held = 0; h.hidden = false; }
+  gap();
+  say('FIGHT!', '#ff7a6a'); sfx('fight');
+  let s = def.surprise;
+  if (s === undefined || s === null && !def.boss) {
+    const a = rnd(10), b = rnd(10);
+    s = a <= 3 && b > 3 ? 'foes' : b <= 3 && a > 3 ? 'party' : null;
+    if (s) rollFx(10, s === 'foes' ? a : b, `SURPRISE ROLL: D10 = ${s === 'foes' ? a : b} (1-3: SURPRISED). ${s === 'foes' ? 'THE PARTY IS' : 'THE MONSTERS ARE'} SURPRISED!`, s === 'party');
+  }
+  F.free = s || null;
+  then(newRound);
+}
+const active = m => m.state === 'ok' || m.state === 'asleep';
+const foesLeft = () => F.foes.filter(active);
+function endCheck() {
+  if (F.over) return true;
+  if (!foesLeft().length) { F.over = true; winFight(); return true; }
+  if (!G.heroes.some(up)) { F.over = true; then(() => { F = null; go('tpk'); }); return true; }
+  return false;
+}
+function winFight() {
+  gap();
+  say('VICTORY!', '#7aea7a'); sfx('win');
+  giveXP(F.xp, 'MONSTERS BEATEN');
+  for (const h of G.heroes) {
+    if (!h.dead && h.hp <= 0) { h.hp = 1; say(`${h.name} COMES TO, BRUISED BUT ALIVE. (1 HP)`); }
+    h.held = 0; h.hidden = false;
+  }
+  const win = F.def.win;
+  then(() => { F = null; win(); });
+}
+function newRound() {
+  if (endCheck()) return;
+  F.round++;
+  gap();
+  say(`ROUND ${F.round}`, '#c8b8ff');
+  if (F.free) {
+    F.order = F.free === 'party' ? ['party'] : ['foes', 'slow'];
+    F.free = null;
+  } else {
+    const a = rnd(10), b = rnd(10);
+    const partyFirst = a <= b;
+    rollFx(10, a, `INITIATIVE: PARTY ${a}, MONSTERS ${b}. ${partyFirst ? 'THE PARTY GOES FIRST.' : 'THE MONSTERS GO FIRST.'}`, null, true);
+    F.order = partyFirst ? ['party', 'foes', 'slow'] : ['foes', 'party', 'slow'];
+  }
+  F.step = -1;
+  then(nextPhase);
+}
+function nextPhase() {
+  if (endCheck()) return;
+  F.step++;
+  if (F.step >= F.order.length) { bleed(); then(newRound); return; }
+  const p = F.order[F.step];
+  if (p === 'party') { F.hi = -1; nextHero(); }
+  else {
+    const list = F.foes.filter(m => m.state === 'ok' && !!m.slow === (p === 'slow'));
+    for (const m of list) then(() => { if (!F.over && m.state === 'ok' && !endCheck()) foeAct(m); });
+    then(nextPhase);
+  }
+}
+function nextHero() {
+  if (endCheck()) return;
+  for (;;) {
+    F.hi++;
+    if (F.hi >= G.heroes.length) { nextPhase(); return; }
+    const h = G.heroes[F.hi];
+    if (!up(h)) continue;
+    if (h.held > 0) { h.held--; say(`${h.name} IS HELD AND CAN'T MOVE.`, '#c8b8ff'); continue; }
+    heroMenu(h); return;
+  }
+}
+const doneTurn = () => then(nextHero);
+function heroMenu(h) {
+  F.actor = h;
+  const undead = foesLeft().some(m => m.undead && m.state === 'ok');
+  const list = [
+    { label: 'ATTACK', act: () => pickFoe(h, `${h.name} ATTACKS WHO?`, m => attack(h, m)) },
+    { label: `CAST A SPELL (${h.spells})`, if: () => h.spells > 0, act: () => spellMenu(h) },
+    { label: 'TURN UNDEAD', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
+    { label: 'HIDE IN SHADOWS', if: () => h.cls === 'thief' && !h.hidden, act: () => {
+      if (checkSkill(h, 3)) { h.hidden = true; say(`${h.name} MELTS INTO THE SHADOWS. NEXT ATTACK: A BACKSTAB (+4 TO HIT, DOUBLE DAMAGE).`, '#7aea7a'); }
+      else say(`${h.name} CAN'T FIND A DARK ENOUGH CORNER.`);
+      doneTurn();
+    } },
+    { label: 'USE AN ITEM', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
+    { label: 'RUN AWAY', if: () => !!F.def.flee, dim: true, act: () => runAway() },
+  ];
+  setChoices(`${h.name} THE ${CLASSES[h.cls].name}: YOUR TURN`, list);
+}
+function back(h) { return () => heroMenu(h); }
+function pickFoe(h, q, fn) {
+  const list = foesLeft().map(m => ({ label: `${m.name} ${m.state === 'asleep' ? '(ASLEEP)' : ''}`, act: () => fn(m), foe: m }));
+  list.push({ label: 'BACK', act: back(h), dim: true });
+  setChoices(q, list);
+}
+function pickHero(h, q, fn, filter = up) {
+  const list = G.heroes.filter(x => !x.dead && filter(x)).map(x => ({ label: `${x.name} (${x.hp}/${x.max} HP)`, act: () => fn(x) }));
+  list.push({ label: 'BACK', act: back(h), dim: true });
+  setChoices(q, list);
+}
+function attack(h, m) {
+  if (m.state === 'asleep') {
+    say(`${h.name} STRIKES THE SLEEPING ${m.name}. IT NEVER WAKES.`, '#7aea7a');
+    kill(m); doneTurn(); return;
+  }
+  const back = h.hidden; h.hidden = false;
+  const bonus = hitOf(h) + (F.bless ? 1 : 0) + (back ? 4 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+  const hit = r === 20 || (r !== 1 && tot >= need);
+  rollFx(20, r, `${h.name}${back ? ' BACKSTABS' : ' ATTACKS'} ${m.name}: D20 ${r}${bonus ? (bonus > 0 ? '+' : '') + bonus : ''} = ${tot} (NEED ${need}) ${hit ? 'HIT!' : 'MISS'}`, hit);
+  if (hit) {
+    const w = h.weapon;
+    let d = Math.max(1, dice(w.n, w.s, w.b) + dmgOf(h));
+    if (w.blessed && m.undead) d += 2;
+    if (back) d *= 2;
+    if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say(`THE BLADE SLIDES OFF THE BONES: HALF DAMAGE.`, '#c8b8ff'); }
+    wound(m, d);
+  }
+  doneTurn();
+}
+function wound(m, d) {
+  m.hp -= d; m.fx = 0.3;
+  if (m.hp <= 0) { say(`${d} DAMAGE. ${m.name} ${m.undead ? 'COLLAPSES INTO BONES AND RAGS' : 'IS DEAD'}!`, '#7aea7a'); kill(m); }
+  else { say(`${d} DAMAGE. (${m.name}: ${m.hp} HP LEFT)`); if (m.boss) bossMorale(m); }
+  sfx('hit');
+}
+function kill(m) {
+  m.state = 'dead'; m.hp = Math.min(m.hp, 0); F.xp += m.xp;
+  if (m.boss) {
+    say('AS MALREC FALLS, THE BELL GOES QUIET, AND THE DROWNED SINK BACK INTO THE POOL.', '#7aea7a');
+    for (const o of F.foes) if (active(o)) { o.state = 'gone'; F.xp += o.xp; }
+    return;
+  }
+  morale();
+}
+// when the first of a group falls, and when half are gone: 2d10 over their morale and the rest run
+function morale() {
+  const all = F.foes.filter(m => !m.boss), left = all.filter(active), lost = all.length - left.length;
+  if (!left.length || left[0].morale >= 99 || left.some(m => m.boss)) return;
+  const key = lost === 1 ? 'first' : lost * 2 >= all.length ? 'half' : null;
+  if (!key || F['m_' + key]) return;
+  F['m_' + key] = 1;
+  const r = dice(2, 10), M = left[0].morale;
+  rollFx(20, r, `MORALE: 2D10 = ${r} (OVER ${M}: THEY RUN) ${r > M ? 'THEY FLEE!' : 'THEY STAND.'}`, r > M);
+  if (r > M) for (const m of left) { m.state = 'gone'; F.xp += Math.floor(m.xp / 2); }
+}
+function bossMorale(m) {
+  if (F.m_boss || m.hp * 2 > m.max) return;
+  F.m_boss = 1;
+  const r = dice(2, 10);
+  rollFx(20, r, `MALREC'S MORALE: 2D10 = ${r} (OVER ${m.morale}: HE GIVES UP) ${r > m.morale ? 'HE GIVES UP!' : 'HE FIGHTS ON.'}`, r > m.morale);
+  if (r > m.morale) {
+    say('MALREC DROPS HIS MACE AND FALLS TO HIS KNEES. "ENOUGH... I ONLY WANTED MY BROTHER BACK." THE BELL STOPS. THE DROWNED SINK INTO THE POOL.', '#7aea7a');
+    f().surrender = 1;
+    for (const o of F.foes) if (active(o)) { o.state = 'gone'; F.xp += o.xp; }
+  }
+}
+function spellMenu(h) {
+  const list = CLASSES[h.cls].spells.map(id => {
+    const sp = SPELLS[id];
+    return { label: `${sp.name}`, act: () => castSpell(h, id) };
+  });
+  list.push({ label: 'BACK', act: back(h), dim: true });
+  setChoices(`${h.name}: WHICH SPELL? (${h.spells} LEFT TODAY)`, list);
+}
+function castSpell(h, id) {
+  const sp = SPELLS[id];
+  if (sp.target === 'foe') { pickFoe(h, `${sp.name} AT WHO?`, m => { h.spells--; sfx('spell'); const d = dice(1, 4, 1); say(`${h.name} CASTS ${sp.name}. A BOLT OF LIGHT STRIKES ${m.name}.`, '#6aa8ff'); if (m.state === 'asleep') m.state = 'ok'; wound(m, d); doneTurn(); }); return; }
+  if (sp.target === 'hero') { pickHero(h, `${sp.name} ON WHO?`, x => { h.spells--; sfx('spell'); cure(h, x); doneTurn(); }, x => x.hp < x.max); return; }
+  h.spells--; sfx('spell');
+  if (id === 'bless') { F.bless = true; say(`${h.name} CASTS BLESS. A WARM LIGHT: +1 TO HIT FOR THE PARTY FOR THE REST OF THE FIGHT.`, '#6aa8ff'); doneTurn(); return; }
+  if (id === 'sleep') {
+    let hd = dice(2, 4);
+    rollFx(8, hd, `${h.name} CASTS SLEEP: 2D4 = ${hd} HIT DICE OF MONSTERS.`, null);
+    const list = foesLeft().filter(m => m.state === 'ok').sort((a, b) => a.hd - b.hd);
+    let slept = 0;
+    for (const m of list) {
+      if (m.undead || m.noSleep) { say(`${m.name} DOESN'T SLEEP${m.undead ? ': THE DEAD NEVER DO' : ': HIS AMULET GLOWS'}.`, '#c8b8ff'); continue; }
+      const c = Math.max(1, Math.ceil(m.hd));
+      if (c > hd) break;
+      hd -= c; m.state = 'asleep'; slept++;
+      say(`${m.name} FALLS ASLEEP.`, '#6aa8ff');
+    }
+    if (!slept) say('NOTHING FALLS ASLEEP.');
+    doneTurn();
+  }
+}
+function cure(h, x) {
+  const d = dice(1, 8), was = x.hp;
+  x.hp = Math.min(x.max, x.hp + d);
+  say(`${h.name} CASTS CURE LIGHT WOUNDS ON ${x.name}: +${x.hp - was} HP (${x.hp}/${x.max}).`, '#6aa8ff');
+}
+function turnUndead(h) {
+  F.turned[h.name] = 1;
+  const und = foesLeft().filter(m => m.undead && m.state === 'ok').sort((a, b) => a.turn - b.turn);
+  const need = und[0].turn, r = rnd(20), ok = r >= need;
+  rollFx(20, r, `${h.name} RAISES THE HOLY SYMBOL: TURN UNDEAD, D20 = ${r} (NEED ${need}) ${ok ? 'SUCCESS!' : 'FAIL'}`, ok);
+  if (ok) {
+    let k = dice(2, 6);
+    say(`"BEGONE!" (2D6 = ${k}: SO MANY UNDEAD TURN)`, '#f0e070');
+    for (const m of und) { if (k <= 0 || m.turn > need) break; m.state = 'gone'; F.xp += m.xp; k--; say(`${m.name} FLEES FROM THE LIGHT.`, '#7aea7a'); }
+  } else say('THE DEAD KEEP COMING.');
+  doneTurn();
+}
+function itemMenu(h) {
+  const list = [
+    { label: `HEALING POTION (${G.items.potion})`, if: () => G.items.potion > 0, act: () => pickHero(h, 'GIVE THE POTION TO WHO? (FALLEN HEROES TOO)', x => {
+      G.items.potion--;
+      const d = dice(2, 4, 2), was = x.hp;
+      x.hp = Math.min(x.max, Math.max(x.hp, 0) + d);
+      say(`${x.name} DRINKS THE POTION: ${x.hp - was > 0 ? '+' + (x.hp - was) : 0} HP (${x.hp}/${x.max}).`, '#7aea7a');
+      doneTurn();
+    }, x => !x.dead && x.hp < x.max) },
+    { label: `THROW HOLY WATER (${G.items.holy})`, if: () => G.items.holy > 0, act: () => pickFoe(h, 'THROW IT AT WHO? (IT ONLY HURTS THE UNDEAD)', m => {
+      G.items.holy--;
+      const bonus = dexMissile(h.st.dex), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus, hit = r === 20 || (r !== 1 && tot >= need);
+      rollFx(20, r, `${h.name} THROWS HOLY WATER: D20 ${r}${bonus ? (bonus > 0 ? '+' : '') + bonus : ''} (NEED ${need}) ${hit ? 'HIT!' : 'MISS'}`, hit);
+      if (hit) { if (m.undead) { say('IT HISSES AND SMOKES!', '#f0e070'); wound(m, dice(2, 4)); } else say(`${m.name} IS JUST WET NOW.`); }
+      doneTurn();
+    }) },
+    { label: 'BACK', act: back(h), dim: true },
+  ];
+  setChoices(`${h.name}: USE WHAT?`, list);
+}
+function runAway() {
+  say('THE PARTY RUNS! THE MONSTERS GET A PARTING BLOW.', '#ff7a6a');
+  F.over = true;
+  for (const m of F.foes.filter(x => x.state === 'ok')) foeAttack(m, true);
+  const flee = F.def.flee;
+  then(() => {
+    F = null;
+    if (!G.heroes.some(up)) { go('tpk'); return; }
+    for (const h of G.heroes) if (!h.dead && h.hp <= 0) h.hp = 1;
+    flee();
+  });
+}
+function targetHero() {
+  const live = G.heroes.filter(up);
+  if (!live.length) return null;
+  const front = live.slice(0, 2);
+  return Math.random() < 0.7 ? pick(front) : pick(live);
+}
+function foeAct(m) {
+  if (m.boss) {
+    if (!F.cast.hold) {
+      F.cast.hold = 1;
+      const h = targetHero();
+      say(`MALREC POINTS AT ${h.name}: "BE STILL!" (HOLD PERSON)`, '#c06aff'); sfx('spell');
+      if (!checkSave(h, 'spell')) { h.held = 2; say(`${h.name} FREEZES, HELD FOR 2 ROUNDS.`, '#ff7a6a'); } else say(`${h.name} SHAKES IT OFF.`);
+      return;
+    }
+    if (!F.cast.wound) {
+      F.cast.wound = 1;
+      say('MALREC\'S HAND GLOWS BLACK: CAUSE WOUNDS!', '#c06aff');
+      foeAttack(m, false, [1, 8, 0]);
+      return;
+    }
+  }
+  foeAttack(m);
+}
+function foeAttack(m, fast, dmg) {
+  const h = targetHero();
+  if (!h) return;
+  const ac = acOf(h), need = m.thac0 - ac, bonus = h.held ? 4 : 0, r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
+  rollFx(20, r, `${m.name} ATTACKS ${h.name}: D20 ${r}${bonus ? '+4 (HELD)' : ''} (NEED ${need}) ${hit ? 'HIT' : 'MISS'}`, !hit, true);
+  if (!hit) return;
+  const D = dmg || m.dmg, d = Math.max(1, dice(D[0], D[1], D[2]));
+  hurt(h, d);
+  sfx('ouch');
+  if (h.dead) say(`${d} DAMAGE. ${h.name} IS DEAD.`, '#ff3a3a');
+  else if (h.hp <= 0) say(`${d} DAMAGE. ${h.name} FALLS AND LIES BLEEDING! (${h.hp} HP)`, '#ff7a6a');
+  else say(`${d} DAMAGE TO ${h.name}. (${h.hp}/${h.max} HP)`, '#ffaa8a');
+  if (m.poison && h.hp > 0) {
+    if (!checkSave(h, 'poison', 4, true)) { const p = rnd(3); hurt(h, p); say(`POISON! ${p} MORE DAMAGE.`, '#ff7a6a'); }
+  }
+}
+function bleed() {
+  for (const h of G.heroes) if (!h.dead && h.hp <= 0) {
+    hurt(h, 1);
+    say(h.dead ? `${h.name} HAS BLED TO DEATH.` : `${h.name} IS BLEEDING: ${h.hp} HP. (-10 IS DEATH)`, '#ff3a3a');
+  }
+}
+
+/* --- 7. DRAWING ---------------------------------------------------------------
+   Pixel pictures: sprites are rows of letters, each letter a colour from its palette ('.' is see-through). */
+function spr(rows, pal, x, y, k = 1) {
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) {
+    const col = pal[rows[r][c]]; if (!col) continue;
+    ctx.fillStyle = col; ctx.fillRect(x + c * k, y + r * k, k, k);
+  }
+}
+const SPR = {
+  rat: { pal: { k: '#1a1018', g: '#7a6a62', l: '#a8988a', r: '#ff3030', p: '#e8a0a0' }, rows: [
+    '................',
+    '.........kk.....',
+    '........kppk....',
+    '...kkkkkkgggk...',
+    '..kggggggggrgk..',
+    '.kgggllllggggpk.',
+    'kpkgggggggggkk..',
+    '...kgk..kgk.....',
+  ] },
+  skel: { pal: { k: '#1a1018', w: '#e8e0c8', d: '#a89878', e: '#ff4040' }, rows: [
+    '...kkkkk....',
+    '..kwwwwwk...',
+    '..kwekewk...',
+    '..kwwwwwk...',
+    '...kwdwk....',
+    '....kwk.....',
+    '.kkwwwwwkk..',
+    '.kw.kdk.wk..',
+    '.kw.wdw.wk..',
+    '.kw.kdk.wk..',
+    '..k.wdw.k...',
+    '...kwkwk....',
+    '...kw.wk....',
+    '...kw.wk....',
+    '..kww.wwk...',
+  ] },
+  cent: { pal: { k: '#1a1018', o: '#b85a28', y: '#e8a040', r: '#ff3030' }, rows: [
+    '..................',
+    '.kk.kk.kk.kk.kk...',
+    'koookoookoookooork',
+    'kyoyyoyyoyyoyyoyok',
+    '.k.k.k.k.k.k.k.kk.',
+  ] },
+  zomb: { pal: { k: '#1a1018', g: '#7aa070', d: '#4a6a48', b: '#3a3a5a', c: '#5a5a7a', e: '#ffe060' }, rows: [
+    '...kkkkk....',
+    '..kgggggk...',
+    '..kgegegk...',
+    '..kgggggk...',
+    '..kgkkkgk...',
+    '...kgggk....',
+    '.kkbbbbbkk..',
+    'kgkbcbbcbkgk',
+    'kgkbbcbbbkgk',
+    '.kgkbbbbkgk.',
+    '..k.bbcbk...',
+    '...kbbbbk...',
+    '...kb.kbk...',
+    '...kd.kdk...',
+    '..kdd.kddk..',
+  ] },
+  cult: { pal: { k: '#1a1018', r: '#8a1a2a', d: '#5a0a1a', s: '#e8c0a0', e: '#60ff80', y: '#ffd23f' }, rows: [
+    '....kkkk....',
+    '...krrrrk...',
+    '..krrddrrk..',
+    '..krdeedrk..',
+    '..krdssdrk..',
+    '...kdddrk...',
+    '..krryrrrk..',
+    '.krrrrrrrrk.',
+    'ksrrrrrrrrsk',
+    'k.krrrdrrk.k',
+    '..krrrdrrk..',
+    '..krrrdrrk..',
+    '..krrdddrk..',
+    '.krrrdddrrk.',
+    '.kkkkkkkkkk.',
+  ] },
+};
+const ICONS = {
+  fighter: { pal: { k: '#1a1018', s: '#c8c8d8', d: '#7a7a8a', b: '#202030' }, rows: ['.kkkkkk.', 'kssssssk', 'ksddddsk', 'kbbbbbbk', 'ksbbbbsk', 'kssddssk', 'kssddssk', '.kkkkkk.'] },
+  cleric: { pal: { k: '#1a1018', w: '#f0f0e0', y: '#ffd23f' }, rows: ['.kkkkkk.', 'kwwyywwk', 'kwwyywwk', 'kyyyyyyk', 'kwwyywwk', 'kwwyywwk', 'kwwyywwk', '.kkkkkk.'] },
+  mage: { pal: { k: '#1a1018', b: '#3a5ad8', y: '#ffd23f', s: '#e8c0a0' }, rows: ['....kk..', '...kbbk.', '..kbybk.', '..kbbbk.', '.kbbbbbk', 'kkkkkkkk', '.kskskk.', '..kssk..'] },
+  thief: { pal: { k: '#1a1018', g: '#3a8a4a', d: '#1a4a2a', e: '#ffffff' }, rows: ['..kkkk..', '.kggggk.', 'kggggggk', 'kgddddgk', 'kgdedegk', 'kgddddgk', '.kggggk.', '..kkkk..'] },
+};
+const PIC_W = 128, PIC_H = 96;
+function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function stars(seed, n, h) { let s = seed; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; const x = s % PIC_W; s = (s * 9301 + 49297) % 233280; px(x, s % h, 1, 1, i % 3 ? '#8a8ab8' : '#fff'); } }
+function bricks(x0, y0, w, h, a, b) {
+  px(x0, y0, w, h, a);
+  for (let y = y0; y < y0 + h; y += 6) for (let x = x0 + ((y / 6) % 2 ? 0 : 5); x < x0 + w; x += 10) px(x, y, 1, 6, b);
+  for (let y = y0; y < y0 + h; y += 6) px(x0, y, w, 1, b);
+}
+function candle(x, y, t) { px(x, y, 2, 5, '#e8e0c8'); px(x, y - 3 - (Math.sin(t * 9 + x) > 0.6 ? 1 : 0), 2, 3, '#ffb030'); px(x, y - 2, 2, 1, '#fff6a0'); }
+function skull(x, y) { px(x, y, 5, 4, '#d8d0b0'); px(x + 1, y + 1, 1, 1, '#1a1018'); px(x + 3, y + 1, 1, 1, '#1a1018'); px(x + 1, y + 4, 3, 1, '#b8b090'); }
+const PICS = {
+  village(t) {
+    px(0, 0, PIC_W, PIC_H, '#141a3a'); stars(3, 30, 50);
+    px(98, 10, 8, 8, '#f0f0d0'); px(100, 10, 6, 6, '#141a3a');                      // the moon
+    px(60, 28, 68, 30, '#1a2048'); px(80, 22, 40, 8, '#1a2048');                      // the hill
+    px(92, 14, 14, 10, '#2a2a40'); px(97, 9, 4, 6, '#2a2a40'); px(96, 18, 3, 6, '#141a3a');   // the chapel
+    px(0, 58, PIC_W, 38, '#1e3a24');
+    px(14, 36, 54, 30, '#5a3a2a'); px(10, 30, 62, 8, '#7a3020'); px(18, 24, 46, 8, '#7a3020');  // the inn
+    for (const x of [20, 34, 50]) { px(x, 44, 8, 8, Math.sin(t * 3 + x) > -0.8 ? '#ffc040' : '#e0a030'); px(x + 3, 44, 1, 8, '#5a3a2a'); }
+    px(38, 56, 8, 10, '#2a1a10');
+    px(60, 40, 2, 26, '#3a2a1a'); px(56, 38, 10, 4, '#ffd23f');                      // the lantern sign
+    px(0, 74, PIC_W, 4, '#2a4a30');
+  },
+  shop(t) {
+    px(0, 0, PIC_W, PIC_H, '#2a1e18');
+    for (let i = 0; i < 4; i++) px(8, 14 + i * 16, 112, 3, '#5a3a24');
+    const cols = ['#d84a4a', '#4ad8a8', '#e8e070', '#a86ad8', '#6aa8ff', '#e8a040'];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 9; j++) { const c = cols[(i * 5 + j * 3) % 6]; px(12 + j * 12, 6 + i * 16, 5, 8, c); px(13 + j * 12, 4 + i * 16, 3, 2, '#c8b8a0'); }
+    px(0, 74, PIC_W, 22, '#4a3020'); px(0, 74, PIC_W, 2, '#6a4a30');
+    px(54, 50, 20, 24, '#3a3a5a'); px(58, 40, 12, 12, '#e8c0a0'); px(56, 38, 16, 5, '#8a8aa8'); px(61, 45, 2, 2, '#1a1018'); px(65, 45, 2, 2, '#1a1018');
+    px(90, 64, 10, 10, '#2a2a2a'); px(92, 60 + Math.sin(t * 2) * 1, 6, 4, '#6a8a6a');
+  },
+  chapel(t) {
+    px(0, 0, PIC_W, PIC_H, '#101830'); stars(7, 25, 40);
+    for (const x of [8, 40, 72, 104]) { px(x, 18, 14, 60, '#4a4a5a'); px(x + 2, 18, 2, 60, '#5a5a6a'); }
+    px(8, 14, 110, 6, '#4a4a5a'); px(30, 14, 26, 6, '#101830');                      // broken arches
+    px(0, 78, PIC_W, 18, '#2a2a34');
+    px(52, 64, 24, 14, '#6a6a7a'); px(50, 62, 28, 3, '#7a7a8a');                      // the altar
+    for (const [x, y] of [[14, 84], [40, 88], [70, 85], [96, 89], [110, 83]]) { px(x, y, 7, 3, '#5a4a48'); px(x + 5 + (Math.sin(t * 4 + x) > 0 ? 1 : 0), y, 1, 1, '#ff3030'); }
+  },
+  altar(t) {
+    px(0, 0, PIC_W, PIC_H, '#181826'); bricks(0, 0, PIC_W, 60, '#2a2a3a', '#20202c');
+    px(0, 60, PIC_W, 36, '#30303e');
+    px(24, 38, 80, 24, '#6a6a7a'); px(20, 34, 88, 5, '#8a8a9a');
+    candle(30, 29, t); candle(96, 29, t);
+    px(40, 74, 48, 16, '#5a3a24'); px(40, 74, 48, 2, '#7a5a34'); px(60, 80, 8, 6, '#c8c8d8'); px(63, 82, 2, 3, '#1a1018');
+    for (let i = 0; i < 4; i++) px(30 + i * 22, 66, 14, 1, '#4a3a2a');
+  },
+  crypt(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 80, '#24202c', '#18141e');
+    for (const x of [8, 40, 72, 104]) { px(x, 20, 18, 34, '#0a080c'); px(x + 2, 44, 14, 3, '#d8d0b0'); skull(x + 3, 39); candle(x + 8, 18, t); }
+    px(0, 80, PIC_W, 16, '#1e1a22');
+  },
+  junction(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 76, '#26222e', '#1a1620');
+    for (const [x, c] of [[6, '#0a1418'], [52, '#140c08'], [98, '#0a080c']]) { px(x, 22, 24, 54, c); px(x, 18, 24, 4, '#3a3444'); }
+    px(58, 34, 12, 30, '#8a6a34'); px(62, 40, 4, 6, '#5a4a24');                        // bronze door far away
+    px(0, 76, PIC_W, 20, '#1e1a22'); candle(38, 64, t); candle(88, 64, t);
+    const ring = (Math.sin(t * 2) + 1) / 2;
+    for (let i = 0; i < 3; i++) px(52 - i * 4 - ring * 3, 14 - i * 3, 2, 2, 'rgba(255,210,63,' + (0.5 - i * 0.15) + ')');
+  },
+  ossuary(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14');
+    for (let y = 2; y < 64; y += 7) for (let x = (y % 2) * 3; x < PIC_W; x += 8) skull(x, y);
+    px(0, 64, PIC_W, 32, '#0a1418');
+    for (let i = 0; i < 8; i++) px((i * 37 + t * 8) % PIC_W, 70 + (i * 7) % 22, 10, 1, '#1a3440');
+    if (!G || !G.f.found) px(60, 84, 4, 2, Math.sin(t * 5) > 0 ? '#e8e8f8' : '#8a8aa8');
+  },
+  cells(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 76, '#26222e', '#1a1620');
+    for (const x of [8, 48, 88]) { px(x, 20, 32, 56, '#0a080c'); for (let i = 0; i < 5; i++) px(x + 3 + i * 6, 20, 2, 56, '#4a4a54'); px(x, 20, 32, 2, '#4a4a54'); }
+    px(0, 76, PIC_W, 20, '#1e1a22');
+    px(96, 60, 16, 10, '#5a3a24');
+  },
+  door(t) {
+    px(0, 0, PIC_W, PIC_H, '#100c14'); bricks(0, 0, PIC_W, 84, '#26222e', '#1a1620');
+    px(30, 6, 68, 80, '#6a4a1a'); px(32, 8, 64, 76, '#9a7a3a'); px(63, 8, 2, 76, '#6a4a1a');
+    px(50, 16, 28, 4, '#c8a050'); px(46, 20, 36, 22, '#c8a050'); px(42, 42, 44, 4, '#c8a050');     // the bell relief
+    for (let i = 0; i < 4; i++) px(36 + i * 14, 52 + (i % 2) * 2, 12, 2, '#5a8aa0');               // the waves
+    px(54, 62, 20, 12, '#3a2a10'); px(56, 66, 16, 4, Math.sin(t * 2) > 0 ? '#1a1018' : '#0a0a0a'); // the mouth
+    px(0, 84, PIC_W, 12, '#1e1a22');
+  },
+  bell(t) {
+    px(0, 0, PIC_W, PIC_H, '#0c0a14');
+    for (let i = 0; i < 10; i++) px(i * 13, 0, 7, 8 + (i * 7) % 12, '#1a1624');
+    const sw = Math.sin(t * 1.6) * 6;
+    px(63, 6, 2, 12, '#3a3444');
+    ctx.save(); ctx.translate(64, 18); ctx.rotate(sw * Math.PI / 180);
+    px(-10, 0, 20, 4, '#4a8a6a'); px(-14, 4, 28, 18, '#4a8a6a'); px(-18, 22, 36, 4, '#5aa07a'); px(-12, 6, 3, 14, '#6ac08a'); px(-2, 26, 4, 4, '#3a6a4a');
+    ctx.restore();
+    px(0, 66, PIC_W, 30, '#06121a');
+    for (let i = 0; i < 6; i++) px((i * 29 + t * 5) % PIC_W, 72 + (i * 5) % 18, 12, 1, '#123040');
+    px(108, 30, 8, 40, '#3a3444'); px(104, 46, 8, 14, '#c86a8a'); px(105, 40, 6, 6, '#e8c0a0'); px(103, 50, 12, 2, '#a88a5a');    // Mila
+  },
+  dawn(t) {
+    px(0, 0, PIC_W, 30, '#e8a070'); px(0, 30, PIC_W, 20, '#f0c890'); px(52, 40, 24, 12, '#fff0c0');
+    px(0, 50, PIC_W, 46, '#3a6a3a'); px(0, 50, PIC_W, 3, '#5a8a4a');
+    px(14, 50, 30, 18, '#7a5a3a'); px(10, 44, 38, 7, '#9a4a2a');
+    for (const [x, c] of [[60, '#e8c0a0'], [72, '#c86a8a'], [84, '#e8c0a0'], [96, '#e8c0a0']]) { px(x, 70, 6, 14, '#4a4a6a'); px(x, 62, 6, 7, c); }
+  },
+  grave(t) {
+    px(0, 0, PIC_W, PIC_H, '#0a0a12'); stars(11, 20, 50);
+    px(0, 70, PIC_W, 26, '#141a14');
+    px(50, 34, 28, 40, '#4a4a5a'); px(54, 30, 20, 6, '#4a4a5a'); px(62, 40, 4, 16, '#2a2a34'); px(57, 45, 14, 4, '#2a2a34');
+  },
+};
+function drawPic(id, t) {
+  ctx.save(); ctx.translate(6, 32);
+  ctx.beginPath(); ctx.rect(0, 0, PIC_W, PIC_H); ctx.clip();
+  (PICS[id] || PICS.crypt)(t);
+  if (F) drawFoes(t);
+  if (die && (busy() || die.t < 1.2)) drawDie(t);
+  ctx.restore();
+  ctx.strokeStyle = '#000'; px(4, 30, PIC_W + 4, 2, '#0b0912'); px(4, 32 + PIC_H, PIC_W + 4, 2, '#0b0912'); px(4, 30, 2, PIC_H + 4, '#0b0912'); px(6 + PIC_W, 30, 2, PIC_H + 4, '#0b0912');
+}
+function drawFoes(t) {
+  px(0, 0, PIC_W, PIC_H, 'rgba(8,6,12,0.55)');
+  const list = F.foes, nn = list.length, cols = nn <= 3 ? nn : Math.ceil(nn / 2), rows = nn <= 3 ? 1 : 2;
+  list.forEach((m, i) => {
+    const r = Math.floor(i / cols), c = i % cols, cw = PIC_W / cols, ch = PIC_H / rows;
+    const S0 = SPR[m.spr], k = m.boss ? 3 : nn > 3 ? 2 : 3, w = S0.rows[0].length * k, h = S0.rows.length * k;
+    const x = Math.round(c * cw + cw / 2 - w / 2), y = Math.round(r * ch + ch - h - 12) + (m.state === 'ok' ? Math.round(Math.sin(t * 3 + i)) : 0);
+    if (m.state === 'dead' || m.state === 'gone') { T(m.state === 'dead' ? 'X' : '-', x + w / 2, y + h / 2, '#5b5275', 2, 'center'); }
+    else {
+      if (m.fx > 0) { m.fx -= 1 / 60; if (Math.floor(m.fx * 30) % 2) { px(x - 1, y - 1, w + 2, h + 2, '#ff3030'); } }
+      spr(S0.rows, S0.pal, x, y, k);
+      if (m.state === 'asleep') T('Z', x + w, y - 4 - (Math.floor(t * 2) % 2) * 2, '#6aa8ff');
+      px(x, y + h + 2, w, 3, '#1a1018'); px(x, y + h + 2, Math.max(1, Math.round(w * Math.max(0, m.hp) / m.max)), 3, '#e8303a');
+    }
+    T(String(i + 1), Math.round(c * cw + 3), Math.round(r * ch + 3), '#c8b8ff');
+  });
+}
+function drawDie(t) {
+  const d = die, cx = PIC_W - 22, cy = 6;
+  px(cx - 2, cy - 2, 24, 22, '#0b0912');
+  px(cx, cy, 20, 18, d.done ? (d.ok === true ? '#2a6a3a' : d.ok === false ? '#7a2a2a' : '#5a4a1a') : '#f0e8d8');
+  T(String(d.shown), cx + 10, cy + 4, d.done ? '#fff' : '#1a1018', d.shown >= 100 ? 1 : 2, 'center');
+  T('D' + d.sides, cx + 10, cy + 13, d.done ? '#ddd' : '#5a4a3a', 1, 'center');
+}
+function drawParty() {
+  const W = S.W, nh = G.heroes.length, cw = Math.floor((W - 40) / 4);
+  G.heroes.forEach((h, i) => {
+    const x = 4 + i * (cw + 2), y = 2, act = F && F.actor === h && !busy() && choices.length;
+    px(x, y, cw, 25, act ? '#4a3a7a' : '#1d1830'); px(x, y, cw, 1, act ? '#ffd23f' : CLASSES[h.cls].col);
+    const I = ICONS[h.cls]; spr(I.rows, I.pal, x + 3, y + 4, 2);
+    T(h.name, x + 22, y + 4, h.dead ? '#5b5275' : '#fff');
+    const hp = Math.max(0, h.hp), col = h.dead ? '#5b5275' : h.hp <= 0 ? '#ff3a3a' : h.hp * 3 <= h.max ? '#ffaa3a' : '#7aea7a';
+    T(h.dead ? 'DEAD' : h.hp <= 0 ? 'DOWN ' + h.hp : `HP ${h.hp}/${h.max}`, x + 22, y + 12, col);
+    T('AC' + acOf(h), x + cw - 3, y + 12, '#c8b8ff', 1, 'right');
+    px(x + 22, y + 20, cw - 26, 2, '#0b0912'); px(x + 22, y + 20, Math.round((cw - 26) * hp / h.max), 2, col);
+    if (h.held) T('HELD', x + cw - 3, y + 4, '#c06aff', 1, 'right');
+    else if (h.hidden) T('HID', x + cw - 3, y + 4, '#6ad46a', 1, 'right');
+    UI.list.push({ id: 'hero' + i, x, y, w: cw, h: 25 });
+    if (UI.click === 'hero' + i) { sheet = h; sfx('click'); }
+  });
+  if (UI.button('menu', W - 30, 4, 24, 20, 'II', { size: 1 })) { sfx('click'); menu = true; }
+}
+function drawText(t) {
+  const W = S.W, x = 140, y = 32, w = W - 146, h = 96;
+  px(x, y - 2, w, h + 4, '#0b0912'); px(x + 1, y - 1, w - 2, h + 2, '#16121f');
+  const maxL = Math.floor((h - 4) / 8), from = Math.max(0, lines.length - maxL);
+  for (let i = from; i < lines.length; i++) T(lines[i].txt, x + 5, y + 3 + (i - from) * 8, lines[i].col);
+  if (busy() && Math.floor(t * 3) % 2) T('...', x + w - 6, y + h - 7, '#8a7ad8', 1, 'right');
+}
+function drawInv() {
+  const y = 135;
+  T(`GOLD ${G.gold}`, 6, y, '#ffd23f');
+  T(`FOOD ${G.items.food}`, 70, y, '#c8b8a0');
+  T(`POTIONS ${G.items.potion}`, 140, y, '#7aea7a');
+  T(`HOLY WATER ${G.items.holy}`, 212, y, '#f0e070');
+  if (F) T(`ROUND ${F.round}${F.bless ? '  BLESSED +1' : ''}`, S.W - 6, y, '#c8b8ff', 1, 'right');
+}
+function drawChoices(t) {
+  const W = S.W;
+  if (busy() || !choices.length) {
+    if (cur && cur.k === 'wait') { if (UI.button('goon', W / 2 - 70, 180, 140, 24, 'GO ON >', { size: 1, accent: '#5ad43f' })) { tapped = true; sfx('click'); } }
+    else if (busy()) T('TAP TO SKIP', W / 2, 200, '#5b5275', 1, 'center');
+    return;
+  }
+  T(typeof ask === 'function' ? ask() : ask, W / 2, 146, '#ffd23f', 1, 'center', '#000');
+  const two = choices.length > 3, bw = two ? Math.floor((W - 18) / 2) : W - 12;
+  choices.slice(0, 8).forEach((c, i) => {
+    const col = two ? i % 2 : 0, row = two ? Math.floor(i / 2) : i;
+    const x = 6 + col * (bw + 6), y = 156 + row * (two ? 21 : 26), hh = two ? 18 : 22;
+    if (UI.button('c' + i, x, y, bw, hh, `${i + 1}. ${c.label}`, { size: 1, accent: c.dim ? '#5b5275' : '#8a7ad8' })) choose1(i);
+  });
+}
+function choose1(i) {
+  const c = choices[i]; if (!c || busy()) return;
+  sfx('click');
+  choices = [];
+  c.act();
+}
+
+/* --- 8. SCREENS ---------------------------------------------------------------------- */
+let state = 'title';            // title | setup | rules | play
+let sheet = null, menu = false;
+let party = [];                 // the heroes being made in setup
+function newSetup() {
+  const names = NAMES.slice().sort(() => Math.random() - 0.5);
+  party = CLASS_IDS.map((cls, i) => makeHero(i === 0 ? (PX.cleanName(profile.name) || names[0]) : names[i], cls, rollStats()));
+  party.size = party.size || 4;
+}
+function startGame() {
+  const heroes = party.slice(0, party.size).map(h => JSON.parse(JSON.stringify(h)));
+  G = { heroes, gold: 20 + 15 * heroes.length, items: { potion: 0, holy: 0, food: 2 }, f: {}, room: null };
+  lines = []; Q.length = 0; cur = null; F = null; die = null;
+  state = 'play';
+  go('inn');
+}
+function store2() { if (G && G.room !== 'end' && G.room !== 'tpk') try { localStorage.setItem(GAME_KEY, JSON.stringify(G)); } catch (e) { /* private mode */ } }
+function loadGame() { try { const g = JSON.parse(localStorage.getItem(GAME_KEY)); return g && g.heroes ? g : null; } catch (e) { return null; } }
+function bg(t) {
+  ctx.save(); ctx.scale(S.W / PIC_W, H / PIC_H); PICS.crypt(t); ctx.restore();
+  px(0, 0, S.W, H, 'rgba(10,8,16,0.55)');
+}
+function drawTitle(t) {
+  const W = S.W;
+  bg(t);
+  PX.drawAvatar(ctx, profile.avatar, 8, 8, 2); PX.Lang.raw(() => T(profile.name, 40, 16, '#fff', 2, 'left', '#000'));
+  if (UI.button('sfx', W - 30, 6, 24, 20, save.sfx ? 'SND' : 'OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  PX.drawLogo(ctx, 'PIXEL', W / 2, 36, 3);
+  PX.drawLogo(ctx, 'QUEST', W / 2, 54, 7);
+  T('THE DROWNED BELL: AN ADVENTURE FOR 1 TO 4 HEROES', W / 2, 100, '#ffd23f', 1, 'center', '#000');
+  const bw = 200, bx = Math.round(W / 2 - bw / 2), saved = loadGame();
+  if (UI.button('new', bx, 114, bw, 24, 'NEW ADVENTURE', { size: 1, accent: '#5ad43f' })) { sfx('click'); newSetup(); state = 'setup'; }
+  if (UI.button('cont', bx, 142, bw, 22, 'CONTINUE', { size: 1, accent: '#ffd23f', disabled: !saved })) {
+    sfx('click'); G = saved; lines = []; Q.length = 0; cur = null; F = null; die = null; state = 'play';
+    const room = G.room; G.room = null; go(room);
+  }
+  if (UI.button('rules', bx, 168, bw, 22, 'HOW TO PLAY', { size: 1 })) { sfx('click'); state = 'rules'; }
+  if (UI.button('games', bx, 194, bw, 22, '< ALL GAMES', { size: 1 }) || UI.back) location.href = './';
+  T('V' + VERSION + '  PROOF OF CONCEPT', W - 4, H - 9, '#8a7ad8', 1, 'right');
+  if (save.wins) T('ADVENTURES WON: ' + save.wins, 6, H - 9, '#c8b8ff');
+}
+const RULES_TEXT = [
+  ['THE GAME IS THE DUNGEON MASTER', 'IT TELLS YOU WHERE YOU ARE AND WHAT YOU SEE. THE PARTY TALKS IT OVER AND PICKS WHAT TO DO. PASS THE PHONE AROUND: EVERY HERO TAKES THEIR OWN TURN IN A FIGHT.'],
+  ['THE DICE DECIDE', 'EVERY ROLL IS SHOWN. ABILITY CHECK: D20, ROLL YOUR ABILITY OR LESS. THIEF SKILLS: D100, THE SKILL OR LESS. SAVING THROW: D20, THE NUMBER OR MORE.'],
+  ['FIGHTING', 'TO HIT: D20 + BONUSES MUST REACH THAC0 MINUS THE TARGET\'S ARMOUR CLASS. LOWER AC IS BETTER. INITIATIVE: D10 FOR EACH SIDE, LOW GOES FIRST.'],
+  ['FALLING', 'AT 0 HP A HERO FALLS AND BLEEDS 1 HP A ROUND. A POTION OR A CURE SPELL SAVES THEM. AT -10 THEY ARE DEAD. WIN THE FIGHT AND THE FALLEN WAKE UP.'],
+  ['THE HEROES', 'FIGHTER: TOUGH, BEST ARMOUR. CLERIC: HEALS, BLESSES, TURNS THE UNDEAD. MAGE: FRAGILE, BUT SLEEP AND MAGIC MISSILE. THIEF: LOCKS, TRAPS, SNEAKING, BACKSTABS.'],
+  ['SPELLS', 'SPELLS ARE FEW: REST TO GET THEM BACK. TAP A HERO AT THE TOP TO SEE THEIR SHEET, AND TO HEAL BETWEEN FIGHTS.'],
+];
+function drawRules(t) {
+  const W = S.W;
+  bg(t);
+  T('HOW TO PLAY', W / 2, 8, '#fff', 2, 'center', '#000');
+  let y = 26;
+  for (const [h, txt] of RULES_TEXT) {
+    T(h, 10, y, '#ffd23f'); y += 8;
+    for (const l of wrap(txt, W - 20)) { T(l, 10, y, '#efe9ff'); y += 7; }
+    y += 4;
+  }
+  if (UI.button('back', W / 2 - 50, H - 26, 100, 20, '< BACK', { size: 1 }) || UI.back) { sfx('click'); state = 'title'; }
+}
+const nameIn = document.getElementById('name');
+let naming = -1;
+function editName(i) {
+  naming = i; nameIn.value = party[i].name;
+  nameIn.style.display = 'block'; nameIn.focus(); nameIn.select();
+}
+function endName() {
+  if (naming < 0) return;
+  const v = PX.censor ? PX.censor(PX.cleanName(nameIn.value)) : PX.cleanName(nameIn.value);
+  if (v) party[naming].name = v;
+  naming = -1; nameIn.style.display = 'none'; nameIn.blur();
+}
+nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') endName(); e.stopPropagation(); });
+nameIn.addEventListener('blur', endName);
+function drawSetup(t) {
+  const W = S.W;
+  bg(t);
+  T('MAKE YOUR PARTY', 8, 8, '#fff', 2, 'left', '#000');
+  T('HEROES:', W - 150, 12, '#c8b8ff');
+  for (let k = 1; k <= 4; k++) if (UI.button('n' + k, W - 112 + (k - 1) * 26, 6, 22, 18, String(k), { size: 1, on: party.size === k, accent: '#5ad43f' })) { sfx('click'); party.size = k; }
+  const rh = 44;
+  for (let i = 0; i < party.size; i++) {
+    const h = party[i], y = 30 + i * rh;
+    px(4, y - 2, W - 8, rh - 4, '#1d1830'); px(4, y - 2, 2, rh - 4, CLASSES[h.cls].col);
+    const I = ICONS[h.cls]; spr(I.rows, I.pal, 10, y + 2, 2);
+    if (UI.button('nm' + i, 30, y, 76, 16, h.name, { size: 1 })) { sfx('click'); editName(i); }
+    if (naming === i) S.placeInput(nameIn, 30, y, 76, 16);
+    CLASS_IDS.forEach((c, j) => {
+      if (UI.button('cl' + i + c, 110 + j * 54, y, 50, 16, CLASSES[c].name, { size: 1, on: h.cls === c, accent: CLASSES[c].col })) { sfx('click'); setClass(h, c); }
+    });
+    if (UI.button('rr' + i, W - 62, y, 54, 16, 'REROLL', { size: 1, accent: '#ffd23f' })) { sfx('dice'); h.vals = rollStats(); setClass(h, h.cls); }
+    const st = STATS.map(k => `${STAT_NAME[k]} ${h.st[k]}`).join('  ');
+    T(st, 30, y + 22, '#efe9ff');
+    T(`HP ${h.max}  AC ${acOf(h)}  ${h.weapon.name}`, 30, y + 30, '#c8b8ff');
+  }
+  if (naming < 0) nameIn.style.display = 'none';
+  T(['1 HERO: VERY HARD', '2 HEROES: HARD', '3 HEROES: FAIR', '4 HEROES: CLASSIC'][party.size - 1], (W - 70) / 2, H - 19, '#8a7ad8', 1, 'center');
+  if (UI.button('back', 6, H - 26, 80, 20, '< BACK', { size: 1 }) || UI.back) { sfx('click'); endName(); state = 'title'; }
+  if (UI.button('go', W - 156, H - 26, 150, 20, 'START THE ADVENTURE', { size: 1, accent: '#5ad43f' })) { sfx('click'); endName(); startGame(); }
+}
+function drawPlay(t) {
+  const W = S.W;
+  px(0, 0, W, H, '#0d0b13');
+  drawParty();
+  drawPic(F ? (ROOMS[G.room] && ROOMS[G.room].pic) || 'crypt' : (ROOMS[G.room] || {}).pic, t);
+  drawText(t);
+  drawInv();
+  drawChoices(t);
+  if (sheet) drawSheet(t);
+  if (menu) drawMenu(t);
+}
+function panel(w, h) {
+  const x = Math.round(S.W / 2 - w / 2), y = Math.round(H / 2 - h / 2);
+  px(0, 0, S.W, H, 'rgba(8,6,12,0.7)');
+  px(x - 2, y - 2, w + 4, h + 4, '#0b0912'); px(x, y, w, h, '#1d1830'); px(x, y, w, 2, '#8a7ad8');
+  return { x, y };
+}
+function drawSheet(t) {
+  const h = sheet, C = CLASSES[h.cls], w = Math.min(S.W - 16, 420), p = panel(w, 222), x = p.x + 8;
+  let y = p.y + 8;
+  const I = ICONS[h.cls]; spr(I.rows, I.pal, x, y, 2);
+  T(`${h.name}, LEVEL 1 ${C.name}`, x + 22, y + 1, '#fff', 1);
+  T(`XP ${h.xp} / ${C.next} FOR LEVEL 2`, x + 22, y + 9, '#ffd23f');
+  y += 22;
+  STATS.forEach((k, i) => {
+    const v = h.st[k];
+    let note = '';
+    if (k === 'str') note = `HIT ${strHit(v) >= 0 ? '+' : ''}${strHit(v)} DMG ${strDmg(v) >= 0 ? '+' : ''}${strDmg(v)}`;
+    if (k === 'dex') note = `AC ${dexAC(v) > 0 ? '+' : ''}${dexAC(v)} THROW ${dexMissile(v) >= 0 ? '+' : ''}${dexMissile(v)}`;
+    if (k === 'con') note = `HP ${conHP(v, h.cls === 'fighter') >= 0 ? '+' : ''}${conHP(v, h.cls === 'fighter')}`;
+    if (k === 'wis' && h.cls === 'cleric') note = v >= 13 ? '+1 SPELL' : '';
+    T(`${STAT_NAME[k]} ${v}`, x, y + i * 8, k === C.prime ? '#ffd23f' : '#efe9ff');
+    T(note, x + 44, y + i * 8, '#8a7ad8');
+  });
+  const x2 = x + Math.floor(w / 2) - 4;
+  T(`HP ${h.hp} / ${h.max}`, x2, y, '#7aea7a');
+  T(`AC ${acOf(h)} (${C.armourName})`, x2, y + 8, '#efe9ff');
+  T(`THAC0 ${thac0Of(h)}`, x2, y + 16, '#efe9ff');
+  T(`${h.weapon.name} ${h.weapon.n}D${h.weapon.s}${h.weapon.b ? '+' + h.weapon.b : ''}${h.weapon.hit ? ', +' + h.weapon.hit + ' HIT' : ''}`, x2, y + 24, '#efe9ff');
+  if (h.spellMax) T(`SPELLS ${h.spells} / ${h.spellMax} TODAY`, x2, y + 32, '#6aa8ff');
+  y += 52;
+  T('SAVING THROWS (D20, THIS OR MORE)', x, y, '#c8b8ff'); y += 8;
+  T(SAVE_NAMES.map((s, i) => `${s} ${C.saves[i]}`).join('  '), x, y, '#efe9ff'); y += 12;
+  if (h.cls === 'thief') { T('THIEF SKILLS (D100, THIS OR LESS)', x, y, '#c8b8ff'); y += 8; T(SKILL_NAMES.map((s, k) => `${s} ${thiefSkill(h, k)}`).join('  '), x, y, '#efe9ff'); y += 12; }
+  if (C.spells) { T('SPELLS', x, y, '#c8b8ff'); y += 8; for (const id of C.spells) { T(`${SPELLS[id].name}: ${SPELLS[id].info}`, x, y, '#efe9ff'); y += 8; } }
+  const by = p.y + 222 - 26, calm = !F && !busy() && G.room !== 'end' && G.room !== 'tpk';
+  let bx = p.x + 8;
+  if (calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => !x.dead && x.hp < x.max)) {
+    if (UI.button('cure', bx, by, 120, 20, 'CAST CURE', { size: 1, accent: '#6aa8ff' })) {
+      const who = G.heroes.filter(x => !x.dead && x.hp < x.max).sort((a, b) => a.hp / a.max - b.hp / b.max)[0];
+      h.spells--; sfx('spell'); cure(h, who); then(stay); sheet = null;
+    }
+    bx += 126;
+  }
+  if (calm && G.items.potion > 0 && !h.dead && h.hp < h.max) {
+    if (UI.button('drink', bx, by, 120, 20, 'DRINK A POTION', { size: 1, accent: '#7aea7a' })) {
+      G.items.potion--; const d = dice(2, 4, 2), was = h.hp; h.hp = Math.min(h.max, h.hp + d); sfx('ok');
+      say(`${h.name} DRINKS A HEALING POTION: +${h.hp - was} HP.`, '#7aea7a'); then(stay); sheet = null;
+    }
+  }
+  if (UI.button('close', p.x + w - 88, by, 80, 20, 'CLOSE', { size: 1 }) || UI.back) { sfx('click'); sheet = null; }
+}
+function drawMenu(t) {
+  const p = panel(220, 120), cx = Math.round(S.W / 2);
+  T('PAUSED', cx, p.y + 10, '#fff', 2, 'center');
+  if (UI.button('resume', p.x + 20, p.y + 32, 180, 22, 'CONTINUE', { size: 1, accent: '#5ad43f' }) || UI.back) { sfx('click'); menu = false; }
+  if (UI.button('msfx', p.x + 20, p.y + 58, 180, 22, save.sfx ? 'SOUND: ON' : 'SOUND: OFF', { size: 1, on: save.sfx })) { save.sfx = !save.sfx; store(); }
+  if (UI.button('quit', p.x + 20, p.y + 84, 180, 22, 'SAVE AND QUIT', { size: 1 })) {
+    sfx('click'); menu = false; state = 'title'; F = null; Q.length = 0; cur = null;
+  }
+}
+
+/* --- 9. SOUND --------------------------------------------------------------------------- */
+function sfx(k) {
+  if (!save.sfx) return;
+  const s = PX.Sound;
+  if (k === 'click') s.tone(660, 0.05, { vol: 0.05 });
+  else if (k === 'dice') { s.noise(0.08, { vol: 0.05 }); s.noise(0.06, { vol: 0.04, delay: 0.1 }); }
+  else if (k === 'ok') s.tone([523, 784], 0.12, { vol: 0.06 });
+  else if (k === 'bad') s.tone([300, 200], 0.15, { vol: 0.06 });
+  else if (k === 'hit') s.tone([180, 90], 0.12, { vol: 0.1, type: 'sawtooth' });
+  else if (k === 'ouch') s.tone([140, 70], 0.15, { vol: 0.1, type: 'sawtooth' });
+  else if (k === 'spell') s.tone([400, 1200, 800], 0.3, { vol: 0.06, type: 'triangle' });
+  else if (k === 'coin') { s.tone(988, 0.06, { vol: 0.06 }); s.tone(1319, 0.1, { vol: 0.06, delay: 0.07 }); }
+  else if (k === 'fight') s.tone([220, 330, 220], 0.3, { vol: 0.08, type: 'sawtooth' });
+  else if (k === 'win') [523, 659, 784, 1047].forEach((fq, i) => s.tone(fq, 0.15, { vol: 0.06, delay: i * 0.1 }));
+  else if (k === 'lose') [392, 330, 262, 196].forEach((fq, i) => s.tone(fq, 0.3, { vol: 0.07, delay: i * 0.25, type: 'triangle' }));
+}
+
+/* --- 10. INPUT: tap a button; tap anywhere else to skip the text. Keys: 1-8 pick, Space/Enter skip, Esc menu --- */
+UI.onDown = () => { PX.Sound.unlock(); if (state === 'play' && busy() && UI.downId === null && !sheet && !menu) { if (cur && cur.k === 'wait') tapped = true; else skip = true; } };
+window.addEventListener('keydown', e => {
+  PX.Sound.unlock();
+  if (naming >= 0) return;
+  if (state === 'play' && !sheet && !menu) {
+    if (/^Digit[1-8]$/.test(e.code)) { choose1(+e.code.slice(5) - 1); return; }
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (cur && cur.k === 'wait') tapped = true; else if (busy()) skip = true; return; }
+  }
+  if (e.code === 'Escape') { if (state === 'play' && !sheet && !menu) menu = true; else UI.back = true; }
+});
+
+/* --- 11. MAIN LOOP ---------------------------------------------------------------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+  UI.begin();
+  if (state === 'play' && G) {
+    if (!menu && !sheet) pump(dt);
+    if (die && !busy()) die.t += dt;
+    drawPlay(t);
+  } else if (state === 'setup') drawSetup(t);
+  else if (state === 'rules') drawRules(t);
+  else drawTitle(t);
+  UI.end();
+  S.blit('#0d0b13');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+</script>
+</body>
+</html>
