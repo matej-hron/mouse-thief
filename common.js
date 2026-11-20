@@ -618,7 +618,8 @@ window.PX = (() => {
     // voice: VOICE CHAT in the online games (PX.Voice), on unless turned off in SETTINGS
     // lang: 'en' or 'cs' (Lang: SETTINGS → LANGUAGE)
     // chatPop: CHAT POP-UPS, a friend's chat message pops up in the games (PX.ChatPop), on unless turned off
-    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false, chatPop: d.chatPop !== false, lang: Lang.code() }; },
+    // experimental: SHOW EXPERIMENTAL games in the arcade's list (off unless turned on)
+    load() { let d = {}; try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { /* new player */ } return { volume: VOLUMES[d.volume] ? d.volume | 0 : 3, voice: d.voice !== false, chatPop: d.chatPop !== false, experimental: d.experimental === true, lang: Lang.code() }; },
     save(d) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(d)); } catch (e) { /* private mode */ } Lang.changed(); Sound.apply(); },
     volume() { return VOLUMES[this.load().volume][1]; },
     VOLUMES,

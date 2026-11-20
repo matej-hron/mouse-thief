@@ -17,7 +17,9 @@ In every game the pause button is two thick bars and the sound button a speaker 
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
 MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat),
 **CHAT POP-UPS** on or off (see Chat in the games), and the **LANGUAGE** (top right: ENGLISH or ČEŠTINA, see Languages).
-At its bottom: who made the games (with love, by a son and his dad) and the arcade's version (PIXEL GAMES V2.73.1).
+**EXPERIMENTAL: ON / OFF** (off by default) adds the unfinished games to the list, with a BETA badge (now: PIXEL QUEST,
+`adad.html`). At its bottom: who made the games (with love, by a son and his dad); the arcade's version (PIXEL GAMES
+V2.74.0) is under the title.
 Versions are written the same way everywhere: `V` and the number, at the bottom right of each game's title screen.
 
 **Weird History Toons** (`shorts/`, https://pixelgames.online/shorts/): short cartoons about strange true stories, each
@@ -1401,7 +1403,7 @@ PRIVACY AND POLICY in the arcade.
 
 ## Pixel Quest (experiment, hidden)
 
-`adad.html`, at https://pixelgames.online/adad. Not in the arcade's menu, not in the service worker's cache, and
+`adad.html`, at https://pixelgames.online/adad. In the arcade's list only with SETTINGS → EXPERIMENTAL: ON (a BETA badge); not in the service worker's cache, and
 `noindex`: a proof of concept for an old-school tabletop-style adventure where the game is the dungeon master.
 Version 0.3 is **for children, in 3D, in Czech and English** (the arcade's SETTINGS → LANGUAGE, or the switch on the title screen), in a fantasy world (fantasy names for people and places). Every text is written for each language, not translated word for word: `L('česky', 'English')` in the code; the riddle on the bronze door is a different riddle in each language (Czech: the bell's heart, srdce; English: its tongue and mouth), with the same answer (three.js from `vendor/`; everything is built in code, no image
 or model files).
