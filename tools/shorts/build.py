@@ -1,12 +1,29 @@
 #!/usr/bin/env python3
 """Builds shorts/ (the Weird History Toons gallery: shorts/index.html and one page per video) from SHORTS below.
 usage: python3 tools/shorts/build.py   (run from the repo root; the videos and posters are in shorts/media/<slug>.mp4/.jpg)
-Add a video: put <slug>.mp4 (720x1280, H.264, +faststart) and <slug>.jpg (poster) in shorts/media/, add an entry, run it."""
+Add a video: put <slug>.mp4 (1080x1920, H.264, +faststart) and <slug>.jpg (poster) in shorts/media/, add an entry, run it."""
 import html, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "shorts"
 
 SHORTS = [
+    {
+        "slug": "pea-escape", "title": "The Prisoner Who Escaped With Peas", "year": "Legend", "place": "Somewhere, sometime",
+        "teaser": "Dry peas, a crack in the wall, a cup of water, and guards who laughed. A legend, and the real science behind it.",
+        "body": [
+            ("p", "This one is a legend. The story goes that a prisoner saved the dry peas from his dinner every day, pushed them into a crack in his cell wall and kept them wet with his drinking water. The guards thought he had lost his mind. But the peas swelled, the crack grew, and one morning the wall gave way and he walked out."),
+            ("p", "We could not find any record of a real prisoner who did this: no name, no prison, no date. It is a good story, not a documented escape. Peas also do not multiply into thousands when they get wet, they only swell."),
+            ("h", "What is true"),
+            ("p", "Swelling seeds really are strong. Dry seeds soak up water and expand, and if they are packed into a closed space they push outwards with great force. Anatomists used this for centuries to take skulls apart without breaking them: they filled a skull with dried peas, beans or grain, added water, and let the swelling seeds slowly push the bones apart along their joints. A 2014 study even compared which seeds work fastest and found dried chickpeas beat mung beans."),
+            ("p", "A real escape that is close to the legend was reported in newspapers in 1902: a prisoner in Iquique, Chile, where buildings were made of sun-dried clay, saved his drinking water every day, used it to soften a spot in his cell wall, dug through with a splinter of wood and escaped. No peas, but the same patient idea."),
+            ("p", "So: wet peas can split things apart. Whether anyone ever used them to break out of prison, nobody can prove."),
+        ],
+        "sources": [
+            ("Descartes and \"skull blasting\" with peas and seeds (IFLScience)", "https://www.iflscience.com/ren-descartes-was-a-victim-of-skull-blasting-and-the-skull-in-paris-is-a-fraud-researchers-suggest-65602"),
+            ("Escapes that prisoners have made, Lyttelton Times, 15 December 1902 (Papers Past)", "https://paperspast.natlib.govt.nz/newspapers/LT19021215.2.7"),
+            ("Prison escape (Wikipedia)", "https://en.wikipedia.org/wiki/Prison_escape"),
+        ],
+    },
     {
         "slug": "pink-prison", "title": "The Prison That Turned Pink", "year": "1979", "place": "Seattle, USA",
         "teaser": "A navy jail painted a cell bubblegum pink to calm angry prisoners. Did it work?",
