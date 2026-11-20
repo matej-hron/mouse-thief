@@ -104,7 +104,7 @@
   .roll b { flex: none; min-width: 24px; padding: 1px 4px; text-align: center; border-radius: 3px; background: #f0e8d8; color: #1a1018; font-weight: 800; }
   .roll.ok { color: var(--good); border-color: #4ac24a; } .roll.no { color: var(--bad); border-color: #d84a3a; } .roll.info { color: #ffe07a; border-color: #c8a030; }
   #inv { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 13.5px; color: var(--muted); padding: 0 4px; text-shadow: 0 1px 3px #000; }
-  #inv .gold { color: var(--gold); } #inv .good { color: var(--good); } #inv .holy { color: #f5e68a; }
+  #inv .gold { color: var(--gold); } #inv .clock { color: #fff; font-weight: 700; } #inv .bad { color: var(--bad); font-weight: 800; } #inv .good { color: var(--good); } #inv .holy { color: #f5e68a; }
   #ask { text-align: center; font-weight: 800; color: var(--gold); font-size: 14.5px; letter-spacing: .03em; min-height: 18px; text-shadow: 0 1px 4px #000; }
   #choices { display: grid; gap: 6px; grid-template-columns: 1fr; }
   #choices.two { grid-template-columns: 1fr 1fr; }
@@ -289,7 +289,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -376,7 +376,7 @@ function setClass(h, cls) {
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
 const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0);
 const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
-const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0);
+const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0) - (G && G.hungry ? 1 : 0);
 const dmgOf = h => strDmg(h.st.str) + (h.sharp || 0);
 const up = h => h.hp > 0 && !h.dead;                        // can act (if not held)
 const hardcore = () => !!G && G.mode === 'hard';            // HARDCORE: heroes bleed at 0 HP and die at -10, for good
@@ -518,7 +518,7 @@ const play = (fn, dur) => Q.push({ k: 'anim', fn, dur });   // start something i
 function rollFx(sides, value, txt, ok, fast) { Q.push({ k: 'roll', sides, value, txt, ok, fast }); }
 // a choice somebody has to try (a check): only shown while some hero can still try it
 function setChoices(q, list) { ask = q; choicesVer++; choices = list.filter(c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0))); }
-const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, fn, stay) });
+const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, h => { pass(TIME_COST.search); fn(h); }, stay) });
 
 const storyEl = $('story'), storyIn = $('storyIn');
 const COLS = { '#7aea7a': 'good', '#ff7a6a': 'bad', '#ff3a3a': 'bad', '#ffaa8a': 'hurt', '#ffd23f': 'gold', '#c8b8ff': 'muted', '#6aa8ff': 'magic', '#f0e070': 'holy', '#c06aff': 'evil' };
@@ -639,7 +639,45 @@ function giveXP(n, why) {
 const f = () => G.f;
 const n = () => G.heroes.filter(h => !h.dead).length || 1;
 const stay = () => { store2(); showChoices(); };
+/* TIME: the campaign has a clock (G.time, minutes since day 1, 00:00). Walking between places, searching, talking,
+   fighting and resting take time (TIME_COST). Every dawn (06:00) each living hero eats a day's ration; without food
+   they go hungry: no healing when resting, -1 to hit, until they eat. In the Drowned Bell, Mila drowns at 03:00. */
+const TIME_COST = { walk: 10, hill: 45, search: 10, talk: 15, chat: 20, rest: 8 * 60, inn: 9 * 60 };
+const clockOf = t => { const d = Math.floor(t / 1440) + 1, m = ((t % 1440) + 1440) % 1440; return { day: d, h: Math.floor(m / 60), m: m % 60 }; };
+const clockTxt = (t = G.time || 0) => { const c = clockOf(t); return `${c.h >= 6 && c.h < 20 ? '☀' : '🌙'} ${L('den', 'day')} ${c.day}, ${c.h}:${String(c.m).padStart(2, '0')}`; };
+function pass(min) {
+  if (!G || !min) return;
+  const before = G.time || 0; G.time = before + min;
+  // every dawn crossed: breakfast for the living (a day's ration each)
+  for (let dawn = Math.ceil((before - 360 + 1) / 1440) * 1440 + 360; dawn <= G.time; dawn += 1440) eatRations();
+  // the Drowned Bell: after the deadline Mila is lost
+  if (G.mission === 'bell' && f().deadline && !f().won && G.time >= f().deadline && !(f().late >= 2)) f().late = 2;
+}
+function eatRations() {
+  const eat = G.heroes.filter(h => !h.dead);
+  if (G.items.food >= eat.length) { G.items.food -= eat.length; if (G.hungry) say(L('Konečně se najíte. Hlad je pryč.', 'At last you eat. The hunger is gone.'), '#7aea7a'); G.hungry = false; }
+  else {
+    G.items.food = 0; G.hungry = true;
+    say(L('Svítá a družině došlo jídlo. Hlad: odpočinek neléčí a útoky jsou o 1 horší, dokud se nenajíte.', 'Dawn, and the party is out of food. Hungry: resting doesn\'t heal and attacks are 1 worse until you eat.'), '#ff7a6a');
+  }
+}
+// a rest: in the inn (a bed, 1 gold a hero: all spells, half the HP), or in the open (all spells, 1d3 HP); hungry heroes don't heal
+function rest(inn) {
+  pass(inn ? TIME_COST.inn : TIME_COST.rest);
+  for (const h of G.heroes) if (!h.dead) {
+    h.spells = h.spellMax;
+    if (G.hungry) continue;
+    const got = inn ? Math.ceil(h.max / 2) : rnd(3);
+    h.hp = Math.min(h.max, Math.max(h.hp, 0) + got); h.shp = h.hp;
+  }
+  say(G.hungry ? L('Spíte o hladu. Kouzla se vrátila, ale rány se nehojí.', 'You sleep hungry. The spells come back, but the wounds don\'t heal.')
+               : inn ? L('Vyspíte se v teplé posteli. Kouzla se vrátila a rány se zacelují.', 'You sleep in a warm bed. The spells come back and the wounds close.')
+                     : L('Odpočinete si. Kouzla se vrátila a rány se trochu zacelily.', 'You rest. The spells come back and the wounds close a little.'), '#7aea7a');
+  partyKey = '';
+}
+const travelMin = (a, b) => ((a === 'inn' || a === 'town') && b === 'hill') || (a === 'hill' && (b === 'inn' || b === 'town')) ? TIME_COST.hill : TIME_COST.walk;
 function go(id) {
+  if (G.room && G.room !== id) pass(travelMin(G.room, id));
   // a new scene: first let the party read what just happened (tap to go on), then fade to black, then a clean page
   if (G.room !== id && hasText()) Q.push({ k: 'wait' });
   if (G.room !== id) { play(() => fade(true), 0.5); then(() => { clearText(); enter(id); }); return; }
@@ -701,7 +739,7 @@ function innChat() {
     ...['elva', 'hollis', 'brannock', 'garth', 'oren'].map(id => ({ label: TALK[id].name, ic: TALK[id].ic, note: TALK[id].tag, act: () =>
       setChoices(L(`Kdo si přisedne k: ${TALK[id].name}?`, `Who sits down with ${TALK[id].name}?`), [
         ...G.heroes.filter(up).map(h => ({ label: h.name, act: () => {
-          G.gold -= 2; sfx('coin');
+          G.gold -= 2; sfx('coin'); pass(TIME_COST.chat);
           startTalk(id, h, (bonus, t) => { innLearned(id, t); then(stay); });
         } })),
         { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: stay },
@@ -767,6 +805,9 @@ const ROOMS = {
     choices: () => [
       { label: L('Hostinec: napít se a pokecat', 'The inn: have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
       { label: L('Obchod babky Sedge a kovář', 'Granny Sedge\'s shop and the smith'), ic: '🧪', act: () => shopMenu() },
+      { label: L('Přespat v hostinci', 'Sleep at the inn'), ic: '🛏', note: L(`${G.heroes.filter(h => !h.dead).length} zl.`, `${G.heroes.filter(h => !h.dead).length} gold`), if: () => G.gold >= G.heroes.filter(h => !h.dead).length, act: () => {
+        G.gold -= G.heroes.filter(h => !h.dead).length; rest(true); then(stay);
+      } },
       { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => { G.room = null; store2(); setState('map'); } },
     ],
   },
@@ -779,8 +820,8 @@ const ROOMS = {
           'Last night Mila, the miller\'s daughter, went up to look. She didn\'t come back. And she isn\'t the first: in spring the shepherd boy Jory vanished, in summer a travelling tinker. They searched the river and found nothing.\n' +
           'Reeve Hollis offers 200 gold to whoever brings Mila home. "Tonight," he says. "Tomorrow may be too late."'),
     again: () => f().late >= 2 ? L('Oheň v krbu dohořívá. Mlynář sedí u stolu a nemluví. Nahoře na kopci zvoní zvon, a v jeho hlase je teď něco nového.', 'The fire is burning low. The miller sits at a table and says nothing. Up on the hill the bell rings, and there is something new in its voice.')
-                                : L('Oheň v krbu praská. Hollis se na vás podívá: „Každá hodina se počítá.“ Nahoře na kopci zase zvoní zvon.', 'The fire crackles. Hollis looks at you: "Every hour counts." Up on the hill, the bell rings again.'),
-    enter: first => { if (!first && G.prev && !f().won) f().late = (f().late || 0) + 1; },
+                                : L(`Oheň v krbu praská. Je ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis se na vás podívá: „Každá hodina se počítá. Do svítání to nevydrží.“ Nahoře na kopci zase zvoní zvon.`, `The fire crackles. It is ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis looks at you: "Every hour counts. She won't last till dawn." Up on the hill, the bell rings again.`),
+
     choices: () => [
       { label: L('Vyptat se na klepy', 'Ask around for gossip'), ic: '💬', if: () => !f().rumour, ...pickWho(L('Kdo se vyptává? (hod na Charisma)', 'Who asks around? (Charisma roll)'), h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
@@ -814,6 +855,13 @@ const ROOMS = {
         } else say(L(`${h.name} najde jen mokrou trávu a mlhu.`, `${h.name} finds only wet grass and mist.`));
         then(stay);
       }) },
+      { label: L('Odpočinout si u hřbitovní zdi (8 h)', 'Rest by the churchyard wall (8 h)'), ic: '💤', if: () => !f().rested, act: () => {
+        f().rested = 1;
+        const r = rnd(6);
+        rollFx(6, r, L(`Noční hlídka: padlo ${r} (1 = něco přijde)`, `Night watch: rolled ${r} (1 = something comes)`), r > 1);
+        if (r === 1) { say(L('Uprostřed noci zachrastí kosti. Z hrobů vylézají kostlivci!', 'In the middle of the night bones rattle. Skeletons climb out of the graves!'), '#ff7a6a'); pass(120); then(() => fight({ foes: [['skel', 2]], surprise: 'foes', win: () => { rest(false); then(stay); }, flee: () => go('inn') })); return; }
+        rest(false); then(stay);
+      } },
       { label: L('Zpátky do vesnice', 'Back to the village'), ic: '‹', dim: true, act: () => go('inn') },
     ],
   },
@@ -1108,6 +1156,7 @@ function winFight() {
     if (h.hp <= 0 && !h.dead) { say(L(`${h.name} se zase zvedá. Pořádně potlučen${gv(h, 'ý', 'á')}, ale v pořádku. (1 život)`, `${h.name} gets up again, badly bruised but all right. (1 HP)`)); heal(h, 1); }
     h.held = 0; h.hidden = false;
   }
+  pass(Math.max(1, F.round));
   const win = F.def.win;
   play(() => { cheer(); TRACKS.win.then = roomMusic(); Music.play('win'); }, 1.0);
   then(() => { endBattle(); F = null; win(); });
@@ -3020,7 +3069,7 @@ $('setup').addEventListener('input', e => { if (e.target.dataset.title) party.ti
 $('setup').addEventListener('change', e => { const i = e.target.dataset.name; if (i !== undefined) { const v = cleanHeroName(e.target.value); if (v) party[+i].name = nice(v); renderSetup(); } });
 function startGame() {
   const heroes = party.slice(0, party.size).map(h => JSON.parse(JSON.stringify(h)));
-  G = { mode: party.mode === 'hard' ? 'hard' : 'story', heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: 2 }, arts: {}, clues: {}, allies: {}, done: {}, mission: null, f: {}, used: {}, room: null };
+  G = { mode: party.mode === 'hard' ? 'hard' : 'story', heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: heroes.length * 2 }, time: 18 * 60, arts: {}, clues: {}, allies: {}, done: {}, mission: null, f: {}, used: {}, room: null };
   if (!TESTING) { G.slot = newSlotId(); writeSlot(G, G.slot, { name: (party.title || '').trim() || L(`Družina: ${heroes[0].name}`, `${heroes[0].name}'s party`), kind: 'campaign' }); }
   setState('map');
 }
@@ -3171,10 +3220,10 @@ partyEl.addEventListener('click', e => {
   sfx('click'); openSheet(h);
 });
 function renderInv() {
-  const key = [G.gold, G.items.food, G.items.potion, G.items.holy, F && F.round, F && F.bless].join();
+  const key = [G.gold, G.items.food, G.items.potion, G.items.holy, F && F.round, F && F.bless, G.time, G.hungry].join();
   if (key === invKey) return;
   invKey = key;
-  invEl.innerHTML = `<span class="gold">${G.gold} ${L('zl.', 'gold')}</span><span>🧀 ${L('jídlo', 'food')} ${G.items.food}</span><span class="good">🧪 ${L('lektvary', 'potions')} ${G.items.potion}</span><span class="holy">💧 ${L('svěcená voda', 'holy water')} ${G.items.holy}</span>` +
+  invEl.innerHTML = `<span class="clock">${clockTxt()}</span>${G.hungry ? `<span class="bad">${L('hlad!', 'hungry!')}</span>` : ''}<span class="gold">${G.gold} ${L('zl.', 'gold')}</span><span>🧀 ${L('jídlo', 'food')} ${G.items.food}</span><span class="good">🧪 ${L('lektvary', 'potions')} ${G.items.potion}</span><span class="holy">💧 ${L('svěcená voda', 'holy water')} ${G.items.holy}</span>` +
     (F ? `<span>${L('kolo', 'round')} ${F.round}${F.bless ? L(' · požehnání +1', ' · blessed +1') : ''}</span>` : '');
 }
 const btnHTML = (c, i) => `<button class="ch${c.dim ? ' dim' : ''}" data-i="${i}"><kbd>${i + 1}</kbd>${c.ic ? `<span class="ic">${c.ic}</span>` : ''}<span>${esc(typeof c.label === 'function' ? c.label() : c.label)}</span>${c.note ? `<small>${esc(typeof c.note === 'function' ? c.note() : c.note)}</small>` : ''}</button>`;
@@ -3363,7 +3412,7 @@ function renderMap() {
   const el = $('map');
   el.innerHTML = `<div class="mtop">
       <div class="mparty">${G.heroes.map((h, i) => `<button class="mh${h.dead ? ' dead' : ''}" data-${h.dead ? 'recruit' : 'hero'}="${i}" style="--c:${CLASSES[h.cls].col}"><img class="pt" src="${portrait(h)}" alt=""><span><b>${esc(h.name)}</b><i>${h.dead ? L('✝ pohřbít a najmout nového', '✝ bury, hire a new one') : `${L('úr.', 'lv')} ${lvl(h)} · ❤ ${h.max}`}</i></span></button>`).join('')}</div>
-      <div class="mbtns"><span class="mgold">${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>${!hardcore() ? `<button class="ch" data-m="saveas">💾</button>` : ''}<button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
+      <div class="mbtns"><span class="mgold">${clockTxt()} · ${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>${!hardcore() ? `<button class="ch" data-m="saveas">💾</button>` : ''}<button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
     </div>
     <div class="mtitle">${L('Království Aldmere', 'The Kingdom of Aldmere')}<small>${L('táhni prstem · dvěma prsty přibliž', 'drag to move · pinch to zoom')}</small></div>
     <div id="mlabels"></div>`;
@@ -3480,8 +3529,14 @@ function openMissionMap() {
 }
 // starting and ending a mission: the party rests in between (full HP and spells)
 function startMission(M) {
-  for (const h of G.heroes) { if (h.dead) continue; h.hp = h.shp = h.max; h.spells = h.spellMax; h.tried = {}; h.held = 0; h.hidden = false; }
+  for (const h of G.heroes) { if (h.dead) continue; h.tried = {}; h.held = 0; h.hidden = false; }
   G.mission = M.id; G.f = {}; G.used = {};
+  G.time = G.time || 18 * 60;
+  if (M.id === 'bell') {
+    // the bell rings at night: the party sets off in the evening; Mila drowns at 03:00
+    const c = clockOf(G.time); if (c.h < 18) pass((18 - c.h) * 60 - c.m);
+    f().deadline = (clockOf(G.time).day) * 1440 + 180;
+  }
   startPlay(M.start);
 }
 // leaving a mission half way: what the heroes found and learned stays (gold, experience, artefacts, clues); the
@@ -3494,7 +3549,6 @@ function leaveMission() {
 }
 function endMission() {
   G.mission = null; G.f = {}; G.room = null;
-  for (const h of G.heroes) if (!h.dead) { h.hp = h.shp = h.max; h.spells = h.spellMax; }
   store2();
   setState('map');
 }
