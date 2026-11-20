@@ -308,7 +308,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.14.0';
+const VERSION = '0.14.1';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -4937,7 +4937,7 @@ function talkLine(from, text, intro) {
 function talkState() {
   const el = $('sheet'), t = talk, said = t.msgs.filter(m => m.from === 'player').length;
   el.querySelector('.tmood').textContent = `${L('nálada', 'mood')}: ${MOOD[t.mood]}` + (said && !t.T.chat ? ` · ${L('bonus k hodu', 'bonus to the roll')}: ${talkBonus(t) >= 0 ? '+' : ''}${talkBonus(t)}` : '');
-  const can = !t.over && !t.waiting && said < TALK_TURNS && !t.failed;
+  const can = !t.over && !t.waiting && said < TALK_TURNS && t.failed !== 'limit';
   el.querySelector('.tin').disabled = !can; el.querySelector('.tsend').disabled = !can;
   el.querySelector('.tend').disabled = t.waiting || (!said && !t.failed && !t.T.chat);
   el.querySelector('.tend').textContent = t.T.chat ? L('👋 Rozloučit se', '👋 Say goodbye') : t.failed ? L('🎲 Hodit kostkou postaru', '🎲 Roll the old way') : `🎲 ${L('Rozhodnout kostkou', 'Let the dice decide')}`;
@@ -4951,23 +4951,29 @@ async function talkSend() {
   t.msgs.push({ from: 'player', text }); talkLine('player', text);
   t.waiting = true; talkState(); sfx('click');
   let data = null, status = 0;
-  try {
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
-    const res = await fetch(PX.Api.base + '/v1/npc', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal, mode: 'cors',
-      body: JSON.stringify({ npc: t.id, lang: LANG, hero: { name: t.h.name.slice(0, 20), cls: t.h.cls, g: t.h.g }, facts: t.T.facts(), messages: t.msgs }) });
-    clearTimeout(timer); status = res.status; data = await res.json().catch(() => null);
-  } catch (e) { status = 0; }
+  // two tries: a phone's connection often drops for a moment (a 429 or the server's own error is not tried again)
+  for (let attempt = 0; attempt < 2 && !(data && (data.say || data.error)); attempt++) {
+    try {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+      const res = await fetch(PX.Api.base + '/v1/npc', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal, mode: 'cors',
+        body: JSON.stringify({ npc: t.id, lang: LANG, hero: { name: t.h.name.slice(0, 20), cls: t.h.cls, g: t.h.g }, facts: t.T.facts(), messages: t.msgs }) });
+      clearTimeout(timer); status = res.status; data = await res.json().catch(() => null);
+    } catch (e) { status = 0; data = null; }
+    if (talk !== t || status === 429) break;
+  }
   if (talk !== t) return;
   t.waiting = false;
   if (!data || !data.say) {
     t.msgs.pop();
-    t.failed = true;
+    t.failed = status === 429 ? 'limit' : 'net';
+    if (status !== 429 && !input.value) input.value = text;            // your words wait in the box: just send them again
     if (data && data.error) talkLine('npc', `[${data.error}${data.detail ? ': ' + String(data.detail).slice(0, 220) : ''}]`, true);
     talkLine('npc', status === 429 ? L('(Pro dnešek už postavy nemluví. Zkuste to zítra, nebo hoďte kostkou postaru.)', '(The characters have talked enough for today. Try tomorrow, or roll the old way.)')
-                                   : t.T.chat ? L('(Nikdo vás teď neposlouchá: spojení nefunguje. Zkuste se vyptat na klepy postaru.)', '(Nobody is listening: no connection. Try asking around the old way.)')
-                                   : L('(Malrec teď neodpovídá: spojení nefunguje. Můžete hodit kostkou postaru.)', '(Malrec isn\'t answering: no connection. You can roll the old way.)'), true);
+                                   : t.T.chat ? L('(Nikdo vás teď neposlouchá: spojení vypadlo. Pošlete to znovu, nebo se vyptejte na klepy postaru.)', '(Nobody is listening: the connection dropped. Send it again, or ask around the old way.)')
+                                   : L('(Malrec teď neodpovídá: spojení vypadlo. Pošlete to znovu, nebo hoďte kostkou postaru.)', '(Malrec isn\'t answering: the connection dropped. Send it again, or roll the old way.)'), true);
     talkState(); return;
   }
+  t.failed = false;
   t.msgs.push({ from: 'npc', text: data.say }); talkLine('npc', data.say);
   t.best = Math.max(t.best, data.persuasion | 0); t.mood = data.mood || t.mood;
   for (const r of data.reveal || []) if (!t.reveals.includes(r)) t.reveals.push(r);
