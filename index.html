@@ -47,7 +47,7 @@
 <script>
 'use strict';
 /* PIXEL GAMES: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.73.0';
+const VERSION = '2.73.1';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -887,7 +887,7 @@ function drawSettings(t) {
   // BUY ME A COFFEE: the cup at the top right
   if (COFFEE_URL && UI.button('coffee', W - 34, 8, 26, 22, '', { size: 1, accent: '#c8843a' })) openCoffee();
   if (COFFEE_URL) cupIcon(W - 21, 19);
-  // ABOUT: who made the games, and the arcade's version (written V2.73.0, like every game's)
+  // ABOUT: who made the games, and the arcade's version (written V2.73.1, like every game's)
   T('MADE WITH ♥ BY A SON AND HIS DAD', x + 12, 226, '#9a92b8', 1);
   T('PIXEL GAMES V' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
 }

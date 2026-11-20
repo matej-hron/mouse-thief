@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // CACHE is the arcade's VERSION (index.html): bump both together on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.73.0';
+const CACHE = 'pixel-arcade-v2.73.1';
 const ASSETS = [
   './',
   './index.html',
@@ -69,6 +69,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.cache === 'no-store') return;      // asked for fresh on purpose (the arcade checking for a new version)
+  if (new URL(req.url).pathname.includes('/shorts/')) return; // the Weird History Toons pages and videos: always from the network (videos load in ranges)
 
   // Pages and the games' own scripts (common.js, gunner.js) are fetched fresh, together: a new page with an old
   // common.js from the cache would call things that are not there yet, and the game would freeze. The big
