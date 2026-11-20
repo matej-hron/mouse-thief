@@ -1515,6 +1515,11 @@ or model files).
   or turned into a spy); the prince at dawn and his Signet. The clock matters: Tam lives only on the best route.
   New monsters (Ash Rider, warg, Kael), figures (Tam, the prince's guards, the farm family, the ghost, horses), six
   sets with fire and rain, four films, a three-level mission map.
+- **More spells** (0.15): the mage also has Shield (AC 4 better for the fight) and, from level 3, Web (holds the
+  target and the enemies next to it for 2 rounds); the cleric also has Protection from Evil (by touch: enemies -2 to
+  hit that hero) and, from level 3, Hold Person (one human enemy held for 3 rounds; not beasts, not the undead). A held
+  monster loses its turns and is +2 easier to hit. Also: the shop's buttons are short (details in the hero's sheet and
+  the handbook), the choices never take more than about half the screen, and the mill's battle hides its ceiling.
 - Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
