@@ -106,7 +106,7 @@
   #inv { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 13.5px; color: var(--muted); padding: 0 4px; text-shadow: 0 1px 3px #000; }
   #inv .gold { color: var(--gold); } #inv .clock { color: #fff; font-weight: 700; } #inv .bad { color: var(--bad); font-weight: 800; } #inv .good { color: var(--good); } #inv .holy { color: #f5e68a; }
   #ask { text-align: center; font-weight: 800; color: var(--gold); font-size: 14.5px; letter-spacing: .03em; min-height: 18px; text-shadow: 0 1px 4px #000; }
-  #choices { display: grid; gap: 6px; grid-template-columns: 1fr; }
+  #choices { display: grid; gap: 6px; grid-template-columns: 1fr; max-height: 56vh; overflow-y: auto; pointer-events: auto; }
   #choices.two { grid-template-columns: 1fr 1fr; }
   .hint { text-align: center; color: #8a80a8; font-size: 13px; padding: 6px; text-shadow: 0 1px 3px #000; }
 
@@ -308,7 +308,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.14.1';
+const VERSION = '0.15.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -348,10 +348,10 @@ const CLASSES = {
              weapon: { name: L('Dlouhý meč', 'Long sword'), n: 1, s: 8, b: 0, edged: true }, saves: [14, 16, 15, 17, 17], next: 2000, col: '#e8a040', move: 3,
              about: L('Silný a odolný, má nejlepší zbroj. Stoupni si dopředu a chraň ostatní.', 'Strong and tough, with the best armour. Stand in front and protect the others.') },
   cleric:  { name: L(['Kněz', 'Kněžka'], ['Cleric', 'Cleric']), hd: 8, prime: 'wis', order: ['wis', 'con', 'str', 'cha', 'dex', 'int'], armour: 4, armourName: L('kroužková zbroj a štít', 'chain mail and shield'),
-             weapon: { name: L('Palcát', 'Mace'), n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless'], move: 3,
+             weapon: { name: L('Palcát', 'Mace'), n: 1, s: 6, b: 1 }, saves: [10, 14, 13, 16, 15], next: 1500, col: '#f0e070', spells: ['cure', 'bless', 'protect', 'hold'], move: 3,
              about: L('Léčí, žehná a svatým znamením zahání kostlivce a utopence.', 'Heals, blesses, and drives off skeletons and the drowned with a holy symbol.') },
   mage:    { name: L(['Čaroděj', 'Čarodějka'], ['Mage', 'Mage']), hd: 4, prime: 'int', order: ['int', 'dex', 'con', 'wis', 'cha', 'str'], armour: 10, armourName: L('plášť', 'robes'),
-             weapon: { name: L('Hůl', 'Staff'), n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'], move: 4,
+             weapon: { name: L('Hůl', 'Staff'), n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep', 'shield', 'web'], move: 4,
              about: L('Křehký, ale umí kouzla: Magická střela nikdy nemine, Spánek uspí nepřátele. Drž se vzadu.', 'Fragile, but knows magic: Magic Missile never misses, Sleep puts enemies to sleep. Stay at the back.') },
   thief:   { name: L(['Zloděj', 'Zlodějka'], ['Thief', 'Thief']), hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: L('kožená zbroj', 'leather armour'),
              weapon: { name: L('Krátký meč', 'Short sword'), n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a', move: 5,
@@ -402,18 +402,22 @@ const SPELLS = {
   sleep:   { name: L('Spánek', 'Sleep'), target: 'none', info: L('uspí pár nepřátel (ne nemrtvé)', 'puts a few enemies to sleep (not the undead)'), ic: '☾' },
   cure:    { name: L('Léčení', 'Cure Wounds'), target: 'hero', info: L('vyléčí 1k8 životů, dotykem', 'heals 1d8 HP, by touch'), calm: true, ic: '✚' },
   bless:   { name: L('Požehnání', 'Bless'), target: 'none', info: L('+1 k útoku pro celou družinu', '+1 to hit for the whole party'), ic: '☀' },
+  shield:  { name: L('Štít', 'Shield'), target: 'none', info: L('neviditelný štít: obrana čaroděje o 4 lepší do konce boje', 'an invisible shield: the mage\'s AC 4 better until the fight ends'), ic: '🛡' },
+  web:     { name: L('Pavučina', 'Web'), target: 'foe', lvl: 3, info: L('lepkavé vlákno spoutá cíl a nepřátele vedle něj na 2 kola; dostřel 6 (od 3. úrovně)', 'sticky threads hold the target and the enemies next to it for 2 rounds; range 6 (from level 3)'), ic: '🕸' },
+  protect: { name: L('Ochrana před zlem', 'Protection from Evil'), target: 'hero', info: L('dotykem: nepřátelé mají proti tomu hrdinovi -2 k útoku do konce boje', 'by touch: enemies get -2 to hit that hero until the fight ends'), ic: '✧' },
+  hold:    { name: L('Ztuhnutí', 'Hold Person'), target: 'foe', lvl: 3, info: L('jeden člověk (ne zvíře, ne nemrtvý) ztuhne na 3 kola; dostřel 6 (od 3. úrovně)', 'one person (not a beast, not the undead) is held for 3 rounds; range 6 (from level 3)'), ic: '⛓' },
 };
 // monsters: hp = [dice, sides, bonus], dmg the same; turn = what a 1st level cleric needs on d20 to turn it
 const MON = {
   rat:    { name: L('Krysa', 'Rat'), hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, move: 4, fell: L('je poražená', 'is beaten'), ran: L('utíká pryč', 'runs away'), squeak: true },
   skel:   { name: L('Kostlivec', 'Skeleton'), hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, move: 3, fell: L('se rozsypal na hromádku kostí', 'falls apart into a heap of bones'), ran: L('prchá před světlem', 'flees from the light') },
   zomb:   { name: L('Utopenec', 'Drowned one'), hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: L('se rozpadl v louži vody', 'collapses into a puddle of water'), ran: L('couvá zpátky do tůně', 'backs away into the pool') },
-  rider:  { name: L('Popelavý jezdec', 'Ash Rider'), hd: 1, hp: [1, 8, 1], ac: 6, thac0: 19, dmg: [1, 8, 0], morale: 8, xp: 25, move: 4, fell: L('padá do bláta', 'falls in the mud'), ran: L('utíká ke koním', 'runs for the horses') },
+  rider:  { name: L('Popelavý jezdec', 'Ash Rider'), person: true, hd: 1, hp: [1, 8, 1], ac: 6, thac0: 19, dmg: [1, 8, 0], morale: 8, xp: 25, move: 4, fell: L('padá do bláta', 'falls in the mud'), ran: L('utíká ke koním', 'runs for the horses') },
   warg:   { name: L('Varg', 'Warg'), hd: 2, hp: [2, 8, 0], ac: 6, thac0: 18, dmg: [2, 4, 0], morale: 8, xp: 50, move: 6, fell: L('naposledy zavyje', 'gives a last howl'), ran: L('prchá do lesa', 'flees into the woods') },
-  kael:   { name: L('Kael Ashborn', 'Kael Ashborn'), hd: 3, hp: [0, 0, 20], ac: 4, thac0: 17, dmg: [1, 8, 2], morale: 9, xp: 175, noSleep: true, boss: true, move: 4, fell: L('padá k zemi', 'falls'), ran: '',
+  kael:   { name: L('Kael Ashborn', 'Kael Ashborn'), person: true, hd: 3, hp: [0, 0, 20], ac: 4, thac0: 17, dmg: [1, 8, 2], morale: 9, xp: 175, noSleep: true, boss: true, move: 4, fell: L('padá k zemi', 'falls'), ran: '',
             down: L('Kael Ashborn padá do bláta a už nevstane. Jeho jezdci se rozprchnou do tmy.', 'Kael Ashborn falls in the mud and does not get up. His riders scatter into the dark.'),
             yieldTxt: L('Kael uskočí, hvízdne na koně a skočí do sedla. „Ještě se uvidíme!“ Jeho jezdci prchají za ním.', 'Kael leaps back, whistles for a horse and swings into the saddle. "We\'ll meet again!" His riders flee after him.'), yieldFlag: 'kaelFled', flees: true },
-  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '',
+  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), person: true, hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '',
             down: L('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', 'Malrec falls to his knees. The bell goes quiet and the drowned sink back into the pool.'),
             yieldTxt: L('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', 'Malrec drops his mace and falls to his knees. "Enough... I only wanted my brother back." The bell stops. The drowned sink into the pool.'), yieldFlag: 'surrender' },
 };
@@ -443,7 +447,7 @@ function setClass(h, cls) {
   h.spells = h.spellMax;
 }
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
-const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0) - (h.race === 'halfling' ? 1 : 0);
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0) - (h.race === 'halfling' ? 1 : 0) - (F && h.shield ? 4 : 0);
 const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
 const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0) - (G && G.hungry ? 1 : 0);
 const dmgOf = h => strDmg(h.st.str) + (h.sharp || 0);
@@ -874,7 +878,7 @@ const SHOP = [
 // Brannock's bows and the smith's knives: one ranged weapon a hero (a new one replaces the old)
 function rangedShop() {
   setChoices(L(`Zbraně na dálku (máte ${G.gold} zl.)`, `Ranged weapons (you have ${G.gold} gold)`), [
-    ...Object.entries(RANGED).map(([id, w]) => ({ label: w.name, ic: w.ic, note: `${w.price} ${L('zl.', 'gold')} · ${w.info}`, if: () => G.gold >= w.price && G.heroes.some(h => !h.dead && w.cls.includes(h.cls) && h.ranged !== id), act: () =>
+    ...Object.entries(RANGED).map(([id, w]) => ({ label: w.name, ic: w.ic, note: `${w.price} ${L('zl.', 'gold')} · ${w.dmg[0]}${L('k', 'd')}${w.dmg[1]} · ${w.short}/${w.long}`, if: () => G.gold >= w.price && G.heroes.some(h => !h.dead && w.cls.includes(h.cls) && h.ranged !== id), act: () =>
       setChoices(L(`${w.name}: pro koho?`, `${w.name} for who?`), [
         ...G.heroes.filter(h => !h.dead && w.cls.includes(h.cls) && h.ranged !== id).map(h => ({ label: h.name, note: clsName(h) + (h.ranged ? L(` (místo: ${RANGED[h.ranged].name})`, ` (instead of: ${RANGED[h.ranged].name})`) : ''), act: () => {
           G.gold -= w.price; h.ranged = id; if (w.ammo) G.items[w.ammo] = (G.items[w.ammo] || 0) + (w.comes || 0); sfx('coin'); store2(); partyKey = '';
@@ -891,14 +895,14 @@ const UPGRADES = [
   { id: 'sharp', ic: '⚔', price: 100, name: L('Nabroušená zbraň', 'A keener weapon'), info: L('+1 k útoku i zranění', '+1 to hit and damage') },
 ];
 function shopMenu() {
-  setChoices(L(`Babka Sedge, kovář a jejich zboží (máte ${G.gold} zl.)`, `Granny Sedge, the blacksmith and their wares (you have ${G.gold} gold)`), [
-    { label: L('Zbraně na dálku: luk, prak, nože, šipky', 'Ranged weapons: bow, sling, knives, darts'), ic: '🏹', act: rangedShop },
+  setChoices(L(`Obchod a kovárna (máte ${G.gold} zl.)`, `Shop and smithy (you have ${G.gold} gold)`), [
+    { label: L('Zbraně na dálku', 'Ranged weapons'), ic: '🏹', note: L('luk, prak, nože, šipky', 'bow, sling, knives, darts'), act: rangedShop },
     ...SHOP.map(it => ({ label: it.name, ic: it.ic, note: `${it.price} ${L('zl.', 'gold')}`, if: () => G.gold >= it.price && (!it.if || it.if()), act: () => {
       G.gold -= it.price; it.buy(); sfx('coin'); store2();
       say(L(`Koupeno: ${it.name}.`, `Bought: ${it.name}.`), '#7aea7a'); then(shopMenu);
     } })),
-    ...UPGRADES.map(u => ({ label: u.name, ic: u.ic, note: `${u.price} ${L('zl.', 'gold')} · ${u.info}`, if: () => G.gold >= u.price && G.heroes.some(h => !h.dead && !h[u.id]), act: () =>
-      setChoices(L(`Pro koho: ${u.name}?`, `${u.name} for who?`), [
+    ...UPGRADES.map(u => ({ label: u.name, ic: u.ic, note: `${u.price} ${L('zl.', 'gold')}`, if: () => G.gold >= u.price && G.heroes.some(h => !h.dead && !h[u.id]), act: () =>
+      setChoices(L(`${u.name} (${u.info}): pro koho?`, `${u.name} (${u.info}): for who?`), [
         ...G.heroes.filter(h => !h.dead && !h[u.id]).map(h => ({ label: h.name, note: clsName(h), act: () => {
           G.gold -= u.price; h[u.id] = 1; sfx('coin'); store2(); partyKey = '';
           say(L(`${h.name}: ${u.name.toLowerCase()} (${u.info}).`, `${h.name}: ${u.name.toLowerCase()} (${u.info}).`), '#7aea7a'); then(shopMenu);
@@ -1659,7 +1663,7 @@ function fight(def) {
   G.seen = G.seen || {}; for (const [id] of def.foes) G.seen[id] = 1;
   F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false, target: null, thrown: {} };
   for (const h of G.heroes) {
-    h.held = 0; h.hidden = false;
+    h.held = 0; h.hidden = false; h.shield = h.prot = false;
     if (h.ranged === undefined) { h.ranged = KIT[h.cls] || null; if (h.ranged === 'darts') G.items.darts = (G.items.darts || 0) + 5; }   // (a game saved before 0.9)
   }
   startBattle(foes);
@@ -1825,7 +1829,7 @@ function heroMenu(h) {
     { label: L('Útok zblízka', 'Melee attack'), ic: '⚔', note: h.weapon.name + (two ? L(' · 2 útoky', ' · 2 attacks') : ''), if: () => canHit, keep: true, act: () => pickFoe(h, L('Na koho útočíš? (klepni na nepřítele)', 'Attack who? (tap an enemy)'), melee, m => meleeAttack(h, m)) },
     { label: w ? (w.thrown ? L('Hodit', 'Throw') : L('Vystřelit', 'Shoot')) : '', ic: w ? w.ic : '', note: w ? `${w.name}${w.ammo ? ` · ${ammoOf(w)}×` : ''}${volley ? L(' · 2 šípy', ' · 2 arrows') : ''} · ${w.short}/${w.long}` : '', if: () => shoot, keep: true,
       act: () => pickFoe(h, L(`Na koho? (dostřel ${w.short} polí, dál až ${w.long} s postihem -2)`, `At who? (range ${w.short} hexes, up to ${w.long} at -2)`), shootOk(h), m => shootAt(h, m)) },
-    { label: L('Kouzla', 'Spells'), ic: '✦', note: `${h.spells}×`, if: () => h.spells > 0, act: () => spellMenu(h) },
+    { label: L('Kouzla', 'Spells'), ic: '✦', note: `${h.spells}×`, if: () => h.spells > 0 && !!CLASSES[h.cls].spells, act: () => spellMenu(h) },
     { label: L('Zahnat nemrtvé', 'Turn undead'), ic: '☀', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
     { label: L('Schovat se', 'Hide'), ic: '◐', note: thiefSkill(h, 3) + ' %', if: () => h.cls === 'thief' && !h.hidden, act: () => {
       if (checkSkill(h, 3)) { h.hidden = true; say(L(`${h.name} mizí ve stínu. Příští útok bude zezadu: +4 k zásahu a dvojnásobné zranění.`, `${h.name} melts into the shadows. Next attack is a backstab: +4 to hit and double damage.`), '#7aea7a'); then(() => tint(u, 'hide')); }
@@ -1879,7 +1883,7 @@ function heroWalk(h, path) {
   const u = unitOf(h), hitters = [];
   let from = u.tile;
   for (const t of path) {
-    for (const m of foesLeft()) if (m.state === 'ok' && !hitters.includes(m) && dist(unitOf(m).tile, from) <= 1 && dist(unitOf(m).tile, t) > 1) hitters.push(m);
+    for (const m of foesLeft()) if (m.state === 'ok' && !m.held && !hitters.includes(m) && dist(unitOf(m).tile, from) <= 1 && dist(unitOf(m).tile, t) > 1) hitters.push(m);
     from = t;
   }
   if (hitters.length && h.cls === 'thief') say(L(`${h.name} se vysmekne, než stačí nepřítel máchnout.`, `${h.name} slips away before the enemy can swing.`), '#c8b8ff');
@@ -1914,7 +1918,7 @@ function shootAt(h, m) {
     if (m.state === 'asleep') { say(L(`${m.name} se už neprobudí.`, `${m.name} never wakes up.`), '#7aea7a'); kill(m); continue; }
     const bk = h.hidden; h.hidden = false;
     if (bk) then(() => tint(u, null));
-    const bonus = dexMissile(h.st.dex) + (h.race === 'halfling' ? 1 : 0) + (h.race === 'elf' && h.ranged === 'bow' ? 1 : 0) + (F.bless ? 1 : 0) + (bk ? 4 : 0) - (far ? 2 : 0) - (G.hungry ? 1 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+    const bonus = dexMissile(h.st.dex) + (h.race === 'halfling' ? 1 : 0) + (h.race === 'elf' && h.ranged === 'bow' ? 1 : 0) + (F.bless ? 1 : 0) + (bk ? 4 : 0) + (m.held ? 2 : 0) - (far ? 2 : 0) - (G.hungry ? 1 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
     const hit = r === 20 || (r !== 1 && tot >= need);
     rollFx(20, r, L(`${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'pole' : d < 5 ? 'pole' : 'polí'}${far ? ', daleko -2' : ''}): padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`,
                     `${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'hex' : 'hexes'}${far ? ', long range -2' : ''}): rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
@@ -1935,7 +1939,7 @@ function attack(h, m) {
   }
   const bk = h.hidden; h.hidden = false;
   if (bk) then(() => tint(u, null));
-  const bonus = hitOf(h) + (F.bless ? 1 : 0) + (bk ? 4 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+  const bonus = hitOf(h) + (F.bless ? 1 : 0) + (bk ? 4 : 0) + (m.held ? 2 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
   const hit = r === 20 || (r !== 1 && tot >= need);
   rollFx(20, r, L(`${h.name}${bk ? ' útočí ze stínu' : ''} → ${m.name}: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, `${h.name}${bk ? ' backstabs' : ''} → ${m.name}: rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
   if (hit) {
@@ -1991,7 +1995,7 @@ function bossMorale(m) {
   }
 }
 function spellMenu(h) {
-  const list = CLASSES[h.cls].spells.map(id => {
+  const list = CLASSES[h.cls].spells.filter(id => lvl(h) >= (SPELLS[id].lvl || 1) && !(id === 'shield' && h.shield)).map(id => {
     const sp = SPELLS[id];
     return { label: sp.name, ic: sp.ic, note: sp.info, act: () => castSpell(h, id) };
   });
@@ -2000,8 +2004,41 @@ function spellMenu(h) {
   setChoices(L(`${h.name}: které kouzlo? (zbývá ${h.spells}×)`, `${h.name}: which spell? (${h.spells} left)`), list);
 }
 const touchable = h => x => x === h || dist(unitOf(h).tile, unitOf(x).tile) <= 1 || (F.mv > 0 && !!approachPath(unitOf(h), unitOf(x)));
+// held fast: a monster held by Web or Hold Person loses its turns (and is easier to hit)
+function holdFoe(m, rounds, txt) {
+  const mu = unitOf(m), r = rnd(20), need = m.boss ? 12 : 15;
+  if (r >= need) { say(L(`${m.name} se vytrhne (padlo ${r}, potřeba ${need}+).`, `${m.name} breaks free (rolled ${r}, needed ${need}+).`), '#c8b8ff'); return; }
+  m.held = rounds; then(() => { tint(mu, 'held'); burst(mu.pos, 0xd8d8ff, 20, 1); });
+  say(txt(m), '#6aa8ff');
+}
+const SPELL_FX = {
+  shield: (h, sp, u) => { h.spells--; h.shield = true; play(() => { sfx('spell'); setPose(u, 'cast'); burst(u.pos, 0x9ab8ff, 30, 1.2); }, 0.45);
+    say(L(`${h.name} sesílá Štít. Vzduch kolem zhoustne: obrana o 4 lepší.`, `${h.name} casts Shield. The air thickens: AC 4 better.`), '#6aa8ff'); acted(); },
+  web: (h, sp, u) => pickFoe(h, L('Pavučina: kam? (dostřel 6)', 'Web: where? (range 6)'), m => dist(u.tile, unitOf(m).tile) <= 6, m => {
+    h.spells--; const mu = unitOf(m);
+    play(() => { sfx('spell'); setPose(u, 'cast', mu); missile(u, mu, 0xe8e8ff); }, 0.6);
+    say(L(`${h.name} sesílá Pavučinu. Lepkavá vlákna se rozprostřou kolem: ${m.name}.`, `${h.name} casts Web. Sticky threads spread around ${m.name}.`), '#6aa8ff');
+    for (const x of foesLeft().filter(o => o === m || dist(unitOf(o).tile, mu.tile) <= 1)) holdFoe(x, 2, o => L(`${o.name} se zamotá do pavučiny.`, `${o.name} is caught in the web.`));
+    acted();
+  }),
+  protect: (h, sp, u) => pickHero(h, L('Ochrana před zlem: koho? (dotykem)', 'Protection from Evil: who? (by touch)'), x => !x.dead && !x.prot && touchable(h)(x), x => {
+    h.spells--; if (!approach(h, unitOf(x))) { acted(); return; }
+    x.prot = true; const xu = unitOf(x);
+    play(() => { sfx('spell'); setPose(u, 'cast', xu); burst(xu.pos, 0xfff0a0, 26, 1.2); }, 0.45);
+    say(L(`${h.name} nakreslí ${x === h ? 'si' : 'hrdinovi ' + x.name} na čelo svaté znamení. Nepřátelé teď proti ${x === h ? 'němu' : 'němu'} útočí s postihem -2.`, `${h.name} draws a holy sign on ${x === h ? 'their own' : x.name + '\'s'} brow. Enemies now attack them at -2.`), '#6aa8ff');
+    acted();
+  }),
+  hold: (h, sp, u) => pickFoe(h, L('Ztuhnutí: na koho? (jen lidé, dostřel 6)', 'Hold Person: who? (people only, range 6)'), m => m.person && dist(u.tile, unitOf(m).tile) <= 6 && !m.held, m => {
+    h.spells--; const mu = unitOf(m);
+    play(() => { sfx('spell'); setPose(u, 'cast', mu); beam(u, mu, 0xd8d8ff); }, 0.6);
+    say(L(`${h.name} ukáže na nepřítele: „Ve jménu světla, stůj!“`, `${h.name} points at the enemy: "In the name of the light, stand still!"`), '#6aa8ff');
+    holdFoe(m, 3, o => L(`${o.name} ztuhne jako socha.`, `${o.name} freezes like a statue.`));
+    acted();
+  }),
+};
 function castSpell(h, id) {
   const sp = SPELLS[id], u = unitOf(h);
+  if (SPELL_FX[id]) { SPELL_FX[id](h, sp, u); return; }
   if (sp.target === 'foe') {
     pickFoe(h, L(`${sp.name}: na koho? (dostřel 8 polí)`, `${sp.name}: at who? (range 8 hexes)`), m => dist(u.tile, unitOf(m).tile) <= 8, m => {
       h.spells--; const mu = unitOf(m);
@@ -2105,6 +2142,7 @@ function runAway() {
 // the nearest hero still standing (counted in steps around everyone else), and the way to them
 function foeAct(m) {
   const mu = unitOf(m);
+  if (m.held > 0) { m.held--; say(L(`${m.name} se nemůže hnout.`, `${m.name} can't move.`), '#c8b8ff'); if (!m.held) then(() => tint(mu, null)); return; }
   const route = chase(mu);
   if (m.id === 'malrec' && (!F.cast.hold || !F.cast.wound)) {
     const h = route ? route.hero : pick(G.heroes.filter(up)), hu = unitOf(h);
@@ -2134,8 +2172,8 @@ function foeAttack(m, h, fast, dmg) {
   if (!h) return;
   const mu = unitOf(m), hu = unitOf(h);
   if (!dmg) play(() => strike(mu, hu), 0.3);
-  const ac = acOf(h), need = m.thac0 - ac, bonus = h.held ? 4 : 0, r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
-  rollFx(20, r, L(`${m.name} → ${h.name}: padlo ${r}${bonus ? ' + 4 (ztuhlý cíl)' : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle!'}`, `${m.name} → ${h.name}: rolled ${r}${bonus ? ' + 4 (held target)' : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss!'}`), !hit, true);
+  const ac = acOf(h), need = m.thac0 - ac, bonus = (h.held ? 4 : 0) - (h.prot ? 2 : 0), r = rnd(20), hit = r === 20 || (r !== 1 && r + bonus >= need);
+  rollFx(20, r, L(`${m.name} → ${h.name}: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle!'}`, `${m.name} → ${h.name}: rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss!'}`), !hit, true);
   if (!hit) { then(() => floatNum(hu, L('vedle', 'miss'), 'miss')); return; }
   const D = dmg || m.dmg, d = Math.max(1, dice(D[0], D[1], D[2]));
   hurt(h, d);
@@ -2904,9 +2942,9 @@ const BUILD = {
     const IN = new THREE.Group(); IN.position.set(60, 0, 0); g.add(IN);
     mesh(box(10, 0.2, 12), mat({ map: tex('wood', [4, 6]), color: 0x6a5a48 }), 0, -0.1, 0, IN);
     for (const sx of [-1, 1]) mesh(box(0.4, 5, 12), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), sx * 5.2, 2.5, 0, IN);
-    mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, -6.2, IN); mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, 6.2, IN);
-    mesh(box(10.8, 0.3, 12.8), mat({ map: tex('wood', [4, 6]), color: 0x3a3028 }), 0, 5.1, 0, IN);
-    for (const z of [-4, 0, 4]) mesh(box(10.4, 0.25, 0.3), mat({ map: tex('wood') }), 0, 4.8, z, IN);
+    mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, -6.2, IN);
+    U.roof = [mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, 6.2, IN), mesh(box(10.8, 0.3, 12.8), mat({ map: tex('wood', [4, 6]), color: 0x3a3028 }), 0, 5.1, 0, IN)];
+    for (const z of [-4, 0, 4]) U.roof.push(mesh(box(10.4, 0.25, 0.3), mat({ map: tex('wood') }), 0, 4.8, z, IN));
     const hole = mesh(box(2.4, 0.22, 3), mat({ color: 0x050403 }), -2, -0.08, 0.5, IN); hole.castShadow = false;
     for (let i = 0; i < 5; i++) { const b = mesh(box(0.3, 0.06, 1.2), mat({ map: tex('wood'), color: 0x4a3a2a }), -3 + i * 0.5, 0.02, 0.5 + (Math.random() - 0.5) * 0.6, IN); b.rotation.set((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.3); }
     const stone = new THREE.Group(); stone.position.set(2.4, 0, -3.6); IN.add(stone);
