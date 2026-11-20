@@ -1461,7 +1461,12 @@ or model files).
   hit and damage, 100 gold).
 - **Testing a scene**: `adad?scena=bell` (or `?scene=`) starts a throwaway party of 4 straight in that scene of the
   Drowned Bell (inn, hill, nave, altar, crypt, door, ossuary, bell, pool, end); a test game is never saved.
-- Saved after every step in `pixelQuest.campaign` (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
+- **Saved games** (0.7): several campaigns side by side, each with a name (each kid their own party), saved
+  automatically after every step. In a Story campaign, "Save as..." (the pause menu, or 💾 on the map) keeps a named
+  snapshot of the moment; loading it puts the campaign back to that moment (the snapshot itself never changes).
+  Hardcore has no snapshots. Title → Saved games: play, load, rename, delete; at most 10. All in this browser
+  (`pixelQuest.slots`, `pixelQuest.slot.<id>`); the one campaign saved before 0.7 becomes the first slot.
+- Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
 ## Install as an app (PWA)
