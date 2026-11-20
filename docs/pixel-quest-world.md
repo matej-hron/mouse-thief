@@ -213,6 +213,55 @@ the undead much harder), **Shard of the Bell** (after the bell cracks; once per 
     survivors wake up somewhere they didn't choose. A dead hero is buried and the Guild sends a new one (level 1).
     If nobody survives, the campaign is over.
 
+### Races
+
+| Race | Abilities | Gift | Classes |
+| --- | --- | --- | --- |
+| Human | – | +10% experience | all |
+| Dwarf | CON +1, CHA -1 | saves vs poison, wands, spells 2 better; a fighter wields a great axe | fighter, cleric, thief |
+| Elf | DEX +1, CON -1 | +1 to hit with a bow; immune to magical holding | all |
+| Halfling | DEX +1, STR -1 | +1 with missiles; AC 1 better; move -1 | fighter, cleric, thief |
+
+### Time and rations
+
+- The campaign clock: walking between places 10 min (the village to the hill 45), searching 10, a talk 15, a drink and
+  chat 20, a fight 1 min a round, a rest 8 h (the inn 9 h).
+- Every dawn (06:00) each living hero eats one ration. Without food: **hungry** (no healing when resting, -1 to hit)
+  until they eat.
+- Resting restores spells; HP: half the maximum at the inn (1 gold a hero), 1d3 in the open (and a night watch roll).
+- Missions don't heal the party; time limits are real (the Drowned Bell: Mila drowns at 03:00).
+
+### Battle rules
+
+- **The grid**: hexes (rows offset). Distance = hex steps. Some hexes are blocked (pillars, the sarcophagus).
+- **Formation**: before the first round (unless the party is surprised) the heroes stand in six slots, front row and
+  back row; the player can move them. The arrangement is remembered and used in the next fight.
+- **Initiative**: d10 per side each round, lower goes first (surprise: one side gets a free round).
+- **A hero's turn** = **move** + **one action**, in either order, but the move can't be split around the action
+  (except a thief).
+  - Move: fighter 3, cleric 3 (heavy armour), mage 4, thief 5; DEX 16+ +1; halfling -1.
+  - Actions: melee attack; shoot or throw; cast a spell; turn undead; hide (thief); use an item; ring an artefact.
+  - **Sprint**: no action, move again.
+  - **Fighter**: two melee attacks if they haven't moved this turn.
+  - **Thief**: may move after the action (hit and run); never provokes opportunity attacks.
+- **Opportunity attack**: leaving a hex next to an awake monster (and not ending up next to it) lets it strike once.
+- **Ranged**: not while an enemy is next to you. Beyond short range -2 to hit. To hit: d20 + DEX missile bonus (+race
+  bonus) vs THAC0 - AC. Spells: Magic Missile range 8; Cure by touch; Bless and Sleep need no target.
+
+| Weapon | Damage | Range (short/long) | Ammo | Who | Price |
+| --- | --- | --- | --- | --- | --- |
+| Sling | 1d4 | 4/8 | stones, never run out; blunt (full damage to skeletons) | fighter, cleric, thief | 3 |
+| Short bow | 1d6 | 5/10 | arrows (20 come with it; 20 more for 5 gold; half picked up after a fight); 2 shots if standing still | fighter, thief | 25 |
+| Throwing knives | 1d4 + STR | 2/4 | 3 knives (3 more for 6 gold), picked up after a fight | fighter, thief | 8 |
+| Darts | 1d3 | 3/6 | 5 darts (5 more for 3 gold), picked up after a fight | fighter, mage, thief | 4 |
+
+  Edged and pointed weapons (swords, arrows, knives, darts) do half damage to skeletons; blunt ones (mace, staff,
+  sling) do full.
+- **Starting kit**: cleric and thief a sling, mage darts; fighters buy a bow or knives in Thornwall.
+- **Morale**: 2d10 over the monsters' morale when the first falls and when half are gone, and they run.
+- **Scenes in a fight**: the monsters come on (the camera looks at them), the camera turns to a monster as it falls
+  or runs.
+
 ## 6. The maps
 
 - **World map**: a small 3D model of Aldmere with its regions. Missions glow on it (crowns for story missions);

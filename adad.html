@@ -58,7 +58,7 @@
   .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: flex-end; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .pill { padding: 6px 12px; border-radius: 20px; background: #1d1830; border: 1px solid var(--line); font-weight: 800; min-width: 38px; }
-  .pill.on { background: #3a2f5c; border-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--c, var(--gold)); }
+  .pill:disabled { opacity: .3; } .pill.on { background: #3a2f5c; border-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--c, var(--gold)); }
   .heroRow { display: grid; grid-template-columns: 76px 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 10px; margin-top: 8px; border-radius: 8px;
              background: #1d1830; border: 1px solid var(--line); border-left: 4px solid var(--c); }
   .heroRow img { grid-row: 1 / 4; width: 76px; height: 76px; }
@@ -289,7 +289,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.9.0';
+const VERSION = '0.10.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -348,7 +348,22 @@ const CLASS_IDS = ['fighter', 'cleric', 'mage', 'thief'];
    - Sprint: give up the action to move twice as far.
    - Leaving a hex next to an awake monster lets it strike (an opportunity attack); a thief slips away.
    - Move: fighter and cleric 3 (heavy armour), mage 4, thief 5; DEX 16+ gives +1. */
-const moveOf = h => CLASSES[h.cls].move + (h.st.dex >= 16 ? 1 : 0);
+/* RACES: a hero is a human, a dwarf, an elf or a halfling. Each changes two abilities a little and brings a gift.
+   Dwarves and halflings can't be mages (no feel for the arcane). */
+const RACES = {
+  human:    { name: L(['Člověk', 'Člověk'], ['Human', 'Human']), mod: {}, cls: CLASS_IDS,
+              info: L('Všestranný a ctižádostivý: +10 % zkušeností.', 'Versatile and ambitious: +10% experience.') },
+  dwarf:    { name: L(['Trpaslík', 'Trpaslice'], ['Dwarf', 'Dwarf']), mod: { con: 1, cha: -1 }, cls: ['fighter', 'cleric', 'thief'],
+              info: L('Tvrdý jako skála: +1 odolnost, -1 charisma, záchrana proti jedu, hůlkám a kouzlům o 2 lepší. Válečník nosí obří sekeru.', 'Hard as rock: +1 CON, -1 CHA, saves against poison, wands and spells 2 better. A fighter carries a huge axe.') },
+  elf:      { name: L(['Elf', 'Elfka'], ['Elf', 'Elf']), mod: { dex: 1, con: -1 }, cls: CLASS_IDS,
+              info: L('Hbitý a bystrý: +1 obratnost, -1 odolnost, +1 k zásahu lukem, nedá se ztuhnout kouzlem.', 'Quick and keen: +1 DEX, -1 CON, +1 to hit with a bow, can\'t be held by magic.') },
+  halfling: { name: L(['Půlčík', 'Půlčice'], ['Halfling', 'Halfling']), mod: { dex: 1, str: -1 }, cls: ['fighter', 'cleric', 'thief'], move: -1,
+              info: L('Malý a nenápadný: +1 obratnost, -1 síla, +1 ke střelbě a hodu, obrana o 1 lepší; o 1 pole pomalejší.', 'Small and easy to miss: +1 DEX, -1 STR, +1 with missiles, AC 1 better; 1 hex slower.') },
+};
+const RACE_IDS = ['human', 'dwarf', 'elf', 'halfling'];
+const raceOf = h => RACES[h.race] || RACES.human;
+const raceName = h => raceOf(h).name[h.g === 'f' ? 1 : 0];
+const moveOf = h => CLASSES[h.cls].move + (h.st.dex >= 16 ? 1 : 0) + (raceOf(h).move || 0);
 // ranged weapons: dmg [dice, sides, bonus]; range short/long in hexes; ammo = which pile in G.items (null: stones, never run out)
 const RANGED = {
   sling:  { name: L('Prak', 'Sling'), ic: '🪨', dmg: [1, 4, 0], short: 4, long: 8, ammo: null, price: 3, cls: ['fighter', 'cleric', 'thief'],
@@ -382,24 +397,27 @@ const ITEMS = L({ potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'J�
 const NAMES = [['Bran', 'm'], ['Mira', 'f'], ['Oswin', 'm'], ['Tess', 'f'], ['Garrick', 'm'], ['Elwyn', 'f'], ['Hob', 'm'], ['Sable', 'f'],
                ['Rowan', 'm'], ['Ida', 'f'], ['Corvin', 'm'], ['Nell', 'f'], ['Aldo', 'm'], ['Wren', 'f']];
 function rollStats() { return Array.from({ length: 6 }, () => { const r = [rnd(6), rnd(6), rnd(6), rnd(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; }).sort((a, b) => b - a); }
-function makeHero(name, g, cls, vals) {
-  const h = { name, g, cls, vals, st: {}, xp: 0, tried: {}, hair: rnd(5) - 1 };
+function makeHero(name, g, cls, vals, race = 'human') {
+  const h = { name, g, cls, vals, st: {}, xp: 0, tried: {}, hair: rnd(5) - 1, race };
   setClass(h, cls);
   return h;
 }
 function setClass(h, cls) {
   const C = CLASSES[cls]; h.cls = cls;
+  if (!raceOf(h).cls.includes(cls)) h.race = 'human';
   C.order.forEach((k, i) => { h.st[k] = h.vals[i]; });
+  for (const [k, d] of Object.entries(raceOf(h).mod)) h.st[k] = Math.max(3, Math.min(18, h.st[k] + d));
+
   h.max = Math.max(1, C.hd + conHP(h.st.con, cls === 'fighter'));
   h.hp = h.shp = h.max;
-  h.weapon = Object.assign({}, C.weapon);
+  h.weapon = Object.assign({}, C.weapon, h.race === 'dwarf' && cls === 'fighter' ? { name: L('Obří sekera', 'Great axe') } : {});
   h.ranged = KIT[cls] || null;
   h.level = 1; h.xp = 0;
   h.spellMax = spellMaxOf(h);
   h.spells = h.spellMax;
 }
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
-const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0);
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0) - (h.race === 'halfling' ? 1 : 0);
 const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
 const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0) - (G && G.hungry ? 1 : 0);
 const dmgOf = h => strDmg(h.st.str) + (h.sharp || 0);
@@ -410,7 +428,7 @@ function thiefSkill(h, k) {                                 // k: 0 open locks, 
   return base + adj[k] + 5 * (lvl(h) - 1);
 }
 const SKILL_NAMES = L(['Otevírání zámků', 'Hledání pastí', 'Tiché plížení', 'Schovat se ve stínu'], ['Open locks', 'Find traps', 'Move silently', 'Hide in shadows']);
-const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]] - Math.floor((lvl(h) - 1) / 2);
+const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]] - Math.floor((lvl(h) - 1) / 2) - (h.race === 'dwarf' && ['poison', 'wand', 'spell'].includes(kind) ? 2 : 0);
 const gv = (h, boy, girl) => h.g === 'f' ? girl : boy;     // Czech words that change for a girl hero
 
 /* --- 3b. LEVELS: one party for the whole campaign, levels 1 to 5 ------------------------------
@@ -653,7 +671,7 @@ function giveXP(n, why) {
   if (!live.length || n <= 0) return;
   const again = G.mission && G.done && G.done[G.mission];
   const each = Math.floor(n / live.length / (again ? 2 : 1));
-  for (const h of live) h.xp += each;
+  for (const h of live) h.xp += h.race === 'human' || !h.race ? Math.floor(each * 1.1) : each;
   say(L(`${why}: ${each} zkušeností pro každého hrdinu.`, `${why}: ${each} XP for every hero.`) + (again ? L(' (Opakovaná mise: polovina.)', ' (A replay: half.)') : ''), '#ffd23f');
 }
 
@@ -1414,7 +1432,7 @@ function shootAt(h, m) {
     if (m.state === 'asleep') { say(L(`${m.name} se už neprobudí.`, `${m.name} never wakes up.`), '#7aea7a'); kill(m); continue; }
     const bk = h.hidden; h.hidden = false;
     if (bk) then(() => tint(u, null));
-    const bonus = dexMissile(h.st.dex) + (F.bless ? 1 : 0) + (bk ? 4 : 0) - (far ? 2 : 0) - (G.hungry ? 1 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+    const bonus = dexMissile(h.st.dex) + (h.race === 'halfling' ? 1 : 0) + (h.race === 'elf' && h.ranged === 'bow' ? 1 : 0) + (F.bless ? 1 : 0) + (bk ? 4 : 0) - (far ? 2 : 0) - (G.hungry ? 1 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
     const hit = r === 20 || (r !== 1 && tot >= need);
     rollFx(20, r, L(`${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'pole' : d < 5 ? 'pole' : 'polí'}${far ? ', daleko -2' : ''}): padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`,
                     `${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'hex' : 'hexes'}${far ? ', long range -2' : ''}): rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
@@ -1612,7 +1630,8 @@ function foeAct(m) {
       F.cast.hold = 1;
       play(() => { setPose(mu, 'cast', hu); beam(mu, hu, 0xb06aff); sfx('spell'); }, 0.6);
       say(L(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, `Malrec points at ${h.name}: "Be still!"`), '#c06aff');
-      if (hasArt(h, 'amulet')) say(L(`Amulet na krku hrdiny ${h.name} zazáří a kouzlo se rozplyne.`, `The amulet around ${h.name}'s neck glows and the spell fades.`), '#7aea7a');
+      if (h.race === 'elf') say(L(`${h.name} se jen pousměje. Elfa takové kouzlo nespoutá.`, `${h.name} just smiles. Such a spell can't bind an elf.`), '#7aea7a');
+      else if (hasArt(h, 'amulet')) say(L(`Amulet na krku hrdiny ${h.name} zazáří a kouzlo se rozplyne.`, `The amulet around ${h.name}'s neck glows and the spell fades.`), '#7aea7a');
       else if (!checkSave(h, 'spell')) { h.held = 2; say(L(`${h.name} ztuhne na 2 kola.`, `${h.name} is held for 2 rounds.`), '#ff7a6a'); then(() => tint(hu, 'held')); } else say(L(`${h.name} se z toho vytřese.`, `${h.name} shakes it off.`));
       return;
     }
@@ -1853,6 +1872,11 @@ function person(root, o) {
   if (!o.noFace) {
     const eyeM = fm(root, { color: 0x1a1018 });
     for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.035, 0.05, 0.02), eyeM, s * 0.06, 0.02, 0.16, head).castShadow = false;
+    // a face: nose, brows, mouth
+    mesh(box(0.045, 0.06, 0.05), skin, 0, -0.025, 0.17, head).castShadow = false;
+    const brow = fm(root, { color: 0x3a2618 });
+    for (const s of [-1, 1]) mesh(box(0.06, 0.016, 0.02), brow, s * 0.062, 0.065, 0.158, head).rotation.z = s * -0.18;
+    mesh(box(0.065, 0.014, 0.02), fm(root, { color: 0x8a3a30 }), 0, -0.085, 0.152, head).castShadow = false;
   }
   for (const s of [-1, 1]) {
     const arm = new THREE.Group(); arm.position.set(s * 0.28, 0.82, 0); rig.add(arm);
@@ -1875,6 +1899,47 @@ function sword(root, hand, len = 0.62, col = 0xd8dce8) {
   mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.14, 6), fm(root, { color: 0x4a2a18 }), 0, 0, 0, w);
   return w;
 }
+// the dwarf's great axe: a long haft and a broad double blade
+function greatAxe(root, hand) {
+  const w = new THREE.Group(); hand.add(w); w.rotation.x = Math.PI / 2 - 0.35;
+  mesh(new THREE.CylinderGeometry(0.03, 0.035, 1.05, 7), fm(root, { color: 0x4a2a14 }), 0, 0.3, 0, w);
+  const steel = fm(root, { color: 0xc8ccd8, metalness: 0.85, roughness: 0.28 });
+  for (const s of [-1, 1]) {
+    const b = new THREE.Shape(); b.moveTo(0, -0.1); b.quadraticCurveTo(0.12, -0.2, 0.3, -0.28); b.quadraticCurveTo(0.22, 0, 0.3, 0.28); b.quadraticCurveTo(0.12, 0.2, 0, 0.1); b.lineTo(0, -0.1);
+    const m = mesh(new THREE.ExtrudeGeometry(b, { depth: 0.035, bevelEnabled: false }), steel, 0, 0.72, -0.017, w); m.scale.x = s;
+  }
+  mesh(new THREE.ConeGeometry(0.04, 0.16, 6), steel, 0, 0.92, 0, w);
+  return w;
+}
+// what a race changes on a hero's figure: build, beard, ears, hair
+function raceLook(root, h) {
+  const P = root.userData.parts, hc = HAIR[(h.hair || 0) % HAIR.length], hm = fm(root, { color: h.race === 'dwarf' && h.g === 'm' ? [0x8a3a18, 0x5a3a1e, 0x3a2a20, 0xb05a28, 0x7a7a7a][(h.hair || 0) % 5] : hc, roughness: 0.95 });
+  const skin = fm(root, { color: 0xe8b896 });
+  if (h.race === 'dwarf') {
+    root.scale.set(1.18, 0.8, 1.18); P.head.scale.set(0.92, 1.2, 0.92);
+    if (h.g === 'm') {
+      // a wild beard down to the belt, a big moustache, bushy brows
+      const b = mesh(new THREE.ConeGeometry(0.15, 0.44, 9), hm, 0, -0.27, 0.13, P.head); b.rotation.x = Math.PI - 0.3; b.scale.z = 0.55;
+      for (const s of [-1, 1]) { const c = mesh(new THREE.SphereGeometry(0.1, 8, 6), hm, s * 0.09, -0.1, 0.1, P.head); c.scale.set(0.9, 1.1, 0.7); }
+      for (const s of [-1, 1]) { const m = mesh(box(0.11, 0.045, 0.05), hm, s * 0.055, -0.06, 0.17, P.head); m.rotation.z = s * -0.35; }
+      for (const s of [-1, 1]) mesh(box(0.08, 0.03, 0.04), hm, s * 0.06, 0.075, 0.155, P.head).rotation.z = s * -0.25;
+      for (const s of [-1, 1]) mesh(new THREE.SphereGeometry(0.08, 8, 6), hm, s * 0.15, -0.04, 0.03, P.head);
+    } else {
+      for (const s of [-1, 1]) { const br = mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.42, 6), hm, s * 0.15, -0.22, 0.04, P.head); br.rotation.z = s * 0.12; }
+    }
+    if (h.cls === 'fighter') for (const s of [-1, 1]) { const horn = mesh(new THREE.ConeGeometry(0.06, 0.34, 8), fm(root, { color: 0xe8dcc0, roughness: 0.6 }), s * 0.27, 0.22, 0, P.head); horn.rotation.z = s * -0.75; }
+  }
+  if (h.race === 'elf') {
+    root.scale.set(0.93, 1.07, 0.93); P.head.scale.set(1.05, 0.95, 1.05);
+    for (const s of [-1, 1]) { const e = mesh(new THREE.ConeGeometry(0.035, 0.2, 5), skin, s * 0.19, 0.06, -0.01, P.head); e.rotation.z = s * -1.15; e.rotation.x = -0.25; }
+    mesh(box(0.3, 0.42, 0.08), hm, 0, -0.16, -0.13, P.head);
+  }
+  if (h.race === 'halfling') {
+    root.scale.set(0.76, 0.68, 0.76); P.head.scale.setScalar(1.15);
+    for (let i = 0; i < 7; i++) { const a = Math.PI * (0.9 + i / 6 * 1.2); mesh(new THREE.SphereGeometry(0.065, 7, 5), hm, Math.cos(a) * 0.15, 0.1 + Math.sin(a * 2) * 0.02, Math.sin(a) * 0.13 - 0.03, P.head); }
+    for (const s of [-1, 1]) mesh(box(0.13, 0.05, 0.24), skin, s * 0.1, 0.02, 0.05, root.userData.rig);   // big bare feet
+  }
+}
 const FIG = {
   fighter(root, h) {
     const P = person(root, { torso: 0x9aa0b0, torsoMat: { metalness: 0.65, roughness: 0.38 }, legs: 0x4a4458, sleeve: 0x7a8090 });
@@ -1884,11 +1949,13 @@ const FIG = {
     mesh(new THREE.SphereGeometry(0.19, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), helm, 0, 0.14, 0, P.head);
     mesh(box(0.05, 0.12, 0.26), fm(root, { color: 0xd83a3a }), 0, 0.33, -0.04, P.head);
     mesh(box(0.44, 0.06, 0.28), fm(root, { color: 0x6a4a2a }), 0, 0.46, 0, root.userData.rig);   // belt
-    sword(root, P.handR, 0.66);
-    const sh = new THREE.Group(); sh.position.set(-0.06, 0.12, 0.12); P.armL.add(sh); sh.rotation.y = -0.25;
+    const dwarf = h && h.race === 'dwarf';
+    if (dwarf) greatAxe(root, P.handR); else sword(root, P.handR, 0.66);
+    const sh = new THREE.Group();
+    if (dwarf) { sh.position.set(0, 0.68, -0.17); root.userData.rig.add(sh); sh.scale.setScalar(0.85); } else { sh.position.set(-0.06, 0.12, 0.12); P.armL.add(sh); sh.rotation.y = -0.25; }
     mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 18), fm(root, { color: 0xb83030 }), 0, 0, 0, sh).rotation.x = Math.PI / 2;
     mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 10), fm(root, { color: 0xe8c050, metalness: 0.8, roughness: 0.3 }), 0, 0, 0.02, sh).rotation.x = Math.PI / 2;
-    P.armL.rotation.x = -0.5;
+    if (!dwarf) P.armL.rotation.x = -0.5;
   },
   cleric(root, h) {
     const P = person(root, { torso: 0xeee8d8, legs: 0x8a8a98, sleeve: 0xa0a4b0 });
@@ -2060,6 +2127,7 @@ const FIG = {
 function makeFig(kind, hero) {
   const root = figBase(kind);
   FIG[kind](root, hero);
+  if (hero && hero.race && hero.race !== 'human') raceLook(root, hero);
   root.traverse(o => { if (o.isMesh) o.userData.fig = root; });
   return root;
 }
@@ -3130,18 +3198,20 @@ for (const k in ICONS) {
 let pRen = null, pScene = null, pCam = null;
 const portraits = {};
 function portrait(h) {
-  const key = [h.cls, h.g, h.hair].join();
+  const key = [h.cls, h.g, h.hair, h.race].join();
   if (portraits[key]) return portraits[key];
   if (!renderer) return iconURL[h.cls];
   try {
     if (!pRen) {
       pRen = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: true, alpha: true, preserveDrawingBuffer: true });
-      pRen.setSize(192, 192, false); pRen.setClearColor(0x000000, 0);
+      pRen.setSize(256, 256, false); pRen.setClearColor(0x000000, 0);
       pRen.outputColorSpace = THREE.SRGBColorSpace; pRen.toneMapping = THREE.ACESFilmicToneMapping; pRen.toneMappingExposure = 1.2;
       pScene = new THREE.Scene();
-      pScene.add(new THREE.HemisphereLight(0xdde4ff, 0x302838, 1.4));
-      const k = new THREE.DirectionalLight(0xfff0dd, 2.6); k.position.set(1.5, 2.5, 3); pScene.add(k);
-      const r = new THREE.DirectionalLight(0x9ab8ff, 1.6); r.position.set(-2, 1.5, -2); pScene.add(r);
+      // torchlight from the front left, a cold rim from behind: the look of a painted portrait
+      pScene.add(new THREE.HemisphereLight(0x8a90b0, 0x201820, 0.9));
+      const k = new THREE.DirectionalLight(0xffc890, 3.2); k.position.set(2, 2.2, 2.6); pScene.add(k);
+      const r = new THREE.DirectionalLight(0x9ab8ff, 3.0); r.position.set(-2.5, 1.8, -2); pScene.add(r);
+      const f = new THREE.DirectionalLight(0xffe8d0, 0.8); f.position.set(-1, 0.5, 3); pScene.add(f);
       pCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
     }
     const fig = makeFig(h.cls, h);
@@ -3150,10 +3220,22 @@ function portrait(h) {
     if (P.armL && h.cls !== 'fighter') P.armL.rotation.x = -0.15;
     if (P.armR) P.armR.rotation.x = -0.45;
     pScene.add(fig);
-    const tall = h.cls === 'mage', big = h.cls === 'malrec';
-    pCam.position.set(0.45, big ? 1.32 : tall ? 1.22 : 1.08, big ? 1.8 : tall ? 1.8 : 1.55); pCam.lookAt(0, big ? 1.12 : tall ? 1.08 : 0.92, 0);
+    // frame the head and shoulders, whatever the size of the figure
+    fig.updateMatrixWorld(true);
+    const hp = V(); P.head.getWorldPosition(hp);
+    const sc = Math.max(fig.scale.x, fig.scale.y), tall = h.cls === 'mage' ? 0.1 * sc : 0;
+    pCam.position.set(hp.x + 0.5 * sc, hp.y + 0.12 * sc + tall, hp.z + 1.55 * sc); pCam.lookAt(hp.x, hp.y - 0.1 * sc + tall, hp.z);
     pRen.render(pScene, pCam);
-    portraits[key] = pRen.domElement.toDataURL();
+    // the medallion: a dark painted ground in the class's colour, the figure, a vignette
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const g2 = cv.getContext('2d'), col = (CLASSES[h.cls] && CLASSES[h.cls].col) || '#8a6aff';
+    let bg = g2.createRadialGradient(150, 90, 10, 128, 128, 190); bg.addColorStop(0, col + '88'); bg.addColorStop(0.45, '#2a2234'); bg.addColorStop(1, '#0c0a12');
+    g2.fillStyle = bg; g2.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 260; i++) { g2.fillStyle = `rgba(255,240,220,${Math.random() * 0.035})`; g2.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 10, 1 + Math.random() * 3); }
+    g2.drawImage(pRen.domElement, 0, 0, 256, 256);
+    bg = g2.createRadialGradient(128, 118, 80, 128, 128, 182); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,0.75)');
+    g2.fillStyle = bg; g2.fillRect(0, 0, 256, 256);
+    portraits[key] = cv.toDataURL('image/jpeg', 0.88);
     pScene.remove(fig);
     return portraits[key];
   } catch (e) { return iconURL[h.cls]; }
@@ -3219,7 +3301,8 @@ $('title').addEventListener('click', e => {
 function newSetup() {
   const names = NAMES.slice().sort(() => Math.random() - 0.5);
   const me = nice(PX.cleanName(profile.name));
-  party = CLASS_IDS.map((cls, i) => { const [nm, g] = i === 0 && me ? [me, 'm'] : names[i]; const h = makeHero(nm, g, cls, rollStats()); h.hair = rnd(5) - 1; return h; });
+  const races = { fighter: 'dwarf', cleric: 'human', mage: 'elf', thief: 'halfling' };
+  party = CLASS_IDS.map((cls, i) => { const [nm, g] = i === 0 && me ? [me, 'm'] : names[i]; const h = makeHero(nm, g, cls, rollStats(), races[cls]); h.hair = rnd(5) - 1; return h; });
   party.size = 4;
 }
 const cleanHeroName = v => { const x = String(v || '').replace(/[^A-Za-zÁ-žÀ-ÿ0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10); return PX.censor ? PX.censor(x) : x; };
@@ -3235,8 +3318,9 @@ function renderSetup() {
         <div class="row"><input data-name="${i}" value="${esc(h.name)}" maxlength="10" aria-label="${L('Jméno', 'Name')}">
           <button class="pill${h.g === 'm' ? ' on' : ''}" data-g="${i}m">${L('kluk', 'boy')}</button><button class="pill${h.g === 'f' ? ' on' : ''}" data-g="${i}f">${L('holka', 'girl')}</button></div>
         <button class="pill" data-rr="${i}" title="${L('Hodit znovu', 'Reroll')}">🎲 ${L('znovu', 'reroll')}</button>
-        <div class="cls">${CLASS_IDS.map(c => `<button class="pill${h.cls === c ? ' on' : ''}" style="--c:${CLASSES[c].col}" data-c="${i}${c}">${CLASSES[c].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
-        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · ${L('obrana', 'AC')} <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i></div></div>`;
+        <div class="cls">${RACE_IDS.map(r => `<button class="pill${(h.race || 'human') === r ? ' on' : ''}" data-r="${i}${r}">${RACES[r].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
+        <div class="cls">${CLASS_IDS.map(c => `<button class="pill${h.cls === c ? ' on' : ''}" style="--c:${CLASSES[c].col}" data-c="${i}${c}"${raceOf(h).cls.includes(c) ? '' : ' disabled'}>${CLASSES[c].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
+        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · ${L('obrana', 'AC')} <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i><br><span class="muted">${raceName(h)}: ${raceOf(h).info}</span></div></div>`;
     }).join('')}
     <h4>${L('Jak tvrdé tažení?', 'How hard a campaign?')}</h4>
     <div class="row"><button class="pill${party.mode !== 'hard' ? ' on' : ''}" data-mode="story">${L('Příběh', 'Story')}</button><button class="pill${party.mode === 'hard' ? ' on' : ''}" style="--c:#ff6a50" data-mode="hard">${L('Hardcore', 'Hardcore')}</button></div>
@@ -3254,6 +3338,7 @@ $('setup').addEventListener('click', e => {
   if (d.g) { party[+d.g[0]].g = d.g[1]; }
   if (d.rr) { const h = party[+d.rr]; h.vals = rollStats(); setClass(h, h.cls); sfx('dice'); }
   if (d.c) setClass(party[+d.c[0]], d.c.slice(1));
+  if (d.r) { const h = party[+d.r[0]]; h.race = d.r.slice(1); setClass(h, RACES[h.race].cls.includes(h.cls) ? h.cls : 'fighter'); }
   if (d.a === 'back') { setState('title'); return; }
   if (d.a === 'go') { startGame(); return; }
   renderSetup();
@@ -3514,7 +3599,7 @@ function openSheet(h) {
   const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => !x.dead && x.hp < x.max);
   const canDrink = calm && G.items.potion > 0 && !h.dead && h.hp < h.max;
   $('sheet').innerHTML = `<div class="card" style="--c:${C.col}">
-    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${lvl(h) < MAX_LEVEL ? L(`${clsName(h)}, ${lvl(h)}. úroveň · ${h.xp} / ${XP_LEVEL[lvl(h)]} zkušeností do ${lvl(h) + 1}. úrovně`, `Level ${lvl(h)} ${clsName(h)} · ${h.xp} / ${XP_LEVEL[lvl(h)]} XP to level ${lvl(h) + 1}`) : L(`${clsName(h)}, ${lvl(h)}. úroveň (nejvyšší)`, `Level ${lvl(h)} ${clsName(h)} (the highest)`)}</div></div></div>
+    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${raceName(h)} · ${lvl(h) < MAX_LEVEL ? L(`${clsName(h)}, ${lvl(h)}. úroveň · ${h.xp} / ${XP_LEVEL[lvl(h)]} zkušeností do ${lvl(h) + 1}. úrovně`, `Level ${lvl(h)} ${clsName(h)} · ${h.xp} / ${XP_LEVEL[lvl(h)]} XP to level ${lvl(h) + 1}`) : L(`${clsName(h)}, ${lvl(h)}. úroveň (nejvyšší)`, `Level ${lvl(h)} ${clsName(h)} (the highest)`)}</div></div></div>
     <div class="sh-cols">
       <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
       <div class="combat">
@@ -3527,6 +3612,7 @@ function openSheet(h) {
         ${h.spellMax ? `<div class="magic">${L('Kouzla', 'Spells')} ${h.spells} / ${h.spellMax} ${L('dnes', 'today')}</div>` : ''}
       </div>
     </div>
+    <div class="muted" style="margin-top:6px"><b>${raceName(h)}</b>: ${raceOf(h).info}</div>
     <h4>${L('Záchranné hody', 'Saving throws')} <span class="muted">(${L('k20, tohle nebo víc', 'd20, this or more')})</span></h4>
     <div class="chips">${L(['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'], ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells']).map((nm, i) => `<span>${nm} <b>${saveOf(h, ['poison', 'wand', 'para', 'breath', 'spell'][i])}</b></span>`).join('')}</div>
     ${h.cls === 'thief' ? `<h4>${L('Zlodějské dovednosti', 'Thief skills')} <span class="muted">(${L('k100, tohle nebo méně', 'd100, this or less')})</span></h4><div class="chips">${SKILL_NAMES.map((nm, k) => `<span>${nm} <b>${thiefSkill(h, k)} %</b></span>`).join('')}</div>` : ''}
@@ -3643,7 +3729,7 @@ $('map').addEventListener('click', e => {
     if (!confirm(L(`Pohřbít hrdinu ${old.name}? Cech dobrodruhů pošle nového hrdinu (1. úroveň).`, `Bury ${old.name}? The Adventurers' Guild sends a new hero (level 1).`))) return;
     unequip(old);
     const taken = G.heroes.map(x => x.name), [nm, g] = NAMES.filter(([x]) => !taken.includes(x))[0] || ['Ash', 'm'];
-    const h = makeHero(nm, g, old.cls, rollStats());
+    const h = makeHero(nm, g, old.cls, rollStats(), old.race || 'human');
     for (const id in G.arts) if (G.arts[id] === i) G.arts[id] = -1;
     G.heroes[i] = h; store2(); renderMap(); setState('map'); return;
   }
@@ -4137,7 +4223,7 @@ window.PQ = {
   get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
-  tileScreen: t => toScreen(tileWorld(t)),
+  tileScreen: t => toScreen(tileWorld(t)), portrait: h => portrait(h),
 };
 // TESTING A SCENE: adad?scena=bell (or ?scene=) starts a throwaway party of 4 straight in that scene of the Drowned
 // Bell, without films. A test game is never saved, so the real campaign stays as it was. Scenes: inn, hill, nave,

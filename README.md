@@ -1466,6 +1466,25 @@ or model files).
   snapshot of the moment; loading it puts the campaign back to that moment (the snapshot itself never changes).
   Hardcore has no snapshots. Title → Saved games: play, load, rename, delete; at most 10. All in this browser
   (`pixelQuest.slots`, `pixelQuest.slot.<id>`); the one campaign saved before 0.7 becomes the first slot.
+- **Time and rations** (0.8): the campaign has a clock (shown next to the gold). Walking, searching, chatting,
+  fighting and resting take time; every dawn each hero eats a day's food, and without it the party goes hungry (no
+  healing when resting, -1 to hit). Rest at Thornwall's inn (a bed, 1 gold a hero) or in the open by the churchyard
+  wall (8 hours, and maybe the dead come). In the Drowned Bell the party sets off in the evening and Mila drowns at
+  03:00. Missions no longer heal the party for free.
+- **Tactical battles on hexes** (0.9): a fight starts with the monsters coming on and the party in its **formation**
+  (front row, back row; tap a hero and then a hex; remembered for the next fight). Each hero's turn is formal:
+  **move** (fighter and cleric 3 hexes, mage 4, thief 5; DEX 16+ +1) and **one action**; a fighter who stands still
+  strikes twice; a bow shoots twice if the archer stands still; a thief may move after attacking and slips away
+  from enemies; anyone else walking away from a monster next to them gets struck (opportunity attack); **Sprint**
+  trades the action for a second move. **Ranged weapons** with short/long range (-2 beyond short): sling (stones never
+  run out, crushes bone), short bow and arrows, throwing knives, darts; thrown things and half the arrows are picked
+  up after a won fight. A cleric and a thief start with a sling, a mage with darts; the rest is in Thornwall's shop
+  (a bow is 25 gold, so a fighter can buy one before the first mission). Rules: `docs/pixel-quest-world.md`.
+- **Races** (0.10): human (+10% experience), dwarf (+1 CON -1 CHA, saves 2 better against poison, wands and spells;
+  a fighter wields a great axe), elf (+1 DEX -1 CON, +1 with a bow, can't be held by magic), halfling (+1 DEX -1
+  STR, +1 with missiles, AC 1 better, 1 hex slower). Dwarves and halflings can't be mages. Each race has its own
+  figure (the dwarf's wild beard and horned helm, the elf's ears, the halfling's curls and bare feet) and the party
+  cards show a portrait medallion with a face, torchlight and a painted ground.
 - Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
