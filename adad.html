@@ -129,6 +129,11 @@
   #fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
   .num { position: absolute; transform: translate(-50%, -50%); font: 800 22px 'Alegreya Sans', sans-serif; text-shadow: 0 2px 0 #000, 0 0 8px #000; white-space: nowrap; }
   .num.miss { font-size: 16px; color: #c8bfdc; } .num.dmg { color: #ff6a50; } .num.heal { color: #8ff08f; } .num.info { font-size: 16px; color: #ffd23f; }
+  .spot { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 1px; background: none; border: 0; padding: 4px; color: #fff; cursor: pointer; }
+  .spot i { font-style: normal; font-size: 20px; color: #ffe8a0; text-shadow: 0 0 8px #ffb040, 0 0 2px #000; animation: spotp 2.2s ease-in-out infinite; }
+  .spot span { font: 600 11px/1.1 system-ui, sans-serif; background: rgba(10,8,16,.66); padding: 2px 6px; border-radius: 8px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  .spot.on i { color: #fff; text-shadow: 0 0 14px #ffd23f; } .spot.on span { background: rgba(80,60,10,.85); }
+  @keyframes spotp { 50% { transform: scale(1.25); opacity: .75; } }
   .ut { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; }
   .ut i { font: 700 11.5px 'Alegreya Sans', sans-serif; font-style: normal; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; white-space: nowrap; }
   .ut s { display: block; width: 40px; height: 5px; background: #0b0912; border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,0,0,.6); }
@@ -181,6 +186,9 @@
   .card.parch .muted { color: #6a5a40; }
   .mmap { position: relative; width: 100%; aspect-ratio: 16 / 10; margin: 8px 0; border-radius: 8px; background: radial-gradient(ellipse, rgba(255,255,255,.25), rgba(120,90,40,.15)); }
   .mmap svg { position: absolute; inset: 0; width: 100%; height: 100%; } .mmap line { stroke: #7a5a30; stroke-width: .8; }
+  .mtabs { display: flex; flex-wrap: wrap; gap: 5px; } .mtabs .pill { background: #f0e2bc; color: #3a2a18; border-color: #a8885a; font-size: 13px; padding: 4px 9px; } .mtabs .pill.on { background: #8a6a3a; color: #fff4d8; }
+  .mlink { position: absolute; transform: translate(-50%, -50%); background: #8a6a3a; color: #fff4d8; border: 1px solid #5a3a1a; border-radius: 10px; font: 700 11px 'Alegreya Sans', sans-serif; padding: 2px 7px; white-space: nowrap; }
+  .mlink.unk { background: #c8b088; color: #5a4a30; }
   .mn { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; color: #3a2a18; }
   .mn b { width: 26px; height: 26px; line-height: 26px; border-radius: 50%; background: #f4e8c8; border: 2px solid #7a5a30; font-size: 13px; }
   .mn span { font: 700 12px 'Alegreya Sans', sans-serif; white-space: nowrap; margin-top: 1px; text-shadow: 0 0 3px #f4e8c8; }
@@ -300,7 +308,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.11.0';
+const VERSION = '0.13.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -571,7 +579,8 @@ const gap = () => Q.push({ k: 'say', txt: '', cls: 'gap' });
 const play = (fn, dur) => Q.push({ k: 'anim', fn, dur });   // start something in the 3D world, then wait dur seconds
 function rollFx(sides, value, txt, ok, fast) { Q.push({ k: 'roll', sides, value, txt, ok, fast }); }
 // a choice somebody has to try (a check): only shown while some hero can still try it
-function setChoices(q, list) { ask = q; choicesVer++; choices = list.filter(c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0))); }
+const validChoice = c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0));
+function setChoices(q, list) { ask = q; choicesVer++; choices = list.filter(validChoice); atTop = false; curSpot = null; }
 const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, h => { pass(TIME_COST.search); fn(h); }, stay) });
 
 const storyEl = $('story'), storyIn = $('storyIn');
@@ -745,6 +754,7 @@ function enter(id) {
   f()['seen_' + id] = 1;
   Music.play(roomMusic());
   showSet(R.set, R.view);
+  if (R.eye) { const [x, y, z, yaw, pitch] = R.eye; curSet.userData.views['eye_' + id] = { eye: [x, y, z], yaw, pitch }; curView = 'eye_' + id; }
   showPreview(R.foes && !(R.beaten && R.beaten()) ? R.foes() : null);
   if (first && R.film && !skipFilms) Q.push({ k: 'film', id: R.film });
   else then(() => fade(false));
@@ -753,7 +763,77 @@ function enter(id) {
   if (R.enter) R.enter(first);
   then(stay);
 }
-function showChoices() { const R = ROOMS[G.room]; setChoices(typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?'), R.choices()); }
+function showChoices() {
+  const R = ROOMS[G.room], q = typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?');
+  if (!R.spots) { setChoices(q, R.choices()); return; }
+  const all = R.choices();
+  spotOk = new Set(Object.keys(R.spots).filter(id => R.spots[id].look || spotActs(R, id, all).some(validChoice)));
+  setChoices(L('Rozhlédni se (táhni prstem) a klepni na ✦', 'Look around (drag) and tap a ✦'),
+    [...all.filter(c => !c.spot), { label: L('Co tu vidíte', 'What you can see'), ic: '👁', dim: true, act: spotList }]);
+  atTop = true;
+}
+/* EXPLORING A SCENE: the party stands in the scene (a first-person view, R.eye: [x, y, z, yaw, pitch]); drag to look
+   around. The things you can look at or use are marked ✦ (R.spots: where they are, a name, what you see the first time,
+   extra things to do). Tapping one turns the view to it, tells what you see, and offers what can be done with it: the
+   room's choices that belong to it (choice.spot) plus its own (spot.acts). "What you can see" lists the same things. */
+let atTop = false, curSpot = null, spotOk = new Set(), spotEls = null, spotRoom = '';
+const spotActs = (R, id, all) => [...all.filter(c => c.spot === id), ...(R.spots[id].acts ? R.spots[id].acts() : [])];
+const spotName = sp => typeof sp.name === 'function' ? sp.name() : sp.name;
+const spotPos = sp => typeof sp.at === 'function' ? sp.at() : V(...sp.at);
+function spotList() {
+  const R = ROOMS[G.room];
+  setChoices(L('Co tu vidíte:', 'What you can see:'), [...[...spotOk].map(id => ({ label: spotName(R.spots[id]), ic: R.spots[id].ic || '✦', act: () => openSpot(id) })),
+    { label: L('Zpět', 'Back'), ic: '‹', dim: true, act: showChoices }]);
+}
+function openSpot(id) {
+  const R = ROOMS[G.room], sp = R.spots && R.spots[id];
+  if (!sp || F) return;
+  choices = []; choicesVer++;
+  turnTo(spotPos(sp));
+  const k = 'look_' + G.room + '_' + id;
+  if (sp.look && !f()[k]) { f()[k] = 1; say(typeof sp.look === 'function' ? sp.look() : sp.look); }
+  then(() => {
+    const acts = spotActs(R, id, R.choices()).filter(validChoice);
+    setChoices(spotName(sp) + (acts.length ? '' : L(' · nic dalšího tu není', ' · nothing more to do here')), [...acts, { label: L('Zpět', 'Back'), ic: '‹', dim: true, act: () => { turnTo(null); showChoices(); } }]);
+    curSpot = id;
+  });
+}
+const eyeView = () => { const v = curSet && !F && curSet.userData.views[curView]; return v && v.eye ? v : null; };
+// turn the first-person view towards a point (null: back to where the scene's view looks)
+function turnTo(p) {
+  const v = eyeView(); if (!v) return;
+  if (!p) { orbit.uyaw = orbit.upitch = 0; return; }
+  const dx = p.x - v.eye[0], dy = p.y - v.eye[1], dz = p.z - v.eye[2];
+  let yaw = Math.atan2(-dx, -dz) - v.yaw; while (yaw > Math.PI) yaw -= 2 * Math.PI; while (yaw < -Math.PI) yaw += 2 * Math.PI;
+  orbit.uyaw = yaw; orbit.upitch = clamp(Math.atan2(dy, Math.hypot(dx, dz)) - v.pitch, -0.8, 0.8);
+}
+// the ✦ markers, over the 3D scene
+function renderSpots() {
+  const R = G && G.room && ROOMS[G.room], has = R && R.spots;
+  if (spotRoom !== (has ? G.room : '')) {
+    if (spotEls) for (const el of Object.values(spotEls)) el.remove();
+    spotEls = null; spotRoom = has ? G.room : '';
+    if (has) {
+      spotEls = {};
+      for (const id of Object.keys(R.spots)) {
+        const el = document.createElement('button'); el.className = 'spot'; el.innerHTML = '<i>✦</i><span></span>';
+        el.addEventListener('click', e => { e.stopPropagation(); if (busy() || !(atTop || curSpot)) return; sfx('click'); openSpot(id); });
+        fxEl.appendChild(el); spotEls[id] = el;
+      }
+    }
+  }
+  if (!spotEls) return;
+  const show = state === 'play' && !F && !film && !busy() && !menu && !sheet && !lib && (atTop || curSpot) && choices.length;
+  for (const [id, el] of Object.entries(spotEls)) {
+    let vis = show && spotOk.has(id);
+    if (vis) {
+      const p = toScreen(spotPos(R.spots[id]));
+      vis = p.ok && p.x > viewRect.x && p.x < viewRect.x + viewRect.w && p.y > viewRect.y && p.y < viewRect.y + viewRect.h;
+      if (vis) { el.style.left = p.x + 'px'; el.style.top = p.y + 'px'; const nm = spotName(R.spots[id]); if (el.lastChild.textContent !== nm) el.lastChild.textContent = nm; }
+    }
+    el.hidden = !vis; el.classList.toggle('on', curSpot === id);
+  }
+}
 // the inn's patrons: who sits where, and what each one has to say (their sheets are on the server: api/src/npcs.ts)
 // THORNWALL between missions: the inn (the same patrons, who remember what happened), Granny Sedge's shop, the map.
 function enterTown() {
@@ -872,13 +952,19 @@ const ROOMS = {
       : L('Thornwall, malá vesnice u řeky. Nahoře na kopci zvoní zvon, který neexistuje. V hostinci U Křivé lucerny se svítí a babka Sedge má ještě otevřeno.', 'Thornwall, a small village by the river. Up on the hill a bell rings that isn\'t there. The Crooked Lantern Inn is lit, and Granny Sedge\'s shop is still open.'),
     again: L('Thornwall. Co dál?', 'Thornwall. What next?'),
     ask: L('Kam půjdete?', 'Where do you go?'),
+    eye: [1.8, 1.6, 7, 0.45, 0.04],
+    spots: {
+      inn: { at: [-2.2, 1.6, 0.8], ic: '🏮', name: L('Hostinec U Křivé lucerny', 'The Crooked Lantern Inn') },
+      shop: { at: [3.2, 1.5, -3], ic: '🧪', name: L('Obchod babky Sedge a kovárna', 'Granny Sedge\'s shop and the smithy'), look: L('Za oknem visí sušené byliny a z kovárny vedle je slyšet kladivo.', 'Dried herbs hang in the window, and a hammer rings in the smithy next door.') },
+      road: { at: [0.3, 1.0, -13], ic: '🛤', name: L('Cesta z vesnice', 'The road out of the village') },
+    },
     choices: () => [
-      { label: L('Hostinec: napít se a pokecat', 'The inn: have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
-      { label: L('Obchod babky Sedge a kovář', 'Granny Sedge\'s shop and the smith'), ic: '🧪', act: () => shopMenu() },
-      { label: L('Přespat v hostinci', 'Sleep at the inn'), ic: '🛏', note: L(`${G.heroes.filter(h => !h.dead).length} zl.`, `${G.heroes.filter(h => !h.dead).length} gold`), if: () => G.gold >= G.heroes.filter(h => !h.dead).length, act: () => {
+      { spot: 'inn', label: L('Hostinec: napít se a pokecat', 'The inn: have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
+      { spot: 'shop', label: L('Obchod babky Sedge a kovář', 'Granny Sedge\'s shop and the smith'), ic: '🧪', act: () => shopMenu() },
+      { spot: 'inn', label: L('Přespat v hostinci', 'Sleep at the inn'), ic: '🛏', note: L(`${G.heroes.filter(h => !h.dead).length} zl.`, `${G.heroes.filter(h => !h.dead).length} gold`), if: () => G.gold >= G.heroes.filter(h => !h.dead).length, act: () => {
         G.gold -= G.heroes.filter(h => !h.dead).length; rest(true); then(stay);
       } },
-      { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => { G.room = null; store2(); setState('map'); } },
+      { spot: 'road', label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => { G.room = null; store2(); setState('map'); } },
     ],
   },
   inn: {
@@ -892,8 +978,15 @@ const ROOMS = {
     again: () => f().late >= 2 ? L('Oheň v krbu dohořívá. Mlynář sedí u stolu a nemluví. Nahoře na kopci zvoní zvon, a v jeho hlase je teď něco nového.', 'The fire is burning low. The miller sits at a table and says nothing. Up on the hill the bell rings, and there is something new in its voice.')
                                 : L(`Oheň v krbu praská. Je ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis se na vás podívá: „Každá hodina se počítá. Do svítání to nevydrží.“ Nahoře na kopci zase zvoní zvon.`, `The fire crackles. It is ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis looks at you: "Every hour counts. She won't last till dawn." Up on the hill, the bell rings again.`),
 
+    eye: [1.8, 1.6, 7, 0.55, 0.05],
+    spots: {
+      inn: { at: [-2.2, 1.6, 0.8], ic: '🏮', name: L('Hostinec U Křivé lucerny', 'The Crooked Lantern Inn'), look: L('Z oken padá teplé světlo a ozývá se tlumený hovor. Nad dveřmi se houpe křivá lucerna.', 'Warm light spills from the windows, and low voices drift out. A crooked lantern swings over the door.') },
+      houses: { at: [3.4, 1.4, -3], ic: '🏠', name: L('Domy vesničanů', 'The villagers\' houses'), look: L('Okenice jsou zavřené na závoru, i když je teprve večer. Na jedněch dveřích je čerstvě namalovaný znak proti zlým duchům.', 'The shutters are barred, though it is only evening. On one door a sign against evil spirits is freshly painted.') },
+      church: { at: [0, 10.5, -46], ic: '⛪', name: L('Kostel na kopci', 'The church on the hill'), look: L('Nad vesnicí se v mlze rýsuje věž starého kostela. Odtamtud se nese zvon.', 'Above the village the old church tower looms in the mist. The bell sounds from there.') },
+      road: { at: [0.3, 1.0, -13], ic: '🛤', name: L('Cesta na kopec', 'The road up the hill') },
+    },
     choices: () => [
-      { label: L('Vyptat se na klepy', 'Ask around for gossip'), ic: '💬', if: () => !f().rumour, ...pickWho(L('Kdo se vyptává? (hod na Charisma)', 'Who asks around? (Charisma roll)'), h => abilityChance(h, 'cha'), h => {
+      { spot: 'inn', label: L('Vyptat se na klepy', 'Ask around for gossip'), ic: '💬', if: () => !f().rumour, ...pickWho(L('Kdo se vyptává? (hod na Charisma)', 'Who asks around? (Charisma roll)'), h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
           f().rumour = 2;
           say(L('Stará Elva se nakloní: „Kostelník, bratr Malrec, je divný od té doby, co se mu v řece utopil bratr. Pořád si brouká starou písničku: Mám srdce, a přece nežiju…“', 'Old Elva leans in. "Brother Malrec, the sexton, went strange when his brother drowned in the river. He keeps humming an old song: I have a tongue but never taste..."'));
@@ -904,8 +997,8 @@ const ROOMS = {
         }
         then(stay);
       }) },
-      { label: L('Napít se a pokecat', 'Have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
-      { label: L('Vyrazit na kopec ke kostelu', 'Set off up the hill to the church'), ic: '⛰', act: () => go('hill') },
+      { spot: 'inn', label: L('Napít se a pokecat', 'Have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
+      { spot: 'road', label: L('Vyrazit na kopec ke kostelu', 'Set off up the hill to the church'), ic: '⛰', act: () => go('hill') },
     ],
   },
   hill: {
@@ -915,9 +1008,17 @@ const ROOMS = {
           'The path climbs between old graves. The mist is so thick you can hardly see a step ahead.\n' +
           'Then the church rises out of it. A broken tower, black windows. And from inside, softly, as if from deep below: a bell.'),
     again: L('Kostel stojí v mlze. Dveře jsou pootevřené.', 'The church stands in the mist. The door is ajar.'),
+    eye: [0.4, 0.6, 9, 0, 0.12],
+    spots: {
+      door: { at: [0, 1.3, 0.6], ic: '🚪', name: L('Dveře kostela', 'The church door'), look: L('Těžké dubové dveře jsou pootevřené. Na prahu je čerstvé bláto a stopy bot, jen jedním směrem: dovnitř.', 'The heavy oak door stands ajar. Fresh mud on the step, and boot prints going one way only: in.') },
+      tower: { at: [0, 6.8, -0.9], ic: '🗼', name: L('Věž', 'The tower'), look: L('Ve zvonici nahoře je prázdno. Zvon, který slyšíte, tam nevisí. Zvuk jde odněkud zdola.', 'The belfry up there is empty. The bell you hear doesn\'t hang there. The sound comes from somewhere below.') },
+      graves: { at: [-3.4, 0.1, 5.5], ic: '🪦', name: L('Staré hroby', 'Old graves'), look: L('Křivé náhrobky, mech, jména, která už nikdo nepřečte. Jeden hrob je větší než ostatní, se svatým znamením.', 'Crooked headstones, moss, names nobody can read any more. One grave is bigger than the rest, with a holy sign.') },
+      tree: { at: [6.3, 0.9, 4.2], ic: '🌳', name: L('Starý strom', 'An old tree'), look: L('Pod rozložitým stromem je sucho a závětří. Dobré místo na odpočinek, kdyby nebylo hrobů kolem.', 'Under the spreading tree it is dry and out of the wind. A good place to rest, if not for the graves around.') },
+      path: { at: [0.2, -1.6, 16], ic: '🛤', name: L('Cesta dolů do vesnice', 'The path down to the village') },
+    },
     choices: () => [
-      { label: f().open ? L('Dovnitř a dolů do krypty', 'Inside and down to the crypt') : L('Vejít do kostela', 'Go into the church'), ic: '⛪', act: () => go(f().open ? (f().skel ? 'door' : 'crypt') : f().rats ? 'altar' : 'nave') },
-      { label: L('Prohledat hřbitov', 'Search the graveyard'), ic: '🔍', if: () => !f().grave, ...pickWho(L('Kdo hledá? (hod na Moudrost)', 'Who searches? (Wisdom roll)'), h => h.tried.grave ? 0 : abilityChance(h, 'wis'), h => {
+      { spot: 'door', label: f().open ? L('Dovnitř a dolů do krypty', 'Inside and down to the crypt') : L('Vejít do kostela', 'Go into the church'), ic: '⛪', act: () => go(f().open ? (f().skel ? 'door' : 'crypt') : f().rats ? 'altar' : 'nave') },
+      { spot: 'graves', label: L('Prohledat hřbitov', 'Search the graveyard'), ic: '🔍', if: () => !f().grave, ...pickWho(L('Kdo hledá? (hod na Moudrost)', 'Who searches? (Wisdom roll)'), h => h.tried.grave ? 0 : abilityChance(h, 'wis'), h => {
         h.tried.grave = 1;
         if (checkAbility(h, 'wis')) {
           f().grave = 1; G.items.holy++;
@@ -925,14 +1026,14 @@ const ROOMS = {
         } else say(L(`${h.name} najde jen mokrou trávu a mlhu.`, `${h.name} finds only wet grass and mist.`));
         then(stay);
       }) },
-      { label: L('Odpočinout si u hřbitovní zdi (8 h)', 'Rest by the churchyard wall (8 h)'), ic: '💤', if: () => !f().rested, act: () => {
+      { spot: 'tree', label: L('Odpočinout si tady (8 h)', 'Rest here (8 h)'), ic: '💤', if: () => !f().rested, act: () => {
         f().rested = 1;
         const r = rnd(6);
         rollFx(6, r, L(`Noční hlídka: padlo ${r} (1 = něco přijde)`, `Night watch: rolled ${r} (1 = something comes)`), r > 1);
         if (r === 1) { say(L('Uprostřed noci zachrastí kosti. Z hrobů vylézají kostlivci!', 'In the middle of the night bones rattle. Skeletons climb out of the graves!'), '#ff7a6a'); pass(120); then(() => fight({ foes: [['skel', 2]], surprise: 'foes', win: () => { rest(false); then(stay); }, flee: () => go('inn') })); return; }
         rest(false); then(stay);
       } },
-      { label: L('Zpátky do vesnice', 'Back to the village'), ic: '‹', dim: true, act: () => go('inn') },
+      { spot: 'path', label: L('Zpátky do vesnice', 'Back to the village'), ic: '‹', dim: true, act: () => go('inn') },
     ],
   },
   nave: {
@@ -941,58 +1042,73 @@ const ROOMS = {
                   `The roof has fallen in and the moon shines inside. At the end of the nave stands the altar.\nBut between you and the altar something is moving: ${ratsN()} giant rats, fat and red-eyed, chewing on something you would rather not look at.`),
     again: L('Krysy jsou pořád tady, mezi vámi a oltářem.', 'The rats are still here, between you and the altar.'),
     foes: () => [['rat', ratsN()]], beaten: () => f().rats,
+    eye: [0.3, 1.6, 7.6, 0, -0.04],
+    spots: {
+      rats: { at: [0, 0.7, -1.1], ic: '🐀', name: L('Krysy', 'The rats'), look: L('Obří krysy, tlusté a rudooké. Hlodají něco, na co se radši nedíváte. Zatím vás nevidí.', 'Giant rats, fat and red-eyed, gnawing at something you\'d rather not look at. They haven\'t seen you yet.') },
+      altar: { at: [0, 1.4, -6.2], ic: '🕯', name: L('Oltář', 'The altar'), look: L('Na oltáři hoří svíčky. Kdo je zapálil, když kostel je dávno opuštěný?', 'Candles burn on the altar. Who lit them, in a church abandoned long ago?') },
+      column: { at: [-2.0, 0.6, 0.5], ic: '🏛', name: L('Spadlý sloup', 'A fallen column'), look: L('Sloup praskl a jeho kus leží napříč lodí. Na kameni jsou vyškrábané čárky, jako by někdo počítal dny.', 'A column has cracked, and a piece of it lies across the nave. Tally marks are scratched into the stone, as if someone counted days.') },
+      exit: { at: [0, 1.4, 9.1], ic: '🚪', name: L('Dveře ven', 'The door out') },
+    },
     choices: () => [
-      { label: L('Bojovat s krysami', 'Fight the rats'), ic: '⚔', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') }) },
-      { label: L('Proplížit se kolem', 'Sneak past them'), ic: '🤫', act: () => {
+      { spot: 'rats', label: L('Bojovat s krysami', 'Fight the rats'), ic: '⚔', act: () => fight({ foes: [['rat', ratsN()]], win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') }) },
+      { spot: 'rats', label: L('Proplížit se kolem', 'Sneak past them'), ic: '🤫', act: () => {
         say(L('Všichni se snaží jít potichu. (Zloděj: tiché plížení. Ostatní: hod na Obratnost, ve zbroji -4.)', 'Everyone tries to walk quietly. (Thief: move silently. The others: Dexterity roll, -4 in armour.)'));
         let ok = 0, all = 0;
         for (const h of G.heroes) if (up(h)) { all++; if (h.cls === 'thief' ? checkSkill(h, 2) : checkAbility(h, 'dex', CLASSES[h.cls].armour <= 4 ? -4 : 0)) ok++; }
         if (ok * 2 >= all) { say(L('Proklouznete podél zdi. Krysy ani nezvednou hlavu.', 'You slip along the wall. The rats never look up.'), '#7aea7a'); f().rats = 1; then(() => go('altar')); }
         else { say(L('Bota zaskřípe o kámen. Všechny červené oči se otočí k vám!', 'A boot scrapes on stone. Every red eye turns toward you!'), '#ff7a6a'); then(() => fight({ foes: [['rat', ratsN()]], surprise: 'foes', win: () => { f().rats = 1; go('altar'); }, flee: () => go('hill') })); }
       } },
-      { label: L('Hodit jim jídlo', 'Throw them some food'), ic: '🧀', note: () => L(`jídlo: ${G.items.food}`, `food: ${G.items.food}`), if: () => G.items.food > 0, act: () => {
+      { spot: 'rats', label: L('Hodit jim jídlo', 'Throw them some food'), ic: '🧀', note: () => L(`jídlo: ${G.items.food}`, `food: ${G.items.food}`), if: () => G.items.food > 0, act: () => {
         G.items.food--; f().rats = 1;
         say(L('Hodíte do tmy bochník a kus sýra. Krysy se na něj vrhnou a pištějí. Vy v klidu projdete.', 'You toss a loaf and a wedge of cheese into the dark. The rats pour over it, squealing. You walk past.'), '#7aea7a');
         play(() => ratsToFood(), 1.6);
         then(() => go('altar'));
       } },
-      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
+      { spot: 'exit', label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ],
   },
   altar: {
     title: L('Oltář', 'The Altar'), set: 'nave', view: 'altar', film: 'altar',
     text: L('Za oltářem vedou čerstvé stopy k padacím dvířkům v podlaze. Mají nový, lesklý zámek.\nZdola je slyšet zvon. A na chvilku i dívčí hlas.', 'Behind the altar, fresh tracks lead to a trapdoor in the floor. Its lock is new and shiny.\nFrom below you hear the bell. And for a moment, a girl\'s voice.'),
     again: () => f().open ? L('Padací dvířka jsou otevřená. Dolů vedou schody.', 'The trapdoor is open. Steps lead down.') : L('Za oltářem čekají zamčená padací dvířka.', 'Behind the altar the locked trapdoor waits.'),
+    eye: [2.5, 1.75, -3.6, 0.6, -0.3],
+    spots: {
+      trap: { at: [0, 0.15, -7.6], ic: '🔒', name: () => f().open ? L('Otevřená padací dvířka', 'The open trapdoor') : L('Padací dvířka', 'The trapdoor'), look: L('Dvířka v podlaze, okovaná železem. Zámek je nový a lesklý, jediná nová věc v celém kostele.', 'A trapdoor in the floor, bound in iron. The lock is new and shiny, the only new thing in the whole church.') },
+      altar: { at: [0, 1.3, -6.2], ic: '🕯', name: L('Oltář', 'The altar'), look: L('Svíčky jsou čerstvé, vosk ještě teče. Pod oltářním plátnem je schovaná malá pokladnička.', 'The candles are fresh, the wax still running. Under the altar cloth a little alms box is hidden.'),
+        acts: () => [{ label: L('Vzít pokladničku', 'Take the alms box'), ic: '🪙', if: () => !f().alms, act: () => { f().alms = 1; G.gold += 3; sfx('coin'); say(L('V pokladničce jsou tři měďáky a stříbrná jehlice do vlasů. Dívčí. (+3 zl.)', 'In the box are three coppers and a silver hairpin. A girl\'s. (+3 gold)'), '#c8b8ff'); then(stay); } }] },
+      window: { at: [0, 2.4, -8.9], ic: '🪟', name: L('Velké okno', 'The great window'), look: L('Rozbité okno nad oltářem. Měsíc svítí dovnitř a mlha se plazí po podlaze.', 'The broken window over the altar. The moon shines in and the mist crawls over the floor.') },
+      exit: { at: [0, 1.4, 9.1], ic: '🚪', name: L('Dveře ven', 'The door out') },
+    },
     choices: () => f().open ? [
-      { label: L('Dolů do krypty', 'Down to the crypt'), ic: '⬇', act: () => go(f().skel ? 'door' : 'crypt') },
-      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
+      { spot: 'trap', label: L('Dolů do krypty', 'Down to the crypt'), ic: '⬇', act: () => go(f().skel ? 'door' : 'crypt') },
+      { spot: 'exit', label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ] : [
-      { label: L('Hledat pasti', 'Search for traps'), ic: '🔍', if: () => !f().trapKnown && !f().trapGone, ...pickWho(L('Kdo hledá? (Zloděj: hledání pastí. Ostatní: Moudrost -8)', 'Who searches? (Thief: find traps. The others: Wisdom -8)'), h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
+      { spot: 'trap', label: L('Hledat pasti', 'Search for traps'), ic: '🔍', if: () => !f().trapKnown && !f().trapGone, ...pickWho(L('Kdo hledá? (Zloděj: hledání pastí. Ostatní: Moudrost -8)', 'Who searches? (Thief: find traps. The others: Wisdom -8)'), h => h.tried.trap ? 0 : h.cls === 'thief' ? skillChance(h, 1) : abilityChance(h, 'wis', -8), h => {
         h.tried.trap = 1;
         if (h.cls === 'thief' ? checkSkill(h, 1) : checkAbility(h, 'wis', -8)) { f().trapKnown = 1; say(L('V zámku je schovaná malinká jehla, mokrá od něčeho tmavého. Past!', 'Hidden in the lock is a tiny needle, wet with something dark. A trap!'), '#7aea7a'); }
         else say(L('Nic podezřelého nevidíte.', 'You see nothing suspicious.'));
         then(stay);
       }) },
-      { label: L('Vyndat jehlu', 'Remove the needle'), ic: '🪡', if: () => f().trapKnown && !f().trapGone, ...pickWho(L('Kdo to zkusí? (Zloděj: hledání pastí)', 'Who tries? (Thief: find traps)'), h => skillChance(h, 1), h => {
+      { spot: 'trap', label: L('Vyndat jehlu', 'Remove the needle'), ic: '🪡', if: () => f().trapKnown && !f().trapGone, ...pickWho(L('Kdo to zkusí? (Zloděj: hledání pastí)', 'Who tries? (Thief: find traps)'), h => skillChance(h, 1), h => {
         if (checkSkill(h, 1)) { f().trapGone = 1; say(L('Kousek drátku, cvak, a jehla padá do dlaně.', 'A bit of wire, click, and the needle drops into your palm.'), '#7aea7a'); }
         else needle(h);
         then(stay);
       }) },
-      { label: L('Odemknout zámek', 'Pick the lock'), ic: '🗝', ...pickWho(L('Kdo odemyká? (jen Zloděj: otevírání zámků)', 'Who picks it? (Thief only: open locks)'), h => h.tried.lock ? 0 : skillChance(h, 0), h => {
+      { spot: 'trap', label: L('Odemknout zámek', 'Pick the lock'), ic: '🗝', ...pickWho(L('Kdo odemyká? (jen Zloděj: otevírání zámků)', 'Who picks it? (Thief only: open locks)'), h => h.tried.lock ? 0 : skillChance(h, 0), h => {
         h.tried.lock = 1;
         if (!f().trapGone) needle(h);
         if (checkSkill(h, 0)) { openTrapdoor(); return; }
         say(L('Zámek nepovolí. (Každý zloděj má na zámek jen jeden pokus.)', 'The lock won\'t give. (Each thief gets one try at a lock.)'), '#ff7a6a');
         then(stay);
       }) },
-      { label: L('Vypáčit dvířka silou', 'Force the trapdoor'), ic: '💪', ...pickWho(L('Kdo páčí? (Síla -4)', 'Who heaves? (Strength -4)'), h => abilityChance(h, 'str', -4), h => {
+      { spot: 'trap', label: L('Vypáčit dvířka silou', 'Force the trapdoor'), ic: '💪', ...pickWho(L('Kdo páčí? (Síla -4)', 'Who heaves? (Strength -4)'), h => abilityChance(h, 'str', -4), h => {
         if (!f().trapGone) needle(h);
         f().alarm = (f().alarm || 0) + 1;
         if (checkAbility(h, 'str', -4)) { say(L('Kování s rachotem povolí. Ozvěna se nese dolů do tmy.', 'The hasp tears loose with a crash. The echo rolls down into the dark.'), '#7aea7a'); openTrapdoor(); return; }
         say(L('Nepovolí. Rána se nese dolů do tmy. Něco tam dole teď poslouchá.', 'It holds. The noise rolls down into the dark. Something down there is listening now.'), '#ff7a6a');
         then(stay);
       }) },
-      { label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
+      { spot: 'exit', label: L('Ven z kostela', 'Out of the church'), ic: '‹', dim: true, act: () => go('hill') },
     ],
   },
   crypt: {
@@ -1002,9 +1118,14 @@ const ROOMS = {
       (f().alarm ? L(' Už na vás čekaly.', ' They were already waiting for you.') : ''),
     again: L('Kostlivci vám stojí v cestě.', 'The skeletons stand in your way.'),
     foes: () => [['skel', skelN()]], beaten: () => f().skel,
+    eye: [0.2, 1.6, 4.6, 0, -0.1],
+    spots: {
+      skels: { at: [0, 1.4, -4.6], ic: '💀', name: L('Kostlivci', 'The skeletons'), look: L('Kosti cvakají. Prázdné oční důlky se otáčejí za vámi.', 'Bones click. Empty eye sockets turn to follow you.') },
+      stairs: { at: [0, 1.5, 7.2], ic: '🪜', name: L('Schody nahoru', 'The stairs up') },
+    },
     choices: () => [
-      { label: L('Do boje!', 'Fight!'), ic: '⚔', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('door'); }, flee: () => go('altar') }) },
-      { label: L('Utéct nahoru', 'Run back up'), ic: '‹', dim: true, act: () => go('altar') },
+      { spot: 'skels', label: L('Do boje!', 'Fight!'), ic: '⚔', act: () => fight({ foes: [['skel', skelN()]], surprise: f().alarm ? 'foes' : null, win: () => { f().skel = 1; go('door'); }, flee: () => go('altar') }) },
+      { spot: 'stairs', label: L('Utéct nahoru', 'Run back up'), ic: '‹', dim: true, act: () => go('altar') },
     ],
   },
   door: {
@@ -1016,15 +1137,23 @@ const ROOMS = {
     again: L('„Řekni, kdo jsem,“ šeptají dveře.', '"Speak my name," whispers the door.'),
     enter: first => { if (first && f().song) say(L('(Ta slova znáte. Malrec si je prý pořád brouká.)', '(You know those words. Malrec keeps humming them, they say.)'), '#c8b8ff'); },
     ask: L('Co dveřím odpovíte?', 'What do you answer the door?'),
+    eye: [0.7, 1.6, -5.6, 0.06, 0.02],
+    spots: {
+      door: { at: [0, 2.1, -12.5], ic: '🔔', name: L('Bronzové dveře', 'The bronze door'), look: L('Dveře zdobí zvon klesající pod vlnami. Uprostřed je kovová pusa a kolem ní běží nápis.', 'The door shows a bell sinking under waves. In the middle is a metal mouth, and words run around it.') },
+      niches: { at: [-3.7, 1.2, -4.2], ic: '🕯', name: L('Výklenky s kostmi', 'The niches of bones'), look: L('Ve výklencích leží kosti mnichů, které nevstaly. Svíčky u nich dohořívají.', 'In the niches lie the bones of monks who didn\'t get up. The candles by them are burning down.') },
+      sarc: { at: [0, 1.1, -1.5], ic: '⚰', name: L('Sarkofág', 'The sarcophagus'), look: L('Kamenný sarkofág s víkem odsunutým na stranu. Uvnitř je prázdno.', 'A stone sarcophagus, its lid pushed aside. It is empty.'),
+        acts: () => [{ label: L('Prohledat sarkofág', 'Search the sarcophagus'), ic: '🔍', if: () => !f().sarc, act: () => { f().sarc = 1; pass(TIME_COST.search); say(L('Jen prach a utržený kus rudé látky. Takovou nosí kostelník.', 'Only dust and a torn scrap of red cloth. The kind the sexton wears.'), '#c8b8ff'); then(stay); } }] },
+      stairs: { at: [0, 1.5, 7.2], ic: '🪜', name: L('Schody nahoru', 'The stairs up') },
+    },
     choices: () => [
-      ...L([['Hodiny'], ['Pták'], ['Zvon', 1], ['Duch']], [['The river'], ['A ghost'], ['A bell', 1], ['A candle']]).map(([w, ok]) => ({ label: L(`„${w}“`, `"${w}"`), act: () => answerDoor(w, ok) })),
-      { label: L('Přemýšlet', 'Think it over'), ic: '💭', ...pickWho(L('Kdo přemýšlí? (hod na Inteligenci)', 'Who thinks? (Intelligence roll)'), h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
+      ...L([['Hodiny'], ['Pták'], ['Zvon', 1], ['Duch']], [['The river'], ['A ghost'], ['A bell', 1], ['A candle']]).map(([w, ok]) => ({ spot: 'door', label: L(`„${w}“`, `"${w}"`), act: () => answerDoor(w, ok) })),
+      { spot: 'door', label: L('Přemýšlet', 'Think it over'), ic: '💭', ...pickWho(L('Kdo přemýšlí? (hod na Inteligenci)', 'Who thinks? (Intelligence roll)'), h => h.tried.riddle ? 0 : abilityChance(h, 'int'), h => {
         h.tried.riddle = 1;
         if (checkAbility(h, 'int')) say(L(`${h.name}: „Počkat. Co má srdce, ale nežije? Uvnitř zvonu se přece houpe kovové srdce!“`, `${h.name}: "Wait. The thing that swings inside a bell is called its tongue..."`), '#7aea7a');
         else say(L(`${h.name} kouká na písmena tak dlouho, až se rozmazávají.`, `${h.name} stares at the words until they swim.`));
         then(stay);
       }) },
-      { label: L('Prohledat kryptu', 'Search the crypt'), ic: '🔍', if: () => !f().ossOpen, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.crypt ? 0 : abilityChance(h, 'wis'), h => {
+      { spot: 'niches', label: L('Prohledat kryptu', 'Search the crypt'), ic: '🔍', if: () => !f().ossOpen, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.crypt ? 0 : abilityChance(h, 'wis'), h => {
         h.tried.crypt = 1;
         if (checkAbility(h, 'wis')) {
           f().ossOpen = 1;
@@ -1034,16 +1163,22 @@ const ROOMS = {
         say(L(`${h.name} najde jen prach a pavučiny.`, `${h.name} finds only dust and cobwebs.`));
         then(stay);
       }) },
-      { label: L('Do skryté kostnice', 'Into the hidden ossuary'), ic: '💀', if: () => f().ossOpen, act: () => go('ossuary') },
-      { label: L('Zpátky nahoru', 'Back up'), ic: '‹', dim: true, act: () => go('altar') },
+      { spot: 'niches', label: L('Do skryté kostnice', 'Into the hidden ossuary'), ic: '💀', if: () => f().ossOpen, act: () => go('ossuary') },
+      { spot: 'stairs', label: L('Zpátky nahoru', 'Back up'), ic: '‹', dim: true, act: () => go('altar') },
     ],
   },
   ossuary: {
     title: L('Skrytá kostnice', 'The Hidden Ossuary'), set: 'crypt', view: 'ossuary',
     text: L('Chodba vede do malé kostnice. Zdi jsou poskládané z lebek a podlahu zalévá černá voda po kolena. Pod hladinou se něco leskne.', 'The passage leads to a small ossuary. Its walls are built of skulls, and black water stands knee-deep on the floor. Something glints under the surface.'),
     again: L('Lebky se dívají do černé vody.', 'The skulls stare down into the black water.'),
+    eye: [-1.0, 1.5, -6.6, 1.42, -0.26],
+    spots: {
+      water: { at: [-3.6, 0.25, -7], ic: '💧', name: L('Černá voda', 'The black water'), look: L('Voda je studená a nehybná. Pod hladinou se něco leskne.', 'The water is cold and still. Something glints under the surface.') },
+      skulls: { at: [-4.1, 1.7, -5.6], ic: '💀', name: L('Zeď z lebek', 'The wall of skulls'), look: L('Stovky lebek, pečlivě poskládaných. Do jedné někdo vyryl slovo: Alder.', 'Hundreds of skulls, stacked with care. Someone carved a word into one: Alder.') },
+      passage: { at: [1.2, 1.3, -7], ic: '‹', name: L('Chodba zpátky', 'The passage back') },
+    },
     choices: () => [
-      { label: L('Prohledat vodu', 'Search the water'), ic: '🔍', if: () => !f().hammer, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.water ? 0 : abilityChance(h, 'wis'), h => {
+      { spot: 'water', label: L('Prohledat vodu', 'Search the water'), ic: '🔍', if: () => !f().hammer, ...pickWho(L('Kdo hledá? (Moudrost)', 'Who searches? (Wisdom)'), h => h.tried.water ? 0 : abilityChance(h, 'wis'), h => {
         h.tried.water = 1;
         if (checkAbility(h, 'wis')) {
           f().hammer = 1;
@@ -1054,7 +1189,7 @@ const ROOMS = {
         } else say(L(`${h.name} nahmátne jen studené bahno a staré zuby.`, `${h.name} finds only cold mud and old teeth.`));
         then(stay);
       }) },
-      { label: L('Zpátky ke dveřím', 'Back to the door'), ic: '‹', dim: true, act: () => go('door') },
+      { spot: 'passage', label: L('Zpátky ke dveřím', 'Back to the door'), ic: '‹', dim: true, act: () => go('door') },
     ],
   },
   bell: {
@@ -1069,9 +1204,15 @@ const ROOMS = {
       if (first && f().late >= 2) say(L('Jenže sloup je prázdný. Na hladině tůně plave Milin šátek. Přišli jste pozdě.', 'But the pillar is empty. Mila\'s scarf floats on the pool. You came too late.'), '#ff7a6a');
     },
     foes: () => bossFoes(),
+    eye: [0.3, 1.7, 6.2, 0, 0.12],
+    spots: {
+      malrec: { at: () => { const u = units.find(x => x.kind === 'malrec'); return u ? u.pos.clone().setY(u.pos.y + 2.1) : V(0, 2, -0.7); }, ic: '🧙', name: L('Bratr Malrec', 'Brother Malrec') },
+      mila: { at: [3.9, 1.5, -0.75], ic: '🧒', name: L('Mila', 'Mila'), look: L('Mila je přivázaná ke sloupu. Je promočená a třese se, ale žije.', 'Mila is tied to a pillar. She is soaked and shaking, but alive.') },
+      bell: { at: [0, 4, -7], ic: '🔔', name: L('Zvon', 'The bell'), look: L('Zelený bronzový zvon se houpe nad tůní sám od sebe. Na jeho okraji jsou vyrytá jména. Poslední je čerstvé.', 'The green bronze bell swings over the pool all by itself. Names are carved around its rim. The last one is fresh.') },
+    },
     choices: () => [
-      { label: L('Zaútočit!', 'Attack!'), ic: '⚔', act: () => bossFight(null) },
-      { label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L('Kdo s ním mluví? (svými slovy; pak rozhodne hod na Charisma)', 'Who talks to him? (in your own words; then a Charisma roll decides)'), h => abilityChance(h, 'cha'), h => {
+      { spot: 'malrec', label: L('Zaútočit!', 'Attack!'), ic: '⚔', act: () => bossFight(null) },
+      { spot: 'malrec', label: L('Promluvit s ním', 'Talk to him'), ic: '💬', if: () => !f().talked, ...pickWho(L('Kdo s ním mluví? (svými slovy; pak rozhodne hod na Charisma)', 'Who talks to him? (in your own words; then a Charisma roll decides)'), h => abilityChance(h, 'cha'), h => {
         f().talked = 1;
         startTalk('malrec', h, (bonus, t) => {
           if (t && t.reveals.includes('stranger')) findClue('stranger');
@@ -1116,8 +1257,14 @@ const ROOMS = {
       say(L('Na rukávu Malrecova rudého roucha je vyšitá pečeť: kostěná ruka.', 'On the sleeve of Malrec\'s red robe a seal is stitched: a bony hand.'));
       findClue('robe');
     },
+    eye: [0.3, 1.7, 6.2, 0, 0.05],
+    spots: {
+      pool: { at: [0, 0.4, -6], ic: '💧', name: L('Tůň', 'The pool'), look: L('Hladina je teď klidná a černá jako inkoust.', 'The water is still now, and black as ink.') },
+      mila: { at: [3.9, 1.5, -0.75], ic: '🧒', name: L('Mila', 'Mila') },
+      bell: { at: [0, 4, -7], ic: '🔔', name: L('Zvon', 'The bell'), look: L('Zvon visí nehybně. Poprvé za sedm nocí mlčí.', 'The bell hangs still. For the first time in seven nights it is silent.') },
+    },
     choices: () => [
-      { label: L('Prohledat tůň', 'Search the pool'), ic: '🔍', if: () => !f().pooled, ...pickWho(L('Kdo se ponoří? (Síla)', 'Who dives in? (Strength)'), h => h.tried.pool ? 0 : abilityChance(h, 'str'), h => {
+      { spot: 'pool', label: L('Prohledat tůň', 'Search the pool'), ic: '🔍', if: () => !f().pooled, ...pickWho(L('Kdo se ponoří? (Síla)', 'Who dives in? (Strength)'), h => h.tried.pool ? 0 : abilityChance(h, 'str'), h => {
         h.tried.pool = 1;
         if (checkAbility(h, 'str')) {
           f().pooled = 1;
@@ -1126,7 +1273,7 @@ const ROOMS = {
         } else say(L(`${h.name} se vynoří s prázdnýma rukama. Voda je ledová.`, `${h.name} comes up empty-handed. The water is icy.`));
         then(stay);
       }) },
-      { label: () => f().late >= 2 ? L('Odnést Milu domů', 'Carry Mila home') : L('Odvést Milu domů', 'Take Mila home'), ic: '🏠', act: () => go('end') },
+      { spot: 'mila', label: () => f().late >= 2 ? L('Odnést Milu domů', 'Carry Mila home') : L('Odvést Milu domů', 'Take Mila home'), ic: '🏠', act: () => go('end') },
     ],
   },
   end: {
@@ -2732,6 +2879,10 @@ let curSet = null, curSetId = '', curView = '';
 let units = [];
 const orbit = { yaw: 0, pitch: 0, dist: 8, look: V(), uyaw: 0, upitch: 0, uzoom: 1, focus: null, pan: V() };   // pan: the world map moved by a finger
 function viewPose(v, uy = 0, up = 0, uz = 1) {
+  if (v.eye) {                                   // first person: stand at the eye, look by yaw and pitch
+    const yaw = v.yaw + uy, pitch = clamp(v.pitch + up, -0.9, 0.9), pos = V(...v.eye);
+    return { pos, look: V(pos.x - Math.sin(yaw) * Math.cos(pitch) * 4, pos.y + Math.sin(pitch) * 4, pos.z - Math.cos(yaw) * Math.cos(pitch) * 4) };
+  }
   const yaw = v.yaw + uy, pitch = clamp(v.pitch + up, -0.1, 1.35), d = v.dist * uz, look = V(...v.look);
   return { look, pos: V(look.x + Math.sin(yaw) * Math.cos(pitch) * d, look.y + Math.sin(pitch) * d, look.z + Math.cos(yaw) * Math.cos(pitch) * d) };
 }
@@ -3946,32 +4097,82 @@ function openBook() {
   $('sheet').hidden = false; sheet = 'book';
 }
 // the mission map: a parchment plan of the scenes; visited ones can be travelled to, unexplored exits show "?"
+/* THE MISSION MAP: a plan for every level of the mission (outside, the church, the crypt, the cave), drawn like an
+   old surveyor's map. A level shows once you have been in one of its places; the stairs and doors on a plan lead to
+   the next level (tap to turn the page). Places you have been to can be tapped to go back there. */
+const INK = '#5a3a1a';
+const hx = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}"/>`;
 const MAPS = {
-  bell: { nodes: { inn: [8, 76], hill: [26, 56], nave: [42, 44], altar: [58, 30], crypt: [60, 58], ossuary: [40, 80], door: [78, 66], bell: [90, 44], pool: [92, 18] },
-          edges: [['inn', 'hill'], ['hill', 'nave'], ['nave', 'altar'], ['altar', 'crypt'], ['crypt', 'door'], ['door', 'ossuary'], ['door', 'bell'], ['bell', 'pool']],
-          short: { inn: L('Hostinec', 'The inn'), hill: L('Kostel na kopci', 'Church on the hill'), nave: L('Loď kostela', 'The nave'), altar: L('Oltář', 'The altar'), crypt: L('Krypta', 'The crypt'), ossuary: L('Kostnice', 'Ossuary'), door: L('Bronzové dveře', 'Bronze door'), bell: L('Zvon', 'The bell'), pool: L('Tůň', 'The pool') } },
+  bell: { levels: [
+    { id: 'out', name: L('Venku: Thornwall a kopec', 'Outside: Thornwall and the hill'), rooms: ['inn', 'hill'],
+      nodes: { inn: [22, 41], hill: [70, 27] }, links: [{ to: 'church', at: [72, 9], label: L('Kostel', 'The church') }],
+      svg: () => `<g fill="none" stroke="#7a9ab8" stroke-width="2.6" opacity=".8"><path d="M0,54 C18,49 30,60 50,55 S82,48 100,53"/></g>
+        <g fill="none" stroke="#a8c0d8" stroke-width=".8"><path d="M0,54 C18,49 30,60 50,55 S82,48 100,53"/></g>
+        <g fill="none" stroke="#9a7a50" stroke-width=".35"><ellipse cx="72" cy="19" rx="27" ry="15"/><ellipse cx="72" cy="18" rx="18" ry="10"/><ellipse cx="72" cy="16" rx="10" ry="5.5"/></g>
+        <path d="M8,50 C18,44 26,40 36,37 S54,32 62,27 S70,20 72,14" fill="none" stroke="#8a6a3a" stroke-width="1.4" stroke-dasharray="2 1"/>
+        <g fill="#c8a878" stroke="${INK}" stroke-width=".35">${hx(14, 37, 6, 4)}${hx(26, 44, 4, 3)}${hx(30, 36, 4, 3)}${hx(10, 43, 4, 3)}${hx(22, 47, 5, 3)}${hx(34, 41, 3, 3)}${hx(17, 31, 4, 3)}</g>
+        <g fill="#b88a58" stroke="${INK}" stroke-width=".5">${hx(17, 37.5, 5.5, 3.5)}</g>
+        <g fill="#a89070" stroke="${INK}" stroke-width=".5">${hx(68, 6, 8, 5)}${hx(70.5, 11, 3, 3)}</g><path d="M72,3.5 v2 M71,4.5 h2" stroke="${INK}" stroke-width=".4"/>
+        <g stroke="${INK}" stroke-width=".3">${[[62, 20], [64, 24], [66, 21], [78, 21], [80, 25], [76, 27], [63, 28], [82, 20], [60, 25]].map(([x, y]) => `<path d="M${x},${y - 1} v2 M${x - 0.6},${y - 0.4} h1.2"/>`).join('')}</g>
+        <g fill="#7a8a4a" opacity=".55">${[[4, 8], [8, 12], [5, 18], [92, 34], [95, 40], [88, 38], [40, 10], [44, 14], [36, 16], [90, 8], [94, 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.6"/>`).join('')}</g>
+        <g font-size="2.6" fill="${INK}" font-style="italic" text-anchor="middle"><text x="50" y="60">${L('řeka', 'the river')}</text><text x="25" y="35">Thornwall</text></g>
+        <g stroke="${INK}" stroke-width=".3" fill="none" transform="translate(92,55)"><circle r="3.4"/><path d="M0,-4.5 L1,0 L0,4.5 L-1,0 Z" fill="${INK}"/></g><text x="92" y="49.5" font-size="2.4" fill="${INK}" text-anchor="middle">N</text>` },
+    { id: 'church', name: L('Kostel na kopci', 'The church on the hill'), rooms: ['nave', 'altar'],
+      nodes: { nave: [50, 38], altar: [50, 18] }, links: [{ to: 'out', at: [50, 60], label: L('Ven', 'Outside') }, { to: 'crypt', at: [60, 8.5], label: L('Dolů', 'Down'), if: () => f().open }],
+      svg: () => `<g fill="#d8c8a0" stroke="${INK}" stroke-width="1.6"><path d="M46,58 H30 V4 H70 V58 H54"/></g>
+        <g fill="#b0a080" stroke="${INK}" stroke-width=".4">${[14, 24, 34, 44].map(y => `<circle cx="36" cy="${y}" r="1.6"/><circle cx="64" cy="${y}" r="1.6"/>`).join('')}</g>
+        <g fill="#c8b8a0" stroke="${INK}" stroke-width=".5">${hx(42, 11, 16, 4)}</g>
+        <g fill="#6a4a2a" stroke="${INK}" stroke-width=".4">${hx(47, 6, 5, 3.5)}</g><path d="M47,7.2 h5 M47,8.4 h5" stroke="#2a1a0a" stroke-width=".25"/>
+        <g fill="#b0a080" stroke="${INK}" stroke-width=".4"><rect x="38" y="31" width="5" height="2.4" transform="rotate(20 40 32)"/><rect x="57" y="21" width="4.6" height="2.4" transform="rotate(-40 59 22)"/></g>
+        <g stroke="#7a9ab8" stroke-width="1.2">${[12, 26, 40].map(y => `<path d="M30,${y} v4 M70,${y} v4"/>`).join('')}<path d="M44,4 h12"/></g>
+        <g font-size="2.4" fill="${INK}" font-style="italic" text-anchor="middle"><text x="50" y="23.5">${L('oltář', 'altar')}</text><text x="20" y="32">${L('loď', 'nave')}</text></g>` },
+    { id: 'crypt', name: L('Krypta', 'The crypt'), rooms: ['crypt', 'door', 'ossuary'],
+      nodes: { crypt: [50, 44], door: [50, 13], ossuary: [22, 25] }, hide: { ossuary: () => !f().ossOpen && !f().seen_ossuary },
+      links: [{ to: 'church', at: [50, 60], label: L('Nahoru', 'Up') }, { to: 'cave', at: [50, 3], label: L('Za dveřmi', 'Beyond the door'), if: () => f().seen_bell }],
+      svg: () => `<g fill="#cfc0a0" stroke="${INK}" stroke-width="1.6">${hx(38, 6, 24, 48)}</g>
+        <g fill="#3a2a1a" stroke="none">${[10, 18, 26, 34, 42].map(y => `${hx(36.5, y, 1.6, 4)}${hx(61.9, y, 1.6, 4)}`).join('')}</g>
+        <g fill="#b0a080" stroke="${INK}" stroke-width=".5">${hx(47.5, 26, 5, 9)}</g>
+        <g fill="#c8a040" stroke="${INK}" stroke-width=".6">${hx(44, 4.6, 12, 2)}</g>
+        <g fill="none" stroke="${INK}" stroke-width=".5"><circle cx="50" cy="57" r="3.4"/><path d="M50,57 L53.4,57 M50,57 L48,54.3 M50,57 L47,59"/></g>
+        ${f().ossOpen || f().seen_ossuary ? `<g fill="#cfc0a0" stroke="${INK}" stroke-width="1.2">${hx(12, 17, 20, 15)}${hx(32, 22, 6, 3)}</g><g fill="#3a5a7a" opacity=".55">${hx(14, 19, 16, 11)}</g><g fill="#e8e0c8">${[16, 20, 24, 28].map(x => `<circle cx="${x}" cy="18.2" r=".7"/>`).join('')}</g>` : ''}
+        <g font-size="2.4" fill="${INK}" font-style="italic" text-anchor="middle"><text x="50" y="38.5">${L('sarkofág', 'sarcophagus')}</text><text x="70" y="9">${L('bronzové dveře', 'bronze door')}</text><text x="72" y="30">${L('výklenky', 'niches')}</text></g>` },
+    { id: 'cave', name: L('Jeskyně zvonu', 'The cave of the bell'), rooms: ['bell', 'pool'],
+      nodes: { bell: [50, 46], pool: [50, 24] }, links: [{ to: 'crypt', at: [50, 60], label: L('Ke dveřím', 'To the door') }],
+      svg: () => `<path d="M46,62 C44,56 30,58 22,50 C12,40 16,22 26,12 C36,3 64,3 76,10 C88,18 90,40 80,50 C72,58 56,56 54,62 Z" fill="#c8b890" stroke="${INK}" stroke-width="1.4"/>
+        <circle cx="50" cy="24" r="13" fill="#2a4a5a" opacity=".75" stroke="${INK}" stroke-width=".4"/><circle cx="50" cy="24" r="8" fill="none" stroke="#7aa8b8" stroke-width=".3"/>
+        <path d="M46.5,25 Q50,17 53.5,25 Z" fill="#5a8a6a" stroke="${INK}" stroke-width=".3"/>
+        <circle cx="74" cy="38" r="2" fill="#b0a080" stroke="${INK}" stroke-width=".4"/>
+        <g font-size="2.4" fill="${INK}" font-style="italic" text-anchor="middle"><text x="50" y="41">${L('tůň a zvon', 'the pool and the bell')}</text><text x="78" y="44">${L('sloup', 'pillar')}</text></g>` },
+  ],
+  short: { inn: L('Hostinec', 'The inn'), hill: L('Kostel na kopci', 'Church on the hill'), nave: L('Loď kostela', 'The nave'), altar: L('Oltář', 'The altar'), crypt: L('Krypta', 'The crypt'), ossuary: L('Kostnice', 'Ossuary'), door: L('Bronzové dveře', 'Bronze door'), bell: L('Zvon', 'The bell'), pool: L('Tůň', 'The pool') } },
 };
-function openMissionMap() {
+let mapLevel = null;
+function openMissionMap(level) {
   if (!G.mission) { if (!busy() && !F) { G.room = null; store2(); setState('map'); } return; }
   const D = MAPS[G.mission]; if (!D) return;
   const seen = id => !!f()['seen_' + id];
+  const known = lv => lv.rooms.some(seen);
+  const lvOf = id => D.levels.find(lv => lv.rooms.includes(id));
+  const lv = D.levels.find(x => x.id === level) || lvOf(G.room) || D.levels[0];
+  mapLevel = lv.id;
   const canGo = id => seen(id) && id !== G.room && !F && !busy() && G.room !== 'end' && G.room !== 'tpk' && !(id === 'bell' && f().won) && !(id === 'pool' && !f().won);
-  const near = id => D.edges.some(([a, b]) => (a === id && seen(b)) || (b === id && seen(a)));
-  const shown = id => seen(id) || near(id);
-  const lines = D.edges.filter(([a, b]) => shown(a) && shown(b)).map(([a, b]) => {
-    const [x1, y1] = D.nodes[a], [x2, y2] = D.nodes[b], dash = seen(a) && seen(b) ? '' : ' stroke-dasharray="2 2"';
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${dash}/>`;
+  const pct = ([x, y]) => `left:${x}%;top:${y / 62.5 * 100}%`;
+  const nodes = Object.entries(lv.nodes).filter(([id]) => !(lv.hide && lv.hide[id] && lv.hide[id]())).map(([id, at]) => {
+    const here = id === G.room, sn = seen(id);
+    return `<button class="mn${here ? ' here' : ''}${sn ? '' : ' unk'}${canGo(id) ? ' go' : ''}" style="${pct(at)}" ${canGo(id) ? `data-go="${id}"` : 'disabled'}><b>${here ? '★' : sn ? '●' : '?'}</b><span>${sn ? esc(D.short[id]) : '?'}</span></button>`;
   }).join('');
-  const nodes = Object.keys(D.nodes).filter(shown).map(id => {
-    const [x, y] = D.nodes[id], here = id === G.room, sn = seen(id);
-    return `<button class="mn${here ? ' here' : ''}${sn ? '' : ' unk'}${canGo(id) ? ' go' : ''}" style="left:${x}%;top:${y}%" ${canGo(id) ? `data-go="${id}"` : 'disabled'}><b>${here ? '★' : sn ? '●' : '?'}</b><span>${sn ? esc(D.short[id]) : '?'}</span></button>`;
+  const links = lv.links.filter(k => !k.if || k.if()).map(k => {
+    const to = D.levels.find(x => x.id === k.to), ok = known(to);
+    return `<button class="mlink${ok ? '' : ' unk'}" style="${pct(k.at)}" ${ok ? `data-lv="${k.to}"` : 'disabled'}>${ok ? '⇅ ' + esc(k.label) : '?'}</button>`;
   }).join('');
   $('sheet').innerHTML = `<div class="card parch"><h2>🗺 ${esc(missionOf(G.mission).title)}</h2>
-    <div class="mmap"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>${nodes}</div>
-    <p class="muted">${F ? L('V boji se cestovat nedá.', 'You can\'t travel during a fight.') : L('Klepni na místo, kde už jste byli, a družina se tam vrátí. „?“ je místo, kam jste ještě nedošli.', 'Tap a place you have been to and the party goes back there. "?" is a place you haven\'t reached yet.')}</p>
+    <div class="mtabs">${D.levels.map(x => known(x) ? `<button class="pill${x === lv ? ' on' : ''}" data-lv="${x.id}">${esc(x.name)}</button>` : `<button class="pill" disabled>?</button>`).join('')}</div>
+    <div class="mmap"><svg viewBox="0 0 100 62.5">${lv.svg()}</svg>${nodes}${links}</div>
+    <p class="muted">${F ? L('V boji se cestovat nedá.', 'You can\'t travel during a fight.') : L('Klepni na místo, kde už jste byli, a družina se tam vrátí. Schody a dveře (⇅) otočí na další plán.', 'Tap a place you have been to and the party goes back there. Stairs and doors (⇅) turn to the next plan.')}</p>
     <div class="btns"><button class="ch" data-leave="1">🗺 ${L('Opustit misi', 'Leave the mission')}</button><button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button></div></div>`;
   $('sheet').hidden = false; sheet = 'map';
   $('sheet').querySelector('[data-leave]').addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); closeSheet(); leaveMission(); });
+  $('sheet').querySelectorAll('[data-lv]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); openMissionMap(b.dataset.lv); }));
   $('sheet').querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); closeSheet(); choices = []; choicesVer++; go(b.dataset.go); }));
 }
 // starting and ending a mission: the party rests in between (full HP and spells)
@@ -4309,6 +4510,7 @@ worldEl.addEventListener('pointermove', e => {
     orbit.pan.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k); clampPan();
     return;
   }
+  if (eyeView()) { orbit.uyaw += dx * 0.005; orbit.upitch = clamp(orbit.upitch + dy * 0.004, -0.8, 0.8); return; }
   orbit.uyaw = clamp(orbit.uyaw - dx * 0.006, -1.4, 1.4); orbit.upitch = clamp(orbit.upitch + dy * 0.004, -0.4, 0.5);
 });
 const lift = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; };
@@ -4363,7 +4565,7 @@ function frame(now) {
   if (state === 'play' && G) {
     if (!menu && !sheet && !lib) pump(dt);
     if (G) {
-      renderParty(); renderInv(); renderChoices(); renderBanner(); renderDie(dt); refreshMarks();
+      renderParty(); renderInv(); renderChoices(); renderBanner(); renderDie(dt); refreshMarks(); renderSpots();
     }
   }
   if (state === 'intro') stepIntro(dt);
@@ -4389,6 +4591,7 @@ window.PQ = {
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
   tileScreen: t => toScreen(tileWorld(t)), portrait: h => portrait(h),
+  spots: () => spotEls ? Object.entries(spotEls).filter(([, el]) => !el.hidden).map(([id, el]) => [id, el.style.left, el.style.top]) : [], spot: id => openSpot(id), look: (y, p) => { orbit.uyaw = y; orbit.upitch = p || 0; },
 };
 // TESTING A SCENE: adad?scena=bell (or ?scene=) starts a throwaway party of 4 straight in that scene of the Drowned
 // Bell, without films. A test game is never saved, so the real campaign stays as it was. Scenes: inn, hill, nave,
