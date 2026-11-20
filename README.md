@@ -17,8 +17,13 @@ In every game the pause button is two thick bars and the sound button a speaker 
 The **SETTINGS** button (the gear next to it; Y on a controller) has the **sound volume for all the games** (OFF / LOW /
 MEDIUM / HIGH), full screen, your name and avatar, the phone controllers, **VOICE CHAT** on or off (see Voice chat),
 **CHAT POP-UPS** on or off (see Chat in the games), and the **LANGUAGE** (top right: ENGLISH or ČEŠTINA, see Languages).
-At its bottom: who made the games (with love, by a son and his dad) and the arcade's version (PIXEL GAMES V2.73.0).
+At its bottom: who made the games (with love, by a son and his dad) and the arcade's version (PIXEL GAMES V2.73.1).
 Versions are written the same way everywhere: `V` and the number, at the bottom right of each game's title screen.
+
+**Weird History Toons** (`shorts/`, https://pixelgames.online/shorts/): short cartoons about strange true stories, each
+with a page that tells what really happened and links its sources. The pages are built by `tools/shorts/build.py` from the
+list at its top (title, story, sources); the videos (720x1280 MP4) and posters are in `shorts/media/`. The service worker
+leaves `shorts/` alone (always from the network), because videos load in ranges.
 
 | Game | |
 |---|---|
