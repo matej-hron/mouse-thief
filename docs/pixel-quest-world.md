@@ -115,7 +115,7 @@ Two kinds, both on the world map:
 
 The Raven Witch and Red Varga can be story or side missions; to be decided when we get there.
 
-### S1: The Prince's Messenger (draft for review)
+### S1: The Prince's Messenger (built, 0.14)
 
 *Story mission · level 1–2 · needs: The Drowned Bell finished · gives: the Prince's Signet (key artefact).*
 *Opens: The Bone Abbot (S2) and the side missions around Highcrown.*
@@ -157,8 +157,18 @@ meant for them, and the night shows them what Morgrath's men do to the people of
 lodge with a courtyard); monsters (Ash Riders with axes and torches, Kael Ashborn, wargs, a miller's ghost);
 figures (Tam, Bren, the farmer's family); films for scenes 1, 2, 4 and 6.
 
-**Open questions:** should Tam be saveable at all, or always die (darker)? Is hanging Bren too dark for the
-prince, or right for this world?
+**Decided:** Tam can be saved, but only on the best route: treated at the inn (a Wisdom roll, Cure Wounds or a
+potion), the family at the farm helped (the boy tells of the mill), and the shortcut through the mill. The poison
+takes him at 03:00 unless he reaches the prince's healer first (the ford route arrives about 03:15; arriving after
+03:00 also costs one of the prince's guards). Hanging traitors is right for this world: Bren hangs if handed over or
+if turning him fails.
+
+**As built:** times on the roads: Thornwall → farm 90 min, farm → ford 120, ford → lodge 150, farm → mill 60, mill →
+lodge 60. At the lodge: attack Kael at once; set the haystack by the riders' corral on fire (two riders fewer, a
+surprise round, the horses burn) or quietly open it (one rider fewer); climb the palisade (Dexterity) or, with the
+Miller's Lantern, use the hidden gate: then the prince's archers shoot from the windows every round. Kael gives up
+and flees at half HP if his morale fails (he will be back). Rewards: the Signet, 150 gold (+50 if Tam lives), XP.
+Bonus artefact: the Miller's Lantern (stop the ghost's millstone, Strength -2): it shows hidden things.
 
 ### Side missions (ideas, any order)
 

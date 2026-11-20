@@ -308,7 +308,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.13.0';
+const VERSION = '0.14.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -408,7 +408,14 @@ const MON = {
   rat:    { name: L('Krysa', 'Rat'), hd: 0.5, hp: [1, 4, 0], ac: 7, thac0: 20, dmg: [1, 3, 0], morale: 7, xp: 7, move: 4, fell: L('je poražená', 'is beaten'), ran: L('utíká pryč', 'runs away'), squeak: true },
   skel:   { name: L('Kostlivec', 'Skeleton'), hd: 1, hp: [1, 8, 0], ac: 7, thac0: 19, dmg: [1, 6, 0], morale: 99, xp: 35, undead: true, turn: 10, halfEdged: true, move: 3, fell: L('se rozsypal na hromádku kostí', 'falls apart into a heap of bones'), ran: L('prchá před světlem', 'flees from the light') },
   zomb:   { name: L('Utopenec', 'Drowned one'), hd: 2, hp: [2, 8, 0], ac: 8, thac0: 19, dmg: [1, 8, 0], morale: 99, xp: 65, undead: true, turn: 13, slow: true, move: 2, fell: L('se rozpadl v louži vody', 'collapses into a puddle of water'), ran: L('couvá zpátky do tůně', 'backs away into the pool') },
-  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '' },
+  rider:  { name: L('Popelavý jezdec', 'Ash Rider'), hd: 1, hp: [1, 8, 1], ac: 6, thac0: 19, dmg: [1, 8, 0], morale: 8, xp: 25, move: 4, fell: L('padá do bláta', 'falls in the mud'), ran: L('utíká ke koním', 'runs for the horses') },
+  warg:   { name: L('Varg', 'Warg'), hd: 2, hp: [2, 8, 0], ac: 6, thac0: 18, dmg: [2, 4, 0], morale: 8, xp: 50, move: 6, fell: L('naposledy zavyje', 'gives a last howl'), ran: L('prchá do lesa', 'flees into the woods') },
+  kael:   { name: L('Kael Ashborn', 'Kael Ashborn'), hd: 3, hp: [0, 0, 20], ac: 4, thac0: 17, dmg: [1, 8, 2], morale: 9, xp: 175, noSleep: true, boss: true, move: 4, fell: L('padá k zemi', 'falls'), ran: '',
+            down: L('Kael Ashborn padá do bláta a už nevstane. Jeho jezdci se rozprchnou do tmy.', 'Kael Ashborn falls in the mud and does not get up. His riders scatter into the dark.'),
+            yieldTxt: L('Kael uskočí, hvízdne na koně a skočí do sedla. „Ještě se uvidíme!“ Jeho jezdci prchají za ním.', 'Kael leaps back, whistles for a horse and swings into the saddle. "We\'ll meet again!" His riders flee after him.'), yieldFlag: 'kaelFled', flees: true },
+  malrec: { name: L('Bratr Malrec', 'Brother Malrec'), hd: 3, hp: [0, 0, 17], ac: 6, thac0: 18, dmg: [1, 6, 1], morale: 12, xp: 120, noSleep: true, boss: true, move: 3, fell: L('padá k zemi', 'falls'), ran: '',
+            down: L('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', 'Malrec falls to his knees. The bell goes quiet and the drowned sink back into the pool.'),
+            yieldTxt: L('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', 'Malrec drops his mace and falls to his knees. "Enough... I only wanted my brother back." The bell stops. The drowned sink into the pool.'), yieldFlag: 'surrender' },
 };
 const ITEMS = L({ potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'Jídlo' }, { potion: 'Healing potion', holy: 'Holy water', food: 'Food' });
 
@@ -498,6 +505,8 @@ const ART = {
             hint: L('Malrec by ho dal jen po dobrém…', 'Malrec would only give it up of his own will...') },
 };
 const CLUES = {
+  letter: { ic: '✉', name: L('Šifrovaný dopis', 'The coded letter'), info: L('Tamův dopis pro prince. Z šifry jste vyluštili dvě slova: „zrádce“ a „brána“.', 'Tam\'s letter for the prince. From the cipher you made out two words: "traitor" and "the gate".') },
+  purse: { ic: '👛', name: L('Veskův váček', 'Vesk\'s purse'), info: L('Zrádce Bren dostal za otevření brány váček zlata. Na pečeti je erb kancléře Veska.', 'The traitor Bren was paid a purse of gold for opening the gate. On its seal: Chancellor Vesk\'s crest.') },
   riders: { ic: '🔥', name: L('Popelaví jezdci', 'The ash-grey riders'), info: L('Jezdci v popelavých pláštích vypálili statek na východní cestě za Highcrownem. Hollis psal do Highcrownu. Nikdo neodpověděl.', 'Riders in ash-grey cloaks burned a farm on the eastern road beyond Highcrown. Hollis wrote to Highcrown. Nobody answered.') },
   vesk: { ic: '📜', name: L('Kancléř Vesk', 'Chancellor Vesk'), info: L('Starý král prý poslouchá už jen kancléře Veska. A daně z Thornwallu odcházejí s Veskovou pečetí, ne s královou.', 'They say the old king listens only to Chancellor Vesk now. And Thornwall\'s taxes leave under Vesk\'s seal, not the king\'s.') },
   tower: { ic: '🗼', name: L('Rudé okno ve věži', 'The red window in the tower'), info: L('Starý voják Garth viděl v Popelavých horách černou věž, kde se před třemi zimami rozsvítilo rudé světlo. A mrtvé, kteří pochodovali z hor. Král stáhl posádku z průsmyku.', 'Old Garth saw a black tower in the Ashen Mountains where a red light came on three winters ago. And the dead marching down from the mountains. The king withdrew the garrison from the pass.') },
@@ -540,7 +549,7 @@ function findClue(id) {
 const MISSIONS = [
   { id: 'bell', kind: 'side', at: [-19.5, 4.2], level: 1, start: 'inn', title: L('Utopený zvon', 'The Drowned Bell'),
     about: L('Na kopci nad Thornwallem zvoní zvon, který neexistuje. A mlynářova dcera zmizela.', 'On the hill above Thornwall a bell rings that isn\'t there. And the miller\'s daughter is missing.') },
-  { id: 's1', kind: 'story', at: [-8, 0.5], level: 1, needs: { done: ['bell'] }, soon: true, title: L('Princův posel', 'The Prince\'s Messenger'),
+  { id: 's1', kind: 'story', at: [-8, 0.5], level: 1, needs: { done: ['bell'] }, start: 's1_inn', retry: 's1_farm', title: L('Princův posel', 'The Prince\'s Messenger'),
     about: L('Do Thornwallu přijíždí jezdec od prince Edrika. V patách má Popelavé jezdce.', 'A rider from Prince Edric reaches Thornwall, with the Ash Riders on his heels.') },
   { id: 'troll', kind: 'side', at: [-13, 6.5], level: 1, soon: true, title: L('Troll pod mostem', 'The Troll Under the Bridge'),
     about: L('Na mostě přes řeku vybírá mýto troll. A chce, aby mu říkali „pane“.', 'A troll takes a toll on the river bridge. And he wants to be called "sir".') },
@@ -549,6 +558,8 @@ const MISSIONS = [
   { id: 's2', kind: 'story', at: [9, 11.5], level: 2, needs: { arts: ['signet'] }, soon: true, title: L('Kostěný opat', 'The Bone Abbot'),
     about: L('V opatství uprostřed Lucerních bažin svítí v noci rudá okna.', 'In the abbey in the middle of the Lantern Marsh, red windows glow at night.') },
 ];
+ART.lantern = { mission: 's1', kind: 'bonus', ic: '🏮', name: L('Mlynářova lucerna', 'The Miller\'s Lantern'), info: L('Svítí studeným světlem a ukazuje skryté věci: zarostlé branky, tajné stezky.', 'It shines with a cold light and shows hidden things: overgrown gates, secret paths.'), hint: L('Ve starém mlýně někdo nemůže najít klid…', 'In the old mill someone can\'t find rest...') };
+const hasLantern = () => G.arts.lantern !== undefined;
 ART.signet = { mission: 's1', kind: 'key', ic: '💍', name: L('Princův pečetní prsten', 'The Prince\'s Signet'), info: L('Znamení, že jednáte z pověření prince Edrika.', 'A sign that you act for Prince Edric.'), hint: '' };
 const missionOf = id => MISSIONS.find(m => m.id === id);
 const partyLevel = () => Math.max(...G.heroes.map(lvl));
@@ -715,6 +726,11 @@ function pass(min) {
   for (let dawn = Math.ceil((before - 360 + 1) / 1440) * 1440 + 360; dawn <= G.time; dawn += 1440) eatRations();
   // the Drowned Bell: after the deadline Mila is lost
   if (G.mission === 'bell' && f().deadline && !f().won && G.time >= f().deadline && !(f().late >= 2)) f().late = 2;
+  // the Prince's Messenger: the poison takes Tam at 03:00, unless he has reached the prince's healer
+  if (G.mission === 's1' && f().tam === 'riding' && !f().atLodge && G.time >= f().deadline) {
+    f().tam = 'lost';
+    say(L('Tam se v dešti náhle zhroutí. Chytíte ho, ale je pozdě: jed byl rychlejší než vy.', 'In the rain Tam suddenly slumps. You catch him, but it is too late: the poison was faster than you.'), '#ff7a6a');
+  }
 }
 function eatRations() {
   const eat = G.heroes.filter(h => !h.dead);
@@ -738,7 +754,15 @@ function rest(inn) {
                      : L('Odpočinete si. Kouzla se vrátila a rány se trochu zacelily.', 'You rest. The spells come back and the wounds close a little.'), '#7aea7a');
   partyKey = '';
 }
-const travelMin = (a, b) => ((a === 'inn' || a === 'town') && b === 'hill') || (a === 'hill' && (b === 'inn' || b === 'town')) ? TIME_COST.hill : TIME_COST.walk;
+// the roads of the Prince's Messenger, in minutes (the time between two places is the shortest way along them)
+const ROADS = [['s1_inn', 's1_farm', 90], ['s1_farm', 's1_ford', 120], ['s1_farm', 's1_mill', 60], ['s1_ford', 's1_lodge', 150], ['s1_mill', 's1_millin', 2], ['s1_millin', 's1_lodge', 60], ['s1_lodge', 's1_gate', 2], ['s1_gate', 's1_end', 30]];
+function roadMin(a, b) {
+  const d = { [a]: 0 }, todo = [a];
+  while (todo.length) { todo.sort((x, y) => d[x] - d[y]); const x = todo.shift(); for (const [p, q, m] of ROADS) for (const [u, v] of [[p, q], [q, p]]) if (u === x && (d[v] === undefined || d[x] + m < d[v])) { d[v] = d[x] + m; todo.push(v); } }
+  return d[b];
+}
+const travelOld = (a, b) => ((a === 'inn' || a === 'town') && b === 'hill') || (a === 'hill' && (b === 'inn' || b === 'town')) ? TIME_COST.hill : TIME_COST.walk;
+const travelMin = (a, b) => roadMin(a, b) ?? travelOld(a, b);
 function go(id) {
   if (G.room && G.room !== id) pass(travelMin(G.room, id));
   // a new scene: first let the party read what just happened (tap to go on), then fade to black, then a clean page
@@ -767,7 +791,7 @@ function showChoices() {
   const R = ROOMS[G.room], q = typeof R.ask === 'function' ? R.ask() : R.ask || L('Co družina udělá?', 'What does the party do?');
   if (!R.spots) { setChoices(q, R.choices()); return; }
   const all = R.choices();
-  spotOk = new Set(Object.keys(R.spots).filter(id => R.spots[id].look || spotActs(R, id, all).some(validChoice)));
+  spotOk = new Set(Object.keys(R.spots).filter(id => (!R.spots[id].if || R.spots[id].if()) && (R.spots[id].look || spotActs(R, id, all).some(validChoice))));
   setChoices(L('Rozhlédni se (táhni prstem) a klepni na ✦', 'Look around (drag) and tap a ✦'),
     [...all.filter(c => !c.spot), { label: L('Co tu vidíte', 'What you can see'), ic: '👁', dim: true, act: spotList }]);
   atTop = true;
@@ -943,6 +967,287 @@ function endText() {
   return t;
 }
 const ROOMS = {
+
+  // ===================== THE PRINCE'S MESSENGER (story mission 1) =====================
+  s1_inn: {
+    title: L('Thornwall: bouřlivá noc', 'Thornwall: a Stormy Night'), set: 'storm', view: 'storm', film: 's1storm',
+    text: L('Prší, jako by se nebe protrhlo. Do ticha hostince vtrhne dusot kopyt: kůň s jezdcem v princových barvách. Jezdec se svalí ze sedla přímo před dveře. V zádech má černý šíp.\n' +
+            '„Srub… v Elderwoodu,“ šeptá. „Vědí, kde je princ… dopis…“ V ruce svírá zapečetěný dopis. Jmenuje se Tam.',
+            'It is raining as if the sky had split. Into the quiet of the inn bursts the thunder of hooves: a horse, a rider in the prince\'s colours. He tumbles from the saddle right at the door, a black arrow in his back.\n' +
+            '"The lodge... in Elderwood," he whispers. "They know where the prince is... the letter..." He clutches a sealed letter. His name is Tam.'),
+    again: () => f().tam === 'riding' ? L('Déšť nepřestává. Tam sedí zabalený v dece a čeká, až vyrazíte.', 'The rain won\'t stop. Tam sits wrapped in a blanket, waiting for you to set off.') : L('Tam leží u dveří a těžce dýchá.', 'Tam lies by the door, breathing hard.'),
+    enter: first => {
+      const U = curSet.userData;
+      if (first) then(() => U.stormFinal()); else U.stormFinal();
+      U.tam.visible = f().tam !== 'dead';
+    },
+    eye: [1.8, 1.6, 7, 0.55, 0.0],
+    spots: {
+      tam: { at: [-0.7, 0.6, -0.4], ic: '🩸', name: L('Tam, princův posel', 'Tam, the prince\'s messenger'), look: L('Šíp je černý a rána kolem něj zčernala. Jed. Tam je bledý a třese se zimnicí.', 'The arrow is black, and the wound around it has gone black too. Poison. Tam is pale and shaking with fever.') },
+      horse: { at: [0.9, 1.8, 0.6], ic: '🐎', name: L('Tamův kůň', 'Tam\'s horse'), look: L('Kůň je uhnaný do krve. Na sedlové brašně je vyšitá princova koruna.', 'The horse has been ridden half to death. A crown is stitched on the saddlebag: the prince\'s.'),
+        acts: () => [{ label: L('Prohledat sedlové brašny', 'Search the saddlebags'), ic: '🎒', if: () => !f().bags, act: () => { f().bags = 1; G.items.food += 2; say(L('V brašnách je chleba a sušené maso na dva dny, a mapa Elderwoodu se zakreslenou cestou ke srubu. (+2 jídlo)', 'In the bags: bread and dried meat for two days, and a map of Elderwood with the way to the lodge marked. (+2 food)'), '#7aea7a'); then(stay); } }] },
+      inn: { at: [-2.2, 1.6, 0.8], ic: '🏮', name: L('Hostinec U Křivé lucerny', 'The Crooked Lantern Inn'), look: L('Brannock stojí ve dveřích s lucernou. „Ten chlapec nepřežije noc, jestli se nic nestane,“ řekne tiše.', 'Brannock stands in the door with a lantern. "That boy won\'t live through the night unless something is done," he says quietly.') },
+      road: { at: [0.3, 1.0, -13], ic: '🛤', name: L('Cesta do Elderwoodu', 'The road to Elderwood') },
+    },
+    choices: () => [
+      { spot: 'tam', label: L('Ošetřit ránu', 'Treat the wound'), ic: '🩹', if: () => !f().tam, ...pickWho(L('Kdo ošetřuje? (hod na Moudrost)', 'Who treats him? (Wisdom roll)'), h => h.tried.tam ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.tam = 1;
+        if (checkAbility(h, 'wis')) tamTreated(L(`${h.name} vyřízne hrot šípu a ránu vypálí nožem rozžhaveným v krbu. Tam zařve a omdlí. Pak se mu zklidní dech.`, `${h.name} cuts out the arrowhead and sears the wound with a knife heated in the fire. Tam screams and faints. Then his breathing calms.`));
+        else say(L(`${h.name} se snaží, ale rána krvácí dál. Tam slábne.`, `${h.name} tries, but the wound keeps bleeding. Tam is growing weaker.`), '#ff7a6a');
+        then(stay);
+      }) },
+      { spot: 'tam', label: L('Seslat Léčení', 'Cast Cure Wounds'), ic: '✚', if: () => !f().tam && G.heroes.some(h => up(h) && h.cls === 'cleric' && h.spells > 0), act: () => {
+        const h = G.heroes.find(x => up(x) && x.cls === 'cleric' && x.spells > 0); h.spells--; partyKey = '';
+        tamTreated(L(`${h.name} položí ruce na ránu a modlí se. Krev přestane téct. Jed ale zůstane: černá žilka se plíží dál.`, `${h.name} lays hands on the wound and prays. The bleeding stops. The poison stays though: a black vein creeps on.`)); then(stay);
+      } },
+      { spot: 'tam', label: L('Dát mu léčivý lektvar', 'Give him a healing potion'), ic: '🧪', note: () => `${G.items.potion}×`, if: () => !f().tam && G.items.potion > 0, act: () => {
+        G.items.potion--;
+        tamTreated(L('Tam vypije lektvar. Do tváří se mu vrátí trochu barvy.', 'Tam drinks the potion. A little colour comes back to his face.')); then(stay);
+      } },
+      { spot: 'tam', label: L('Přečíst dopis', 'Read the letter'), ic: '✉', if: () => !G.clues.letter, ...pickWho(L('Kdo luští? (hod na Inteligenci)', 'Who works on it? (Intelligence roll)'), h => h.tried.letter ? 0 : abilityChance(h, 'int'), h => {
+        h.tried.letter = 1;
+        if (checkAbility(h, 'int')) { say(L(`Dopis je v šifře. ${h.name} nad ním sedí dlouho a pak vyluští dvě slova: „zrádce“ a „brána“.`, `The letter is in cipher. ${h.name} sits over it a long while and makes out two words: "traitor" and "the gate".`), '#7aea7a'); findClue('letter'); }
+        else say(L(`${h.name} vidí jen řady písmen bez smyslu.`, `${h.name} sees only rows of meaningless letters.`));
+        then(stay);
+      }) },
+      { spot: 'road', label: L('Vyrazit do Elderwoodu', 'Set off for Elderwood'), ic: '⛈', act: () => {
+        if (!f().tam) { f().tam = 'dead'; say(L('Než vyrazíte, Tam se naposledy nadechne. Dopis mu vypadne z ruky. Brannock mu zavře oči.', 'Before you leave, Tam draws one last breath. The letter falls from his hand. Brannock closes his eyes.'), '#ff7a6a'); }
+        else if (f().tam === 'riding') say(L('Posadíte Tama do sedla a vyrazíte do deště.', 'You put Tam in the saddle and set off into the rain.'));
+        then(() => go('s1_farm'));
+      } },
+    ],
+  },
+  s1_farm: {
+    title: L('Hořící statek', 'The Burning Farm'), set: 'farm', view: 'farm', film: 's1farm',
+    text: () => L(`Po hodině a půl v dešti uvidíte záři. Statek u cesty hoří. Na dvoře leží sedlák a u stodoly stojí ${riders1() > 1 ? riders1() + ' jezdci' : 'jezdec'} v popelavé zbroji. Vyvádějí koně.`,
+                  `After an hour and a half in the rain you see a glow. A farm by the road is burning. The farmer lies in the yard, and by the barn ${riders1() > 1 ? riders1() + ' riders' : 'a rider'} in ash-grey armour ${riders1() > 1 ? 'are' : 'is'} leading out the horses.`),
+    again: () => f().riders ? L('Statek dohořívá. Déšť syčí v uhlících.', 'The farm is burning down. The rain hisses in the embers.') : L('Jezdci jsou pořád u stodoly.', 'The riders are still by the barn.'),
+    foes: () => [['rider', riders1()]], beaten: () => f().riders || f().skipped,
+    enter: () => { const U = curSet.userData; U.wife.visible = U.boy.visible = !!f().family; },
+    eye: [1.2, 1.6, 7.5, 0.1, 0.02],
+    spots: {
+      riders: { at: () => { const u = units.find(x => x.kind === 'rider'); return u ? u.pos.clone().setY(u.pos.y + 2.0) : V(0.3, 2, -3.4); }, ic: '🪓', name: L('Popelaví jezdci', 'The Ash Riders'), if: () => !f().riders && !f().skipped,
+        look: L('Šedé pláště, sekery, pochodně. Jezdci se smějí a nespěchají. Myslí si, že tu nikdo není.', 'Grey cloaks, axes, torches. The riders laugh and take their time. They think nobody is here.') },
+      house: { at: [-3.5, 2.6, -4], ic: '🔥', name: L('Hořící dům', 'The burning house'), look: L('Střecha je v plamenech. Uvnitř už nikdo není, nebo už nikdo nežije.', 'The roof is in flames. There is nobody inside any more, or nobody alive.') },
+      farmer: { at: [-0.8, 0.5, -2.6], ic: '✝', name: L('Sedlák', 'The farmer'), look: L('Sedlák leží na zádech, v ruce ještě drží vidle. Bránil se.', 'The farmer lies on his back, still holding a pitchfork. He fought.'),
+        acts: () => [{ label: L('Pohřbít ho (půl hodiny)', 'Bury him (half an hour)'), ic: '⚱', if: () => f().riders && !f().buried, act: () => { f().buried = 1; pass(30); say(L('Vykopete hrob za stodolou. Vdova stojí u něj a mlčí. Na tohle nezapomene.', 'You dig a grave behind the barn. The widow stands by it in silence. She won\'t forget this.'), '#c8b8ff'); G.allies.farm = 2; then(stay); } }] },
+      cellar: { at: [-6.6, 0.5, -3.2], ic: '🚪', name: L('Dvířka do sklepa', 'The cellar hatch'), look: L('Zpod dvířek je slyšet tlumený pláč.', 'Muffled crying comes from under the hatch.'),
+        acts: () => [{ label: L('Zavolat dolů, že je po všem', 'Call down that it is over'), ic: '🗣', if: () => f().riders && !f().family, act: () => {
+          f().family = 1; pass(15); G.allies.farm = G.allies.farm || 1;
+          const U = curSet.userData; U.wife.visible = U.boy.visible = true;
+          say(L('Ze sklepa vyleze žena a malý kluk. Žena se roztřese, když uvidí dvůr. Kluk se na vás upřeně dívá.', 'A woman and a small boy climb out of the cellar. The woman shakes when she sees the yard. The boy stares at you.'));
+          say(L('„Jezdci přijeli od brodu,“ řekne kluk. „U mostu jich čeká víc. Ale já znám cestu přes starý mlýn. Je kratší. Jenže tam straší.“', '"The riders came from the ford," the boy says. "More of them wait at the bridge. But I know a way through the old mill. It\'s shorter. Only it\'s haunted."'), '#7aea7a');
+          f().millKnown = 1; then(stay);
+        } }] },
+      well: { at: [1.6, 1.4, -1.6], ic: '🪣', name: L('Studna', 'The well'), look: L('Okov visí nad tmou. Voda je čistá. Aspoň něco.', 'The bucket hangs over the dark. The water is clean. That at least.') },
+      road: { at: [7, 1.2, -16], ic: '🛤', name: L('Cesta dál k Elderwoodu', 'The road on to Elderwood') },
+    },
+    choices: () => [
+      { spot: 'riders', label: L('Zaútočit', 'Attack'), ic: '⚔', act: () => fight({ foes: [['rider', riders1()]], win: () => { f().riders = 1; go('s1_farm'); }, flee: () => go('s1_inn') }) },
+      { spot: 'riders', label: L('Proplížit se kolem a pokračovat', 'Sneak past and go on'), ic: '🤫', act: () => {
+        say(L('Všichni se snaží proklouznout kolem v tmě a dešti. (Zloděj: tiché plížení. Ostatní: Obratnost, ve zbroji -4.)', 'Everyone tries to slip past in the dark and the rain. (Thief: move silently. The others: Dexterity, -4 in armour.)'));
+        let ok = 0, all = 0;
+        for (const h of G.heroes) if (up(h)) { all++; if (h.cls === 'thief' ? checkSkill(h, 2) : checkAbility(h, 'dex', CLASSES[h.cls].armour <= 4 ? -4 : 0)) ok++; }
+        if (ok * 2 >= all) { f().skipped = 1; say(L('Projdete za plotem. Jezdci nic nezaslechnou. Za vámi dál hoří statek, a někde ve sklepě pláče dítě.', 'You pass behind the fence. The riders hear nothing. Behind you the farm burns on, and somewhere in a cellar a child is crying.'), '#c8b8ff'); then(() => go('s1_ford')); }
+        else { say(L('Kůň zařehtá. Jezdci se otočí!', 'A horse whinnies. The riders turn!'), '#ff7a6a'); then(() => fight({ foes: [['rider', riders1()]], surprise: 'foes', win: () => { f().riders = 1; go('s1_farm'); }, flee: () => go('s1_inn') })); }
+      } },
+      { spot: 'road', label: L('Po cestě k brodu (dlouhá cesta)', 'Along the road to the ford (the long way)'), ic: '🌊', if: () => f().riders, act: () => go('s1_ford') },
+      { spot: 'road', label: L('Zkratkou přes starý mlýn', 'The shortcut through the old mill'), ic: '🌲', if: () => f().millKnown, act: () => go('s1_mill') },
+      { spot: 'road', label: L('Zpátky do Thornwallu', 'Back to Thornwall'), ic: '‹', dim: true, act: () => go('s1_inn') },
+    ],
+  },
+  s1_ford: {
+    title: L('Brod', 'The Ford'), set: 'ford', view: 'ford', film: 's1ford',
+    text: L('Cesta sejde k řece. Po proudu stojí kamenný most a na něm hoří pochodně: jezdci ho hlídají. O kus výš, mezi rákosím, je brod. Voda je černá a rychlá.',
+            'The road comes down to the river. Downstream stands a stone bridge, torches burning on it: the riders are guarding it. A little upstream, among the reeds, is a ford. The water is black and fast.'),
+    again: L('Řeka šumí. Na mostě se pohybují pochodně.', 'The river rushes on. Torches move on the bridge.'),
+    eye: [0.6, 1.6, 6, 0.05, -0.08],
+    spots: {
+      ford: { at: [0, 0.3, -7], ic: '🌊', name: L('Brod', 'The ford'), look: L('Kameny pod vodou tvoří brod. Voda sahá ke kolenům.', 'Stones under the water make a ford. The water is knee-deep.') },
+      reeds: { at: [-3.2, 0.8, -4.8], ic: '🌾', name: L('Rákosí', 'The reeds'), look: L('Rákosí je vysoké a husté. Něco v něm šustí. Nebo je to vítr.', 'The reeds are tall and thick. Something rustles in them. Or it is the wind.') },
+      bridge: { at: [15, 2.6, -7], ic: '🌉', name: L('Most', 'The bridge'), look: L('Na mostě stojí jezdci s pochodněmi a koukají na cestu. Tudy ne.', 'Riders with torches stand on the bridge, watching the road. Not that way.') },
+      back: { at: [0.5, 1, 14], ic: '‹', name: L('Cesta zpátky ke statku', 'The road back to the farm') },
+    },
+    choices: () => [
+      { spot: 'reeds', label: L('Prozkoumat rákosí', 'Search the reeds'), ic: '🔍', if: () => !f().ambushSeen && !f().forded, ...pickWho(L('Kdo se dívá? (hod na Moudrost)', 'Who looks? (Wisdom roll)'), h => h.tried.reeds ? 0 : abilityChance(h, 'wis'), h => {
+        h.tried.reeds = 1;
+        if (checkAbility(h, 'wis')) { f().ambushSeen = 1; say(L(`${h.name} zahlédne v rákosí žluté oči. Vargové! Čekají v záloze, a s nimi jezdec.`, `${h.name} spots yellow eyes in the reeds. Wargs! They lie in ambush, and a rider with them.`), '#7aea7a'); }
+        else say(L(`${h.name} nevidí nic než rákosí a déšť.`, `${h.name} sees nothing but reeds and rain.`));
+        then(stay);
+      }) },
+      { spot: 'ford', label: L('Přebrodit řeku', 'Wade across'), ic: '🌊', if: () => !f().forded, act: () => {
+        if (!f().ambushSeen) say(L('Uprostřed brodu se z rákosí vyřítí vargové!', 'In the middle of the ford, wargs burst out of the reeds!'), '#ff7a6a');
+        else say(L('Víte, že tam jsou. Tentokrát překvapíte vy je.', 'You know they are there. This time you surprise them.'), '#7aea7a');
+        then(() => fight({ foes: [['warg', wargs1()], ['rider', 1]], surprise: f().ambushSeen ? 'party' : 'foes', win: () => { f().forded = 1; say(L('Přejdete na druhý břeh. Stezka vede do tmy Elderwoodu. Je to ještě daleko.', 'You cross to the far bank. A path leads into the dark of Elderwood. It is still a long way.')); then(() => go('s1_lodge')); }, flee: () => go('s1_farm') }));
+      } },
+      { spot: 'back', label: L('Zpátky ke statku', 'Back to the farm'), ic: '‹', dim: true, act: () => go('s1_farm') },
+    ],
+  },
+  s1_mill: {
+    title: L('Starý mlýn', 'The Old Mill'), set: 'mill', view: 'mill', film: 's1mill',
+    text: L('Klukova stezka vede lesem k potoku a ke starému mlýnu. Potok skoro vyschl, a přece se mlýnské kolo točí. Pomalu, se skřípěním.',
+            'The boy\'s path leads through the forest to a stream and an old mill. The stream has almost dried up, and yet the mill wheel turns. Slowly, creaking.'),
+    again: L('Kolo se točí a skřípe.', 'The wheel turns and creaks.'),
+    eye: [-1.6, 1.6, 6, -0.12, 0.08],
+    spots: {
+      door: { at: [-1, 1.2, -3.3], ic: '🚪', name: L('Dveře mlýna', 'The mill door'), look: L('Dveře visí na jednom pantu. Uvnitř je tma.', 'The door hangs on one hinge. It is dark inside.') },
+      wheel: { at: [3.6, 1.8, -6], ic: '⚙', name: L('Mlýnské kolo', 'The mill wheel'), look: L('Kolo se točí, ačkoli voda sotva teče. Nikdo ho neroztáčí. Nikdo živý.', 'The wheel turns, though the water hardly flows. Nobody turns it. Nobody living.') },
+      window: { at: [1.6, 3.2, -3.4], ic: '🪟', name: L('Okno', 'The window'), look: L('Zevnitř je slyšet oddechování. Hluboké. Něčeho velkého. Několika něčeho.', 'Breathing comes from inside. Deep. Something big. Several somethings.') },
+      back: { at: [-1, 1, 14], ic: '‹', name: L('Stezka zpátky', 'The path back') },
+    },
+    choices: () => [
+      { spot: 'door', label: L('Vejít do mlýna', 'Go into the mill'), ic: '🚪', act: () => go('s1_millin') },
+      { spot: 'back', label: L('Zpátky ke statku', 'Back to the farm'), ic: '‹', dim: true, act: () => go('s1_farm') },
+    ],
+  },
+  s1_millin: {
+    title: L('Uvnitř mlýna', 'Inside the Mill'), set: 'mill', view: 'millin',
+    text: () => L(`Uvnitř je šero. Mlýnský kámen se točí a mele prázdný vzduch. Na pytlích v rohu spí ${wargs1() > 1 ? wargs1() + ' vargové' : 'varg'}, velcí jako telata. Mezi vámi a zadními dveřmi je podlaha napůl propadlá.`,
+                  `It is dim inside. The millstone turns, grinding empty air. On the sacks in the corner ${wargs1() > 1 ? wargs1() + ' wargs sleep' : 'a warg sleeps'}, as big as calves. Between you and the back door the floor has half fallen in.`),
+    again: L('Kámen mele. Vargové oddechují.', 'The stone grinds. The wargs breathe.'),
+    foes: () => [['warg', wargs1()]], beaten: () => f().wargs,
+    enter: () => { for (const u of preview) u.pose = 'sleep'; const U = curSet.userData; U.ghost.visible = !f().ghost; U.stoneSpin = f().ghost ? 0 : 1; },
+    eye: [61.6, 1.6, 5.4, 0.1, -0.22],
+    spots: {
+      wargs: { at: () => { const u = units.find(x => x.kind === 'warg'); return u ? u.pos.clone().setY(u.pos.y + 1.2) : V(58, 1, -2.4); }, ic: '🐺', name: L('Spící vargové', 'The sleeping wargs'), if: () => !f().wargs,
+        look: L('Vargové spí stočení na pytlích s obilím. Jeden ve spánku cuká tlapou. Kolem leží ohlodané kosti.', 'The wargs sleep curled on sacks of grain. One twitches a paw in its sleep. Gnawed bones lie around.') },
+      floor: { at: [58, 0.3, 0.5], ic: '🕳', name: L('Shnilá podlaha', 'The rotten floor'), look: L('Prkna jsou shnilá a pod nimi je tma a voda. Podél zdi drží trám.', 'The boards are rotten, with darkness and water beneath. Along the wall a beam still holds.') },
+      ghost: { at: [63.9, 2.2, -2.4], ic: '👻', name: L('Průsvitný stařec', 'A see-through old man'), if: () => !f().ghost, look: L('U kamene stojí průsvitný stařec a mele prázdný vzduch. Podívá se na vás. „Zastavte ho… Sto let melu a nemůžu přestat.“', 'By the stone stands a see-through old man, grinding empty air. He looks at you. "Stop it... A hundred years I have ground, and I can\'t stop."') },
+      back: { at: [60, 1.3, -5.9], ic: '🚪', name: L('Zadní dveře', 'The back door') },
+      front: { at: [61.5, 1.3, 6], ic: '‹', name: L('Ven předními dveřmi', 'Out the front door') },
+    },
+    choices: () => [
+      { spot: 'wargs', label: L('Zaútočit na spící vargy', 'Attack the sleeping wargs'), ic: '⚔', act: () => fight({ foes: [['warg', wargs1()]], surprise: 'party', win: () => { f().wargs = 1; go('s1_millin'); }, flee: () => go('s1_mill') }) },
+      { spot: 'floor', label: L('Rychle přes podlahu', 'Quickly across the floor'), ic: '🏃', if: () => !f().crossed, act: () => {
+        say(L('Všichni přebíhají po prknech. (Obratnost; zloděj a půlčík +2.)', 'Everyone runs across the boards. (Dexterity; a thief or a halfling +2.)'));
+        let fell = null;
+        for (const h of G.heroes) if (up(h) && !fell && !checkAbility(h, 'dex', h.cls === 'thief' || h.race === 'halfling' ? 2 : 0)) fell = h;
+        if (!fell) { f().crossed = 1; say(L('Prkna vrzají, ale vydrží. Vargové spí dál.', 'The boards creak, but hold. The wargs sleep on.'), '#7aea7a'); then(stay); return; }
+        const d = rnd(4); hurt(fell, d, true);
+        say(L(`Prkno pod hrdinou ${fell.name} praskne! ${fell.name} se propadne po pás (${d} zranění). Rána se rozlehne mlýnem.`, `A board breaks under ${fell.name}! ${fell.name} drops to the waist (${d} damage). The crash echoes through the mill.`), '#ff7a6a');
+        if (f().wargs) { f().crossed = 1; then(stay); return; }
+        say(L('Vargové se vymrští ze spánku!', 'The wargs leap up from their sleep!'), '#ff7a6a');
+        then(() => fight({ foes: [['warg', wargs1()]], win: () => { f().wargs = 1; f().crossed = 1; go('s1_millin'); }, flee: () => go('s1_mill') }));
+      } },
+      { spot: 'floor', label: L('Opatrně po trámu podél zdi (+20 min)', 'Carefully along the beam by the wall (+20 min)'), ic: '🐢', if: () => !f().crossed, act: () => { pass(20); f().crossed = 1; say(L('Krok za krokem, po trámu podél zdi. Trvá to věčnost, ale nikdo nespadne.', 'Step by step, along the beam by the wall. It takes forever, but nobody falls.'), '#7aea7a'); then(stay); } },
+      { spot: 'ghost', label: L('Zastavit mlýnský kámen', 'Stop the millstone'), ic: '✋', ...pickWho(L('Kdo se opře do kamene? (hod na Sílu, -2)', 'Who puts their weight against the stone? (Strength roll, -2)'), h => f().ghost || h.tried.stone ? 0 : abilityChance(h, 'str', -2), h => {
+        h.tried.stone = 1;
+        if (checkAbility(h, 'str', -2)) {
+          f().ghost = 1; const U = curSet.userData; U.stoneSpin = 0;
+          say(L(`${h.name} se opře do kamene celou vahou. Kámen zaskřípe a zastaví se. Stařec si oddechne, usměje se a rozplyne se jako pára. Kde stál, leží stará lucerna.`, `${h.name} throws their whole weight against the stone. It grinds and stops. The old man sighs, smiles and fades like steam. Where he stood lies an old lantern.`), '#7aea7a');
+          then(() => { U.ghost.visible = false; }); findArt('lantern');
+        } else say(L(`Kámen ${h.name} odhodí stranou jako hadrovou panenku.`, `The stone throws ${h.name} aside like a rag doll.`), '#ff7a6a');
+        then(stay);
+      }) },
+      { spot: 'back', label: L('Zadními dveřmi dál k srubu', 'Out the back door, on to the lodge'), ic: '🌲', if: () => f().crossed || f().wargs, act: () => go('s1_lodge') },
+      { spot: 'front', label: L('Ven předními dveřmi', 'Out the front door'), ic: '‹', dim: true, act: () => go('s1_mill') },
+    ],
+  },
+  s1_lodge: {
+    title: L('Lovecký srub', 'The Hunting Lodge'), set: 'lodge', view: 'lodge', film: 's1lodge',
+    text: () => (f().late ? L('Přijdete pozdě v noci. Srub uprostřed palisády je obležený. Brána je otevřená dokořán. Ze stáje šlehají plameny. Z oken patra létají šípy, ale už jen z jednoho: na schodech leží jeden z princových strážných a nehýbe se.\n',
+                              'You arrive late in the night. The lodge inside its palisade is under siege. The gate stands wide open. Flames leap from the stable. Arrows fly from the upper windows, but only from one now: one of the prince\'s guards lies on the stairs and does not move.\n')
+                           : L('Srub uprostřed palisády je obležený. Brána je otevřená dokořán. Ze stáje šlehají plameny. Z oken patra létají šípy: princ a jeho dva strážní drží schody.\n',
+                               'The lodge inside its palisade is under siege. The gate stands wide open. Flames leap from the stable. Arrows fly from the upper windows: the prince and his two guards hold the stairs.\n')) +
+      L(`Na dvoře stojí Kael Ashborn v rudém plášti a ${ridersL()} jezdců. „Přineste chrastí,“ křičí. „Vykouříme je.“`, `In the yard stands Kael Ashborn in a red cloak with ${ridersL()} riders. "Bring brushwood," he shouts. "We'll smoke them out."`),
+    again: L('Kael řve rozkazy. Jezdci nosí chrastí ke dveřím srubu.', 'Kael shouts orders. The riders carry brushwood to the lodge door.'),
+    foes: () => [['kael', 1], ['rider', ridersL()]], beaten: () => f().lodgeWon,
+    enter: first => {
+      const U = curSet.userData; U.princeN.visible = false;
+      if (first) {
+        f().atLodge = 1; f().late = G.time >= f().deadline ? 1 : 0;
+        if (f().tam === 'riding') { f().tamSaved = 1; say(L('Tam se v sedle napřímí. „Princ má ranhojiče,“ šeptá. „Jestli vyhrajete… budu žít.“', 'Tam straightens in the saddle. "The prince has a healer," he whispers. "If you win... I will live."'), '#7aea7a'); }
+        if (U.horses) for (const o of U.horses) o.visible = f().corral !== 'open' && f().corral !== 'fire';
+      }
+    },
+    eye: [0.4, 1.6, 6.5, 0.0, 0.1],
+    spots: {
+      kael: { at: () => { const u = units.find(x => x.kind === 'kael'); return u ? u.pos.clone().setY(u.pos.y + 2.3) : V(0, 2.3, -7); }, ic: '🪓', name: L('Kael Ashborn', 'Kael Ashborn'), if: () => !f().lodgeWon,
+        look: L('Kapitán jezdců v rudém plášti. Na helmici má rohy, v ruce sekeru. Ukazuje jí na okna srubu a směje se.', 'The riders\' captain in a red cloak. Horns on his helmet, an axe in his hand. He points it at the lodge windows and laughs.') },
+      corral: { at: [4.2, 1.0, -2.6], ic: '🐎', name: L('Ohrada s koňmi jezdců', 'The riders\' horse corral'), if: () => !f().corral, look: L('V ohradě přešlapují koně jezdců. Vedle je seník.', 'The riders\' horses stamp in the corral. Next to it is a haystack.') },
+      backwall: { at: [-6.2, 1.9, -8], ic: '🪵', name: L('Palisáda za stájí', 'The palisade behind the stable'), if: () => !f().prince, look: L('Za stájí je palisáda nižší a kouř tu všechno zakrývá.', 'Behind the stable the palisade is lower and the smoke hides everything.') },
+      postern: { at: [6.4, 2.6, -10], ic: '🏮', name: L('Skrytá branka', 'A hidden gate'), if: () => hasLantern() && !f().prince, look: L('Studené světlo lucerny ukáže něco, co jste předtím neviděli: branku zarostlou břečťanem. Vede rovnou ke srubu.', 'The lantern\'s cold light shows something you didn\'t see before: a gate overgrown with ivy. It leads straight to the lodge.') },
+      windows: { at: [0, 3.9, -7.6], ic: '🏹', name: L('Okna srubu', 'The lodge windows'), look: () => f().prince ? L('Princovi muži teď vědí, že jste tu. Čekají na váš útok.', 'The prince\'s men know you are here now. They wait for your attack.') : L('Z oken létají šípy. Tam nahoře se drží princ.', 'Arrows fly from the windows. The prince is holding out up there.') },
+    },
+    choices: () => [
+      { spot: 'kael', label: L('Zaútočit', 'Attack'), ic: '⚔', act: () => fight({ foes: [['kael', 1], ['rider', ridersL()]], boss: true, archers: f().prince ? (f().late ? 1 : 2) : 0,
+        surprise: f().alarm ? 'foes' : f().corral === 'fire' ? 'party' : null, win: () => { f().lodgeWon = 1; go('s1_gate'); }, flee: null }) },
+      { spot: 'corral', label: L('Zapálit seník u ohrady', 'Set fire to the haystack by the corral'), ic: '🔥', act: () => {
+        f().corral = 'fire'; pass(5);
+        say(L('Seník vzplane jako pochodeň. Koně v ohradě šílí, prorazí ohradu a hoří. Jejich křik si budete pamatovat. Dva jezdci běží za nimi a v tom zmatku vás nikdo nevidí přicházet.', 'The haystack goes up like a torch. The horses in the corral go mad, break through the fence, burning. You will remember their screaming. Two riders run after them, and in the chaos nobody sees you coming.'), '#ff9a7a');
+        then(() => { for (const o of curSet.userData.horses) o.visible = false; showPreview([['kael', 1], ['rider', ridersL()]]); stay(); });
+      } },
+      { spot: 'corral', label: L('Potichu otevřít ohradu', 'Quietly open the corral'), ic: '🐎', act: () => {
+        f().corral = 'open'; pass(5);
+        say(L('Odsunete závoru. Koně vyběhnou do tmy. Jeden jezdec zakleje a běží je chytat.', 'You slide the bar back. The horses run off into the dark. A rider swears and runs to catch them.'), '#c8b8ff');
+        then(() => { for (const o of curSet.userData.horses) o.visible = false; showPreview([['kael', 1], ['rider', ridersL()]]); stay(); });
+      } },
+      { spot: 'backwall', label: L('Přelézt palisádu k princi', 'Climb the palisade to the prince'), ic: '🧗', ...pickWho(L('Kdo leze? (Obratnost -2; zloděj +4)', 'Who climbs? (Dexterity -2; a thief +4)'), h => h.tried.wall ? 0 : abilityChance(h, 'dex', h.cls === 'thief' ? 2 : -2), h => {
+        h.tried.wall = 1; pass(10);
+        if (checkAbility(h, 'dex', h.cls === 'thief' ? 2 : -2)) { f().prince = 1; say(L(`${h.name} přeleze palisádu v kouři a doplíží se k zadnímu oknu. Princ Edric vykoukne s lukem v ruce. „Kdo jste?“ „Posílá nás Tam.“ Princ se zazubí. „Až zaútočíte, budeme střílet z oken.“`, `${h.name} climbs the palisade in the smoke and creeps to a back window. Prince Edric looks out, bow in hand. "Who are you?" "Tam sent us." The prince grins. "When you attack, we will shoot from the windows."`), '#7aea7a'); }
+        else { f().alarm = 1; say(L(`Kůl pod hrdinou ${h.name} praskne. Jezdci se otočí a ukazují na palisádu. Teď o vás vědí.`, `A stake cracks under ${h.name}. The riders turn and point at the palisade. Now they know you are here.`), '#ff7a6a'); }
+        then(stay);
+      }) },
+      { spot: 'postern', label: L('Projít brankou ke srubu', 'Slip through the gate to the lodge'), ic: '🏮', act: () => { f().prince = 1; pass(10); say(L('Branka tiše povolí. Dostanete se ke srubu nepozorovaně. Princ Edric vás pustí dovnitř a vyslechne vás. „Až zaútočíte, budeme střílet z oken.“', 'The gate gives quietly. You reach the lodge unseen. Prince Edric lets you in and listens. "When you attack, we will shoot from the windows."'), '#7aea7a'); then(stay); } },
+    ],
+  },
+  s1_gate: {
+    title: L('Otevřená brána', 'The Open Gate'), set: 'lodge', view: 'lodge',
+    text: () => L('Je po boji. Princ Edric sejde ze schodů, ruku v krvavém obvazu. Za ním jde strážný Bren. „Někdo jim otevřel bránu,“ řekne princ. „Zevnitř.“ Bren zbledne a couvá k bráně.',
+                  'The fight is over. Prince Edric comes down the stairs, his arm in a bloody bandage. The guard Bren follows him. "Someone opened the gate for them," the prince says. "From the inside." Bren goes pale and backs towards the gate.') +
+      (G.clues.letter ? L('\n(Vzpomenete si na slova z dopisu: zrádce, brána.)', '\n(You remember the words in the letter: traitor, the gate.)') : ''),
+    again: L('Bren stojí u brány. Princ čeká.', 'Bren stands by the gate. The prince waits.'),
+    enter: () => { const U = curSet.userData; U.princeN.visible = true; for (const o of U.horses) o.visible = false; },
+    eye: [-1, 1.6, -7.8, -2.6, -0.04],
+    spots: {
+      bren: { at: [2.4, 2.0, -1.6], ic: '🛡', name: L('Strážný Bren', 'Bren the guard'), look: L('Bren je bledý a ruce se mu třesou. Pod pláštěm něco schovává.', 'Bren is pale and his hands shake. He is hiding something under his cloak.') },
+      prince: { at: [-0.4, 2.1, -7.4], ic: '👑', name: L('Princ Edric', 'Prince Edric'), look: L('Edric je mladý, unavený a vzteklý. Dívá se na Brena a čeká, co uděláte.', 'Edric is young, tired and furious. He watches Bren and waits to see what you will do.') },
+    },
+    choices: () => [
+      { spot: 'bren', label: L('Prohledat ho', 'Search him'), ic: '🔍', if: () => !f().purse, act: () => { f().purse = 1; say(L('Pod pláštěm má Bren těžký váček zlata. Na pečeti je erb kancléře Veska. Princ zbledne vzteky.', 'Under his cloak Bren carries a heavy purse of gold. On the seal: Chancellor Vesk\'s crest. The prince goes white with rage.'), '#d79aff'); findClue('purse'); then(stay); } },
+      { spot: 'bren', label: L('Vydat ho princi', 'Hand him over to the prince'), ic: '⚖', if: () => f().purse && !f().bren, act: () => { f().bren = 'hanged'; say(L('Princ dlouho mlčí. Pak kývne na strážného. „Za úsvitu.“ Bren nic neřekne. Za úsvitu se houpe na dubu u brány.', 'The prince is silent a long while. Then he nods to the guard. "At dawn." Bren says nothing. At dawn he hangs from the oak by the gate.'), '#ff9a7a'); then(() => go('s1_end')); } },
+      { spot: 'bren', label: L('Nechat ho jít', 'Let him go'), ic: '🚶', if: () => f().purse && !f().bren, act: () => { f().bren = 'free'; say(L('Bren zmizí v lese. Princ se na vás podívá, ale nic neřekne.', 'Bren vanishes into the forest. The prince looks at you, but says nothing.'), '#c8b8ff'); then(() => go('s1_end')); } },
+      { spot: 'bren', label: L('Udělat z něj našeho špeha', 'Make him our spy'), ic: '🕵', if: () => f().purse && !f().bren, ...pickWho(L(`Kdo ho přemlouvá? (Charisma${G.clues.letter ? ' +2: víte, co je v dopise' : ''})`, `Who talks him round? (Charisma${G.clues.letter ? ' +2: you know what is in the letter' : ''})`), h => abilityChance(h, 'cha', G.clues.letter ? 2 : 0), h => {
+        if (checkAbility(h, 'cha', G.clues.letter ? 2 : 0)) { f().bren = 'spy'; G.allies.bren = 1; say(L(`${h.name}: „Vrátíš se ke Veskovi. Řekneš mu, že princ je mrtvý. A pak nám budeš psát, co Vesk chystá.“ Bren se třese, ale přikývne. Princ se poprvé usměje.`, `${h.name}: "You go back to Vesk. You tell him the prince is dead. And then you write to us about what Vesk is planning." Bren shakes, but nods. For the first time, the prince smiles.`), '#7aea7a'); }
+        else { f().bren = 'hanged'; say(L('Bren se vytrhne a rozběhne se k bráně. Princův strážný ho srazí k zemi. Za úsvitu se Bren houpe na dubu u brány.', 'Bren tears free and runs for the gate. The prince\'s guard knocks him down. At dawn Bren hangs from the oak by the gate.'), '#ff9a7a'); }
+        then(() => go('s1_end'));
+      }) },
+    ],
+  },
+  s1_end: {
+    title: L('Princ', 'The Prince'), set: 'lodgeDawn', view: 'dawn', film: 's1dawn',
+    text: () => {
+      let t = L('Svítá. Srub kouří a v lese zpívají ptáci, jako by se nic nestalo. Princ Edric si sedne na schod vedle vás.\n', 'Dawn. The lodge is smoking, and the birds sing in the forest as if nothing had happened. Prince Edric sits down on the step beside you.\n');
+      t += f().tamSaved ? L('Na lavici u ohně leží Tam, bledý, ale dýchá. Princův ranhojič vyřezal jed z rány. „Dlužím vám přítele,“ řekne princ.\n', 'Tam lies on a bench by the fire, pale but breathing. The prince\'s healer cut the poison from the wound. "I owe you a friend," the prince says.\n')
+                        : L('Princ se dlouho dívá k Thornwallu. „Tam byl můj přítel,“ řekne nakonec. „Jezdil pro mě, odkud nikdo jiný nechtěl.“\n', 'The prince looks towards Thornwall for a long time. "Tam was my friend," he says at last. "He rode for me where nobody else would."\n');
+      t += L('„Dvůr je prohnilý. Otec poslouchá Veska a Vesk bere zlato od někoho z východu. Muži Temného krále už jsou v Aldmeru. Potřebuji lidi, kterých si nikdo nevšímá.“ Stáhne si z prstu prsten s pečetí. „Tohle vám otevře dveře.“',
+             '"The court is rotten. My father listens to Vesk, and Vesk takes gold from someone in the east. The Dark King\'s men are already in Aldmere. I need people nobody notices." He pulls a signet ring from his finger. "This will open doors for you."');
+      if (f().kaelFled) t += L('\nKael Ashborn utekl. Ještě o něm uslyšíte.', '\nKael Ashborn got away. You will hear of him again.');
+      return t;
+    },
+    enter: () => {
+      const U = curSet.userData; U.tam.visible = !!f().tamSaved;
+      if (f().paid) return;
+      f().paid = 1;
+      findArt('signet');
+      const pay = 150 + (f().tamSaved ? 50 : 0);
+      G.world = Object.assign(G.world || {}, { tam: f().tamSaved ? 'alive' : 'dead', bren: f().bren || 'free', kael: f().kaelFled ? 'fled' : 'dead', farm: G.allies.farm || 0 });
+      G.gold += pay;
+      gap();
+      say(L(`Princ vám dá váček: ${pay} zlaťáků.`, `The prince gives you a purse: ${pay} gold.`), '#ffd23f');
+      giveXP(200 + (f().tamSaved ? 100 : 0), L('Za záchranu prince', 'For saving the prince'));
+      checkLevels();
+      G.done[G.mission] = (G.done[G.mission] || 0) + 1;
+      const first = !save.wins2; save.wins2 = 1; save.wins = (save.wins | 0) + 1; store();
+      const stars = first ? 15 : 2;
+      PX.Wallet.add(stars);
+      say(L(`Mise je splněná! +★${stars}`, `Mission accomplished! +★${stars}`), '#ffd23f');
+      sfx('win');
+      store2();
+    },
+    ask: L('Mise splněná', 'Mission accomplished'),
+    choices: () => [{ label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', act: () => endMission() }],
+  },
   town: {
     title: 'Thornwall', set: 'village', view: 'inn',
     text: () => G.done.bell
@@ -1319,11 +1624,19 @@ const ROOMS = {
     },
     ask: () => f().over ? L('Konec tažení', 'The campaign is over') : L('Co teď?', 'What now?'),
     choices: () => f().over ? [{ label: L('Na titulní obrazovku', 'Back to the title'), act: () => { G = null; setState('title'); } }] : [
-      { label: L('Zkusit to znovu', 'Try again'), ic: '↻', act: () => go('hill') },
+      { label: L('Zkusit to znovu', 'Try again'), ic: '↻', act: () => go((missionOf(G.mission) || {}).retry || 'hill') },
       { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => endMission() },
     ],
   },
 };
+const riders1 = () => [1, 2, 2, 3][n() - 1];
+const wargs1 = () => [1, 1, 2, 3][n() - 1];
+const ridersL = () => Math.max(1, [1, 2, 3, 3][n() - 1] - (f().corral === 'fire' ? 2 : f().corral === 'open' ? 1 : 0));
+function tamTreated(txt) {
+  f().tam = 'riding';
+  say(txt, '#7aea7a');
+  say(L('Tam otevře oči. „Jed… Princ má ranhojiče. Musím k němu do svítání… jinak…“ Nedořekne to. Cesta do Elderwoodu je dlouhá.', 'Tam opens his eyes. "Poison... The prince has a healer. I must reach him before dawn... or..." He doesn\'t finish. The road to Elderwood is long.'), '#c8b8ff');
+}
 const ratsN = () => [2, 3, 4, 5][n() - 1];
 const skelN = () => Math.min(4, [1, 2, 2, 3][n() - 1] + (f().alarm ? 1 : 0));
 function bossFoes() {
@@ -1368,6 +1681,9 @@ function approachLine(list) {
   const id = list[0][0], n = list.reduce((a, x) => a + x[1], 0);
   if (id === 'rat') return L('Krysy se valí ze tmy, oči jim svítí.', 'The rats pour out of the dark, eyes glowing.');
   if (id === 'skel') return n > 1 ? L(`Kostlivci (${n}) se blíží, chrastí kostmi.`, `${n} skeletons come on, bones rattling.`) : L('Kostlivec se blíží.', 'A skeleton comes on.');
+  if (id === 'rider') return n > 1 ? L(`Popelaví jezdci (${n}) tasí sekery a jdou na vás.`, `${n} Ash Riders draw their axes and come at you.`) : L('Popelavý jezdec tasí sekeru.', 'An Ash Rider draws his axe.');
+  if (id === 'warg') return L('Vargové se přikrčí a vyrazí. Jsou velcí jako telata.', 'The wargs crouch and spring. They are as big as calves.');
+  if (id === 'kael') return L('Kael Ashborn zvedne sekeru. „Princ počká. Nejdřív vy.“', 'Kael Ashborn raises his axe. "The prince can wait. You first."');
   if (id === 'malrec' || id === 'zomb') return L('Utopenci se šourají z tůně. Malrec zvedá ruce.', 'The drowned shamble out of the pool. Malrec raises his hands.');
   return L('Nepřátelé se blíží!', 'The enemies are coming!');
 }
@@ -1439,6 +1755,13 @@ function newRound() {
   F.round++;
   gap();
   say(L(`Kolo ${F.round}`, `Round ${F.round}`), '#c8b8ff');
+  for (let i = 0; i < (F.def.archers || 0); i++) {
+    const t = pick(foesLeft().filter(m => m.state === 'ok')); if (!t) break;
+    const r = rnd(20), hit = r >= 19 - t.ac;
+    say(L(`Z okna srubu vylétne šíp a míří na: ${t.name}.`, `An arrow flies from a window of the lodge at ${t.name}.`), '#c8b8ff');
+    if (hit) wound(t, rnd(6)); else then(() => floatNum(unitOf(t), L('vedle', 'miss'), 'miss'));
+  }
+  if (endCheck()) return;
   if (F.free) {
     F.order = F.free === 'party' ? ['party'] : ['foes', 'slow'];
     F.free = null;
@@ -1636,7 +1959,7 @@ function kill(m) {
   const u = unitOf(m);
   play(() => { m.shp = 0; focusOn(u); deathAnim(u); }, 0.6);
   if (m.boss) {
-    say(L('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', 'Malrec falls to his knees. The bell goes quiet and the drowned sink back into the pool.'), '#7aea7a');
+    say(m.down, '#7aea7a');
     goneAll();
     return;
   }
@@ -1658,12 +1981,12 @@ function bossMorale(m) {
   if (F.m_boss || m.hp * 2 > m.max) return;
   F.m_boss = 1;
   const r = dice(2, 10);
-  rollFx(20, r, L(`Malrecova odvaha: padlo ${r} (víc než ${m.morale} a vzdá se). ${r > m.morale ? 'Vzdává se!' : 'Bojuje dál.'}`, `Malrec's morale: rolled ${r} (over ${m.morale} and he gives up). ${r > m.morale ? 'He gives up!' : 'He fights on.'}`), r > m.morale);
+  rollFx(20, r, L(`${m.name}: odvaha, padlo ${r} (víc než ${m.morale} a vzdá to). ${r > m.morale ? 'Vzdává to!' : 'Bojuje dál.'}`, `${m.name}'s morale: rolled ${r} (over ${m.morale} and gives up). ${r > m.morale ? 'Gives up!' : 'Fights on.'}`), r > m.morale);
   if (r > m.morale) {
-    say(L('Malrec pustí palcát a padne na kolena. „Dost… Chtěl jsem jen zpátky svého bratra.“ Zvon se zastaví. Utopenci se propadnou do tůně.', 'Malrec drops his mace and falls to his knees. "Enough... I only wanted my brother back." The bell stops. The drowned sink into the pool.'), '#7aea7a');
-    f().surrender = 1;
+    say(m.yieldTxt, '#7aea7a');
+    f()[m.yieldFlag] = 1;
     m.state = 'gone'; F.xp += m.xp;
-    const mu = unitOf(m); then(() => setPose(mu, 'kneel'));
+    const mu = unitOf(m); then(() => m.flees ? fleeAnim(mu) : setPose(mu, 'kneel'));
     goneAll();
   }
 }
@@ -1783,7 +2106,7 @@ function runAway() {
 function foeAct(m) {
   const mu = unitOf(m);
   const route = chase(mu);
-  if (m.boss && (!F.cast.hold || !F.cast.wound)) {
+  if (m.id === 'malrec' && (!F.cast.hold || !F.cast.wound)) {
     const h = route ? route.hero : pick(G.heroes.filter(up)), hu = unitOf(h);
     if (!F.cast.hold) {
       F.cast.hold = 1;
@@ -2209,6 +2532,78 @@ const FIG = {
     mesh(new THREE.DodecahedronGeometry(0.1), fm(root, { color: 0x4a4a54, metalness: 0.8, roughness: 0.4 }), 0, 0.48, 0, w);
     root.scale.setScalar(1.15);
   },
+  rider(root, h, red) {
+    const P = person(root, { torso: 0x4a4a52, torsoMat: { metalness: 0.6, roughness: 0.45 }, legs: 0x2a2a2e, sleeve: 0x3a3a40, noFace: true, skin: 0xb89a80 });
+    const iron = fm(root, { color: 0x3a3a42, metalness: 0.75, roughness: 0.4 });
+    mesh(new THREE.SphereGeometry(0.2, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), iron, 0, 0.02, 0, P.head);
+    mesh(box(0.3, 0.06, 0.05), fm(root, { color: 0x0a0806 }), 0, 0.02, 0.17, P.head);
+    eyes(root, P.head, 0xff7a30, 0.022, 0.02, 0.165, 0.055, 0.5);
+    const cloak = mesh(box(0.5, 0.82, 0.03), fm(root, { color: red ? 0x8a1a1a : 0x6a6a6e, roughness: 1 }), 0, 0.5, -0.16, root.userData.rig); cloak.rotation.x = 0.1;
+    // an axe, and a torch
+    const w = new THREE.Group(); P.handR.add(w); w.rotation.x = Math.PI / 2 - 0.3;
+    mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.7, 6), fm(root, { color: 0x3a2414 }), 0, 0.25, 0, w);
+    const ax = new THREE.Shape(); ax.moveTo(0, -0.08); ax.quadraticCurveTo(0.1, -0.15, 0.2, -0.17); ax.quadraticCurveTo(0.15, 0, 0.2, 0.17); ax.quadraticCurveTo(0.1, 0.15, 0, 0.08);
+    mesh(new THREE.ExtrudeGeometry(ax, { depth: 0.03, bevelEnabled: false }), fm(root, { color: 0xa8acb8, metalness: 0.85, roughness: 0.3 }), 0, 0.52, -0.015, w);
+    if (!red) {
+      const t = new THREE.Group(); P.handL.add(t); t.rotation.x = 0.4;
+      mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.5, 6), fm(root, { color: 0x3a2414 }), 0, 0.15, 0, t);
+      const fl = new THREE.Sprite(glowMat(0xff9a30, 0.95)); fl.scale.set(0.25, 0.35, 1); fl.position.set(0, 0.45, 0); t.add(fl); root.userData.glows.push(fl);
+    }
+    if (red) { for (const s of [-1, 1]) { const horn = mesh(new THREE.ConeGeometry(0.04, 0.24, 7), fm(root, { color: 0x2a2420 }), s * 0.17, 0.16, 0, P.head); horn.rotation.z = s * -0.6; } root.scale.setScalar(1.15); }
+  },
+  kael(root, h) { FIG.rider(root, h, true); },
+  tam(root) {
+    const P = person(root, { torso: 0x2a4aa8, legs: 0x2a2a3a, sleeve: 0x22408a, skin: 0xd8a888 });
+    hair(root, P.head, 'm', 0x3a2a1a);
+    mesh(box(0.42, 0.06, 0.02), fm(root, { color: 0xffd23f, metalness: 0.7, roughness: 0.4 }), 0, 0.78, 0.135, root.userData.rig);
+    const ar = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 5), fm(root, { color: 0x101010 }), 0.08, 0.72, -0.3, root.userData.rig); ar.rotation.x = 1.2;
+  },
+  guard(root) {
+    const P = person(root, { torso: 0x2a4aa8, torsoMat: { metalness: 0.3, roughness: 0.6 }, legs: 0x2a2a3a, sleeve: 0x8a8a98, skin: 0xd8a888 });
+    const helm = fm(root, { color: 0xa0a6b4, metalness: 0.75, roughness: 0.35 });
+    mesh(new THREE.SphereGeometry(0.19, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), helm, 0, 0.06, 0, P.head);
+    mesh(box(0.03, 0.12, 0.05), helm, 0, -0.02, 0.17, P.head);
+    sword(root, P.handR, 0.6);
+  },
+  bren(root) { FIG.guard(root); },
+  farmer(root) {
+    const P = person(root, { torso: 0x8a6a3a, legs: 0x4a3a2a, sleeve: 0x7a5a30, skin: 0xd8a080 });
+    hair(root, P.head, 'm', 0x4a3a2a);
+  },
+  wife(root) {
+    const P = person(root, { torso: 0x6a4a5a, legs: 0x4a3a3a, robe: 0x5a3a4a, sleeve: 0x6a4a5a, skin: 0xe0b090 });
+    hair(root, P.head, 'f', 0x5a3a1a);
+    mesh(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), fm(root, { color: 0xd8d0c0 }), 0, 0.04, -0.02, P.head);
+  },
+  boy(root) {
+    const P = person(root, { torso: 0x7a8a5a, legs: 0x5a4a3a, sleeve: 0x7a8a5a, skin: 0xe8c0a0 });
+    hair(root, P.head, 'm', 0xc89a5a);
+    root.scale.setScalar(0.72);
+  },
+  ghost(root) {
+    const P = person(root, { torso: 0xd8e4f0, legs: 0xc8d4e8, robe: 0xc8d8f0, sleeve: 0xd8e4f0, skin: 0xe0ecf8 });
+    hair(root, P.head, 'm', 0xf0f4ff);
+    mesh(box(0.22, 0.24, 0.07), fm(root, { color: 0xf0f4ff }), 0, -0.14, 0.13, P.head);
+    for (const m of root.userData.mats) { m.transparent = true; m.opacity = 0.42; m.emissive.setHex(0x6a8ac8); m.emissiveIntensity = 0.8; m.depthWrite = false; m.userData.base = m.emissive.clone(); m.userData.baseI = 0.8; }
+    const g = new THREE.Sprite(glowMat(0x9ab8ff, 0.35)); g.scale.set(1.6, 2.4, 1); g.position.set(0, 0.8, 0); root.add(g); root.userData.glows.push(g);
+  },
+  horse(root) {
+    const rig = root.userData.rig, P = root.userData.parts;
+    const hide = fm(root, { color: 0x4a3020 }), dark = fm(root, { color: 0x1a1210 });
+    const body = mesh(box(0.5, 0.55, 1.4), hide, 0, 1.15, 0, rig); P.torso = body;
+    const neck = mesh(box(0.28, 0.75, 0.32), hide, 0, 1.6, 0.6, rig); neck.rotation.x = 0.55;
+    const head = new THREE.Group(); head.position.set(0, 1.92, 0.88); rig.add(head); P.head = head;
+    mesh(box(0.24, 0.26, 0.55), hide, 0, 0, 0.18, head).rotation.x = 0.5;
+    for (const s of [-1, 1]) mesh(new THREE.ConeGeometry(0.04, 0.14, 4), hide, s * 0.08, 0.2, 0.0, head);
+    mesh(box(0.06, 0.55, 0.2), dark, 0, 1.75, 0.45, rig).rotation.x = 0.55;
+    const tail = mesh(box(0.08, 0.6, 0.08), dark, 0, 1.0, -0.78, rig); tail.rotation.x = -0.35;
+    mesh(box(0.52, 0.12, 0.6), fm(root, { color: 0x2a4aa8 }), 0, 1.45, 0, rig);
+    for (const [sx, sz, k] of [[-1, 1, 'legL'], [1, 1, 'legR'], [-1, -1, 'armL'], [1, -1, 'armR']]) {
+      const leg = new THREE.Group(); leg.position.set(sx * 0.17, 0.9, sz * 0.55); rig.add(leg);
+      mesh(box(0.12, 0.9, 0.12), hide, 0, -0.45, 0, leg); mesh(box(0.13, 0.08, 0.15), dark, 0, -0.88, 0.01, leg);
+      P[k] = leg;
+    }
+  },
   mila(root) {
     const P = person(root, { torso: 0xd86a8a, legs: 0xe8b896, robe: 0xc85a7a, sleeve: 0xe8b896 });
     hair(root, P.head, 'f', 0xe8c060);
@@ -2367,7 +2762,223 @@ function church(g, x, y, z, s, glow) {
   const crack = mesh(box(0.08, 2.0, 0.02), mat({ color: 0x100804, emissive: 0xffa040, emissiveIntensity: glow ? 1.2 : 0 }), 0.05, 1.0, 1.34, tw); crack.castShadow = false;
   return o;
 }
+// a fire: flames that flicker, sparks and smoke that rise, and a light
+function fire(g, x, y, z, s = 1) {
+  const fl = [];
+  for (let i = 0; i < 5; i++) { const f = new THREE.Sprite(glowMat(i % 2 ? 0xff7a20 : 0xffb040, 0.9)); f.position.set(x + (Math.random() - 0.5) * s, y + 0.3 * s, z + (Math.random() - 0.5) * s * 0.6); g.add(f); fl.push([f, Math.random() * 9]); }
+  const smoke = [];
+  const sm = new THREE.SpriteMaterial({ map: tex('mist'), color: 0x2a2624, transparent: true, opacity: 0.55, depthWrite: false });
+  for (let i = 0; i < 6; i++) { const m = new THREE.Sprite(sm); m.position.set(x, y + Math.random() * 5 * s, z); g.add(m); smoke.push(m); }
+  const l = new THREE.PointLight(0xff8a30, 6 * s, 12 * s, 1.4); l.position.set(x, y + 1.2 * s, z); g.add(l); flicker(g, l, 6 * s, 11);
+  g.userData.anims.push((t, dt) => {
+    for (const [f, ph] of fl) { const k = 0.75 + 0.25 * Math.sin(t * 9 + ph); f.scale.set(1.3 * s * k, 2.2 * s * (0.8 + 0.3 * Math.sin(t * 13 + ph)), 1); }
+    for (const m of smoke) { m.position.y += dt * 0.9 * s; m.position.x += dt * 0.3; const k = (m.position.y - y) / (6 * s); m.scale.setScalar(1.5 * s + k * 3 * s); m.material.opacity = 0.5; if (k > 1) { m.position.set(x, y + 0.5 * s, z); } }
+  });
+  return l;
+}
+// rain: streaks falling around the middle of the set; and now and then a flash of lightning
+function rain(g, cx, cz, r, n = 900) {
+  const pos = new Float32Array(n * 6);
+  for (let i = 0; i < n; i++) { const x = cx + (Math.random() - 0.5) * r * 2, y = Math.random() * 14, z = cz + (Math.random() - 0.5) * r * 2; pos.set([x, y, z, x + 0.03, y - 0.45, z], i * 6); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const ln = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x9ab0d0, transparent: true, opacity: 0.45 })); ln.frustumCulled = false; g.add(ln);
+  const flash = new THREE.HemisphereLight(0xc8d8ff, 0x202030, 0); g.add(flash);
+  let next = 4 + Math.random() * 6, f = 0;
+  g.userData.anims.push((t, dt) => {
+    const a = geo.attributes.position.array;
+    for (let i = 0; i < n; i++) { const k = i * 6; let y = a[k + 1] - dt * 16; if (y < 0) y += 14; a[k + 1] = y; a[k + 4] = y - 0.45; }
+    geo.attributes.position.needsUpdate = true;
+    next -= dt; if (next < 0) { next = 6 + Math.random() * 9; f = 1; if (state === 'play' && !F) sfx('thunder'); }
+    f = Math.max(0, f - dt * 3); flash.intensity = f > 0.6 ? 3.5 : f > 0.3 ? 0.4 : f * 6;
+  });
+}
+function lyingFig(g, kind, x, z, rot) { const o = makeFig(kind); o.position.set(x, 0.16, z); o.rotation.y = rot; o.userData.rig.rotation.x = -Math.PI / 2; g.add(o); return o; }
+function standFig(g, kind, x, z, rot) { const o = makeFig(kind); o.position.set(x, 0, z); o.rotation.y = rot; g.add(o); return o; }
 const BUILD = {
+  // THE PRINCE'S MESSENGER: Thornwall in a storm; the burning farm; the ford; the old mill; the hunting lodge
+  storm(g) {
+    BUILD.village(g, false);
+    const U = g.userData;
+    U.bg = 0x0a0c16; U.fog = 0x0c0e18; U.density = 0.035;
+    rain(g, 0, 2, 16);
+    // Tam's horse at the inn door, and Tam on the ground (the film rides him in)
+    U.horse = standFig(g, 'horse', 0.9, 0.6, -0.4);
+    U.tam = lyingFig(g, 'tam', -0.7, -0.4, 1.2);
+    U.tamRide = standFig(g, 'tam', 0, 0, 0); U.tamRide.visible = false;
+    U.ride = -1;
+    const H0 = V(0.4, 0, -24), H1 = V(0.9, 0, 0.6);
+    U.stormStart = () => { U.ride = -1; U.horse.position.copy(H0); U.horse.rotation.y = 0.05; U.tam.visible = false; U.tamRide.visible = true; U.tamRide.position.set(H0.x, 1.25, H0.z); U.tamRide.rotation.y = 0.05; };
+    U.gallop = () => { U.ride = 0; };
+    U.tamFall = () => { U.tamRide.visible = false; U.tam.visible = true; };
+    U.stormFinal = () => { U.ride = -1; U.horse.position.copy(H1); U.horse.rotation.y = -0.4; U.tamRide.visible = false; U.tam.visible = true; };
+    g.userData.anims.push((t, dt) => {
+      if (U.ride < 0) return;
+      U.ride = Math.min(1, U.ride + dt / 3.2);
+      const k = smooth(U.ride), P = U.horse.userData.parts;
+      U.horse.position.lerpVectors(H0, H1, k); U.horse.position.y = Math.abs(Math.sin(t * 14)) * 0.12 * (1 - U.ride);
+      U.tamRide.position.set(U.horse.position.x, 1.25 + U.horse.position.y, U.horse.position.z);
+      for (const [p, ph] of [[P.legL, 0], [P.legR, 1.5], [P.armL, 3], [P.armR, 4.5]]) p.rotation.x = Math.sin(t * 14 + ph) * 0.7 * (1 - U.ride);
+      if (U.ride >= 1) { U.ride = -1; U.horse.rotation.y = -0.4; for (const p of [P.legL, P.legR, P.armL, P.armR]) p.rotation.x = 0; }
+    });
+    U.views.storm = { look: [-1.5, 1.2, -0.5], yaw: 0.6, pitch: 0.12, dist: 7 };
+  },
+  farm(g) {
+    const U = g.userData;
+    U.bg = 0x140c0c; U.fog = 0x1e1214; U.density = 0.028; U.exposure = 1.5;
+    const hfn = (x, z) => Math.sin(x * 0.3) * 0.08 + Math.cos(z * 0.25) * 0.08 - Math.max(0, Math.abs(x) - 14) * 0.15;
+    groundMesh(g, 80, 80, 'grass', [24, 24], hfn, 48);
+    const yard = mesh(new THREE.PlaneGeometry(12, 9), mat({ map: tex('dirt', [4, 3]) }), 0, 0.1, -2.5, g); yard.rotation.x = -Math.PI / 2; yard.castShadow = false;
+    const road = mesh(new THREE.PlaneGeometry(3, 40), mat({ map: tex('dirt', [2, 14]) }), 7, 0.11, 0, g); road.rotation.x = -Math.PI / 2; road.castShadow = false;
+    // the farmhouse, on fire
+    const hs = house(g, -3.5, -6, 5, 2.6, 4, 0, false);
+    for (const [x, y, z, k] of [[-4.6, 3.5, -5.2, 1.3], [-2.4, 3.2, -4.6, 1], [-3.4, 4.2, -6.4, 1.2], [-5.6, 1.4, -3.9, 0.7]]) fire(g, x, y, z, k);
+    // the barn, the well, the fence, the cellar hatch
+    const barn = new THREE.Group(); barn.position.set(4, 0, -6.5); g.add(barn);
+    mesh(box(4, 3, 5), mat({ map: tex('wood', [3, 2]) }), 0, 1.5, 0, barn); mesh(prism(4.6, 1.8, 5.4), mat({ map: tex('slate', [2, 2]), color: 0x6a5a4a }), 0, 3, 0, barn);
+    mesh(box(1.6, 2.2, 0.08), mat({ color: 0x1a0e08 }), 0, 1.1, 2.53, barn);
+    mesh(new THREE.CylinderGeometry(0.6, 0.65, 0.8, 14), mat({ map: tex('stone', [2, 1]) }), 1.6, 0.4, -1.6, g);
+    mesh(box(1.4, 0.08, 0.08), mat({ map: tex('wood') }), 1.6, 1.7, -1.6, g);
+    for (const s of [-1, 1]) mesh(box(0.08, 1.7, 0.08), mat({ map: tex('wood') }), 1.6 + s * 0.65, 0.85, -1.6, g);
+    for (let x = -7; x <= 5; x += 1.5) { mesh(box(0.1, 1, 0.1), mat({ map: tex('wood') }), x, 0.5, 2.2, g); if (x < 5) mesh(box(1.5, 0.08, 0.06), mat({ map: tex('wood') }), x + 0.75, 0.75, 2.2, g); }
+    const hatch = mesh(box(1.1, 0.1, 0.9), mat({ map: tex('wood', [1, 1]), color: 0x7a5a3a }), -6.6, 0.12, -3.2, g); hatch.rotation.y = 0.2;
+    U.farmer = lyingFig(g, 'farmer', -0.8, -2.6, 0.9);
+    U.wife = standFig(g, 'wife', -6.0, -2.2, 0.6); U.boy = standFig(g, 'boy', -5.3, -2.0, 0.3); U.wife.visible = U.boy.visible = false;
+    for (let i = 0; i < 14; i++) { const x = (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18), z = -25 + Math.random() * 40; tree(g, x, hfn(x, z), z, 0.8 + Math.random() * 0.6); }
+    stars(g, 300, 110);
+    g.add(new THREE.HemisphereLight(0x5a5a8a, 0x2a1a10, 0.9));
+    moonLight(g, 0x8a9ac8, 1.0, [-20, 30, -20], [0, 0, 0], 20);
+    addMist(g, { count: 10, x: [-14, 14], y: [0.3, 2], z: [-14, 8], scale: [4, 8], opacity: 0.18, speed: 0.2, color: 0x5a4a4a });
+    U.arena = { cx: 0.5, cz: -1.2, w: 7, d: 6, y: 0.1, blocked: [[4, 1]], deploy: [[2, 4], [3, 4], [4, 4], [2, 5], [3, 5], [4, 5]], foes: [[3, 0], [5, 0], [1, 0], [4, 1], [2, 1]] };
+    U.views.farm = { look: [0, 1.4, -4], yaw: 0.1, pitch: 0.18, dist: 11 };
+    U.views.battle = { look: [0.5, 0, -1.2], yaw: 0, pitch: 0.8, dist: 9 };
+  },
+  ford(g) {
+    const U = g.userData;
+    U.bg = 0x101828; U.fog = 0x141c2c; U.density = 0.03; U.exposure = 1.6;
+    const hfn = (x, z) => { const d = Math.abs(z + 7); return (d < 2.6 ? -0.7 * (1 - d / 2.6) : 0) + Math.sin(x * 0.4 + z * 0.2) * 0.06; };
+    groundMesh(g, 80, 80, 'grass', [24, 24], hfn, 72);
+    const water = mesh(new THREE.PlaneGeometry(80, 4.6), mat({ color: 0x0a1a28, metalness: 0.85, roughness: 0.12, transparent: true, opacity: 0.92 }), 0, -0.28, -7, g); water.rotation.x = -Math.PI / 2; water.castShadow = false;
+    const shine = new THREE.Mesh(new THREE.PlaneGeometry(80, 4.6), new THREE.MeshBasicMaterial({ map: tex('mist', [8, 1]), color: 0x6a8aa8, transparent: true, opacity: 0.12, depthWrite: false })); shine.rotation.x = -Math.PI / 2; shine.position.set(0, -0.26, -7); g.add(shine);
+    g.userData.anims.push((t) => { shine.material.map.offset.x = t * 0.04; });
+    for (let i = 0; i < 70; i++) { const x = -14 + Math.random() * 28, z = Math.random() < 0.5 ? -4.6 - Math.random() * 0.6 : -9.4 + Math.random() * 0.6; if (Math.abs(x) < 1.6) continue; const r = mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.9 + Math.random() * 0.7, 4), mat({ color: 0x3a4a2a }), x, hfn(x, z) + 0.5, z, g); r.rotation.z = (Math.random() - 0.5) * 0.4; r.castShadow = false; }
+    for (let i = 0; i < 6; i++) mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.25, 7), mat({ map: tex('stone', [0.3, 0.3]) }), (Math.random() - 0.5) * 1.2, -0.25, -5 - i * 0.8, g);
+    // the bridge downstream, with the riders' torches
+    const br = new THREE.Group(); br.position.set(15, 0, -7); g.add(br);
+    mesh(box(3, 0.5, 6.5), mat({ map: tex('stone', [2, 4]) }), 0, 1.2, 0, br);
+    for (const z of [-2.2, 2.2]) mesh(box(3, 1.6, 0.8), mat({ map: tex('stone', [2, 1]) }), 0, 0.3, z, br);
+    for (const z of [-3.4, 3.4]) { mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 5), mat({ map: tex('wood') }), -1.2, 2.2, z, br); const fl = new THREE.Sprite(glowMat(0xff9a30, 0.9)); fl.scale.set(0.5, 0.8, 1); fl.position.set(-1.2, 3.1, z); br.add(fl); const l = new THREE.PointLight(0xff8a30, 3, 9, 1.5); l.position.set(-1.2, 3.1, z); br.add(l); flicker(g, l, 3); }
+    U.bridgeMen = [standFig(br, 'rider', -0.6, 1.0, -Math.PI / 2), standFig(br, 'rider', 0.4, -1.2, -Math.PI / 2)]; for (const o of U.bridgeMen) o.position.y = 1.45;
+    for (let i = 0; i < 26; i++) { const x = (Math.random() - 0.5) * 50, z = Math.random() < 0.5 ? -12 - Math.random() * 18 : 4 + Math.random() * 18; if (Math.abs(x) < 3 && z > 0) continue; tree(g, x, hfn(x, z), z, 0.8 + Math.random() * 0.7); }
+    stars(g, 400, 110); moon(g, 30, 22, -60, 12);
+    g.add(new THREE.HemisphereLight(0x6a7ab8, 0x1a1a20, 1.0));
+    moonLight(g, 0x9ab0ff, 1.4, [20, 30, -30], [0, 0, 0], 20);
+    const glint = new THREE.Sprite(glowMat(0x9ab8e0, 0.35)); glint.scale.set(8, 1.2, 1); glint.position.set(4, -0.1, -7.5); g.add(glint);
+    addMist(g, { count: 16, x: [-20, 20], y: [-0.1, 0.6], z: [-10, -4], scale: [3, 6], opacity: 0.3, speed: 0.25, color: 0x8a9ac8 });
+    U.arena = { cx: 0, cz: -1.6, w: 7, d: 6, y: 0, hfn, blocked: [], deploy: [[2, 4], [3, 4], [4, 4], [2, 5], [3, 5], [4, 5]], foes: [[3, 0], [1, 0], [5, 0], [2, 1], [4, 1]] };
+    U.views.ford = { look: [0, 0.6, -6], yaw: 0, pitch: 0.2, dist: 11 };
+    U.views.battle = { look: [0, 0, -1.6], yaw: 0, pitch: 0.8, dist: 9 };
+  },
+  mill(g) {
+    const U = g.userData;
+    U.bg = 0x0e1220; U.fog = 0x101626; U.density = 0.032; U.exposure = 1.6;
+    const hfn = (x, z) => (x > 4 && x < 6.5 ? -0.4 : 0) + Math.sin(z * 0.3) * 0.05;
+    groundMesh(g, 120, 80, 'grass', [30, 20], hfn, 64);
+    const st = mesh(new THREE.PlaneGeometry(2.4, 60), mat({ color: 0x0a1a24, metalness: 0.8, roughness: 0.2 }), 5.25, -0.2, 0, g); st.rotation.x = -Math.PI / 2;
+    // the mill outside: stone below, timber above, and the wheel that turns by itself
+    const ml = new THREE.Group(); ml.position.set(0, 0, -6); g.add(ml);
+    mesh(box(6, 2.2, 5), mat({ map: tex('stone', [3, 1]) }), 0, 1.1, 0, ml); mesh(box(6, 2, 5), mat({ map: tex('wood', [3, 2]), color: 0x8a7a6a }), 0, 3.2, 0, ml);
+    mesh(prism(6.6, 2.4, 5.6), mat({ map: tex('slate', [3, 2]) }), 0, 4.2, 0, ml);
+    mesh(box(1.1, 1.9, 0.08), mat({ color: 0x0a0806 }), -1, 0.95, 2.53, ml);
+    mesh(box(0.7, 0.6, 0.08), mat({ color: 0x0a0806, emissive: 0x203040, emissiveIntensity: 0.6 }), 1.6, 3.2, 2.53, ml);
+    const wheel = new THREE.Group(); wheel.position.set(3.6, 1.6, 0); ml.add(wheel);
+    const wd = mat({ map: tex('wood'), color: 0x6a5a4a });
+    for (const s of [-0.35, 0.35]) mesh(new THREE.TorusGeometry(1.5, 0.07, 6, 24), wd, s, 0, 0, wheel).rotation.y = Math.PI / 2;
+    for (let i = 0; i < 10; i++) { const p = mesh(box(0.8, 0.08, 0.5), wd, 0, 0, 0, wheel); const a = i / 10 * Math.PI * 2; p.position.set(0, Math.cos(a) * 1.45, Math.sin(a) * 1.45); p.rotation.x = a; }
+    g.userData.anims.push((t, dt) => { wheel.rotation.x -= dt * 0.5; });
+    for (let i = 0; i < 18; i++) { const x = -18 + Math.random() * 30, z = -24 + Math.random() * 40; if (Math.abs(x) < 6 && z > -12 && z < 8) continue; tree(g, x, hfn(x, z), z, 0.8 + Math.random() * 0.6, Math.random() < 0.3); }
+    stars(g, 300, 110); moon(g, -25, 24, -60, 12);
+    g.add(new THREE.HemisphereLight(0x5a6aa8, 0x1a1a1a, 0.9));
+    moonLight(g, 0x9ab0ff, 1.2, [-20, 30, -10], [0, 0, -6], 20);
+    addMist(g, { count: 12, x: [-14, 14], y: [0.1, 1], z: [-14, 8], scale: [3, 6], opacity: 0.25, speed: 0.2, color: 0x8a9ac8 });
+    // the mill inside (far away in the same set): the grinding floor, the rotten boards, the millstone, the sleeping wargs
+    const IN = new THREE.Group(); IN.position.set(60, 0, 0); g.add(IN);
+    mesh(box(10, 0.2, 12), mat({ map: tex('wood', [4, 6]), color: 0x6a5a48 }), 0, -0.1, 0, IN);
+    for (const sx of [-1, 1]) mesh(box(0.4, 5, 12), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), sx * 5.2, 2.5, 0, IN);
+    mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, -6.2, IN); mesh(box(10.8, 5, 0.4), mat({ map: tex('wood', [4, 2]), color: 0x5a4a3a }), 0, 2.5, 6.2, IN);
+    mesh(box(10.8, 0.3, 12.8), mat({ map: tex('wood', [4, 6]), color: 0x3a3028 }), 0, 5.1, 0, IN);
+    for (const z of [-4, 0, 4]) mesh(box(10.4, 0.25, 0.3), mat({ map: tex('wood') }), 0, 4.8, z, IN);
+    const hole = mesh(box(2.4, 0.22, 3), mat({ color: 0x050403 }), -2, -0.08, 0.5, IN); hole.castShadow = false;
+    for (let i = 0; i < 5; i++) { const b = mesh(box(0.3, 0.06, 1.2), mat({ map: tex('wood'), color: 0x4a3a2a }), -3 + i * 0.5, 0.02, 0.5 + (Math.random() - 0.5) * 0.6, IN); b.rotation.set((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.3); }
+    const stone = new THREE.Group(); stone.position.set(2.4, 0, -3.6); IN.add(stone);
+    mesh(new THREE.CylinderGeometry(1.4, 1.5, 0.6, 20), mat({ map: tex('stone', [2, 1]) }), 0, 0.3, 0, stone);
+    const top = mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.35, 20), mat({ map: tex('stone', [2, 1]), color: 0xa8a2a0 }), 0, 0.78, 0, stone);
+    mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.6, 6), mat({ map: tex('wood') }), 0, 1.8, 0, stone);
+    U.millstone = top; U.stoneSpin = 1;
+    g.userData.anims.push((t, dt) => { top.rotation.y += dt * 0.8 * U.stoneSpin; });
+    for (let i = 0; i < 6; i++) mesh(box(0.7, 0.5, 0.5), mat({ color: 0x9a8a6a }), -3.8 + (i % 3) * 0.7, 0.25 + Math.floor(i / 3) * 0.45, -5.2, IN).rotation.y = Math.random() * 0.4;
+    U.ghost = standFig(IN, 'ghost', 3.9, -2.4, -1.2);
+    g.userData.anims.push((t) => { if (U.ghost.visible) U.ghost.position.y = 0.15 + Math.sin(t * 1.3) * 0.08; });
+    const lamp = new THREE.PointLight(0x7a9aff, 6, 12, 1.3); lamp.position.set(3.6, 2, -2.6); IN.add(lamp); flicker(g, lamp, 6, 3);
+    const moonIn = new THREE.PointLight(0x8aa0d0, 5, 16, 1.1); moonIn.position.set(-2, 4, 3); IN.add(moonIn);
+    const fireIn = new THREE.PointLight(0xffa050, 3, 10, 1.4); fireIn.position.set(-3, 1.5, -4); IN.add(fireIn);
+    for (const [x, z] of [[-4.6, -5.8], [4.6, 5.6]]) candle(g, 60 + x, 1.2, z, 0);
+    U.arena = { cx: 60, cz: 0.6, w: 7, d: 8, y: 0, blocked: [[1, 3], [2, 3], [1, 4], [2, 4]], deploy: [[2, 6], [3, 6], [4, 6], [2, 7], [3, 7], [4, 7]], foes: [[1, 0], [2, 0], [0, 1], [3, 0], [1, 1]] };
+    U.views.mill = { look: [0, 2, -6], yaw: 0.35, pitch: 0.12, dist: 12 };
+    U.views.millin = { look: [60, 0.8, -1], yaw: 0.3, pitch: 0.4, dist: 8 };
+    U.views.battle = { look: [60, 0, 0.6], yaw: 0, pitch: 0.85, dist: 9 };
+  },
+  lodge(g, dawn) {
+    const U = g.userData;
+    U.bg = dawn ? 0xb89a8a : 0x120e16; U.fog = dawn ? 0xb8a090 : 0x1a1218; U.density = dawn ? 0.022 : 0.03; U.exposure = dawn ? 1.1 : 1.5;
+    const hfn = (x, z) => Math.sin(x * 0.25) * 0.1 + Math.cos(z * 0.3) * 0.08 - Math.max(0, Math.abs(x) - 18) * 0.1;
+    groundMesh(g, 90, 90, 'grass', [26, 26], hfn, 48);
+    const yard = mesh(new THREE.PlaneGeometry(12, 12), mat({ map: tex('dirt', [4, 4]) }), 0, 0.12, -6, g); yard.rotation.x = -Math.PI / 2; yard.castShadow = false;
+    // the palisade, with the gate open
+    const pal = mat({ map: tex('wood', [1, 2]), color: 0x6a5440 });
+    const posts = (x0, z0, x1, z1) => { const n = Math.round(Math.hypot(x1 - x0, z1 - z0) / 0.36); for (let i = 0; i <= n; i++) { const k = i / n, x = lerp(x0, x1, k), z = lerp(z0, z1, k); if (Math.abs(x) < 1.3 && z > -0.2) continue; const ht = 2.4 + Math.random() * 0.4; mesh(new THREE.CylinderGeometry(0.17, 0.18, ht, 6), pal, x, ht / 2, z, g); mesh(new THREE.ConeGeometry(0.17, 0.3, 6), pal, x, ht + 0.15, z, g); } };
+    posts(-6.2, 0, 6.2, 0); posts(-6.2, -12.2, 6.2, -12.2); posts(-6.2, 0, -6.2, -12.2); posts(6.2, 0, 6.2, -12.2);
+    for (const s of [-1, 1]) { const d = mesh(box(1.25, 2.4, 0.15), mat({ map: tex('wood'), color: 0x5a4430 }), s * 1.8, 1.2, 0.7, g); d.rotation.y = s * 1.1; }
+    U.postern = mesh(box(0.9, 1.8, 0.2), mat({ map: tex('wood'), color: 0x3a2a1a }), 6.25, 0.9, -10, g); U.postern.rotation.y = Math.PI / 2;
+    // the lodge: two floors of timber, lit windows, a balcony
+    const lg = new THREE.Group(); lg.position.set(0, 0, -9.6); g.add(lg);
+    mesh(box(8, 2.6, 3.6), mat({ map: tex('stone', [4, 1]) }), 0, 1.3, 0, lg); mesh(box(8.4, 2.4, 4), mat({ map: tex('wood', [4, 2]), color: 0x7a6248 }), 0, 3.8, 0, lg);
+    mesh(prism(9, 2.4, 4.6), mat({ map: tex('slate', [4, 2]) }), 0, 5, 0, lg);
+    mesh(box(1.2, 2, 0.08), mat({ color: 0x140c08 }), 0, 1, 1.83, lg);
+    const wm = mat({ color: 0x302010, emissive: dawn ? 0x000000 : 0xffa040, emissiveIntensity: 1.6 });
+    for (const x of [-3, -1.5, 1.5, 3]) mesh(box(0.6, 0.7, 0.08), wm, x, 3.9, 2.03, lg).castShadow = false;
+    mesh(box(8.6, 0.12, 1), mat({ map: tex('wood') }), 0, 2.7, 2.4, lg);
+    for (let x = -4; x <= 4; x += 0.8) mesh(box(0.06, 0.8, 0.06), mat({ map: tex('wood') }), x, 3.1, 2.85, lg);
+    if (!dawn) { const l = new THREE.PointLight(0xffa040, 4, 10, 1.5); l.position.set(0, 3.8, -6.8); g.add(l); flicker(g, l, 4); }
+    // the stable, burning (at dawn: smoking ruins)
+    const sb = new THREE.Group(); sb.position.set(-4.3, 0, -4.2); g.add(sb);
+    mesh(box(3, 2.2, 3.6), mat({ map: tex('wood', [2, 2]), color: dawn ? 0x2a2018 : 0x6a5a48 }), 0, 1.1, 0, sb);
+    if (!dawn) { mesh(prism(3.4, 1.4, 4), mat({ map: tex('slate', [2, 2]), color: 0x5a4a3a }), 0, 2.2, 0, sb); fire(g, -4.3, 3.8, -4.2, 1.4); fire(g, -4.8, 2.6, -2.4, 0.9); }
+    else { const sm = new THREE.SpriteMaterial({ map: tex('mist'), color: 0x5a5250, transparent: true, opacity: 0.4, depthWrite: false }); for (let i = 0; i < 6; i++) { const m = new THREE.Sprite(sm); m.position.set(-4.3, 1 + i, -4.2); m.scale.setScalar(2 + i); g.add(m); } }
+    for (let i = 0; i < 40; i++) { const a = Math.random() * Math.PI * 2, r = 10 + Math.random() * 22, x = Math.cos(a) * r, z = -6 + Math.sin(a) * r; if (z > 2 && Math.abs(x) < 4) continue; tree(g, x, hfn(x, z), z, 0.9 + Math.random() * 0.7); }
+    if (dawn) {
+      g.add(new THREE.HemisphereLight(0xffd8c0, 0x405040, 1.0));
+      moonLight(g, 0xffc8a0, 2.0, [18, 12, 10], [0, 0, -6], 20);
+      const sun = new THREE.Sprite(glowMat(0xffe0b0, 1)); sun.material.fog = false; sun.scale.set(22, 22, 1); sun.position.set(30, 8, -60); g.add(sun);
+      U.prince = standFig(g, 'prince', -0.5, -6.5, 0.1); U.guard = standFig(g, 'guard', 1.3, -7.6, -0.2);
+      U.tam = lyingFig(g, 'tam', 2.6, -6.2, -0.4); U.tam.visible = false;
+      U.bren = standFig(g, 'bren', -2.4, -1.4, 0.6); U.bren.visible = false;
+    } else {
+      stars(g, 300, 110);
+      g.add(new THREE.HemisphereLight(0x5a5a88, 0x201010, 0.9));
+      moonLight(g, 0x8a9ac8, 1.1, [-20, 30, -10], [0, 0, -6], 20);
+      U.bren = standFig(g, 'bren', 2.4, -1.6, -0.7);
+      U.princeN = standFig(g, 'prince', -0.4, -7.4, 0.2); U.princeN.visible = false;
+      U.horses = [standFig(g, 'horse', 4.2, -3.2, 0.6), standFig(g, 'horse', 4.9, -4.6, -0.4)];
+      for (let x = 3.2; x <= 5.8; x += 0.65) { mesh(box(0.08, 1.1, 0.08), mat({ map: tex('wood') }), x, 0.55, -2.2, g); }
+      mesh(box(2.6, 0.07, 0.05), mat({ map: tex('wood') }), 4.5, 0.8, -2.2, g);
+    }
+    addMist(g, { count: 10, x: [-16, 16], y: [0.2, 1.5], z: [-18, 8], scale: [4, 8], opacity: dawn ? 0.2 : 0.18, speed: 0.15, color: dawn ? 0xe8d0c0 : 0x5a4a5a });
+    U.arena = { cx: 0, cz: -5, w: 7, d: 8, y: 0.12, blocked: [], deploy: [[2, 6], [3, 6], [4, 6], [2, 7], [3, 7], [4, 7]], foes: [[3, 0], [2, 0], [4, 0], [1, 1], [5, 1], [3, 1]] };
+    U.views.lodge = { look: [0, 2.2, -8], yaw: 0, pitch: 0.12, dist: 13 };
+    U.views.dawn = { look: [0, 1.3, -6.6], yaw: 0.6, pitch: 0.14, dist: 5.6 };
+    U.views.battle = { look: [0, 0, -5], yaw: 0, pitch: 0.8, dist: 9.5 };
+  },
+  lodgeDawn(g) { BUILD.lodge(g, true); },
   village(g, dawn) {
     const U = g.userData;
     U.bg = dawn ? 0xd89870 : 0x141a32; U.fog = dawn ? 0xe0a880 : 0x161c34; U.density = dawn ? 0.012 : 0.02;
@@ -2775,6 +3386,24 @@ const FILMS = {
   bell: { dur: 10, cap: L('Zvon utopených', 'The Bell of the Drowned'), sub: '',
     keys: [[0, [0, 1.6, 13], [0, 3, -6]], [2.6, [0, 2.2, 8], [0, 3.5, -7]], [4.4, [1.6, 1.4, 2.4], [3.9, 1.0, -0.8]], [6.2, [-0.8, 1.6, 3.6], [0, 1.2, 1.5]], [8, [0, 2.6, 6.5], [0, 0.6, -2]]],
     ev: [[0, () => bellRise(0)], [1.0, 'bell'], [3.4, 'bell'], [5.8, () => bellRise(1)], [6.8, () => bellRise(2)], [7.0, 'splash']] },
+  s1storm: { dur: 7.5, cap: L('Princův posel', 'The Prince\'s Messenger'), sub: L('bouřlivá noc v Thornwallu', 'a stormy night in Thornwall'),
+    keys: [[0, [2.2, 2.4, 12], [0, 1.4, -14]], [3, [2.2, 1.9, 6], [0, 1.4, -4]], [5.2, [1.4, 1.3, 2.6], [-0.6, 0.4, -0.4]]],
+    ev: [[0, () => curSet.userData.stormStart()], [0.2, 'wind'], [0.6, () => curSet.userData.gallop()], [0.7, 'gallop'], [1.6, 'thunder'], [4.3, () => curSet.userData.tamFall()], [4.4, 'ouch']] },
+  s1farm: { dur: 6.5, cap: L('Hořící statek', 'The Burning Farm'), sub: '',
+    keys: [[0, [7, 2.2, 18], [0, 2, -6]], [3.2, [4, 1.8, 9], [-3, 2.6, -6]]],
+    ev: [[0.3, 'fire'], [2.6, 'fire'], [4.5, 'step']] },
+  s1ford: { dur: 5, cap: L('Brod', 'The Ford'), sub: L('most hlídají jezdci', 'the riders guard the bridge'),
+    keys: [[0, [-4, 3, 14], [10, 1.5, -7]], [2.8, [0, 2.4, 9], [0, 0, -7]]],
+    ev: [[0.3, 'wind'], [3, 'splash']] },
+  s1mill: { dur: 5, cap: L('Starý mlýn', 'The Old Mill'), sub: L('kolo se točí, i když voda neteče', 'the wheel turns, though no water flows'),
+    keys: [[0, [-8, 3, 12], [2, 2, -6]], [3, [-3, 2, 8], [3, 2, -6]]],
+    ev: [[0.5, 'creak'], [2.5, 'creak'], [3.5, 'owl']] },
+  s1lodge: { dur: 7, cap: L('Lovecký srub', 'The Hunting Lodge'), sub: L('v obležení', 'under siege'),
+    keys: [[0, [-9, 4, 18], [0, 3, -8]], [3.6, [-2, 2.4, 9], [0, 3.6, -9]]],
+    ev: [[0.4, 'fire'], [1.5, 'fight'], [3, 'hit'], [4.6, 'fire']] },
+  s1dawn: { dur: 6, cap: L('Svítání', 'Dawn'), sub: '',
+    keys: [[0, [7, 4, 6], [0, 1.5, -6]], [3.4, [3, 2.2, 1], [-0.5, 1.6, -6.5]]],
+    ev: [[0.5, 'win']] },
   dawn: { dur: 6, cap: L('Svítání', 'Dawn'), sub: '',
     keys: [[0, [0, 9, -34], [0, 2, 0]], [3, [0, 5, -6], [0, 4, -40]]],
     ev: [[0.5, 'win']] },
@@ -3823,6 +4452,10 @@ const MON_LORE = {
           'Bones that someone wouldn\'t let rest. They don\'t think, feel no fear, and never run, except from a holy symbol. Blades slide off them: a mace, a hammer or a sling stone is better.'),
   zomb: L('Utopenci z tůní pod Zvonem. Pomalí, nafouklí vodou, ale silní: jejich stisk drtí kosti. Spánek na ně neplatí. Svěcená voda je pálí.',
           'The drowned from the pools under the Bell. Slow, bloated with water, but strong: their grip crushes bone. Sleep doesn\'t touch them. Holy water burns them.'),
+  rider: L('Muži z východu ve zbroji šedé jako popel. Jezdí v noci, pálí statky a berou koně. Slouží Rudé Varze, a přes ni Temnému králi. Jsou to jen lidé: když jich padne pár, utečou.',
+           'Men from the east in armour grey as ash. They ride at night, burn farms and take horses. They serve Red Varga, and through her the Dark King. They are only men: when a few fall, they run.'),
+  warg: L('Vlci velcí jako telata, chytřejší než psi. Jezdci je chovají a krmí tím, co zbude po nájezdu. Pohybují se rychle a útočí ze zálohy.', 'Wolves as big as calves, cleverer than dogs. The riders breed them and feed them what is left after a raid. They move fast and strike from ambush.'),
+  kael: L('Kael Ashborn, kapitán Popelavých jezdců a muž Rudé Vargy. Bojuje sekerou, nikdy neútočí sám a vždycky ví, kdy utéct.', 'Kael Ashborn, captain of the Ash Riders and Red Varga\'s man. He fights with an axe, never attacks alone, and always knows when to run.'),
   malrec: L('Kdysi kněz Thornwallu. Smutek z bratrovy smrti ho dovedl k hlasu ze Zvonu. Umí kouzlo, které ztuhne hrdinu na místě, a temný blesk. Amulet ho chrání před Spánkem. Není docela ztracen.',
             'Once Thornwall\'s priest. Grief for his brother led him to the voice in the Bell. He knows a spell that holds a hero still, and a dark bolt. His amulet guards him from Sleep. He isn\'t quite lost.'),
 };
@@ -4146,6 +4779,37 @@ const MAPS = {
   ],
   short: { inn: L('Hostinec', 'The inn'), hill: L('Kostel na kopci', 'Church on the hill'), nave: L('Loď kostela', 'The nave'), altar: L('Oltář', 'The altar'), crypt: L('Krypta', 'The crypt'), ossuary: L('Kostnice', 'Ossuary'), door: L('Bronzové dveře', 'Bronze door'), bell: L('Zvon', 'The bell'), pool: L('Tůň', 'The pool') } },
 };
+MAPS.s1 = { levels: [
+    { id: 'road', name: L('Cesta do Elderwoodu', 'The road to Elderwood'), rooms: ['s1_inn', 's1_farm', 's1_ford', 's1_mill'],
+      nodes: { s1_inn: [10, 46], s1_farm: [34, 40], s1_ford: [58, 46], s1_mill: [50, 18] }, hide: { s1_mill: () => !f().millKnown && !f().seen_s1_mill },
+      links: [{ to: 'mill', at: [50, 8], label: L('Mlýn', 'The mill'), if: () => f().seen_s1_mill }, { to: 'lodge', at: [88, 24], label: L('Srub', 'The lodge') }],
+      svg: () => `<g fill="#6a7a3a" opacity=".45">${[[44, 10], [52, 8], [60, 12], [68, 8], [76, 14], [84, 10], [90, 18], [72, 22], [64, 24], [80, 30], [92, 32], [86, 40], [70, 34]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.6"/>`).join('')}</g>
+        <text x="74" y="5" font-size="3" fill="${INK}" font-style="italic" text-anchor="middle">Elderwood</text>
+        <path d="M30,62.5 C34,56 48,52 58,49 S78,40 100,44" fill="none" stroke="#7a9ab8" stroke-width="2.4" opacity=".8"/><text x="80" y="47" font-size="2.4" fill="${INK}" font-style="italic">${L('řeka', 'the river')}</text>
+        <path d="M10,46 C20,44 26,41 34,40 S50,44 58,46 S74,38 80,30 S86,26 88,24" fill="none" stroke="#8a6a3a" stroke-width="1.3" stroke-dasharray="2 1"/>
+        ${f().millKnown || f().seen_s1_mill ? `<path d="M34,40 C38,32 44,24 50,18 S66,20 74,24 S84,24 88,24" fill="none" stroke="#5a3a1a" stroke-width=".7" stroke-dasharray="1 1"/>` : ''}
+        <g fill="#a89070" stroke="${INK}" stroke-width=".4">${hx(70.5, 47, 3.5, 2)}</g><text x="72" y="53" font-size="2.2" fill="${INK}" text-anchor="middle">${L('most', 'bridge')}</text>
+        <g fill="#c8a878" stroke="${INK}" stroke-width=".35">${hx(6, 42, 3, 2.4)}${hx(10, 40, 2.6, 2)}${hx(8, 48, 3, 2)}</g><text x="10" y="38" font-size="2.6" fill="${INK}" font-style="italic" text-anchor="middle">Thornwall</text>
+        <g stroke="${INK}" stroke-width=".3" fill="none" transform="translate(94,56)"><circle r="3"/><path d="M0,-4 L0.9,0 L0,4 L-0.9,0 Z" fill="${INK}"/></g>` },
+    { id: 'mill', name: L('Starý mlýn', 'The old mill'), rooms: ['s1_mill', 's1_millin'],
+      nodes: { s1_mill: [50, 56], s1_millin: [50, 34] }, links: [{ to: 'road', at: [14, 56], label: L('Stezka', 'The path') }, { to: 'lodge', at: [50, 6], label: L('K srubu', 'To the lodge'), if: () => f().crossed || f().wargs }],
+      svg: () => `<g fill="#cfc0a0" stroke="${INK}" stroke-width="1.4">${hx(28, 12, 44, 40)}</g>
+        <path d="M80,0 C78,20 82,40 80,62.5" stroke="#7a9ab8" stroke-width="3" fill="none" opacity=".7"/>
+        <g fill="none" stroke="${INK}" stroke-width=".6"><circle cx="76" cy="32" r="6"/><path d="M70,32 h12 M76,26 v12"/></g>
+        <circle cx="60" cy="22" r="5" fill="#b0a890" stroke="${INK}" stroke-width=".5"/><circle cx="60" cy="22" r="1" fill="${INK}"/>
+        <g fill="#2a1a10" opacity=".7">${hx(34, 30, 9, 9)}</g><text x="38.5" y="43" font-size="2.2" fill="${INK}" font-style="italic" text-anchor="middle">${L('díra', 'hole')}</text>
+        <g fill="#9a8a6a">${hx(30, 14, 10, 4)}</g>
+        <g font-size="2.4" fill="${INK}" font-style="italic" text-anchor="middle"><text x="60" y="30">${L('kámen', 'millstone')}</text><text x="35" y="12">${L('pytle', 'sacks')}</text><text x="76" y="42">${L('kolo', 'wheel')}</text></g>` },
+    { id: 'lodge', name: L('Lovecký srub', 'The hunting lodge'), rooms: ['s1_lodge', 's1_gate'],
+      nodes: { s1_lodge: [50, 58], s1_gate: [50, 34] }, links: [{ to: 'road', at: [16, 58], label: L('Les', 'The forest') }],
+      svg: () => `<g fill="none" stroke="${INK}" stroke-width="1.6" stroke-dasharray="1.4 .6"><path d="M46,52 H22 V8 H78 V52 H54"/></g>
+        <g fill="#a88a68" stroke="${INK}" stroke-width=".6">${hx(32, 10, 36, 12)}</g><text x="50" y="17.5" font-size="2.6" fill="#fff4d8" text-anchor="middle">${L('srub', 'lodge')}</text>
+        <g fill="#5a3a2a" stroke="${INK}" stroke-width=".5">${hx(24, 28, 10, 10)}</g><text x="29" y="41" font-size="2.2" fill="${INK}" font-style="italic" text-anchor="middle">${L('stáj', 'stable')}</text>
+        <g fill="none" stroke="${INK}" stroke-width=".4">${hx(64, 30, 10, 8)}</g><text x="69" y="41" font-size="2.2" fill="${INK}" font-style="italic" text-anchor="middle">${L('ohrada', 'corral')}</text>
+        ${hasLantern() ? `<g fill="#c8a040" stroke="${INK}" stroke-width=".4">${hx(77, 16, 2, 4)}</g>` : ''}
+        <g fill="#6a7a3a" opacity=".45">${[[8, 10], [12, 30], [8, 48], [90, 12], [92, 34], [88, 52], [30, 58], [70, 60]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5"/>`).join('')}</g>` },
+  ],
+  short: { s1_inn: L('Thornwall', 'Thornwall'), s1_farm: L('Hořící statek', 'The burning farm'), s1_ford: L('Brod', 'The ford'), s1_mill: L('Starý mlýn', 'The old mill'), s1_millin: L('Uvnitř mlýna', 'Inside the mill'), s1_lodge: L('Před srubem', 'Before the lodge'), s1_gate: L('Brána', 'The gate') } };
 let mapLevel = null;
 function openMissionMap(level) {
   if (!G.mission) { if (!busy() && !F) { G.room = null; store2(); setState('map'); } return; }
@@ -4155,7 +4819,7 @@ function openMissionMap(level) {
   const lvOf = id => D.levels.find(lv => lv.rooms.includes(id));
   const lv = D.levels.find(x => x.id === level) || lvOf(G.room) || D.levels[0];
   mapLevel = lv.id;
-  const canGo = id => seen(id) && id !== G.room && !F && !busy() && G.room !== 'end' && G.room !== 'tpk' && !(id === 'bell' && f().won) && !(id === 'pool' && !f().won);
+  const canGo = id => seen(id) && id !== G.room && !F && !busy() && G.room !== 'end' && G.room !== 's1_end' && G.room !== 'tpk' && !(id === 'bell' && f().won) && !(id === 'pool' && !f().won) && !(id === 's1_gate' && !f().lodgeWon) && !(G.room === 's1_gate');
   const pct = ([x, y]) => `left:${x}%;top:${y / 62.5 * 100}%`;
   const nodes = Object.entries(lv.nodes).filter(([id]) => !(lv.hide && lv.hide[id] && lv.hide[id]())).map(([id, at]) => {
     const here = id === G.room, sn = seen(id);
@@ -4180,6 +4844,11 @@ function startMission(M) {
   for (const h of G.heroes) { if (h.dead) continue; h.tried = {}; h.held = 0; h.hidden = false; }
   G.mission = M.id; G.f = {}; G.used = {};
   G.time = G.time || 18 * 60;
+  if (M.id === 's1') {
+    // a stormy night: the rider comes at nine; the poison (and the siege) won't wait past three in the morning
+    const c = clockOf(G.time); if (c.h < 21) pass((21 - c.h) * 60 - c.m);
+    f().deadline = (clockOf(G.time).day) * 1440 + 180;
+  }
   if (M.id === 'bell') {
     // the bell rings at night: the party sets off in the evening; Mila drowns at 03:00
     const c = clockOf(G.time); if (c.h < 18) pass((18 - c.h) * 60 - c.m);
@@ -4322,6 +4991,10 @@ function sfx(k) {
   if (!save.sfx) return;
   const s = PX.Sound;
   if (k === 'click') s.tone(660, 0.05, { vol: 0.05 });
+  else if (k === 'gallop') { for (let i = 0; i < 12; i++) s.noise(0.05, { vol: 0.07, freq: 300, delay: i * 0.17 + (i % 2) * 0.06 }); }
+  else if (k === 'fire') { for (let i = 0; i < 8; i++) s.noise(0.04 + Math.random() * 0.05, { vol: 0.03, freq: 2200, delay: Math.random() * 1.2 }); s.noise(1.4, { vol: 0.04, freq: 400 }); }
+  else if (k === 'thunder') { s.noise(1.8, { vol: 0.16, freq: 120 }); s.noise(0.3, { vol: 0.1, freq: 600, delay: 0.05 }); }
+  else if (k === 'howl') s.tone([300, 520, 480, 260], 1.6, { vol: 0.05, type: 'triangle' });
   else if (k === 'dice') { s.noise(0.08, { vol: 0.05 }); s.noise(0.06, { vol: 0.04, delay: 0.1 }); }
   else if (k === 'ok') s.tone([523, 784], 0.12, { vol: 0.06 });
   else if (k === 'bad') s.tone([300, 200], 0.15, { vol: 0.06 });
@@ -4476,7 +5149,7 @@ TRACKS.intro = { bpm: 60, chords: ['Dm', 'Bb', 'Gm', 'A', 'Dm', 'Bb', 'Eb', 'A']
   if (bar >= 8 && (i === 8 || i === 12)) M.timp(t, 38, 0.18);
   if (i === 8 && bar % 4 === 3) M.brass(ch.map(m => m + 12), t, sd * 8, 0.02);
 } };
-const ROOM_MUSIC = { town: 'village', inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
+const ROOM_MUSIC = { s1_inn: 'village', s1_farm: 'crypt', s1_ford: 'hill', s1_mill: 'nave', s1_millin: 'crypt', s1_lodge: 'bell', s1_gate: 'nave', s1_end: 'dawn', town: 'village', inn: 'village', hill: 'hill', nave: 'nave', altar: 'nave', crypt: 'crypt', door: 'crypt', bell: 'bell', end: 'dawn', tpk: 'village' };
 const roomMusic = () => (G && ROOM_MUSIC[G.room]) || 'hill';
 
 /* --- 14. INPUT: drag the 3D world to look around; tap a tile, a monster or a hero. Keys: 1-9 pick, Space/Enter skip, Esc menu --- */
@@ -4584,7 +5257,7 @@ window.PQ = {
   quick(nh = 4, room = 'inn', films = false) {
     skipFilms = !films; newSetup(); party.size = nh;
     for (const h of party) { h.vals = [16, 15, 14, 13, 12, 11]; setClass(h, h.cls); }
-    startGame(); startMission(missionOf('bell')); if (room !== 'inn') { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
+    startGame(); const ms = room.startsWith('s1_') ? 's1' : 'bell'; startMission(missionOf(ms)); if (room !== missionOf(ms).start) { Q.length = 0; cur = null; G.room = null; clearText(); go(room); }
   },
   introShot(i) { playIntro(() => setState('title')); intro.i = i - 1; },
   get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
