@@ -144,7 +144,9 @@
   #film .cap span { display: block; margin-top: 4px; font: 400 italic clamp(15px, 3vw, 20px) 'Alegreya', Georgia, serif; color: #d8cdb8; text-shadow: 0 2px 10px #000; }
   #film .cap.on { opacity: 1; }
   #film .cap.long b { font-size: clamp(20px, 4.4vw, 34px); max-width: 900px; margin: 0 auto; line-height: 1.25; }
-  #film .skip { position: absolute; right: 14px; bottom: 4vh; color: rgba(255,255,255,.45); font-size: 12px; opacity: 0; transition: opacity .6s; }
+  #film .skip { position: absolute; right: max(12px, var(--sr)); bottom: 3vh; padding: 8px 14px; border-radius: 18px; border: 1px solid rgba(255,255,255,.3); background: rgba(0,0,0,.45);
+                color: rgba(255,255,255,.75); font: 700 14px 'Alegreya Sans', sans-serif; opacity: 0; transition: opacity .6s; pointer-events: none; }
+  #film.on .skip { pointer-events: auto; }
   #film.on .skip { opacity: 1; }
   #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; }
   #fade.on { opacity: 1; }
@@ -250,7 +252,7 @@
 </div>
 <div id="banner" hidden></div>
 <div id="die" hidden><b>20</b><span>k20</span></div>
-<div id="film"><div class="bar t"></div><div class="bar b"></div><div class="cap"><b></b><span></span></div><div class="skip"></div></div>
+<div id="film"><div class="bar t"></div><div class="bar b"></div><div class="cap"><b></b><span></span></div><button class="skip"></button></div>
 <div id="fade"></div>
 <div id="sheet" class="modal" hidden></div>
 <div id="menu" class="modal" hidden></div>
@@ -278,7 +280,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -2324,7 +2326,8 @@ const FILMS = {
 };
 let film = null, skipFilms = false;
 const filmEl = $('film'), capEl = filmEl.querySelector('.cap');
-filmEl.querySelector('.skip').textContent = L('klepni pro přeskočení ›', 'tap to skip ›');
+filmEl.querySelector('.skip').textContent = L('Přeskočit ›', 'Skip ›');
+filmEl.querySelector('.skip').addEventListener('click', e => { e.stopPropagation(); sfx('click'); if (state === 'intro') endIntro(); else endFilm(); });
 function startFilm(id) {
   const D = typeof id === 'string' ? FILMS[id] : id, set = curSet.userData, v = set.views[curView];
   const end = viewPose(v);
@@ -2379,6 +2382,13 @@ const INTRO = [
     cap: L('Tvůj příběh začíná v Thornwallu.', 'Your story begins in Thornwall.'), ev: [[1.2, 'bell'], [4.5, 'bell']] },
 ];
 let intro = null;
+// keep the screen on while playing (Screen Wake Lock, where the browser has it); asked again when the page comes back
+let wake = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !wake && document.visibilityState === 'visible') { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { wake = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+document.addEventListener('pointerdown', keepAwake);
 function playIntro(done) {
   state = 'intro';
   for (const id of SCREENS) $(id).hidden = true;
@@ -3215,6 +3225,7 @@ function openMenu() {
     <button class="ch" data-m="sfx">${L('Zvuk', 'Sound')}: ${save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')}</button>
     <button class="ch" data-m="mus">${L('Hudba', 'Music')}: ${save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')}</button>
     <button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>
+    ${G && G.mission ? `<button class="ch" data-m="leave">🗺 ${L('Opustit misi', 'Leave the mission')}</button>` : ''}
     <button class="ch dim" data-m="quit">${L('Uložit a odejít', 'Save and quit')}</button></div>`;
   $('menu').hidden = false;
 }
@@ -3228,6 +3239,7 @@ $('menu').addEventListener('click', e => {
   if (b.dataset.m === 'sfx') { save.sfx = !save.sfx; store(); openMenu(); }
   if (b.dataset.m === 'mus') { save.music = save.music === false; store(); openMenu(); }
   if (b.dataset.m === 'quit') { closeMenu(); if (F) endBattle(); store2(); setState('title'); }
+  if (b.dataset.m === 'leave') { closeMenu(); leaveMission(); }
 });
 $('pause').addEventListener('click', () => { sfx('click'); openMenu(); });
 $('mapBtn').addEventListener('click', () => { sfx('click'); openMissionMap(); });
@@ -3361,8 +3373,9 @@ function openMissionMap() {
   $('sheet').innerHTML = `<div class="card parch"><h2>🗺 ${esc(missionOf(G.mission).title)}</h2>
     <div class="mmap"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>${nodes}</div>
     <p class="muted">${F ? L('V boji se cestovat nedá.', 'You can\'t travel during a fight.') : L('Klepni na místo, kde už jste byli, a družina se tam vrátí. „?“ je místo, kam jste ještě nedošli.', 'Tap a place you have been to and the party goes back there. "?" is a place you haven\'t reached yet.')}</p>
-    <div class="btns"><button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button></div></div>`;
+    <div class="btns"><button class="ch" data-leave="1">🗺 ${L('Opustit misi', 'Leave the mission')}</button><button class="ch dim" data-a="close">${L('Zavřít', 'Close')}</button></div></div>`;
   $('sheet').hidden = false; sheet = 'map';
+  $('sheet').querySelector('[data-leave]').addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); closeSheet(); leaveMission(); });
   $('sheet').querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); sfx('click'); closeSheet(); choices = []; choicesVer++; go(b.dataset.go); }));
 }
 // starting and ending a mission: the party rests in between (full HP and spells)
@@ -3370,6 +3383,14 @@ function startMission(M) {
   for (const h of G.heroes) { if (h.dead) continue; h.hp = h.shp = h.max; h.spells = h.spellMax; h.tried = {}; h.held = 0; h.hidden = false; }
   G.mission = M.id; G.f = {}; G.used = {};
   startPlay(M.start);
+}
+// leaving a mission half way: what the heroes found and learned stays (gold, experience, artefacts, clues); the
+// mission itself starts again from the beginning next time
+function leaveMission() {
+  if (!confirm(L('Opustit misi a vrátit se na mapu? Postup v misi se ztratí, ale zlato, zkušenosti a nalezené artefakty zůstanou.', 'Leave the mission and go back to the map? The progress in the mission is lost, but gold, experience and the artefacts you found stay.'))) return;
+  if (F) { endBattle(); F = null; }
+  Q.length = 0; cur = null; choices = []; choicesVer++;
+  endMission();
 }
 function endMission() {
   G.mission = null; G.f = {}; G.room = null;
@@ -3691,11 +3712,11 @@ worldEl.addEventListener('pointermove', e => {
 });
 const lift = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; };
 worldEl.addEventListener('pointercancel', e => { lift(e); drag = null; });
-worldEl.addEventListener('pointerup', e => { lift(e); const d = drag; drag = null; if (state === 'intro') { endIntro(); return; } if (d && !d.moved && !touches.size) tapWorld(e.clientX, e.clientY); });
+worldEl.addEventListener('pointerup', e => { lift(e); const d = drag; drag = null; if (state === 'intro') return; if (d && !d.moved && !touches.size) tapWorld(e.clientX, e.clientY); });
 worldEl.addEventListener('wheel', e => { orbit.uzoom = clamp(orbit.uzoom * (e.deltaY > 0 ? 1.1 : 0.9), state === 'map' ? 0.25 : 0.55, state === 'map' ? 1.5 : 1.6); }, { passive: true });
 function tapWorld(x, y) {
   if (state !== 'play' || sheet || menu) return;
-  if (film) { endFilm(); return; }
+  if (film) return;                                   // (a film is skipped only with its Skip button)
   if (busy()) { if (cur && cur.k === 'wait') tapped = true; else skip = true; return; }
   if (!F || !F.actor || !choices.length) return;
   ndc.set(x / window.innerWidth * 2 - 1, -(y / window.innerHeight) * 2 + 1);
