@@ -47,7 +47,7 @@
 <script>
 'use strict';
 /* PIXEL GAMES: the dashboard. Pick a game, set your name and avatar (all the games use them). */
-const VERSION = '2.73.1';
+const VERSION = '2.74.0';
 const COFFEE_URL = '';                    // the maker's "buy me a coffee" page (Buy Me a Coffee, Ko-fi...); '' = no button
 const canvas = document.getElementById('screen');
 const S = PX.makeScreen(canvas, { H: 240, minW: 400, maxW: 560 });
@@ -130,6 +130,15 @@ function matches(g) {
   const words = search.q.trim().split(/\s+/).filter(Boolean), hay = [g.name, g.sub, g.tags, ...g.cats].join(' ');
   return words.every(w => hay.includes(w));
 }
+// EXPERIMENTAL GAMES: unfinished games, in the list only with SETTINGS → EXPERIMENTAL: ON
+const EXPERIMENTAL = [
+  { id: 'adad', name: 'PIXEL QUEST', sub: 'A DARK FANTASY RPG', url: 'adad.html', color: '#8a6aff', cats: [], tags: 'RPG FANTASY DUNGEON DRAGONS DICE HEROES KNIGHT MAGE ELF DWARF QUEST ADVENTURE STORY EXPERIMENTAL', exp: true },
+];
+function syncExperimental() {
+  const on = PX.Settings.load().experimental;
+  for (const g of EXPERIMENTAL) { const i = GAMES.indexOf(g); if (on && i < 0) GAMES.push(g); if (!on && i >= 0) GAMES.splice(i, 1); }
+}
+syncExperimental();
 function shown() { return screen === 'search' ? GAMES.filter(matches) : GAMES; }
 function openSearch() { screen = 'search'; scroll.y = 0; scroll.v = 0; pad.focus = 0; searchInput.value = search.q; PX.Sound.tone(660, 0.05, { vol: 0.06 }); if (!pad.used) setTimeout(() => searchInput.focus(), 0); }
 function closeSearch() { searchInput.blur(); screen = 'home'; scroll.y = 0; scroll.v = 0; pad.focus = 0; }
@@ -374,6 +383,25 @@ function previewMiner(x, y, w, h, t) {            // a digger drills down throug
   ctx.fillStyle = Math.floor(t * 20) % 2 ? '#d8d8e4' : '#9a9aa8'; ctx.fillRect(cx - 3, dy + 4, 7, 2); ctx.fillRect(cx - 1, dy + 6, 3, 2);
   if (Math.floor(t * 10) % 2) { ctx.fillStyle = '#9a6a3a'; ctx.fillRect(cx - 6, dy + 6, 2, 2); ctx.fillRect(cx + 5, dy + 5, 2, 2); }
   const dark = ctx.createLinearGradient(0, y + 20, 0, y + h); dark.addColorStop(0, 'rgba(8,4,12,0)'); dark.addColorStop(1, 'rgba(8,4,12,0.7)'); ctx.fillStyle = dark; ctx.fillRect(x, y + 20, w, h - 20);
+  ctx.restore();
+}
+function previewQuest(x, y, w, h, t) {           // PIXEL QUEST: a church on a hill in the mist, a moon, a hero with a torch
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.fillStyle = '#141a32'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#e8e4c8'; ctx.fillRect(x + w - 22, y + 6, 8, 8); ctx.fillStyle = '#141a32'; ctx.fillRect(x + w - 19, y + 5, 7, 7);
+  for (let i = 0; i < 9; i++) { ctx.fillStyle = '#8a90b8'; ctx.fillRect(x + (i * 37) % w, y + 3 + (i * 13) % 20, 1, 1); }
+  ctx.fillStyle = '#22283a'; ctx.beginPath(); ctx.ellipse(x + w * 0.55, y + h + 6, w * 0.6, 34, 0, 0, Math.PI * 2); ctx.fill();
+  const cx = Math.round(x + w * 0.55), cy = y + 22;
+  ctx.fillStyle = '#3a3448'; ctx.fillRect(cx - 12, cy + 6, 24, 12); ctx.fillRect(cx - 4, cy - 8, 8, 26); ctx.fillRect(cx - 1, cy - 12, 2, 4); ctx.fillRect(cx - 3, cy - 11, 6, 1);
+  const glow = Math.sin(t * 3) > 0 ? '#6ac8a0' : '#4a9a7a'; ctx.fillStyle = glow; ctx.fillRect(cx - 1, cy + 10, 2, 4);
+  ctx.globalAlpha = 0.35; ctx.fillStyle = '#a8b4d8';
+  for (let i = 0; i < 4; i++) { const mx = x + ((t * 6 + i * 31) % (w + 30)) - 30; ctx.fillRect(Math.round(mx), y + 38 + i * 4, 26, 3); }
+  ctx.globalAlpha = 1;
+  const hx = x + 16, hy = y + h - 20;             // a hero with a sword and a torch
+  ctx.fillStyle = '#9aa0b0'; ctx.fillRect(hx, hy, 6, 9); ctx.fillStyle = '#e8b896'; ctx.fillRect(hx + 1, hy - 4, 4, 4); ctx.fillStyle = '#b0b6c4'; ctx.fillRect(hx, hy - 6, 6, 2);
+  ctx.fillStyle = '#4a4458'; ctx.fillRect(hx + 1, hy + 9, 2, 5); ctx.fillRect(hx + 4, hy + 9, 2, 5);
+  ctx.fillStyle = '#d8dce8'; ctx.fillRect(hx + 7, hy - 6, 1, 10);
+  ctx.fillStyle = '#5a3a20'; ctx.fillRect(hx - 2, hy + 1, 1, 6); ctx.fillStyle = Math.sin(t * 11) > 0 ? '#ffb040' : '#ff7a20'; ctx.fillRect(hx - 3, hy - 2, 3, 3);
   ctx.restore();
 }
 function previewBackrooms(x, y, w, h, t) {        // an endless yellow corridor, buzzing lights; Tom's eyes dart; far away... a thing
@@ -762,8 +790,13 @@ function card(g, i, x, y, w, h, t) {
   ctx.globalAlpha = 0.18; ctx.fillRect(x, y + 3, w, 4); ctx.globalAlpha = 1;
   if (!g) { T('?', x + w / 2, y + 44, '#3a2f5c', 8, 'center'); return; }
   ctx.fillStyle = '#0b0912'; ctx.fillRect(x + 5, y + 7, w - 10, 64);   // a frame around the preview
-  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, sniper: previewSniper, backrooms: previewBackrooms, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
+  ({ thief: previewThief, racer: previewRacer, heist: previewHeist, pong: previewPong, football: previewFootball, hoops: previewHoops, wings: previewWings, fish: previewFish, skate: previewSkate, ski: previewSki, boxfight: previewBoxFight, bike: previewBike, cook: previewCook, runs: previewRuns, skygp: previewSkyGP, moto: previewMoto, defense: previewDefense, hook: previewHook, slice: previewSlice, party: previewParty, tanks: previewTanks, sniper: previewSniper, backrooms: previewBackrooms, adad: previewQuest, miner: previewMiner, farm: previewFarm, horde: previewHorde, snake: previewSnake })[g.id](x + 6, y + 8, w - 12, 62, t);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 8, w - 12, 1);
+  if (g.exp) {                                                          // EXPERIMENTAL: a test tube
+    const bx = x + w - 38, by = y + 11;
+    ctx.fillStyle = '#0b0912'; ctx.fillRect(bx - 1, by - 1, 32, 11); ctx.fillStyle = '#5a3aa8'; ctx.fillRect(bx, by, 30, 9);
+    T('BETA', bx + 15, by + 2, '#fff', 1, 'center');
+  }
   if (NEW_GAMES.includes(g.id)) {                                       // NEW!
     const bx = x + w - 30, by = y + 11, on = Math.floor(t * 2) % 2;
     ctx.fillStyle = '#0b0912'; ctx.fillRect(bx - 1, by - 1, 24, 11); ctx.fillStyle = on ? '#e01e5a' : '#ff3a6a'; ctx.fillRect(bx, by, 22, 9);
@@ -887,9 +920,13 @@ function drawSettings(t) {
   // BUY ME A COFFEE: the cup at the top right
   if (COFFEE_URL && UI.button('coffee', W - 34, 8, 26, 22, '', { size: 1, accent: '#c8843a' })) openCoffee();
   if (COFFEE_URL) cupIcon(W - 21, 19);
-  // ABOUT: who made the games, and the arcade's version (written V2.73.1, like every game's)
-  T('MADE WITH ♥ BY A SON AND HIS DAD', x + 12, 226, '#9a92b8', 1);
-  T('PIXEL GAMES V' + VERSION, x + pw - 8, 226, '#4a4068', 1, 'right');
+  // EXPERIMENTAL: unfinished games (Pixel Quest...) show in the list too
+  if (UI.button('exp', x + pw - 12 - half, 221, half, 13, set.experimental ? 'EXPERIMENTAL: ON' : 'EXPERIMENTAL: OFF', { size: 1, accent: '#8a6aff', on: set.experimental })) {
+    PX.Settings.save({ ...set, experimental: !set.experimental }); syncExperimental(); PX.Sound.tone(set.experimental ? 300 : 660, 0.08, { vol: 0.08 });
+  }
+  // ABOUT: who made the games, and the arcade's version (written V2.74.0, like every game's)
+  T('MADE WITH ♥ BY A SON AND HIS DAD', x + 12, 225, '#9a92b8', 1);
+  T('PIXEL GAMES V' + VERSION, W / 2, 31, '#4a4068', 1, 'center');
 }
 function cupIcon(cx, cy) {
   PX.drawIcon(ctx, ['.#.#.#...', '.#.#.#...', '.........', '#######..', '#######.##', '#######.#.', '#######.##', '.#####...', '.........'].map(r => r.padEnd(10, '.')), { '#': '#efe9ff' }, cx, cy, 1);
