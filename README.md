@@ -24,7 +24,7 @@ Versions are written the same way everywhere: `V` and the number, at the bottom 
 
 **Weird History Toons** (`shorts/`, https://pixelgames.online/shorts/): short cartoons about strange true stories, each
 with a page that tells what really happened and links its sources. The pages are built by `tools/shorts/build.py` from the
-list at its top (title, story, sources); the videos (720x1280 MP4) and posters are in `shorts/media/`. The service worker
+list at its top (title, story, sources); the videos (1080x1920 MP4) and posters are in `shorts/media/`. The service worker
 leaves `shorts/` alone (always from the network), because videos load in ranges.
 
 | Game | |
