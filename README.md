@@ -1490,6 +1490,17 @@ or model files).
   classes, levels with THAC0 and spells, equipment and prices, time and food, combat, magic and turning, adventuring,
   artefacts); the **Bestiary** (each creature's medallion, numbers and lore; a boss appears only once met). The
   tables are built from the game's own data, so the books always match the rules.
+- **Exploring a scene** (0.12): no more list of leading options. The party stands in the scene in a first-person
+  view (each room's `eye`); drag to look around. Things you can look at or use are marked ✦ (each room's `spots`:
+  the church door, the graves, an old tree, the rats, the trapdoor, the bronze door, the niches, Mila...). Tapping one
+  turns the view to it, tells what you see the first time, and offers what can be done with it (the room's choices
+  tagged with `spot`, plus the spot's own `acts`; some things are just to look at). Exits are things too: the road
+  up the hill, the door out, the stairs. "What you can see" lists the things for whoever can't find them.
+- **Mission maps per level** (0.13): the 🗺 button opens a surveyor's plan for each level of the mission: outside
+  (Thornwall, the road, the river, the hill with its graves), the church (walls, columns, altar, trapdoor), the crypt
+  (niches, sarcophagus, bronze door, the hidden ossuary once found), the cave (the pool and the bell). A level shows
+  once you've been there; stairs and doors (⇅) turn to the next plan; tap a place you have been to and the party
+  goes back.
 - Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 

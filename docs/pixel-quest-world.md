@@ -262,6 +262,13 @@ the undead much harder), **Shard of the Bell** (after the bell cracks; once per 
 - **Scenes in a fight**: the monsters come on (the camera looks at them), the camera turns to a monster as it falls
   or runs.
 
+### Exploring a scene
+
+- No list of options that gives the answers away. The party stands in the scene (first person) and looks around.
+- Things to look at and use are marked ✦. A thing can be just scenery (a description), or have actions (search,
+  open, fight, talk), or be an exit (a road, a door, stairs). Searching costs time (see Time and rations).
+- Every scene should have a few things that are only scenery, so that the marked ones don't give away the secret.
+
 ## 6. The maps
 
 - **World map**: a small 3D model of Aldmere with its regions. Missions glow on it (crowns for story missions);
