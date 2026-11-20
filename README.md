@@ -1501,6 +1501,13 @@ or model files).
   (niches, sarcophagus, bronze door, the hidden ossuary once found), the cave (the pool and the bell). A level shows
   once you've been there; stairs and doors (⇅) turn to the next plan; tap a place you have been to and the party
   goes back.
+- **The Prince's Messenger** (0.14), the first story mission (opens after the Drowned Bell): a stormy night in
+  Thornwall, a dying messenger with a poisoned arrow and a coded letter; a burning farm and Ash Riders; the long way
+  over the ford (wargs in ambush) or the shortcut through a haunted mill (sleeping wargs, a rotten floor, a ghost
+  and the Miller's Lantern); the hunting lodge under siege and Kael Ashborn; the traitor at the gate (hanged, let go,
+  or turned into a spy); the prince at dawn and his Signet. The clock matters: Tam lives only on the best route.
+  New monsters (Ash Rider, warg, Kael), figures (Tam, the prince's guards, the farm family, the ghost, horses), six
+  sets with fire and rain, four films, a three-level mission map.
 - Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
