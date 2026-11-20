@@ -58,7 +58,7 @@
   .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: flex-end; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .pill { padding: 6px 12px; border-radius: 20px; background: #1d1830; border: 1px solid var(--line); font-weight: 800; min-width: 38px; }
-  .pill.on { background: #3a2f5c; border-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--c, var(--gold)); }
+  .pill:disabled { opacity: .3; } .pill.on { background: #3a2f5c; border-color: var(--c, var(--gold)); box-shadow: 0 0 0 1px var(--c, var(--gold)); }
   .heroRow { display: grid; grid-template-columns: 76px 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 10px; margin-top: 8px; border-radius: 8px;
              background: #1d1830; border: 1px solid var(--line); border-left: 4px solid var(--c); }
   .heroRow img { grid-row: 1 / 4; width: 76px; height: 76px; }
@@ -104,7 +104,7 @@
   .roll b { flex: none; min-width: 24px; padding: 1px 4px; text-align: center; border-radius: 3px; background: #f0e8d8; color: #1a1018; font-weight: 800; }
   .roll.ok { color: var(--good); border-color: #4ac24a; } .roll.no { color: var(--bad); border-color: #d84a3a; } .roll.info { color: #ffe07a; border-color: #c8a030; }
   #inv { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 13.5px; color: var(--muted); padding: 0 4px; text-shadow: 0 1px 3px #000; }
-  #inv .gold { color: var(--gold); } #inv .good { color: var(--good); } #inv .holy { color: #f5e68a; }
+  #inv .gold { color: var(--gold); } #inv .clock { color: #fff; font-weight: 700; } #inv .bad { color: var(--bad); font-weight: 800; } #inv .good { color: var(--good); } #inv .holy { color: #f5e68a; }
   #ask { text-align: center; font-weight: 800; color: var(--gold); font-size: 14.5px; letter-spacing: .03em; min-height: 18px; text-shadow: 0 1px 4px #000; }
   #choices { display: grid; gap: 6px; grid-template-columns: 1fr; }
   #choices.two { grid-template-columns: 1fr 1fr; }
@@ -289,7 +289,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.7.0';
+const VERSION = '0.10.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -335,10 +335,49 @@ const CLASSES = {
              weapon: { name: L('Hůl', 'Staff'), n: 1, s: 6, b: 0 }, saves: [14, 11, 13, 15, 12], next: 2500, col: '#6aa8ff', spells: ['missile', 'sleep'], move: 4,
              about: L('Křehký, ale umí kouzla: Magická střela nikdy nemine, Spánek uspí nepřátele. Drž se vzadu.', 'Fragile, but knows magic: Magic Missile never misses, Sleep puts enemies to sleep. Stay at the back.') },
   thief:   { name: L(['Zloděj', 'Zlodějka'], ['Thief', 'Thief']), hd: 6, prime: 'dex', order: ['dex', 'int', 'con', 'cha', 'str', 'wis'], armour: 8, armourName: L('kožená zbroj', 'leather armour'),
-             weapon: { name: L('Krátký meč', 'Short sword'), n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a', move: 4,
+             weapon: { name: L('Krátký meč', 'Short sword'), n: 1, s: 6, b: 0, edged: true }, saves: [13, 14, 12, 16, 15], next: 1250, col: '#6ad46a', move: 5,
              about: L('Otevírá zámky, hledá pasti a plíží se. Ze stínu bodne dvakrát silněji.', 'Opens locks, finds traps and sneaks. Strikes twice as hard from the shadows.') },
 };
 const CLASS_IDS = ['fighter', 'cleric', 'mage', 'thief'];
+/* RULES OF A TURN (see docs/pixel-quest-world.md, "Battle rules"). On a hero's turn: MOVE up to their move (hexes) and
+   take ONE ACTION (melee attack, shot or throw, spell, turn undead, hide, an item). Moving and acting can come in either
+   order, but the move can't be split around the action, except by a thief (hit and run).
+   - Fighter: two melee attacks if they haven't moved this turn (one after moving).
+   - A bow shoots two arrows if the archer hasn't moved this turn.
+   - Shooting or throwing: not with an enemy right next to you; beyond the short range -2 to hit.
+   - Sprint: give up the action to move twice as far.
+   - Leaving a hex next to an awake monster lets it strike (an opportunity attack); a thief slips away.
+   - Move: fighter and cleric 3 (heavy armour), mage 4, thief 5; DEX 16+ gives +1. */
+/* RACES: a hero is a human, a dwarf, an elf or a halfling. Each changes two abilities a little and brings a gift.
+   Dwarves and halflings can't be mages (no feel for the arcane). */
+const RACES = {
+  human:    { name: L(['Člověk', 'Člověk'], ['Human', 'Human']), mod: {}, cls: CLASS_IDS,
+              info: L('Všestranný a ctižádostivý: +10 % zkušeností.', 'Versatile and ambitious: +10% experience.') },
+  dwarf:    { name: L(['Trpaslík', 'Trpaslice'], ['Dwarf', 'Dwarf']), mod: { con: 1, cha: -1 }, cls: ['fighter', 'cleric', 'thief'],
+              info: L('Tvrdý jako skála: +1 odolnost, -1 charisma, záchrana proti jedu, hůlkám a kouzlům o 2 lepší. Válečník nosí obří sekeru.', 'Hard as rock: +1 CON, -1 CHA, saves against poison, wands and spells 2 better. A fighter carries a huge axe.') },
+  elf:      { name: L(['Elf', 'Elfka'], ['Elf', 'Elf']), mod: { dex: 1, con: -1 }, cls: CLASS_IDS,
+              info: L('Hbitý a bystrý: +1 obratnost, -1 odolnost, +1 k zásahu lukem, nedá se ztuhnout kouzlem.', 'Quick and keen: +1 DEX, -1 CON, +1 to hit with a bow, can\'t be held by magic.') },
+  halfling: { name: L(['Půlčík', 'Půlčice'], ['Halfling', 'Halfling']), mod: { dex: 1, str: -1 }, cls: ['fighter', 'cleric', 'thief'], move: -1,
+              info: L('Malý a nenápadný: +1 obratnost, -1 síla, +1 ke střelbě a hodu, obrana o 1 lepší; o 1 pole pomalejší.', 'Small and easy to miss: +1 DEX, -1 STR, +1 with missiles, AC 1 better; 1 hex slower.') },
+};
+const RACE_IDS = ['human', 'dwarf', 'elf', 'halfling'];
+const raceOf = h => RACES[h.race] || RACES.human;
+const raceName = h => raceOf(h).name[h.g === 'f' ? 1 : 0];
+const moveOf = h => CLASSES[h.cls].move + (h.st.dex >= 16 ? 1 : 0) + (raceOf(h).move || 0);
+// ranged weapons: dmg [dice, sides, bonus]; range short/long in hexes; ammo = which pile in G.items (null: stones, never run out)
+const RANGED = {
+  sling:  { name: L('Prak', 'Sling'), ic: '🪨', dmg: [1, 4, 0], short: 4, long: 8, ammo: null, price: 3, cls: ['fighter', 'cleric', 'thief'],
+            info: L('1k4, dostřel 4/8 polí; kamínky jsou všude; drtí kosti', '1d4, range 4/8 hexes; stones are everywhere; crushes bone') },
+  bow:    { name: L('Krátký luk', 'Short bow'), ic: '🏹', dmg: [1, 6, 0], short: 5, long: 10, ammo: 'arrows', two: true, edged: true, price: 25, comes: 20, cls: ['fighter', 'thief'],
+            info: L('1k6, dostřel 5/10; 2 šípy, když nejdeš; s 20 šípy', '1d6, range 5/10; 2 arrows if you stand still; with 20 arrows') },
+  knives: { name: L('Vrhací nože', 'Throwing knives'), ic: '🔪', dmg: [1, 4, 0], short: 2, long: 4, ammo: 'knives', thrown: true, str: true, edged: true, price: 8, comes: 3, cls: ['fighter', 'thief'],
+            info: L('1k4 + síla, dostřel 2/4; 3 nože, po boji je posbíráš', '1d4 + strength, range 2/4; 3 knives, picked up after the fight') },
+  darts:  { name: L('Šipky', 'Darts'), ic: '🎯', dmg: [1, 3, 0], short: 3, long: 6, ammo: 'darts', thrown: true, edged: true, price: 4, comes: 5, cls: ['fighter', 'mage', 'thief'],
+            info: L('1k3, dostřel 3/6; 5 šipek, po boji je posbíráš', '1d3, range 3/6; 5 darts, picked up after the fight') },
+};
+const AMMO = { arrows: { name: L('Šípy', 'Arrows'), ic: '➶', n: 20, price: 5 }, knives: { name: L('Vrhací nože', 'Throwing knives'), ic: '🔪', n: 3, price: 6 }, darts: { name: L('Šipky', 'Darts'), ic: '🎯', n: 5, price: 3 } };
+const KIT = { cleric: 'sling', mage: 'darts', thief: 'sling' };      // what each class starts with (a fighter buys a bow)
+const ammoOf = w => !w.ammo ? Infinity : (G.items[w.ammo] || 0);
 const SPELLS = {
   missile: { name: L('Magická střela', 'Magic Missile'), target: 'foe', info: L('1k4+1 zranění, nikdy nemine', '1d4+1 damage, never misses'), ic: '✦' },
   sleep:   { name: L('Spánek', 'Sleep'), target: 'none', info: L('uspí pár nepřátel (ne nemrtvé)', 'puts a few enemies to sleep (not the undead)'), ic: '☾' },
@@ -358,25 +397,29 @@ const ITEMS = L({ potion: 'Léčivý lektvar', holy: 'Svěcená voda', food: 'J�
 const NAMES = [['Bran', 'm'], ['Mira', 'f'], ['Oswin', 'm'], ['Tess', 'f'], ['Garrick', 'm'], ['Elwyn', 'f'], ['Hob', 'm'], ['Sable', 'f'],
                ['Rowan', 'm'], ['Ida', 'f'], ['Corvin', 'm'], ['Nell', 'f'], ['Aldo', 'm'], ['Wren', 'f']];
 function rollStats() { return Array.from({ length: 6 }, () => { const r = [rnd(6), rnd(6), rnd(6), rnd(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; }).sort((a, b) => b - a); }
-function makeHero(name, g, cls, vals) {
-  const h = { name, g, cls, vals, st: {}, xp: 0, tried: {}, hair: rnd(5) - 1 };
+function makeHero(name, g, cls, vals, race = 'human') {
+  const h = { name, g, cls, vals, st: {}, xp: 0, tried: {}, hair: rnd(5) - 1, race };
   setClass(h, cls);
   return h;
 }
 function setClass(h, cls) {
   const C = CLASSES[cls]; h.cls = cls;
+  if (!raceOf(h).cls.includes(cls)) h.race = 'human';
   C.order.forEach((k, i) => { h.st[k] = h.vals[i]; });
+  for (const [k, d] of Object.entries(raceOf(h).mod)) h.st[k] = Math.max(3, Math.min(18, h.st[k] + d));
+
   h.max = Math.max(1, C.hd + conHP(h.st.con, cls === 'fighter'));
   h.hp = h.shp = h.max;
-  h.weapon = Object.assign({}, C.weapon);
+  h.weapon = Object.assign({}, C.weapon, h.race === 'dwarf' && cls === 'fighter' ? { name: L('Obří sekera', 'Great axe') } : {});
+  h.ranged = KIT[cls] || null;
   h.level = 1; h.xp = 0;
   h.spellMax = spellMaxOf(h);
   h.spells = h.spellMax;
 }
 const clsName = h => CLASSES[h.cls].name[h.g === 'f' ? 1 : 0];
-const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0);
+const acOf = h => CLASSES[h.cls].armour + dexAC(h.st.dex) - (h.armorUp || 0) - (h.race === 'halfling' ? 1 : 0);
 const thac0Of = h => { const k = lvl(h) - 1; return 20 - (h.cls === 'fighter' ? k : h.cls === 'mage' ? Math.floor(k / 2) : 2 * Math.floor(k / 2)); };
-const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0);
+const hitOf = h => strHit(h.st.str) + (h.weapon.hit || 0) + (h.sharp || 0) - (G && G.hungry ? 1 : 0);
 const dmgOf = h => strDmg(h.st.str) + (h.sharp || 0);
 const up = h => h.hp > 0 && !h.dead;                        // can act (if not held)
 const hardcore = () => !!G && G.mode === 'hard';            // HARDCORE: heroes bleed at 0 HP and die at -10, for good
@@ -385,7 +428,7 @@ function thiefSkill(h, k) {                                 // k: 0 open locks, 
   return base + adj[k] + 5 * (lvl(h) - 1);
 }
 const SKILL_NAMES = L(['Otevírání zámků', 'Hledání pastí', 'Tiché plížení', 'Schovat se ve stínu'], ['Open locks', 'Find traps', 'Move silently', 'Hide in shadows']);
-const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]] - Math.floor((lvl(h) - 1) / 2);
+const saveOf = (h, kind) => CLASSES[h.cls].saves[SV[kind]] - Math.floor((lvl(h) - 1) / 2) - (h.race === 'dwarf' && ['poison', 'wand', 'spell'].includes(kind) ? 2 : 0);
 const gv = (h, boy, girl) => h.g === 'f' ? girl : boy;     // Czech words that change for a girl hero
 
 /* --- 3b. LEVELS: one party for the whole campaign, levels 1 to 5 ------------------------------
@@ -518,7 +561,7 @@ const play = (fn, dur) => Q.push({ k: 'anim', fn, dur });   // start something i
 function rollFx(sides, value, txt, ok, fast) { Q.push({ k: 'roll', sides, value, txt, ok, fast }); }
 // a choice somebody has to try (a check): only shown while some hero can still try it
 function setChoices(q, list) { ask = q; choicesVer++; choices = list.filter(c => c && (!c.if || c.if()) && (!c.who || G.heroes.some(h => up(h) && c.who(h) > 0))); }
-const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, fn, stay) });
+const pickWho = (q, chance, fn) => ({ who: chance, act: () => choose(q, chance, h => { pass(TIME_COST.search); fn(h); }, stay) });
 
 const storyEl = $('story'), storyIn = $('storyIn');
 const COLS = { '#7aea7a': 'good', '#ff7a6a': 'bad', '#ff3a3a': 'bad', '#ffaa8a': 'hurt', '#ffd23f': 'gold', '#c8b8ff': 'muted', '#6aa8ff': 'magic', '#f0e070': 'holy', '#c06aff': 'evil' };
@@ -628,7 +671,7 @@ function giveXP(n, why) {
   if (!live.length || n <= 0) return;
   const again = G.mission && G.done && G.done[G.mission];
   const each = Math.floor(n / live.length / (again ? 2 : 1));
-  for (const h of live) h.xp += each;
+  for (const h of live) h.xp += h.race === 'human' || !h.race ? Math.floor(each * 1.1) : each;
   say(L(`${why}: ${each} zkušeností pro každého hrdinu.`, `${why}: ${each} XP for every hero.`) + (again ? L(' (Opakovaná mise: polovina.)', ' (A replay: half.)') : ''), '#ffd23f');
 }
 
@@ -639,7 +682,45 @@ function giveXP(n, why) {
 const f = () => G.f;
 const n = () => G.heroes.filter(h => !h.dead).length || 1;
 const stay = () => { store2(); showChoices(); };
+/* TIME: the campaign has a clock (G.time, minutes since day 1, 00:00). Walking between places, searching, talking,
+   fighting and resting take time (TIME_COST). Every dawn (06:00) each living hero eats a day's ration; without food
+   they go hungry: no healing when resting, -1 to hit, until they eat. In the Drowned Bell, Mila drowns at 03:00. */
+const TIME_COST = { walk: 10, hill: 45, search: 10, talk: 15, chat: 20, rest: 8 * 60, inn: 9 * 60 };
+const clockOf = t => { const d = Math.floor(t / 1440) + 1, m = ((t % 1440) + 1440) % 1440; return { day: d, h: Math.floor(m / 60), m: m % 60 }; };
+const clockTxt = (t = G.time || 0) => { const c = clockOf(t); return `${c.h >= 6 && c.h < 20 ? '☀' : '🌙'} ${L('den', 'day')} ${c.day}, ${c.h}:${String(c.m).padStart(2, '0')}`; };
+function pass(min) {
+  if (!G || !min) return;
+  const before = G.time || 0; G.time = before + min;
+  // every dawn crossed: breakfast for the living (a day's ration each)
+  for (let dawn = Math.ceil((before - 360 + 1) / 1440) * 1440 + 360; dawn <= G.time; dawn += 1440) eatRations();
+  // the Drowned Bell: after the deadline Mila is lost
+  if (G.mission === 'bell' && f().deadline && !f().won && G.time >= f().deadline && !(f().late >= 2)) f().late = 2;
+}
+function eatRations() {
+  const eat = G.heroes.filter(h => !h.dead);
+  if (G.items.food >= eat.length) { G.items.food -= eat.length; if (G.hungry) say(L('Konečně se najíte. Hlad je pryč.', 'At last you eat. The hunger is gone.'), '#7aea7a'); G.hungry = false; }
+  else {
+    G.items.food = 0; G.hungry = true;
+    say(L('Svítá a družině došlo jídlo. Hlad: odpočinek neléčí a útoky jsou o 1 horší, dokud se nenajíte.', 'Dawn, and the party is out of food. Hungry: resting doesn\'t heal and attacks are 1 worse until you eat.'), '#ff7a6a');
+  }
+}
+// a rest: in the inn (a bed, 1 gold a hero: all spells, half the HP), or in the open (all spells, 1d3 HP); hungry heroes don't heal
+function rest(inn) {
+  pass(inn ? TIME_COST.inn : TIME_COST.rest);
+  for (const h of G.heroes) if (!h.dead) {
+    h.spells = h.spellMax;
+    if (G.hungry) continue;
+    const got = inn ? Math.ceil(h.max / 2) : rnd(3);
+    h.hp = Math.min(h.max, Math.max(h.hp, 0) + got); h.shp = h.hp;
+  }
+  say(G.hungry ? L('Spíte o hladu. Kouzla se vrátila, ale rány se nehojí.', 'You sleep hungry. The spells come back, but the wounds don\'t heal.')
+               : inn ? L('Vyspíte se v teplé posteli. Kouzla se vrátila a rány se zacelují.', 'You sleep in a warm bed. The spells come back and the wounds close.')
+                     : L('Odpočinete si. Kouzla se vrátila a rány se trochu zacelily.', 'You rest. The spells come back and the wounds close a little.'), '#7aea7a');
+  partyKey = '';
+}
+const travelMin = (a, b) => ((a === 'inn' || a === 'town') && b === 'hill') || (a === 'hill' && (b === 'inn' || b === 'town')) ? TIME_COST.hill : TIME_COST.walk;
 function go(id) {
+  if (G.room && G.room !== id) pass(travelMin(G.room, id));
   // a new scene: first let the party read what just happened (tap to go on), then fade to black, then a clean page
   if (G.room !== id && hasText()) Q.push({ k: 'wait' });
   if (G.room !== id) { play(() => fade(true), 0.5); then(() => { clearText(); enter(id); }); return; }
@@ -673,7 +754,22 @@ const SHOP = [
   { id: 'potion', ic: '🧪', price: 30, name: L('Léčivý lektvar', 'Healing potion'), buy: () => { G.items.potion++; } },
   { id: 'holy', ic: '💧', price: 25, name: L('Svěcená voda', 'Holy water'), buy: () => { G.items.holy++; } },
   { id: 'food', ic: '🧀', price: 2, name: L('Jídlo na den', 'Food for a day'), buy: () => { G.items.food++; } },
+  ...Object.entries(AMMO).map(([id, a]) => ({ id, ic: a.ic, price: a.price, name: `${a.name} (${a.n}×)`, if: () => G.heroes.some(h => !h.dead && h.ranged && RANGED[h.ranged].ammo === id), buy: () => { G.items[id] = (G.items[id] || 0) + a.n; } })),
 ];
+// Brannock's bows and the smith's knives: one ranged weapon a hero (a new one replaces the old)
+function rangedShop() {
+  setChoices(L(`Zbraně na dálku (máte ${G.gold} zl.)`, `Ranged weapons (you have ${G.gold} gold)`), [
+    ...Object.entries(RANGED).map(([id, w]) => ({ label: w.name, ic: w.ic, note: `${w.price} ${L('zl.', 'gold')} · ${w.info}`, if: () => G.gold >= w.price && G.heroes.some(h => !h.dead && w.cls.includes(h.cls) && h.ranged !== id), act: () =>
+      setChoices(L(`${w.name}: pro koho?`, `${w.name} for who?`), [
+        ...G.heroes.filter(h => !h.dead && w.cls.includes(h.cls) && h.ranged !== id).map(h => ({ label: h.name, note: clsName(h) + (h.ranged ? L(` (místo: ${RANGED[h.ranged].name})`, ` (instead of: ${RANGED[h.ranged].name})`) : ''), act: () => {
+          G.gold -= w.price; h.ranged = id; if (w.ammo) G.items[w.ammo] = (G.items[w.ammo] || 0) + (w.comes || 0); sfx('coin'); store2(); partyKey = '';
+          say(L(`${h.name} má teď: ${w.name}.`, `${h.name} now has: ${w.name}.`), '#7aea7a'); then(rangedShop);
+        } })),
+        { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: rangedShop },
+      ]) })),
+    { label: L('Zpátky do obchodu', 'Back to the shop'), ic: '‹', dim: true, act: shopMenu },
+  ]);
+}
 // the blacksmith's work, one of each per hero: armour (AC 1 better), a keener weapon (+1 to hit and damage)
 const UPGRADES = [
   { id: 'armorUp', ic: '🛡', price: 80, name: L('Lepší zbroj', 'Better armour'), info: L('obrana o 1 lepší', 'AC 1 better') },
@@ -681,7 +777,8 @@ const UPGRADES = [
 ];
 function shopMenu() {
   setChoices(L(`Babka Sedge, kovář a jejich zboží (máte ${G.gold} zl.)`, `Granny Sedge, the blacksmith and their wares (you have ${G.gold} gold)`), [
-    ...SHOP.map(it => ({ label: it.name, ic: it.ic, note: `${it.price} ${L('zl.', 'gold')}`, if: () => G.gold >= it.price, act: () => {
+    { label: L('Zbraně na dálku: luk, prak, nože, šipky', 'Ranged weapons: bow, sling, knives, darts'), ic: '🏹', act: rangedShop },
+    ...SHOP.map(it => ({ label: it.name, ic: it.ic, note: `${it.price} ${L('zl.', 'gold')}`, if: () => G.gold >= it.price && (!it.if || it.if()), act: () => {
       G.gold -= it.price; it.buy(); sfx('coin'); store2();
       say(L(`Koupeno: ${it.name}.`, `Bought: ${it.name}.`), '#7aea7a'); then(shopMenu);
     } })),
@@ -701,7 +798,7 @@ function innChat() {
     ...['elva', 'hollis', 'brannock', 'garth', 'oren'].map(id => ({ label: TALK[id].name, ic: TALK[id].ic, note: TALK[id].tag, act: () =>
       setChoices(L(`Kdo si přisedne k: ${TALK[id].name}?`, `Who sits down with ${TALK[id].name}?`), [
         ...G.heroes.filter(up).map(h => ({ label: h.name, act: () => {
-          G.gold -= 2; sfx('coin');
+          G.gold -= 2; sfx('coin'); pass(TIME_COST.chat);
           startTalk(id, h, (bonus, t) => { innLearned(id, t); then(stay); });
         } })),
         { label: L('Nic, zpátky', 'Never mind'), ic: '‹', dim: true, act: stay },
@@ -767,6 +864,9 @@ const ROOMS = {
     choices: () => [
       { label: L('Hostinec: napít se a pokecat', 'The inn: have a drink and chat'), ic: '🍺', note: L('2 zl.', '2 gold'), if: () => G.gold >= 2, act: () => innChat() },
       { label: L('Obchod babky Sedge a kovář', 'Granny Sedge\'s shop and the smith'), ic: '🧪', act: () => shopMenu() },
+      { label: L('Přespat v hostinci', 'Sleep at the inn'), ic: '🛏', note: L(`${G.heroes.filter(h => !h.dead).length} zl.`, `${G.heroes.filter(h => !h.dead).length} gold`), if: () => G.gold >= G.heroes.filter(h => !h.dead).length, act: () => {
+        G.gold -= G.heroes.filter(h => !h.dead).length; rest(true); then(stay);
+      } },
       { label: L('Zpět na mapu Aldmeru', 'Back to the map of Aldmere'), ic: '🗺', dim: true, act: () => { G.room = null; store2(); setState('map'); } },
     ],
   },
@@ -779,8 +879,8 @@ const ROOMS = {
           'Last night Mila, the miller\'s daughter, went up to look. She didn\'t come back. And she isn\'t the first: in spring the shepherd boy Jory vanished, in summer a travelling tinker. They searched the river and found nothing.\n' +
           'Reeve Hollis offers 200 gold to whoever brings Mila home. "Tonight," he says. "Tomorrow may be too late."'),
     again: () => f().late >= 2 ? L('Oheň v krbu dohořívá. Mlynář sedí u stolu a nemluví. Nahoře na kopci zvoní zvon, a v jeho hlase je teď něco nového.', 'The fire is burning low. The miller sits at a table and says nothing. Up on the hill the bell rings, and there is something new in its voice.')
-                                : L('Oheň v krbu praská. Hollis se na vás podívá: „Každá hodina se počítá.“ Nahoře na kopci zase zvoní zvon.', 'The fire crackles. Hollis looks at you: "Every hour counts." Up on the hill, the bell rings again.'),
-    enter: first => { if (!first && G.prev && !f().won) f().late = (f().late || 0) + 1; },
+                                : L(`Oheň v krbu praská. Je ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis se na vás podívá: „Každá hodina se počítá. Do svítání to nevydrží.“ Nahoře na kopci zase zvoní zvon.`, `The fire crackles. It is ${clockOf(G.time).h}:${String(clockOf(G.time).m).padStart(2, '0')}. Hollis looks at you: "Every hour counts. She won't last till dawn." Up on the hill, the bell rings again.`),
+
     choices: () => [
       { label: L('Vyptat se na klepy', 'Ask around for gossip'), ic: '💬', if: () => !f().rumour, ...pickWho(L('Kdo se vyptává? (hod na Charisma)', 'Who asks around? (Charisma roll)'), h => abilityChance(h, 'cha'), h => {
         if (checkAbility(h, 'cha')) {
@@ -814,6 +914,13 @@ const ROOMS = {
         } else say(L(`${h.name} najde jen mokrou trávu a mlhu.`, `${h.name} finds only wet grass and mist.`));
         then(stay);
       }) },
+      { label: L('Odpočinout si u hřbitovní zdi (8 h)', 'Rest by the churchyard wall (8 h)'), ic: '💤', if: () => !f().rested, act: () => {
+        f().rested = 1;
+        const r = rnd(6);
+        rollFx(6, r, L(`Noční hlídka: padlo ${r} (1 = něco přijde)`, `Night watch: rolled ${r} (1 = something comes)`), r > 1);
+        if (r === 1) { say(L('Uprostřed noci zachrastí kosti. Z hrobů vylézají kostlivci!', 'In the middle of the night bones rattle. Skeletons climb out of the graves!'), '#ff7a6a'); pass(120); then(() => fight({ foes: [['skel', 2]], surprise: 'foes', win: () => { rest(false); then(stay); }, flee: () => go('inn') })); return; }
+        rest(false); then(stay);
+      } },
       { label: L('Zpátky do vesnice', 'Back to the village'), ic: '‹', dim: true, act: () => go('inn') },
     ],
   },
@@ -1078,8 +1185,11 @@ function fight(def) {
     const M = MON[id], hp = Math.max(1, dice(M.hp[0], M.hp[1], M.hp[2]) - (M.boss ? (4 - G.heroes.length) * 3 : 0));
     foes.push(Object.assign({}, M, { id, hp, max: hp, shp: hp, name: M.name + (cnt > 1 ? ' ' + (i + 1) : ''), state: 'ok' }));
   }
-  F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false, target: null };
-  for (const h of G.heroes) { h.held = 0; h.hidden = false; }
+  F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false, target: null, thrown: {} };
+  for (const h of G.heroes) {
+    h.held = 0; h.hidden = false;
+    if (h.ranged === undefined) { h.ranged = KIT[h.cls] || null; if (h.ranged === 'darts') G.items.darts = (G.items.darts || 0) + 5; }   // (a game saved before 0.9)
+  }
   startBattle(foes);
   gap();
   say(L('Boj!', 'Fight!'), '#ff7a6a'); sfx('fight');
@@ -1090,7 +1200,57 @@ function fight(def) {
     if (s) rollFx(10, s === 'foes' ? a : b, L(`Překvapení: padlo ${s === 'foes' ? a : b} (1 až 3 znamená překvapení). ${s === 'foes' ? 'Příšery vás překvapily!' : 'Překvapili jste příšery!'}`, `Surprise: rolled ${s === 'foes' ? a : b} (1 to 3 means surprised). ${s === 'foes' ? 'The monsters surprise you!' : 'You surprise the monsters!'}`), s === 'party');
   }
   F.free = s || null;
-  then(newRound);
+  // the monsters come on: the camera looks at them a moment
+  play(() => { const fu = units.filter(u => !G.heroes.includes(u.ref) && standing(u)); if (fu.length) { const c = V(); for (const u of fu) c.add(u.pos); orbit.focus = c.divideScalar(fu.length); } }, 1.1);
+  say(approachLine(def.foes), '#ff9a7a');
+  then(() => { focusOn(null); if (F.free === 'foes') newRound(); else deploy(); });
+}
+function approachLine(list) {
+  const id = list[0][0], n = list.reduce((a, x) => a + x[1], 0);
+  if (id === 'rat') return L('Krysy se valí ze tmy, oči jim svítí.', 'The rats pour out of the dark, eyes glowing.');
+  if (id === 'skel') return n > 1 ? L(`Kostlivci (${n}) se blíží, chrastí kostmi.`, `${n} skeletons come on, bones rattling.`) : L('Kostlivec se blíží.', 'A skeleton comes on.');
+  if (id === 'malrec' || id === 'zomb') return L('Utopenci se šourají z tůně. Malrec zvedá ruce.', 'The drowned shamble out of the pool. Malrec raises his hands.');
+  return L('Nepřátelé se blíží!', 'The enemies are coming!');
+}
+/* FORMATION: before the first round the party stands in its formation (front row: slots 0-2, back row: 3-5). Tap a hero,
+   then a blue hex to move them (or swap with whoever is there). The formation is remembered for the next fight. */
+const DEF_SLOT = { fighter: 1, cleric: 0, thief: 5, mage: 4 };
+function slotsFor(list) {
+  const A = arena(), used = new Set(), out = new Map();
+  const saved = list.filter(h => G.formation && G.formation[h.name] !== undefined), rest = list.filter(h => !saved.includes(h));
+  for (const h of [...saved, ...rest]) {
+    let k = G.formation && G.formation[h.name];
+    if (k === undefined || used.has(k) || !A.deploy[k]) k = [DEF_SLOT[h.cls], 1, 0, 2, 4, 3, 5].find(x => !used.has(x) && A.deploy[x]);
+    used.add(k); out.set(h, k);
+  }
+  return out;
+}
+function deploy() {
+  F.deploy = true; F.dsel = null;
+  setChoices(L('Rozestavení: klepni na hrdinu a pak na modré pole', 'Formation: tap a hero, then a blue hex'), [
+    { label: L('Do boje!', 'Fight!'), ic: '⚔', act: () => {
+      const A = arena(); G.formation = G.formation || {};
+      for (const h of G.heroes) { const u = unitOf(h); if (!u) continue; const k = A.deploy.findIndex(t => t[0] === u.tile[0] && t[1] === u.tile[1]); if (k >= 0) G.formation[h.name] = k; }
+      F.deploy = false; F.dsel = null; newRound();
+    } },
+    { label: L('Výchozí rozestavení', 'Default formation'), ic: '↺', dim: true, keep: true, act: () => {
+      const A = arena(), list = G.heroes.filter(h => !h.dead && unitOf(h));
+      G.formation = {};
+      const sl = slotsFor(list);
+      for (const h of list) { const u = unitOf(h); u.tile = null; }
+      for (const h of list) placeHero(unitOf(h), A.deploy[sl.get(h)]);
+      F.dsel = null; deploy();
+    } },
+  ]);
+}
+function placeHero(u, t) { u.tile = t; u.path = [t]; u.pose = 'walk'; }
+function deployTap(u, tile) {
+  const A = arena();
+  if (u && G.heroes.includes(u.ref)) {
+    if (F.dsel && F.dsel !== u.ref) { const a = unitOf(F.dsel), ta = a.tile; placeHero(a, u.tile); placeHero(u, ta); F.dsel = null; sfx('click'); return; }
+    F.dsel = F.dsel === u.ref ? null : u.ref; sfx('click'); return;
+  }
+  if (tile && F.dsel && A.deploy.some(t => t[0] === tile[0] && t[1] === tile[1]) && !unitAt(tile)) { placeHero(unitOf(F.dsel), tile); F.dsel = null; sfx('step'); }
 }
 const active = m => m.state === 'ok' || m.state === 'asleep';
 const foesLeft = () => F.foes.filter(active);
@@ -1108,6 +1268,9 @@ function winFight() {
     if (h.hp <= 0 && !h.dead) { say(L(`${h.name} se zase zvedá. Pořádně potlučen${gv(h, 'ý', 'á')}, ale v pořádku. (1 život)`, `${h.name} gets up again, badly bruised but all right. (1 HP)`)); heal(h, 1); }
     h.held = 0; h.hidden = false;
   }
+  pass(Math.max(1, F.round));
+  const back = Object.entries(F.thrown).filter(([, n]) => n > 0).map(([id, n]) => { const got = id === 'arrows' ? Math.floor(n / 2) : n; G.items[id] = (G.items[id] || 0) + got; return got ? `${AMMO[id].name} ${got}×` : ''; }).filter(Boolean);
+  if (back.length) say(L(`Posbíráte, co zbylo: ${back.join(', ')}.`, `You pick up what's left: ${back.join(', ')}.`), '#c8b8ff');
   const win = F.def.win;
   play(() => { cheer(); TRACKS.win.then = roomMusic(); Music.play('win'); }, 1.0);
   then(() => { endBattle(); F = null; win(); });
@@ -1149,26 +1312,43 @@ function nextHero() {
     const h = G.heroes[F.hi];
     if (!up(h)) continue;
     if (h.held > 0) { h.held--; say(L(`${h.name} je ztuhl${gv(h, 'ý', 'á')} a nemůže se hnout.`, `${h.name} is held and can't move.`), '#c8b8ff'); if (!h.held) then(() => tint(unitOf(h), null)); continue; }
-    F.actor = h; F.moved = false;
+    F.actor = h; F.moved = false; F.acted = false; F.mv = moveOf(h);
     then(() => focusOn(unitOf(h)));
     heroMenu(h); return;
   }
 }
 const doneTurn = () => { F.target = null; then(nextHero); };
+// the action is done: the turn ends, unless a thief still has some move left (hit and run)
+function acted() {
+  F.acted = true; F.target = null;
+  const h = F.actor;
+  if (h && up(h) && h.cls === 'thief' && F.mv > 0 && !F.over) then(() => { if (!endCheck() && F.actor === h) heroMenu(h); });
+  else doneTurn();
+}
+const adjFoes = u => foesLeft().filter(m => m.state === 'ok' && dist(unitOf(m).tile, u.tile) <= 1);
+const meleeOk = u => m => dist(unitOf(m).tile, u.tile) <= 1 || (F.mv > 0 && !!approachPath(u, unitOf(m)));
+const rangedOf = h => h.ranged && RANGED[h.ranged];
+const canShoot = h => { const w = rangedOf(h); return !!w && ammoOf(w) > 0 && !adjFoes(unitOf(h)).length; };
+const shootOk = h => m => dist(unitOf(m).tile, unitOf(h).tile) <= rangedOf(h).long;
 function heroMenu(h) {
   F.actor = h; F.target = null;
-  const u = unitOf(h);
+  const u = unitOf(h), w = rangedOf(h);
   const undead = foesLeft().some(m => m.undead && m.state === 'ok');
-  const canHit = attackable(u).length > 0;
-  F.target = { kind: 'foe', ok: m => attackable(u).includes(m), fn: m => meleeAttack(h, m) };   // tapping a monster attacks it
-  const list = [
-    { label: L('Útok', 'Attack'), ic: '⚔', note: h.weapon.name, if: () => canHit, keep: true, act: () => pickFoe(h, L('Na koho útočíš? (klepni na nepřítele)', 'Attack who? (tap an enemy)'), m => attackable(u).includes(m), m => meleeAttack(h, m)) },
+  const melee = meleeOk(u), canHit = !F.acted && foesLeft().some(melee);
+  const shoot = !F.acted && canShoot(h) && foesLeft().some(shootOk(h));
+  const two = h.cls === 'fighter' && !F.moved, volley = w && w.two && !F.moved;
+  // tapping a monster: next to you, strike; further off, shoot if you can; otherwise walk up and strike
+  if (!F.acted) F.target = { kind: 'foe', ok: m => melee(m) || (shoot && shootOk(h)(m)), fn: m => dist(unitOf(m).tile, u.tile) > 1 && shoot && shootOk(h)(m) ? shootAt(h, m) : meleeAttack(h, m) };
+  const list = F.acted ? [] : [
+    { label: L('Útok zblízka', 'Melee attack'), ic: '⚔', note: h.weapon.name + (two ? L(' · 2 útoky', ' · 2 attacks') : ''), if: () => canHit, keep: true, act: () => pickFoe(h, L('Na koho útočíš? (klepni na nepřítele)', 'Attack who? (tap an enemy)'), melee, m => meleeAttack(h, m)) },
+    { label: w ? (w.thrown ? L('Hodit', 'Throw') : L('Vystřelit', 'Shoot')) : '', ic: w ? w.ic : '', note: w ? `${w.name}${w.ammo ? ` · ${ammoOf(w)}×` : ''}${volley ? L(' · 2 šípy', ' · 2 arrows') : ''} · ${w.short}/${w.long}` : '', if: () => shoot, keep: true,
+      act: () => pickFoe(h, L(`Na koho? (dostřel ${w.short} polí, dál až ${w.long} s postihem -2)`, `At who? (range ${w.short} hexes, up to ${w.long} at -2)`), shootOk(h), m => shootAt(h, m)) },
     { label: L('Kouzla', 'Spells'), ic: '✦', note: `${h.spells}×`, if: () => h.spells > 0, act: () => spellMenu(h) },
     { label: L('Zahnat nemrtvé', 'Turn undead'), ic: '☀', if: () => h.cls === 'cleric' && undead && !F.turned[h.name], act: () => turnUndead(h) },
     { label: L('Schovat se', 'Hide'), ic: '◐', note: thiefSkill(h, 3) + ' %', if: () => h.cls === 'thief' && !h.hidden, act: () => {
       if (checkSkill(h, 3)) { h.hidden = true; say(L(`${h.name} mizí ve stínu. Příští útok bude zezadu: +4 k zásahu a dvojnásobné zranění.`, `${h.name} melts into the shadows. Next attack is a backstab: +4 to hit and double damage.`), '#7aea7a'); then(() => tint(u, 'hide')); }
       else say(L(`${h.name} nemůže najít dost tmavý kout.`, `${h.name} can't find a dark enough corner.`));
-      doneTurn();
+      acted();
     } },
     { label: L('Rozeznít úlomek zvonu', 'Ring the bell shard'), ic: '🔔', if: () => hasArt(h, 'shard') && !G.used.shard && undead, act: () => {
       G.used.shard = 1;
@@ -1178,13 +1358,18 @@ function heroMenu(h) {
         if (rnd(2) === 1) { m.state = 'gone'; F.xp += m.xp; const mu = unitOf(m); then(() => fleeAnim(mu)); say(`${m.name} ${m.ran}.`, '#7aea7a'); }
         else say(L(`${m.name} odolá.`, `${m.name} holds on.`), '#c8b8ff');
       }
-      doneTurn();
+      acted();
     } },
     { label: L('Předměty', 'Items'), ic: '⚱', if: () => G.items.potion > 0 || G.items.holy > 0, act: () => itemMenu(h) },
-    { label: L('Čekat', 'Wait'), ic: '⏸', dim: true, act: () => { say(L(`${h.name} čeká.`, `${h.name} waits.`), '#c8b8ff'); doneTurn(); } },
-    { label: L('Utéct', 'Run away'), ic: '🏃', if: () => !!F.def.flee, dim: true, act: () => runAway() },
+    { label: L('Běžet', 'Sprint'), ic: '»', note: L(`pohyb ${F.mv + moveOf(h)}, bez akce`, `move ${F.mv + moveOf(h)}, no action`), if: () => F.mv > 0, dim: true, act: () => {
+      F.mv += moveOf(h); F.acted = true;
+      say(L(`${h.name} se dá do běhu.`, `${h.name} breaks into a run.`), '#c8b8ff'); heroMenu(h);
+    } },
+    { label: L('Utéct z boje', 'Run away'), ic: '🏃', if: () => !!F.def.flee, dim: true, act: () => runAway() },
   ];
-  setChoices(F.moved ? L(`${h.name} (${clsName(h)}): co teď?`, `${h.name} (${clsName(h)}): what now?`) : L(`${h.name} (${clsName(h)}): klepni na pole, nebo vyber`, `${h.name} (${clsName(h)}): tap a tile, or pick`), list);
+  list.push({ label: F.moved || F.acted ? L('Konec tahu', 'End turn') : L('Čekat', 'Wait'), ic: '⏸', dim: true, act: () => { if (!F.moved && !F.acted) say(L(`${h.name} čeká.`, `${h.name} waits.`), '#c8b8ff'); doneTurn(); } });
+  const what = `${F.mv > 0 ? L(`pohyb ${F.mv}`, `move ${F.mv}`) : L('bez pohybu', 'no move')} · ${F.acted ? L('akce hotová', 'action used') : L('1 akce', '1 action')}`;
+  setChoices(L(`${h.name} (${clsName(h)}): ${what}${F.mv > 0 ? ' · klepni na pole' : ''}`, `${h.name} (${clsName(h)}): ${what}${F.mv > 0 ? ' · tap a hex' : ''}`), list);
   F.menuTop = true;
 }
 function back(h) { return () => heroMenu(h); }
@@ -1200,20 +1385,71 @@ function pickHero(h, q, ok, fn) {
   list.push({ label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true });
   setChoices(q, list);
 }
-// walk next to someone first if needed (and allowed), then do it
+// walk next to someone first if needed (and allowed); false if the hero was cut down on the way
 function approach(h, targetUnit) {
   const u = unitOf(h);
-  if (u === targetUnit || dist(u.tile, targetUnit.tile) <= 1) return;
+  if (u === targetUnit || dist(u.tile, targetUnit.tile) <= 1) return true;
   const path = approachPath(u, targetUnit);
-  if (path) { walk(u, path); F.moved = true; }
+  return path ? heroWalk(h, path) : true;
 }
-function meleeAttack(h, m) { approach(h, unitOf(m)); attack(h, m); }
+// a hero walks: monsters next to a hex they leave (and not next to the one they step to) get a free strike first
+function heroWalk(h, path) {
+  const u = unitOf(h), hitters = [];
+  let from = u.tile;
+  for (const t of path) {
+    for (const m of foesLeft()) if (m.state === 'ok' && !hitters.includes(m) && dist(unitOf(m).tile, from) <= 1 && dist(unitOf(m).tile, t) > 1) hitters.push(m);
+    from = t;
+  }
+  if (hitters.length && h.cls === 'thief') say(L(`${h.name} se vysmekne, než stačí nepřítel máchnout.`, `${h.name} slips away before the enemy can swing.`), '#c8b8ff');
+  else if (hitters.length) {
+    say(L(`${h.name} ustupuje a odkryje se!`, `${h.name} backs off and leaves an opening!`), '#ff9a7a');
+    for (const m of hitters) if (up(h)) foeAttack(m, h, true);
+    if (!up(h)) { F.mv = 0; return false; }
+  }
+  F.mv = Math.max(0, F.mv - path.length); F.moved = true;
+  walk(u, path);
+  return true;
+}
+function meleeAttack(h, m) {
+  const still = !F.moved;
+  if (!approach(h, unitOf(m))) { acted(); return; }
+  attack(h, m);
+  // a fighter who stood their ground swings twice: the same enemy, or another one next to them
+  if (h.cls === 'fighter' && still && up(h) && !F.over) {
+    const u = unitOf(h), next = active(m) && m.state === 'ok' ? m : adjFoes(u)[0] || foesLeft().find(x => dist(unitOf(x).tile, u.tile) <= 1);
+    if (next) { say(L('Druhý útok!', 'Second attack!'), '#c8b8ff'); attack(h, next); }
+  }
+  acted();
+}
+// a shot or a throw (the bow: two arrows if the archer stood still)
+function shootAt(h, m) {
+  const w = rangedOf(h), u = unitOf(h), n = w.two && !F.moved ? Math.min(2, ammoOf(w)) : 1;
+  for (let i = 0; i < n; i++) {
+    if (!active(m) || F.over) break;
+    if (w.ammo) { G.items[w.ammo]--; if (w.thrown || w.ammo === 'arrows') F.thrown[w.ammo] = (F.thrown[w.ammo] || 0) + 1; }
+    const mu = unitOf(m), d = dist(u.tile, mu.tile), far = d > w.short;
+    play(() => { setPose(u, 'throw', mu); sfx('swing'); missile(u, mu, w.ammo === 'arrows' ? 0xe8d8b0 : w.ammo ? 0xc8d0e0 : 0x9a9088, !!w.thrown || !w.ammo); }, 0.55);
+    if (m.state === 'asleep') { say(L(`${m.name} se už neprobudí.`, `${m.name} never wakes up.`), '#7aea7a'); kill(m); continue; }
+    const bk = h.hidden; h.hidden = false;
+    if (bk) then(() => tint(u, null));
+    const bonus = dexMissile(h.st.dex) + (h.race === 'halfling' ? 1 : 0) + (h.race === 'elf' && h.ranged === 'bow' ? 1 : 0) + (F.bless ? 1 : 0) + (bk ? 4 : 0) - (far ? 2 : 0) - (G.hungry ? 1 : 0), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus;
+    const hit = r === 20 || (r !== 1 && tot >= need);
+    rollFx(20, r, L(`${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'pole' : d < 5 ? 'pole' : 'polí'}${far ? ', daleko -2' : ''}): padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`,
+                    `${h.name}: ${w.name.toLowerCase()} → ${m.name} (${d} ${d === 1 ? 'hex' : 'hexes'}${far ? ', long range -2' : ''}): rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
+    if (!hit) { then(() => floatNum(mu, L('vedle', 'miss'), 'miss')); continue; }
+    let dmg = Math.max(1, dice(w.dmg[0], w.dmg[1], w.dmg[2]) + (w.str ? strDmg(h.st.str) : 0));
+    if (m.halfEdged && w.edged) { dmg = Math.max(1, Math.floor(dmg / 2)); say(L('Hrot projede mezi žebry: jen poloviční zranění.', 'The point slips between the ribs: only half damage.'), '#c8b8ff'); }
+    if (m.halfEdged && !w.ammo) say(L('Kámen roztříští kost!', 'The stone cracks the bone!'), '#7aea7a');
+    wound(m, dmg);
+  }
+  acted();
+}
 function attack(h, m) {
   const u = unitOf(h), mu = unitOf(m);
   play(() => strike(u, mu), 0.3);
   if (m.state === 'asleep') {
     say(L(`${h.name} udeří. ${m.name} se už neprobudí.`, `${h.name} strikes. ${m.name} never wakes up.`), '#7aea7a');
-    kill(m); doneTurn(); return;
+    kill(m); return;
   }
   const bk = h.hidden; h.hidden = false;
   if (bk) then(() => tint(u, null));
@@ -1228,7 +1464,6 @@ function attack(h, m) {
     if (m.halfEdged && w.edged) { d = Math.max(1, Math.floor(d / 2)); say(L('Čepel sklouzne po kostech: jen poloviční zranění.', 'The blade slides off the bones: only half damage.'), '#c8b8ff'); }
     wound(m, d);
   } else then(() => floatNum(mu, L('vedle', 'miss'), 'miss'));
-  doneTurn();
 }
 function wound(m, d) {
   m.hp -= d;
@@ -1240,7 +1475,7 @@ function wound(m, d) {
 function kill(m) {
   m.state = 'dead'; m.hp = Math.min(m.hp, 0); F.xp += m.xp;
   const u = unitOf(m);
-  then(() => { m.shp = 0; deathAnim(u); });
+  play(() => { m.shp = 0; focusOn(u); deathAnim(u); }, 0.6);
   if (m.boss) {
     say(L('Malrec padá na kolena. Zvon ztichne a utopenci se propadnou zpátky do tůně.', 'Malrec falls to his knees. The bell goes quiet and the drowned sink back into the pool.'), '#7aea7a');
     goneAll();
@@ -1282,25 +1517,25 @@ function spellMenu(h) {
   F.target = null;
   setChoices(L(`${h.name}: které kouzlo? (zbývá ${h.spells}×)`, `${h.name}: which spell? (${h.spells} left)`), list);
 }
-const touchable = h => x => x === h || dist(unitOf(h).tile, unitOf(x).tile) <= 1 || (!F.moved && !!approachPath(unitOf(h), unitOf(x)));
+const touchable = h => x => x === h || dist(unitOf(h).tile, unitOf(x).tile) <= 1 || (F.mv > 0 && !!approachPath(unitOf(h), unitOf(x)));
 function castSpell(h, id) {
   const sp = SPELLS[id], u = unitOf(h);
   if (sp.target === 'foe') {
-    pickFoe(h, L(`${sp.name}: na koho? (klepni na nepřítele)`, `${sp.name}: at who? (tap an enemy)`), () => true, m => {
+    pickFoe(h, L(`${sp.name}: na koho? (dostřel 8 polí)`, `${sp.name}: at who? (range 8 hexes)`), m => dist(u.tile, unitOf(m).tile) <= 8, m => {
       h.spells--; const mu = unitOf(m);
       play(() => { sfx('spell'); setPose(u, 'cast', mu); missile(u, mu, 0x7ab8ff); }, 0.6);
       const d = dice(1, 4, 1);
       say(L(`${h.name} sesílá Magickou střelu. Zářivý blesk zasáhne cíl: ${m.name}.`, `${h.name} casts Magic Missile. A bolt of light strikes ${m.name}.`), '#6aa8ff');
       if (m.state === 'asleep') m.state = 'ok';
-      wound(m, d); doneTurn();
+      wound(m, d); acted();
     });
     return;
   }
   if (sp.target === 'hero') {
     pickHero(h, L(`${sp.name}: koho vyléčit? (dotykem: klepni na hrdinu)`, `${sp.name}: heal who? (by touch: tap a hero)`), x => !x.dead && x.hp < x.max && touchable(h)(x), x => {
-      h.spells--; approach(h, unitOf(x));
+      h.spells--; if (!approach(h, unitOf(x))) { acted(); return; }
       play(() => { sfx('spell'); setPose(u, 'cast', unitOf(x)); }, 0.4);
-      cure(h, x); doneTurn();
+      cure(h, x); acted();
     });
     return;
   }
@@ -1309,7 +1544,7 @@ function castSpell(h, id) {
   if (id === 'bless') {
     F.bless = true;
     then(() => { for (const x of G.heroes) { const xu = unitOf(x); if (xu) burst(xu.pos, 0xffe070, 30, 1.5); } });
-    say(L(`${h.name} sesílá Požehnání. Teplé světlo: +1 k útoku pro celou družinu až do konce boje.`, `${h.name} casts Bless. A warm light: +1 to hit for the whole party until the fight ends.`), '#6aa8ff'); doneTurn(); return;
+    say(L(`${h.name} sesílá Požehnání. Teplé světlo: +1 k útoku pro celou družinu až do konce boje.`, `${h.name} casts Bless. A warm light: +1 to hit for the whole party until the fight ends.`), '#6aa8ff'); acted(); return;
   }
   if (id === 'sleep') {
     let hd = dice(2, 4);
@@ -1326,7 +1561,7 @@ function castSpell(h, id) {
       say(L(`${m.name} usíná.`, `${m.name} falls asleep.`), '#6aa8ff');
     }
     if (!slept) say('Nikdo neusnul.');
-    doneTurn();
+    acted();
   }
 }
 function cure(h, x) {
@@ -1345,16 +1580,16 @@ function turnUndead(h) {
     say(L(`„Odejděte!“ (2k6 = ${k}: tolik nemrtvých uteče)`, `"Begone!" (2d6 = ${k}: that many undead flee)`), '#f0e070');
     for (const m of und) { if (k <= 0 || m.turn > need) break; m.state = 'gone'; F.xp += m.xp; k--; const mu = unitOf(m); then(() => fleeAnim(mu)); say(`${m.name} ${m.ran}.`, '#7aea7a'); }
   } else say(L('Mrtví jdou dál.', 'The dead keep coming.'));
-  doneTurn();
+  acted();
 }
 function itemMenu(h) {
   const u = unitOf(h);
   const list = [
     { label: L('Léčivý lektvar', 'Healing potion'), ic: '🧪', note: `${G.items.potion}×`, if: () => G.items.potion > 0, act: () => pickHero(h, L('Komu dát lektvar? (sobě, nebo hrdinovi vedle sebe)', 'Give the potion to who? (yourself, or a hero next to you)'), x => !x.dead && x.hp < x.max && touchable(h)(x), x => {
-      G.items.potion--; approach(h, unitOf(x));
+      G.items.potion--; if (!approach(h, unitOf(x))) { acted(); return; }
       const got = heal(x, dice(2, 4, 2));
       say(L(`${x.name} vypije lektvar: +${got} (${x.hp}/${x.max}).`, `${x.name} drinks the potion: +${got} (${x.hp}/${x.max}).`), '#7aea7a');
-      doneTurn();
+      acted();
     }) },
     { label: L(`Hodit svěcenou vodu`, `Throw holy water`), ic: '💧', note: `${G.items.holy}×`, if: () => G.items.holy > 0, act: () => pickFoe(h, L('Na koho hodit? (dohodíš 6 polí, pálí jen nemrtvé)', 'Throw it at who? (reaches 6 tiles, only burns the undead)'), m => dist(u.tile, unitOf(m).tile) <= 6, m => {
       G.items.holy--;
@@ -1363,7 +1598,7 @@ function itemMenu(h) {
       const bonus = dexMissile(h.st.dex), need = thac0Of(h) - m.ac, r = rnd(20), tot = r + bonus, hit = r === 20 || (r !== 1 && tot >= need);
       rollFx(20, r, L(`${h.name} hází svěcenou vodu: padlo ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, potřeba ${need} nebo víc. ${hit ? 'Zásah!' : 'Vedle.'}`, `${h.name} throws holy water: rolled ${r}${bonus ? (bonus > 0 ? ' + ' : ' - ') + Math.abs(bonus) + ' = ' + tot : ''}, needs ${need} or more. ${hit ? 'Hit!' : 'Miss.'}`), hit);
       if (hit) { if (m.undead) { say(L('Zasyčí to a kouří se!', 'It hisses and smokes!'), '#f0e070'); then(() => burst(mu.pos, 0xffffff, 30, 1.6)); wound(m, dice(2, 4)); } else say(L(`${m.name} je teď jen mokrá.`, `${m.name} is just wet now.`)); }
-      doneTurn();
+      acted();
     }) },
     { label: L('Zpět', 'Back'), ic: '‹', act: back(h), dim: true },
   ];
@@ -1395,7 +1630,8 @@ function foeAct(m) {
       F.cast.hold = 1;
       play(() => { setPose(mu, 'cast', hu); beam(mu, hu, 0xb06aff); sfx('spell'); }, 0.6);
       say(L(`Malrec ukáže na hrdinu ${h.name}: „Ztuhni!“`, `Malrec points at ${h.name}: "Be still!"`), '#c06aff');
-      if (hasArt(h, 'amulet')) say(L(`Amulet na krku hrdiny ${h.name} zazáří a kouzlo se rozplyne.`, `The amulet around ${h.name}'s neck glows and the spell fades.`), '#7aea7a');
+      if (h.race === 'elf') say(L(`${h.name} se jen pousměje. Elfa takové kouzlo nespoutá.`, `${h.name} just smiles. Such a spell can't bind an elf.`), '#7aea7a');
+      else if (hasArt(h, 'amulet')) say(L(`Amulet na krku hrdiny ${h.name} zazáří a kouzlo se rozplyne.`, `The amulet around ${h.name}'s neck glows and the spell fades.`), '#7aea7a');
       else if (!checkSave(h, 'spell')) { h.held = 2; say(L(`${h.name} ztuhne na 2 kola.`, `${h.name} is held for 2 rounds.`), '#ff7a6a'); then(() => tint(hu, 'held')); } else say(L(`${h.name} se z toho vytřese.`, `${h.name} shakes it off.`));
       return;
     }
@@ -1636,6 +1872,11 @@ function person(root, o) {
   if (!o.noFace) {
     const eyeM = fm(root, { color: 0x1a1018 });
     for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.035, 0.05, 0.02), eyeM, s * 0.06, 0.02, 0.16, head).castShadow = false;
+    // a face: nose, brows, mouth
+    mesh(box(0.045, 0.06, 0.05), skin, 0, -0.025, 0.17, head).castShadow = false;
+    const brow = fm(root, { color: 0x3a2618 });
+    for (const s of [-1, 1]) mesh(box(0.06, 0.016, 0.02), brow, s * 0.062, 0.065, 0.158, head).rotation.z = s * -0.18;
+    mesh(box(0.065, 0.014, 0.02), fm(root, { color: 0x8a3a30 }), 0, -0.085, 0.152, head).castShadow = false;
   }
   for (const s of [-1, 1]) {
     const arm = new THREE.Group(); arm.position.set(s * 0.28, 0.82, 0); rig.add(arm);
@@ -1658,6 +1899,47 @@ function sword(root, hand, len = 0.62, col = 0xd8dce8) {
   mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.14, 6), fm(root, { color: 0x4a2a18 }), 0, 0, 0, w);
   return w;
 }
+// the dwarf's great axe: a long haft and a broad double blade
+function greatAxe(root, hand) {
+  const w = new THREE.Group(); hand.add(w); w.rotation.x = Math.PI / 2 - 0.35;
+  mesh(new THREE.CylinderGeometry(0.03, 0.035, 1.05, 7), fm(root, { color: 0x4a2a14 }), 0, 0.3, 0, w);
+  const steel = fm(root, { color: 0xc8ccd8, metalness: 0.85, roughness: 0.28 });
+  for (const s of [-1, 1]) {
+    const b = new THREE.Shape(); b.moveTo(0, -0.1); b.quadraticCurveTo(0.12, -0.2, 0.3, -0.28); b.quadraticCurveTo(0.22, 0, 0.3, 0.28); b.quadraticCurveTo(0.12, 0.2, 0, 0.1); b.lineTo(0, -0.1);
+    const m = mesh(new THREE.ExtrudeGeometry(b, { depth: 0.035, bevelEnabled: false }), steel, 0, 0.72, -0.017, w); m.scale.x = s;
+  }
+  mesh(new THREE.ConeGeometry(0.04, 0.16, 6), steel, 0, 0.92, 0, w);
+  return w;
+}
+// what a race changes on a hero's figure: build, beard, ears, hair
+function raceLook(root, h) {
+  const P = root.userData.parts, hc = HAIR[(h.hair || 0) % HAIR.length], hm = fm(root, { color: h.race === 'dwarf' && h.g === 'm' ? [0x8a3a18, 0x5a3a1e, 0x3a2a20, 0xb05a28, 0x7a7a7a][(h.hair || 0) % 5] : hc, roughness: 0.95 });
+  const skin = fm(root, { color: 0xe8b896 });
+  if (h.race === 'dwarf') {
+    root.scale.set(1.18, 0.8, 1.18); P.head.scale.set(0.92, 1.2, 0.92);
+    if (h.g === 'm') {
+      // a wild beard down to the belt, a big moustache, bushy brows
+      const b = mesh(new THREE.ConeGeometry(0.15, 0.44, 9), hm, 0, -0.27, 0.13, P.head); b.rotation.x = Math.PI - 0.3; b.scale.z = 0.55;
+      for (const s of [-1, 1]) { const c = mesh(new THREE.SphereGeometry(0.1, 8, 6), hm, s * 0.09, -0.1, 0.1, P.head); c.scale.set(0.9, 1.1, 0.7); }
+      for (const s of [-1, 1]) { const m = mesh(box(0.11, 0.045, 0.05), hm, s * 0.055, -0.06, 0.17, P.head); m.rotation.z = s * -0.35; }
+      for (const s of [-1, 1]) mesh(box(0.08, 0.03, 0.04), hm, s * 0.06, 0.075, 0.155, P.head).rotation.z = s * -0.25;
+      for (const s of [-1, 1]) mesh(new THREE.SphereGeometry(0.08, 8, 6), hm, s * 0.15, -0.04, 0.03, P.head);
+    } else {
+      for (const s of [-1, 1]) { const br = mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.42, 6), hm, s * 0.15, -0.22, 0.04, P.head); br.rotation.z = s * 0.12; }
+    }
+    if (h.cls === 'fighter') for (const s of [-1, 1]) { const horn = mesh(new THREE.ConeGeometry(0.06, 0.34, 8), fm(root, { color: 0xe8dcc0, roughness: 0.6 }), s * 0.27, 0.22, 0, P.head); horn.rotation.z = s * -0.75; }
+  }
+  if (h.race === 'elf') {
+    root.scale.set(0.93, 1.07, 0.93); P.head.scale.set(1.05, 0.95, 1.05);
+    for (const s of [-1, 1]) { const e = mesh(new THREE.ConeGeometry(0.035, 0.2, 5), skin, s * 0.19, 0.06, -0.01, P.head); e.rotation.z = s * -1.15; e.rotation.x = -0.25; }
+    mesh(box(0.3, 0.42, 0.08), hm, 0, -0.16, -0.13, P.head);
+  }
+  if (h.race === 'halfling') {
+    root.scale.set(0.76, 0.68, 0.76); P.head.scale.setScalar(1.15);
+    for (let i = 0; i < 7; i++) { const a = Math.PI * (0.9 + i / 6 * 1.2); mesh(new THREE.SphereGeometry(0.065, 7, 5), hm, Math.cos(a) * 0.15, 0.1 + Math.sin(a * 2) * 0.02, Math.sin(a) * 0.13 - 0.03, P.head); }
+    for (const s of [-1, 1]) mesh(box(0.13, 0.05, 0.24), skin, s * 0.1, 0.02, 0.05, root.userData.rig);   // big bare feet
+  }
+}
 const FIG = {
   fighter(root, h) {
     const P = person(root, { torso: 0x9aa0b0, torsoMat: { metalness: 0.65, roughness: 0.38 }, legs: 0x4a4458, sleeve: 0x7a8090 });
@@ -1667,11 +1949,13 @@ const FIG = {
     mesh(new THREE.SphereGeometry(0.19, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), helm, 0, 0.14, 0, P.head);
     mesh(box(0.05, 0.12, 0.26), fm(root, { color: 0xd83a3a }), 0, 0.33, -0.04, P.head);
     mesh(box(0.44, 0.06, 0.28), fm(root, { color: 0x6a4a2a }), 0, 0.46, 0, root.userData.rig);   // belt
-    sword(root, P.handR, 0.66);
-    const sh = new THREE.Group(); sh.position.set(-0.06, 0.12, 0.12); P.armL.add(sh); sh.rotation.y = -0.25;
+    const dwarf = h && h.race === 'dwarf';
+    if (dwarf) greatAxe(root, P.handR); else sword(root, P.handR, 0.66);
+    const sh = new THREE.Group();
+    if (dwarf) { sh.position.set(0, 0.68, -0.17); root.userData.rig.add(sh); sh.scale.setScalar(0.85); } else { sh.position.set(-0.06, 0.12, 0.12); P.armL.add(sh); sh.rotation.y = -0.25; }
     mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 18), fm(root, { color: 0xb83030 }), 0, 0, 0, sh).rotation.x = Math.PI / 2;
     mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 10), fm(root, { color: 0xe8c050, metalness: 0.8, roughness: 0.3 }), 0, 0, 0.02, sh).rotation.x = Math.PI / 2;
-    P.armL.rotation.x = -0.5;
+    if (!dwarf) P.armL.rotation.x = -0.5;
   },
   cleric(root, h) {
     const P = person(root, { torso: 0xeee8d8, legs: 0x8a8a98, sleeve: 0xa0a4b0 });
@@ -1843,6 +2127,7 @@ const FIG = {
 function makeFig(kind, hero) {
   const root = figBase(kind);
   FIG[kind](root, hero);
+  if (hero && hero.race && hero.race !== 'human') raceLook(root, hero);
   root.traverse(o => { if (o.isMesh) o.userData.fig = root; });
   return root;
 }
@@ -1980,6 +2265,8 @@ const BUILD = {
       U.anims.push(t => { const a = t * (0.7 + i * 0.1) + ph; b.position.set(Math.cos(a) * r, 8 + Math.sin(t * 2 + i) * 0.6, -0.9 + Math.sin(a) * r); b.rotation.y = -a; const fl = Math.sin(t * 18 + i) * 0.8; wl.rotation.y = fl; wr.rotation.y = -fl; });
     }
     U.views.hill = { look: [0, 2.6, -3], yaw: 0.12, pitch: 0.1, dist: 13 };
+    U.arena = { cx: 0, cz: 2.2, w: 7, d: 7, y: 0, hfn, blocked: [], deploy: [[2, 5], [3, 5], [4, 5], [2, 6], [3, 6], [4, 6]], foes: [[2, 0], [4, 0], [3, 1], [1, 1], [5, 1]] };
+    U.views.battle = { look: [0, 0, 2.2], yaw: 0, pitch: 0.8, dist: 9.5 };
     U.views.title = { look: [0, 3.2, -5], yaw: 0.4, pitch: 0.12, dist: 15 };
   },
   nave(g) {
@@ -2029,7 +2316,7 @@ const BUILD = {
     const hole = mesh(box(1.0, 0.02, 1.0), mat({ color: 0x000000 }), 0, 0.005, -7.6, g); hole.castShadow = false;
     U.trap = trap;
     addMist(g, { count: 18, x: [-5, 5], y: [0.1, 0.8], z: [-8, 8], scale: [2, 4], opacity: 0.22, speed: 0.12, color: 0x8a9ac8 });
-    U.arena = { cx: 0, cz: 1.5, w: 5, d: 7, y: 0, blocked: [[0, 2]], heroes: [[2, 5], [1, 5], [3, 6], [2, 6]], foes: [[1, 0], [3, 0], [2, 1], [0, 1], [4, 1]] };
+    U.arena = { cx: 0, cz: 1.5, w: 5, d: 8, y: 0, blocked: [[0, 2]], deploy: [[1, 6], [2, 6], [3, 6], [1, 7], [2, 7], [3, 7]], foes: [[1, 0], [3, 0], [2, 1], [0, 1], [3, 1]] };
     U.views.nave = { look: [0, 1.0, -0.5], yaw: 0, pitch: 0.28, dist: 9.5 };
     U.views.altar = { look: [0, 0.8, -6.6], yaw: 0.55, pitch: 0.42, dist: 5 };
     U.views.battle = { look: [0, 0, 1.2], yaw: 0, pitch: 0.82, dist: 8.5 };
@@ -2084,7 +2371,7 @@ const BUILD = {
     g.add(new THREE.HemisphereLight(0x50456a, 0x100c10, 0.9));
     const top = new THREE.SpotLight(0xffb070, 2.5, 20, 0.9, 0.6, 1.2); top.position.set(0, 4.4, -1); top.target.position.set(0, 0, -2); top.castShadow = true; top.shadow.mapSize.set(1024, 1024); top.shadow.bias = -0.001; g.add(top); g.add(top.target);
     addMist(g, { count: 14, x: [-4, 4], y: [0.1, 0.6], z: [-12, 6], scale: [2, 3.5], opacity: 0.16, speed: 0.1, color: 0x9a90b0 });
-    U.arena = { cx: 0, cz: -1.5, w: 7, d: 8, y: 0, blocked: [[3, 3], [3, 4]], heroes: [[3, 6], [2, 6], [4, 7], [3, 7]], foes: [[2, 0], [4, 0], [3, 1], [1, 1], [5, 1]] };
+    U.arena = { cx: 0, cz: -1.5, w: 7, d: 9, y: 0, blocked: [[2, 3], [3, 4], [2, 5]], deploy: [[2, 7], [3, 7], [4, 7], [2, 8], [3, 8], [4, 8]], foes: [[2, 0], [4, 0], [3, 1], [1, 1], [5, 1]] };
     U.views.crypt = { look: [0, 1.0, -2.5], yaw: 0, pitch: 0.3, dist: 8.5 };
     U.views.door = { look: [0, 1.6, -11.8], yaw: 0.25, pitch: 0.12, dist: 5.2 };
     U.views.ossuary = { look: [-3.8, 0.8, -7], yaw: 1.2, pitch: 0.18, dist: 3.2 };
@@ -2298,7 +2585,7 @@ const BUILD = {
     U.anims.push(t => { mila.rotation.z = Math.sin(t * 7) * 0.015; mila.userData.parts.head.rotation.y = Math.sin(t * 0.8) * 0.4; });
     for (let i = 0; i < 7; i++) { const a = Math.PI * (0.15 + i * 0.1); candle(g, Math.cos(a) * 5.6, 0, -7 + Math.sin(a) * 5.6, i === 3 ? 2 : 0); }
     addMist(g, { count: 16, x: [-6, 6], y: [0.1, 0.7], z: [-11, -3], scale: [2.5, 5], opacity: 0.2, speed: 0.15, color: 0x80c0a8 });
-    U.arena = { cx: 0, cz: 1.5, w: 7, d: 5, y: 0, blocked: [], heroes: [[3, 3], [2, 3], [4, 4], [3, 4]], foes: [[3, 0], [1, 0], [5, 0], [2, 1], [4, 1]] };
+    U.arena = { cx: 0, cz: 1.5, w: 7, d: 6, y: 0, blocked: [], deploy: [[2, 4], [3, 4], [4, 4], [2, 5], [3, 5], [4, 5]], foes: [[3, 0], [1, 0], [5, 0], [2, 1], [4, 1]] };
     U.views.bell = { look: [0, 3.0, -4], yaw: 0, pitch: 0.12, dist: 11.5 };
     U.views.battle = { look: [0, 0, 1.0], yaw: 0, pitch: 0.75, dist: 9 };
   },
@@ -2453,20 +2740,34 @@ function showSet(id, view) {
 }
 function arena() { return curSet.userData.arena; }
 const key = t => t[0] + ',' + t[1];
-function tileWorld(t) { const A = arena(); return V(A.cx + t[0] - (A.w - 1) / 2, A.y, A.cz + t[1] - (A.d - 1) / 2); }
+/* THE BATTLE GRID is made of hexes, rows offset ("odd-r": every odd row is pushed half a hex right). A hex is 1 wide;
+   rows are 0.866 apart. Distance counts hex steps (by cube coordinates); every hex has 6 neighbours. */
+const HEX_Z = Math.sqrt(3) / 2, HEX_R = 1 / Math.sqrt(3);
+function hexPos(A, t) {
+  const x = A.cx + t[0] + (t[1] & 1) * 0.5 - (A.w - 1) / 2 - 0.25, z = A.cz + (t[1] - (A.d - 1) / 2) * HEX_Z;
+  return V(x, A.hfn ? A.hfn(x, z) : A.y, z);
+}
+function tileWorld(t) { return hexPos(arena(), t); }
 const inArena = t => { const A = arena(); return t[0] >= 0 && t[1] >= 0 && t[0] < A.w && t[1] < A.d && !A.blocked.some(b => b[0] === t[0] && b[1] === t[1]); };
+// the hex under a point on the floor (or null)
+function hexAt(p) {
+  const A = arena(); let best = null, bd = 0.6 * 0.6;
+  for (let j = 0; j < A.d; j++) for (let i = 0; i < A.w; i++) { const c = hexPos(A, [i, j]), d = (c.x - p.x) ** 2 + (c.z - p.z) ** 2; if (d < bd) { bd = d; best = [i, j]; } }
+  return best;
+}
 const standing = u => !(u.ref.state === 'dead' || u.ref.state === 'gone');
 const unitAt = (t, but) => units.find(u => u !== but && standing(u) && u.tile[0] === t[0] && u.tile[1] === t[1]);
-const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
+const cube = t => { const x = t[0] - (t[1] - (t[1] & 1)) / 2; return [x, t[1], -x - t[1]]; };
+const dist = (a, b) => { const p = cube(a), q = cube(b); return Math.max(Math.abs(p[0] - q[0]), Math.abs(p[1] - q[1]), Math.abs(p[2] - q[2])); };
 const unitOf = ref => units.find(u => u.ref === ref);
-const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const NB_EVEN = [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]], NB_ODD = [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]];
 // every tile reachable from a unit (through free tiles), with its steps and the tile before it
 function flood(u, max) {
   const seen = new Map([[key(u.tile), { t: u.tile, s: 0, prev: null }]]), q = [u.tile];
   while (q.length) {
     const t = q.shift(), s = seen.get(key(t)).s;
     if (s >= max) continue;
-    for (const [dx, dy] of NB) {
+    for (const [dx, dy] of (t[1] & 1 ? NB_ODD : NB_EVEN)) {
       const n = [t[0] + dx, t[1] + dy];
       if (seen.has(key(n)) || !inArena(n) || unitAt(n, u)) continue;
       seen.set(key(n), { t: n, s: s + 1, prev: t }); q.push(n);
@@ -2475,20 +2776,16 @@ function flood(u, max) {
   return seen;
 }
 function pathFrom(map, t) { const out = []; let k = map.get(key(t)); while (k && k.prev) { out.unshift(k.t); k = map.get(key(k.prev)); } return out; }
-function reach(u) { const m = flood(u, CLASSES[u.ref.cls] ? CLASSES[u.ref.cls].move : u.ref.move); m.delete(key(u.tile)); return m; }
+function reach(u) { const m = flood(u, F && F.actor === u.ref ? F.mv : CLASSES[u.ref.cls] ? moveOf(u.ref) : u.ref.move); m.delete(key(u.tile)); return m; }
 // the shortest walk (within this turn's move) to a tile next to the target, or null
 function approachPath(u, target) {
-  if (F && F.moved) return null;
+  if (F && !(F.mv > 0)) return null;
   const m = reach(u);
   let best = null;
   for (const v of m.values()) if (dist(v.t, target.tile) <= 1 && (!best || v.s < best.s)) best = v;
   return best ? pathFrom(m, best.t) : null;
 }
-function attackable(u) {
-  const near = foesLeft().filter(m => dist(unitOf(m).tile, u.tile) <= 1);
-  if (F.moved) return near;
-  return foesLeft().filter(m => near.includes(m) || approachPath(u, unitOf(m)));
-}
+function attackable(u) { return foesLeft().filter(meleeOk(u)); }
 // a monster's way to the nearest hero still standing (any distance), and that hero
 function chase(mu) {
   const m = flood(mu, 40);
@@ -2537,14 +2834,14 @@ function startBattle(foes) {
   foes.forEach((m, i) => {
     let u = preview[i];
     if (u && u.kind === (m.id === 'malrec' ? 'malrec' : m.id)) { u.ref = m; u.preview = false; }
-    else { const t = A.foes[i % A.foes.length]; u = addUnit(m, m.id, unitAt(t) ? freeNear(t) : t); }
+    else { const t = A.foes[i % A.foes.length]; u = addUnit(m, m.id, unitAt(t) ? freeNear(t) : t); u.pos.z -= 2.5; u.fig.position.copy(u.pos); u.path = [u.tile]; u.pose = 'walk'; }
   });
   for (const u of preview) if (u.preview) removeUnit(u);
   preview = [];
-  // the heroes walk in: the tough ones in front
-  const order = G.heroes.filter(h => !h.dead).sort((a, b) => ROLE[a.cls] - ROLE[b.cls]);
-  order.forEach((h, i) => {
-    const t = A.heroes[i] && !unitAt(A.heroes[i]) ? A.heroes[i] : freeNear(A.heroes[0]);
+  // the heroes walk in to their places in the formation
+  const order = G.heroes.filter(h => !h.dead).sort((a, b) => ROLE[a.cls] - ROLE[b.cls]), slots = slotsFor(order);
+  order.forEach(h => {
+    const d = A.deploy[slots.get(h)], t = d && !unitAt(d) ? d : freeNear(A.deploy[0]);
     const u = addUnit(h, h.cls, t, h);
     u.pos.z += 2.5; u.fig.position.copy(u.pos); u.path = [t]; u.pose = 'walk';
     if (h.hp <= 0) setPose(u, 'down');
@@ -2566,7 +2863,7 @@ function endBattle() {
 // the grid on the floor, the blue tiles you can walk to, the gold ring under whoever's turn it is
 let gridMesh = null, ring = null;
 const tileMeshes = [];
-const tileGeo = new THREE.PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2);
+const tileGeo = new THREE.CircleGeometry(HEX_R * 0.9, 6, Math.PI / 6).rotateX(-Math.PI / 2);
 const tileMat = { move: new THREE.MeshBasicMaterial({ color: 0x5ab8ff, transparent: true, opacity: 0.45, depthWrite: false }),
                   foe: new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.4, depthWrite: false }),
                   hero: new THREE.MeshBasicMaterial({ color: 0x5ad43f, transparent: true, opacity: 0.4, depthWrite: false }) };
@@ -2579,8 +2876,15 @@ function showGrid(on) {
   if (ring) { ring.parent && ring.parent.remove(ring); ring = null; }
   if (!on) return;
   const A = arena();
-  gridMesh = new THREE.Mesh(new THREE.PlaneGeometry(A.w, A.d).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex('grid', [A.w, A.d]), transparent: true, opacity: 0.22, depthWrite: false }));
-  gridMesh.position.set(A.cx, A.y + 0.015, A.cz); gridMesh.renderOrder = 1; curSet.add(gridMesh);
+  const pts = [];
+  for (let j = 0; j < A.d; j++) for (let i = 0; i < A.w; i++) {
+    if (!inArena([i, j])) continue;
+    const c = hexPos(A, [i, j]);
+    for (let k = 0; k < 6; k++) for (const kk of [k, k + 1]) { const a = Math.PI / 6 + kk * Math.PI / 3, x = c.x + Math.cos(a) * HEX_R * 0.97, z = c.z + Math.sin(a) * HEX_R * 0.97; pts.push(x, (A.hfn ? A.hfn(x, z) : A.y) + 0.02, z); }
+  }
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  gridMesh = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0xfff0d0, transparent: true, opacity: 0.3, depthWrite: false }));
+  gridMesh.renderOrder = 1; curSet.add(gridMesh);
   ring = new THREE.Mesh(new THREE.RingGeometry(0.36, 0.46, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthWrite: false }));
   ring.renderOrder = 2; ring.visible = false; curSet.add(ring);
 }
@@ -2597,9 +2901,15 @@ function markTiles(list) {
 }
 // what you can do now, shown on the floor: blue tiles to walk to, red under monsters you can hit, green under heroes
 function refreshMarks() {
+  if (F && F.deploy && !busy()) {
+    markTiles(arena().deploy.filter(t => inArena(t)).map(t => ({ t, kind: F.dsel && !unitAt(t) ? 'move' : 'hero' })));
+    const su = F.dsel && unitOf(F.dsel);
+    if (ring) { ring.visible = !!su; if (su) ring.position.set(su.pos.x, su.pos.y + 0.03, su.pos.z); }
+    return;
+  }
   if (!F || !F.actor || busy() || !choices.length) { markTiles(null); if (ring) ring.visible = false; return; }
   const u = unitOf(F.actor), list = [];
-  if (F.menuTop && !F.moved) for (const v of reach(u).values()) list.push({ t: v.t, kind: 'move' });
+  if (F.menuTop && F.mv > 0) for (const v of reach(u).values()) list.push({ t: v.t, kind: 'move' });
   if (F.target) for (const o of units) if (standing(o) && (F.target.kind === 'foe' ? !G.heroes.includes(o.ref) && active(o.ref) : G.heroes.includes(o.ref)) && F.target.ok(o.ref)) list.push({ t: o.tile, kind: F.target.kind });
   markTiles(list);
   if (ring) { ring.visible = true; ring.position.set(u.pos.x, u.pos.y + 0.03, u.pos.z); }
@@ -2888,18 +3198,20 @@ for (const k in ICONS) {
 let pRen = null, pScene = null, pCam = null;
 const portraits = {};
 function portrait(h) {
-  const key = [h.cls, h.g, h.hair].join();
+  const key = [h.cls, h.g, h.hair, h.race].join();
   if (portraits[key]) return portraits[key];
   if (!renderer) return iconURL[h.cls];
   try {
     if (!pRen) {
       pRen = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: true, alpha: true, preserveDrawingBuffer: true });
-      pRen.setSize(192, 192, false); pRen.setClearColor(0x000000, 0);
+      pRen.setSize(256, 256, false); pRen.setClearColor(0x000000, 0);
       pRen.outputColorSpace = THREE.SRGBColorSpace; pRen.toneMapping = THREE.ACESFilmicToneMapping; pRen.toneMappingExposure = 1.2;
       pScene = new THREE.Scene();
-      pScene.add(new THREE.HemisphereLight(0xdde4ff, 0x302838, 1.4));
-      const k = new THREE.DirectionalLight(0xfff0dd, 2.6); k.position.set(1.5, 2.5, 3); pScene.add(k);
-      const r = new THREE.DirectionalLight(0x9ab8ff, 1.6); r.position.set(-2, 1.5, -2); pScene.add(r);
+      // torchlight from the front left, a cold rim from behind: the look of a painted portrait
+      pScene.add(new THREE.HemisphereLight(0x8a90b0, 0x201820, 0.9));
+      const k = new THREE.DirectionalLight(0xffc890, 3.2); k.position.set(2, 2.2, 2.6); pScene.add(k);
+      const r = new THREE.DirectionalLight(0x9ab8ff, 3.0); r.position.set(-2.5, 1.8, -2); pScene.add(r);
+      const f = new THREE.DirectionalLight(0xffe8d0, 0.8); f.position.set(-1, 0.5, 3); pScene.add(f);
       pCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
     }
     const fig = makeFig(h.cls, h);
@@ -2908,10 +3220,22 @@ function portrait(h) {
     if (P.armL && h.cls !== 'fighter') P.armL.rotation.x = -0.15;
     if (P.armR) P.armR.rotation.x = -0.45;
     pScene.add(fig);
-    const tall = h.cls === 'mage', big = h.cls === 'malrec';
-    pCam.position.set(0.45, big ? 1.32 : tall ? 1.22 : 1.08, big ? 1.8 : tall ? 1.8 : 1.55); pCam.lookAt(0, big ? 1.12 : tall ? 1.08 : 0.92, 0);
+    // frame the head and shoulders, whatever the size of the figure
+    fig.updateMatrixWorld(true);
+    const hp = V(); P.head.getWorldPosition(hp);
+    const sc = Math.max(fig.scale.x, fig.scale.y), tall = h.cls === 'mage' ? 0.1 * sc : 0;
+    pCam.position.set(hp.x + 0.5 * sc, hp.y + 0.12 * sc + tall, hp.z + 1.55 * sc); pCam.lookAt(hp.x, hp.y - 0.1 * sc + tall, hp.z);
     pRen.render(pScene, pCam);
-    portraits[key] = pRen.domElement.toDataURL();
+    // the medallion: a dark painted ground in the class's colour, the figure, a vignette
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const g2 = cv.getContext('2d'), col = (CLASSES[h.cls] && CLASSES[h.cls].col) || '#8a6aff';
+    let bg = g2.createRadialGradient(150, 90, 10, 128, 128, 190); bg.addColorStop(0, col + '88'); bg.addColorStop(0.45, '#2a2234'); bg.addColorStop(1, '#0c0a12');
+    g2.fillStyle = bg; g2.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 260; i++) { g2.fillStyle = `rgba(255,240,220,${Math.random() * 0.035})`; g2.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 10, 1 + Math.random() * 3); }
+    g2.drawImage(pRen.domElement, 0, 0, 256, 256);
+    bg = g2.createRadialGradient(128, 118, 80, 128, 128, 182); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,0.75)');
+    g2.fillStyle = bg; g2.fillRect(0, 0, 256, 256);
+    portraits[key] = cv.toDataURL('image/jpeg', 0.88);
     pScene.remove(fig);
     return portraits[key];
   } catch (e) { return iconURL[h.cls]; }
@@ -2977,7 +3301,8 @@ $('title').addEventListener('click', e => {
 function newSetup() {
   const names = NAMES.slice().sort(() => Math.random() - 0.5);
   const me = nice(PX.cleanName(profile.name));
-  party = CLASS_IDS.map((cls, i) => { const [nm, g] = i === 0 && me ? [me, 'm'] : names[i]; const h = makeHero(nm, g, cls, rollStats()); h.hair = rnd(5) - 1; return h; });
+  const races = { fighter: 'dwarf', cleric: 'human', mage: 'elf', thief: 'halfling' };
+  party = CLASS_IDS.map((cls, i) => { const [nm, g] = i === 0 && me ? [me, 'm'] : names[i]; const h = makeHero(nm, g, cls, rollStats(), races[cls]); h.hair = rnd(5) - 1; return h; });
   party.size = 4;
 }
 const cleanHeroName = v => { const x = String(v || '').replace(/[^A-Za-zÁ-žÀ-ÿ0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10); return PX.censor ? PX.censor(x) : x; };
@@ -2993,8 +3318,9 @@ function renderSetup() {
         <div class="row"><input data-name="${i}" value="${esc(h.name)}" maxlength="10" aria-label="${L('Jméno', 'Name')}">
           <button class="pill${h.g === 'm' ? ' on' : ''}" data-g="${i}m">${L('kluk', 'boy')}</button><button class="pill${h.g === 'f' ? ' on' : ''}" data-g="${i}f">${L('holka', 'girl')}</button></div>
         <button class="pill" data-rr="${i}" title="${L('Hodit znovu', 'Reroll')}">🎲 ${L('znovu', 'reroll')}</button>
-        <div class="cls">${CLASS_IDS.map(c => `<button class="pill${h.cls === c ? ' on' : ''}" style="--c:${CLASSES[c].col}" data-c="${i}${c}">${CLASSES[c].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
-        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · ${L('obrana', 'AC')} <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i></div></div>`;
+        <div class="cls">${RACE_IDS.map(r => `<button class="pill${(h.race || 'human') === r ? ' on' : ''}" data-r="${i}${r}">${RACES[r].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
+        <div class="cls">${CLASS_IDS.map(c => `<button class="pill${h.cls === c ? ' on' : ''}" style="--c:${CLASSES[c].col}" data-c="${i}${c}"${raceOf(h).cls.includes(c) ? '' : ' disabled'}>${CLASSES[c].name[h.g === 'f' ? 1 : 0]}</button>`).join('')}</div>
+        <div class="st">${STATS.map(k => `${STAT_SHORT[k]} <b>${h.st[k]}</b>`).join(' · ')}<br>❤ <b>${h.max}</b> · ${L('obrana', 'AC')} <b>${acOf(h)}</b> · ${h.weapon.name}<br><i>${C.about}</i><br><span class="muted">${raceName(h)}: ${raceOf(h).info}</span></div></div>`;
     }).join('')}
     <h4>${L('Jak tvrdé tažení?', 'How hard a campaign?')}</h4>
     <div class="row"><button class="pill${party.mode !== 'hard' ? ' on' : ''}" data-mode="story">${L('Příběh', 'Story')}</button><button class="pill${party.mode === 'hard' ? ' on' : ''}" style="--c:#ff6a50" data-mode="hard">${L('Hardcore', 'Hardcore')}</button></div>
@@ -3012,6 +3338,7 @@ $('setup').addEventListener('click', e => {
   if (d.g) { party[+d.g[0]].g = d.g[1]; }
   if (d.rr) { const h = party[+d.rr]; h.vals = rollStats(); setClass(h, h.cls); sfx('dice'); }
   if (d.c) setClass(party[+d.c[0]], d.c.slice(1));
+  if (d.r) { const h = party[+d.r[0]]; h.race = d.r.slice(1); setClass(h, RACES[h.race].cls.includes(h.cls) ? h.cls : 'fighter'); }
   if (d.a === 'back') { setState('title'); return; }
   if (d.a === 'go') { startGame(); return; }
   renderSetup();
@@ -3020,7 +3347,7 @@ $('setup').addEventListener('input', e => { if (e.target.dataset.title) party.ti
 $('setup').addEventListener('change', e => { const i = e.target.dataset.name; if (i !== undefined) { const v = cleanHeroName(e.target.value); if (v) party[+i].name = nice(v); renderSetup(); } });
 function startGame() {
   const heroes = party.slice(0, party.size).map(h => JSON.parse(JSON.stringify(h)));
-  G = { mode: party.mode === 'hard' ? 'hard' : 'story', heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: 2 }, arts: {}, clues: {}, allies: {}, done: {}, mission: null, f: {}, used: {}, room: null };
+  G = { mode: party.mode === 'hard' ? 'hard' : 'story', heroes, gold: 20 + 15 * heroes.length, items: { potion: 2, holy: 1, food: heroes.length * 2, darts: heroes.filter(h => h.ranged === 'darts').length * 5 }, time: 18 * 60, formation: {}, arts: {}, clues: {}, allies: {}, done: {}, mission: null, f: {}, used: {}, room: null };
   if (!TESTING) { G.slot = newSlotId(); writeSlot(G, G.slot, { name: (party.title || '').trim() || L(`Družina: ${heroes[0].name}`, `${heroes[0].name}'s party`), kind: 'campaign' }); }
   setState('map');
 }
@@ -3171,10 +3498,11 @@ partyEl.addEventListener('click', e => {
   sfx('click'); openSheet(h);
 });
 function renderInv() {
-  const key = [G.gold, G.items.food, G.items.potion, G.items.holy, F && F.round, F && F.bless].join();
+  const key = [G.gold, G.items.food, G.items.potion, G.items.holy, G.items.arrows, G.items.knives, G.items.darts, F && F.round, F && F.bless, G.time, G.hungry].join();
   if (key === invKey) return;
   invKey = key;
-  invEl.innerHTML = `<span class="gold">${G.gold} ${L('zl.', 'gold')}</span><span>🧀 ${L('jídlo', 'food')} ${G.items.food}</span><span class="good">🧪 ${L('lektvary', 'potions')} ${G.items.potion}</span><span class="holy">💧 ${L('svěcená voda', 'holy water')} ${G.items.holy}</span>` +
+  invEl.innerHTML = `<span class="clock">${clockTxt()}</span>${G.hungry ? `<span class="bad">${L('hlad!', 'hungry!')}</span>` : ''}<span class="gold">${G.gold} ${L('zl.', 'gold')}</span><span>🧀 ${L('jídlo', 'food')} ${G.items.food}</span><span class="good">🧪 ${L('lektvary', 'potions')} ${G.items.potion}</span><span class="holy">💧 ${L('svěcená voda', 'holy water')} ${G.items.holy}</span>` +
+    Object.keys(AMMO).filter(id => G.items[id] > 0).map(id => `<span>${AMMO[id].ic} ${AMMO[id].name.toLowerCase()} ${G.items[id]}</span>`).join('') +
     (F ? `<span>${L('kolo', 'round')} ${F.round}${F.bless ? L(' · požehnání +1', ' · blessed +1') : ''}</span>` : '');
 }
 const btnHTML = (c, i) => `<button class="ch${c.dim ? ' dim' : ''}" data-i="${i}"><kbd>${i + 1}</kbd>${c.ic ? `<span class="ic">${c.ic}</span>` : ''}<span>${esc(typeof c.label === 'function' ? c.label() : c.label)}</span>${c.note ? `<small>${esc(typeof c.note === 'function' ? c.note() : c.note)}</small>` : ''}</button>`;
@@ -3209,7 +3537,8 @@ function choose1(i) { const c = choices[i]; if (!c || busy()) return; doChoice(c
 function renderBanner() {
   let txt = '';
   if (F && !film) {
-    if (F.actor && choices.length && !busy()) txt = L(`Kolo ${F.round} · na tahu: ${F.actor.name}`, `Round ${F.round} · ${F.actor.name}'s turn`);
+    if (F.deploy) txt = L('Rozestavení družiny', 'Set up the formation');
+    else if (F.actor && choices.length && !busy()) txt = L(`Kolo ${F.round} · na tahu: ${F.actor.name}`, `Round ${F.round} · ${F.actor.name}'s turn`);
     else if (F.order && F.order[F.step] !== 'party' && F.round) txt = L(`Kolo ${F.round} · tah příšer`, `Round ${F.round} · the monsters' turn`);
     else if (F.round) txt = L(`Kolo ${F.round}`, `Round ${F.round}`);
   }
@@ -3270,7 +3599,7 @@ function openSheet(h) {
   const canCure = calm && h.cls === 'cleric' && h.spells > 0 && up(h) && G.heroes.some(x => !x.dead && x.hp < x.max);
   const canDrink = calm && G.items.potion > 0 && !h.dead && h.hp < h.max;
   $('sheet').innerHTML = `<div class="card" style="--c:${C.col}">
-    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${lvl(h) < MAX_LEVEL ? L(`${clsName(h)}, ${lvl(h)}. úroveň · ${h.xp} / ${XP_LEVEL[lvl(h)]} zkušeností do ${lvl(h) + 1}. úrovně`, `Level ${lvl(h)} ${clsName(h)} · ${h.xp} / ${XP_LEVEL[lvl(h)]} XP to level ${lvl(h) + 1}`) : L(`${clsName(h)}, ${lvl(h)}. úroveň (nejvyšší)`, `Level ${lvl(h)} ${clsName(h)} (the highest)`)}</div></div></div>
+    <div class="sh-head"><img class="pt" src="${portrait(h)}" alt=""><div><h2>${esc(h.name)}</h2><div class="muted">${raceName(h)} · ${lvl(h) < MAX_LEVEL ? L(`${clsName(h)}, ${lvl(h)}. úroveň · ${h.xp} / ${XP_LEVEL[lvl(h)]} zkušeností do ${lvl(h) + 1}. úrovně`, `Level ${lvl(h)} ${clsName(h)} · ${h.xp} / ${XP_LEVEL[lvl(h)]} XP to level ${lvl(h) + 1}`) : L(`${clsName(h)}, ${lvl(h)}. úroveň (nejvyšší)`, `Level ${lvl(h)} ${clsName(h)} (the highest)`)}</div></div></div>
     <div class="sh-cols">
       <table class="stats">${STATS.map(k => `<tr class="${k === C.prime ? 'prime' : ''}"><th>${STAT_NAME[k]}</th><td>${h.st[k]}</td><td class="muted">${notes[k] || ''}</td></tr>`).join('')}</table>
       <div class="combat">
@@ -3278,10 +3607,12 @@ function openSheet(h) {
         <div>${L('Obrana', 'Armour class')} ${acOf(h)} <span class="muted">(${C.armourName}; ${L('čím menší, tím lepší', 'lower is better')})</span></div>
         <div>${w.name} <span class="muted">${w.n}${L('k', 'd')}${w.s}${w.b ? '+' + w.b : ''}${w.hit ? ', +' + w.hit + L(' k útoku', ' to hit') : ''}</span></div>
         <div>${L('Útok: potřeba', 'To hit: THAC0')} ${thac0Of(h)} <span class="muted">${L('mínus obrana cíle', 'minus the target\'s AC')}</span></div>
-        <div>${L('Chůze v boji', 'Move in a fight')}: ${C.move} ${L('pole', 'tiles')}</div>
+        ${h.ranged ? `<div>${RANGED[h.ranged].ic} ${RANGED[h.ranged].name} <span class="muted">${RANGED[h.ranged].info}</span></div>` : `<div class="muted">${L('Bez zbraně na dálku (koupíte ji v Thornwallu).', 'No ranged weapon (buy one in Thornwall).')}</div>`}
+        <div>${L('Tah v boji', 'A turn in a fight')}: ${L('pohyb', 'move')} ${moveOf(h)} ${L('polí + 1 akce', 'hexes + 1 action')} <span class="muted">${h.cls === 'fighter' ? L('(když nejde: 2 útoky)', '(standing still: 2 attacks)') : h.cls === 'thief' ? L('(může jít i po útoku; vysmekne se)', '(may move after attacking; slips away)') : ''}</span></div>
         ${h.spellMax ? `<div class="magic">${L('Kouzla', 'Spells')} ${h.spells} / ${h.spellMax} ${L('dnes', 'today')}</div>` : ''}
       </div>
     </div>
+    <div class="muted" style="margin-top:6px"><b>${raceName(h)}</b>: ${raceOf(h).info}</div>
     <h4>${L('Záchranné hody', 'Saving throws')} <span class="muted">(${L('k20, tohle nebo víc', 'd20, this or more')})</span></h4>
     <div class="chips">${L(['Jed', 'Hůlky', 'Ztuhnutí', 'Dech', 'Kouzla'], ['Poison', 'Wands', 'Paralysis', 'Breath', 'Spells']).map((nm, i) => `<span>${nm} <b>${saveOf(h, ['poison', 'wand', 'para', 'breath', 'spell'][i])}</b></span>`).join('')}</div>
     ${h.cls === 'thief' ? `<h4>${L('Zlodějské dovednosti', 'Thief skills')} <span class="muted">(${L('k100, tohle nebo méně', 'd100, this or less')})</span></h4><div class="chips">${SKILL_NAMES.map((nm, k) => `<span>${nm} <b>${thiefSkill(h, k)} %</b></span>`).join('')}</div>` : ''}
@@ -3363,7 +3694,7 @@ function renderMap() {
   const el = $('map');
   el.innerHTML = `<div class="mtop">
       <div class="mparty">${G.heroes.map((h, i) => `<button class="mh${h.dead ? ' dead' : ''}" data-${h.dead ? 'recruit' : 'hero'}="${i}" style="--c:${CLASSES[h.cls].col}"><img class="pt" src="${portrait(h)}" alt=""><span><b>${esc(h.name)}</b><i>${h.dead ? L('✝ pohřbít a najmout nového', '✝ bury, hire a new one') : `${L('úr.', 'lv')} ${lvl(h)} · ❤ ${h.max}`}</i></span></button>`).join('')}</div>
-      <div class="mbtns"><span class="mgold">${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>${!hardcore() ? `<button class="ch" data-m="saveas">💾</button>` : ''}<button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
+      <div class="mbtns"><span class="mgold">${clockTxt()} · ${G.gold} ${L('zl.', 'gold')}</span><button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>${!hardcore() ? `<button class="ch" data-m="saveas">💾</button>` : ''}<button class="ch dim" data-m="title">‹ ${L('Menu', 'Menu')}</button></div>
     </div>
     <div class="mtitle">${L('Království Aldmere', 'The Kingdom of Aldmere')}<small>${L('táhni prstem · dvěma prsty přibliž', 'drag to move · pinch to zoom')}</small></div>
     <div id="mlabels"></div>`;
@@ -3398,7 +3729,7 @@ $('map').addEventListener('click', e => {
     if (!confirm(L(`Pohřbít hrdinu ${old.name}? Cech dobrodruhů pošle nového hrdinu (1. úroveň).`, `Bury ${old.name}? The Adventurers' Guild sends a new hero (level 1).`))) return;
     unequip(old);
     const taken = G.heroes.map(x => x.name), [nm, g] = NAMES.filter(([x]) => !taken.includes(x))[0] || ['Ash', 'm'];
-    const h = makeHero(nm, g, old.cls, rollStats());
+    const h = makeHero(nm, g, old.cls, rollStats(), old.race || 'human');
     for (const id in G.arts) if (G.arts[id] === i) G.arts[id] = -1;
     G.heroes[i] = h; store2(); renderMap(); setState('map'); return;
   }
@@ -3480,8 +3811,14 @@ function openMissionMap() {
 }
 // starting and ending a mission: the party rests in between (full HP and spells)
 function startMission(M) {
-  for (const h of G.heroes) { if (h.dead) continue; h.hp = h.shp = h.max; h.spells = h.spellMax; h.tried = {}; h.held = 0; h.hidden = false; }
+  for (const h of G.heroes) { if (h.dead) continue; h.tried = {}; h.held = 0; h.hidden = false; }
   G.mission = M.id; G.f = {}; G.used = {};
+  G.time = G.time || 18 * 60;
+  if (M.id === 'bell') {
+    // the bell rings at night: the party sets off in the evening; Mila drowns at 03:00
+    const c = clockOf(G.time); if (c.h < 18) pass((18 - c.h) * 60 - c.m);
+    f().deadline = (clockOf(G.time).day) * 1440 + 180;
+  }
   startPlay(M.start);
 }
 // leaving a mission half way: what the heroes found and learned stays (gold, experience, artefacts, clues); the
@@ -3494,7 +3831,6 @@ function leaveMission() {
 }
 function endMission() {
   G.mission = null; G.f = {}; G.room = null;
-  for (const h of G.heroes) if (!h.dead) { h.hp = h.shp = h.max; h.spells = h.spellMax; }
   store2();
   setState('map');
 }
@@ -3818,7 +4154,7 @@ function tapWorld(x, y) {
   if (state !== 'play' || sheet || menu) return;
   if (film) return;                                   // (a film is skipped only with its Skip button)
   if (busy()) { if (cur && cur.k === 'wait') tapped = true; else skip = true; return; }
-  if (!F || !F.actor || !choices.length) return;
+  if (!F || !(F.actor || F.deploy) || !choices.length) return;
   ndc.set(x / window.innerWidth * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const figs = units.filter(u => standing(u) && !u.gone).map(u => u.fig);
@@ -3827,16 +4163,17 @@ function tapWorld(x, y) {
   let tile = null;
   if (!u) {
     const A = arena(), pl = new THREE.Plane(V(0, 1, 0), -A.y), p = V();
-    if (ray.ray.intersectPlane(pl, p)) { tile = [Math.round(p.x - A.cx + (A.w - 1) / 2), Math.round(p.z - A.cz + (A.d - 1) / 2)]; u = unitAt(tile); }
+    if (ray.ray.intersectPlane(pl, p)) { tile = hexAt(p); u = tile && unitAt(tile); }
   }
+  if (!tile) { const A = arena(), pl = new THREE.Plane(V(0, 1, 0), -A.y), p = V(); if (ray.ray.intersectPlane(pl, p)) tile = hexAt(p); }
+  if (F.deploy) { deployTap(u, tile); return; }
   const h = F.actor, hu = unitOf(h);
-  if (!tile) { const A = arena(), pl = new THREE.Plane(V(0, 1, 0), -A.y), p = V(); if (ray.ray.intersectPlane(pl, p)) tile = [Math.round(p.x - A.cx + (A.w - 1) / 2), Math.round(p.z - A.cz + (A.d - 1) / 2)]; }
   if (u && !(F.target && F.target.ok(u.ref)) && u !== hu && tile && !unitAt(tile)) u = null;
   if (u && F.target && F.target.ok(u.ref) && (F.target.kind === 'foe' ? !G.heroes.includes(u.ref) : G.heroes.includes(u.ref))) { const fn = F.target.fn; doChoice(() => fn(u.ref)); return; }
   if (u === hu) { sfx('click'); doChoice(() => heroMenu(h)); return; }
-  if (tile && !u && F.menuTop && !F.moved) {
+  if (tile && !u && F.menuTop && F.mv > 0) {
     const m = reach(hu), v = m.get(key(tile));
-    if (v) { const path = pathFrom(m, tile); doChoice(() => { walk(hu, path); F.moved = true; then(() => { focusOn(hu); heroMenu(h); }); }); }
+    if (v) { const path = pathFrom(m, tile); doChoice(() => { const ok = heroWalk(h, path); then(() => { focusOn(hu); if (ok && (F.mv > 0 || !F.acted)) heroMenu(h); else doneTurn(); }); }); }
   }
 }
 window.addEventListener('keydown', e => {
@@ -3886,7 +4223,7 @@ window.PQ = {
   get G() { return G; }, get F() { return F; }, get music() { return Music.id; }, get intro() { return intro ? [intro.i, film ? film.t : 0] : null; }, get state() { return state; }, get busy() { return busy(); }, get film() { return !!film; },
   choices: () => choices.map(c => c.label), choose: i => choose1(i), skip: () => { skip = true; if (film) endFilm(); if (cur && cur.k === 'wait') tapped = true; },
   units: () => units.map(u => ({ name: u.ref.name, tile: u.tile, pose: u.pose })), tap: tapWorld, toScreen: (x, y, z) => toScreen(V(x, y, z)),
-  tileScreen: t => toScreen(tileWorld(t)),
+  tileScreen: t => toScreen(tileWorld(t)), portrait: h => portrait(h),
 };
 // TESTING A SCENE: adad?scena=bell (or ?scene=) starts a throwaway party of 4 straight in that scene of the Drowned
 // Bell, without films. A test game is never saved, so the real campaign stays as it was. Scenes: inn, hill, nave,
