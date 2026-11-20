@@ -203,6 +203,16 @@
   @media (max-aspect-ratio: 1/1) { .slot { grid-template-columns: 1fr auto; } .sl-pics { grid-column: 1 / 3; } }
   .modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,6,12,.72); padding: 16px; box-sizing: border-box; pointer-events: auto; }
   .card.small { max-width: 300px; display: flex; flex-direction: column; gap: 8px; }
+  #lib { z-index: 7; } .card.libc { max-width: 760px; height: 100%; display: flex; flex-direction: column; padding: 12px 14px; }
+  .ltabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .ltabs [data-x] { margin-left: auto; }
+  .lbody { overflow: auto; flex: 1; margin-top: 10px; padding-right: 4px; font-family: 'Alegreya', Georgia, serif; font-size: 17px; line-height: 1.45; }
+  .lbody h3 { color: var(--gold); margin: 14px 0 4px; font-size: 18px; } .lbody p { margin: 6px 0; } .lbody ul { margin: 6px 0; padding-left: 20px; }
+  .lbody .cht { margin: 12px 0 4px; } .toc { display: flex; flex-wrap: wrap; gap: 5px; } .toc .pill { font-size: 13px; padding: 4px 9px; }
+  .tw { overflow-x: auto; margin: 8px 0; } .lt { border-collapse: collapse; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.3; min-width: 100%; }
+  .lt th { text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); padding: 4px 8px 4px 0; } .lt td { padding: 5px 8px 5px 0; border-bottom: 1px solid #2a2240; vertical-align: top; }
+  .beast { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); } .beast h3 { margin-top: 0; }
+  .bimg { width: 92px; height: 92px; border-radius: 50%; flex: none; border: 2px solid #5a4a3a; } .bimg.q { display: flex; align-items: center; justify-content: center; font-size: 40px; background: #1a1424; color: var(--muted); }
+  .beast .chips { font-family: system-ui, sans-serif; font-size: 13px; }
   .sh-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
   .sh-head img { width: 96px; height: 96px; }
   .sh-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -265,6 +275,7 @@
 <div id="fade"></div>
 <div id="sheet" class="modal" hidden></div>
 <div id="menu" class="modal" hidden></div>
+<div id="lib" class="modal" hidden></div>
 <script src="common.js"></script>
 <script type="module">
 /* ==========================================================================
@@ -289,7 +300,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 /* --- 1. SETUP --------------------------------------------------------------- */
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const SAVE_KEY = 'pixelQuest.save', GAME_KEY = 'pixelQuest.campaign';
 const save = { sfx: true, music: true, wins: 0 };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); } catch (e) { /* new player */ }
@@ -1185,6 +1196,7 @@ function fight(def) {
     const M = MON[id], hp = Math.max(1, dice(M.hp[0], M.hp[1], M.hp[2]) - (M.boss ? (4 - G.heroes.length) * 3 : 0));
     foes.push(Object.assign({}, M, { id, hp, max: hp, shp: hp, name: M.name + (cnt > 1 ? ' ' + (i + 1) : ''), state: 'ok' }));
   }
+  G.seen = G.seen || {}; for (const [id] of def.foes) G.seen[id] = 1;
   F = { def, foes, round: 0, xp: 0, bless: false, turned: {}, cast: {}, over: false, target: null, thrown: {} };
   for (const h of G.heroes) {
     h.held = 0; h.hidden = false;
@@ -3273,7 +3285,7 @@ function renderTitle() {
   const saved = loadGame();
   const b = $('title').querySelector('[data-t="cont"]'); b.disabled = !saved;
   const T = (k, txt) => { $('title').querySelector(`[data-t="${k}"]`).textContent = txt; };
-  T('new', L('Nové tažení', 'New campaign')); T('saves', L(`Uložené hry (${slotList().length})`, `Saved games (${slotList().length})`)); $('title').querySelector('[data-t="saves"]').disabled = !slotList().length; T('cont', L('Pokračovat', 'Continue')); T('rules', L('Jak se hraje', 'How to play')); T('intro', L('Úvod: příběh Aldmeru', 'Intro: the story of Aldmere'));
+  T('new', L('Nové tažení', 'New campaign')); T('saves', L(`Uložené hry (${slotList().length})`, `Saved games (${slotList().length})`)); $('title').querySelector('[data-t="saves"]').disabled = !slotList().length; T('cont', L('Pokračovat', 'Continue')); T('rules', L('Pravidla, příručka, bestiář', 'Rules, handbook, bestiary')); T('intro', L('Úvod: příběh Aldmeru', 'Intro: the story of Aldmere'));
   T('snd', L('Zvuk: ', 'Sound: ') + (save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')));
   T('mus', L('Hudba: ', 'Music: ') + (save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')));
   T('lang', L('English', 'Čeština')); T('games', L('‹ Všechny hry', '‹ All games'));
@@ -3292,7 +3304,7 @@ $('title').addEventListener('click', e => {
   if (a === 'intro') playIntro(() => setState('title'));
   if (a === 'cont') { const g = loadGame(); if (g) playSaved(g); }
   if (a === 'saves') setState('saves');
-  if (a === 'rules') setState('rules');
+  if (a === 'rules') openLib('how');
   if (a === 'snd') { save.sfx = !save.sfx; store(); renderTitle(); }
   if (a === 'lang') { const d = PX.Settings.load(); d.lang = LANG === 'cs' ? 'en' : 'cs'; PX.Settings.save(d); location.reload(); return; }
   if (a === 'mus') { save.music = save.music === false; store(); renderTitle(); }
@@ -3646,13 +3658,165 @@ $('sheet').addEventListener('click', e => {
   }
   closeSheet();
 });
+/* --- 12a. THE LIBRARY: How to play, the Player's Handbook and the Bestiary --------------------------------------
+   Built from the game's own tables (CLASSES, RACES, RANGED, SPELLS, MON, ...), so the books always say what the game
+   does. Open from the title ("Rule books") and from the pause menu. The Bestiary shows the common beasts; a boss only
+   once the party has met them (G.seen). */
+let lib = null;                                            // { tab, ch } while the library is open
+const dtxt = d => `${d[0]}${L('k', 'd')}${d[1]}${d[2] ? (d[2] > 0 ? '+' : '') + d[2] : ''}`;
+const tbl = (head, rows) => `<div class="tw"><table class="lt"><tr>${head.map(x => `<th>${x}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join('')}</tr>`).join('')}</table></div>`;
+const MON_LORE = {
+  rat: L('Krysy z krypt jsou velké jako kočky a tlusté z toho, co najdou v rakvích. Jedna je jen hnus; dvacet je smrt pro toho, kdo upadne. Bojí se ohně a utečou, když jich padne pár.',
+         'Crypt rats grow as big as cats, fat on what they find in coffins. One is only foul; twenty are death to anyone who falls. They fear fire and run once a few of them die.'),
+  skel: L('Kosti, které někdo nenechal odpočinout. Nemyslí, necítí strach a nikdy neutečou, jen před svatým znamením. Čepel po nich klouže: na kostlivce je lepší palcát, kladivo nebo kámen z praku.',
+          'Bones that someone wouldn\'t let rest. They don\'t think, feel no fear, and never run, except from a holy symbol. Blades slide off them: a mace, a hammer or a sling stone is better.'),
+  zomb: L('Utopenci z tůní pod Zvonem. Pomalí, nafouklí vodou, ale silní: jejich stisk drtí kosti. Spánek na ně neplatí. Svěcená voda je pálí.',
+          'The drowned from the pools under the Bell. Slow, bloated with water, but strong: their grip crushes bone. Sleep doesn\'t touch them. Holy water burns them.'),
+  malrec: L('Kdysi kněz Thornwallu. Smutek z bratrovy smrti ho dovedl k hlasu ze Zvonu. Umí kouzlo, které ztuhne hrdinu na místě, a temný blesk. Amulet ho chrání před Spánkem. Není docela ztracen.',
+            'Once Thornwall\'s priest. Grief for his brother led him to the voice in the Bell. He knows a spell that holds a hero still, and a dark bolt. His amulet guards him from Sleep. He isn\'t quite lost.'),
+};
+function libHow() {
+  return L(`<h3>Hra je vypravěč</h3><p>Řekne vám, kde jste a co vidíte. Družina se poradí a vybere, co udělá. Telefon si posílejte: v boji hraje každý hrdina sám za sebe.</p>
+    <h3>Kostky rozhodují</h3><p>Každý hod je vidět. Hod na vlastnost (třeba Sílu): k20, musí padnout tvoje číslo nebo méně. Útok: k20 plus bonusy, musí padnout aspoň tolik, kolik hra napíše.</p>
+    <h3>Boj</h3><p>Nejdřív rozestavte družinu. Kdo je na tahu, má pod sebou zlatý kruh: klepni na modré pole a hrdina tam dojde, pak vyber akci, nebo rovnou klepni na příšeru. Každý hrdina má v tahu pohyb a jednu akci. Táhnutím prstu se rozhlédneš.</p>
+    <h3>Když hrdina padne</h3><p>Při 0 životech padne a nemůže bojovat. Lektvar nebo léčení ho postaví na nohy. V tažení <b>Příběh</b> po vyhraném boji vstane sám. V tažení <b>Hardcore</b> padlý krvácí a při -10 životech umře, navždy.</p>
+    <h3>Čas a jídlo</h3><p>Všechno trvá: cesta, hledání, boj, odpočinek. Každé ráno sní každý hrdina jednu dávku jídla. Hlad bolí.</p>
+    <h3>Karta hrdiny</h3><p>Klepni na hrdinu nahoře: uvidíš jeho vlastnosti, zbraně, kouzla a artefakt. I mezi boji se tam dá léčit a pít lektvary.</p>
+    <p class="muted">Všechna pravidla do posledního čísla jsou v Příručce hráče; příšery v Bestiáři.</p>`,
+  `<h3>The game is the storyteller</h3><p>It tells you where you are and what you see. The party talks it over and picks what to do. Pass the phone around: in a fight every hero takes their own turn.</p>
+    <h3>The dice decide</h3><p>Every roll is shown. An ability roll (say, Strength): roll a d20, you need your number or less. An attack: a d20 plus bonuses, you need at least what the game says.</p>
+    <h3>Fighting</h3><p>First set up the party's formation. Whoever's turn it is has a gold ring: tap a blue hex and the hero walks there, then pick an action, or just tap a monster. Every hero has a move and one action a turn. Drag to look around.</p>
+    <h3>When a hero falls</h3><p>At 0 HP a hero falls and can't fight. A potion or a cure gets them up. In a <b>Story</b> campaign they get up after a won fight. In a <b>Hardcore</b> campaign the fallen bleed, and at -10 HP they die, for good.</p>
+    <h3>Time and food</h3><p>Everything takes time: the road, searching, fighting, resting. Every morning each hero eats a ration. Hunger hurts.</p>
+    <h3>The hero's sheet</h3><p>Tap a hero at the top: abilities, weapons, spells, artefact. Between fights you can heal and drink potions there too.</p>
+    <p class="muted">Every rule down to the last number is in the Player's Handbook; the monsters are in the Bestiary.</p>`);
+}
+// THE PLAYER'S HANDBOOK, chapter by chapter
+const HB = [
+  { id: 'intro', t: L('1. Úvod', '1. Introduction'), html: () => L(`
+    <p>Tato hra je stolní hra na hrdiny, jakou se hrálo kdysi u stolu s kostkami a tužkou, jen pánem jeskyně je tady hra sama. Pravidla vycházejí ze staré klasiky (první úroveň, sestupná obrana, THAC0) a jsou zkrácená tak, aby se dala hrát na jednom telefonu.</p>
+    <h3>Kostky</h3><p><b>k20</b> je dvacetistěnná kostka, <b>k6</b> šestistěnná a tak dál. <b>2k6</b> znamená hodit dvěma šestistěnnými a sečíst. <b>1k8+1</b>: hodit osmistěnnou a přičíst 1. <b>k100</b> (procenta) se hází na zlodějské dovednosti.</p>
+    <h3>Tři druhy hodů</h3><ul><li><b>Hod na vlastnost</b>: k20, musí padnout hodnota vlastnosti nebo méně.</li><li><b>Útok a záchranný hod</b>: k20 (plus bonusy), musí padnout dané číslo nebo víc. 20 vždy uspěje, 1 vždy selže.</li><li><b>Zlodějská dovednost</b>: k100, musí padnout procento nebo méně.</li></ul>
+    <h3>Tažení</h3><p>Jedna družina (1 až 4 hrdinové) prochází celé tažení: mise na mapě Aldmeru, peníze, předměty, artefakty a zkušenosti zůstávají. <b>Příběh</b>: nikdo neumře. <b>Hardcore</b>: hrdinové umírají navždy a nedá se vracet k uloženým hrám.</p>`, `
+    <p>This is a tabletop role-playing game of the kind once played around a table with dice and pencils, only here the game itself is the dungeon master. The rules come from the old classics (first level, descending armour class, THAC0), cut down so that they play on one phone.</p>
+    <h3>Dice</h3><p><b>d20</b> is a twenty-sided die, <b>d6</b> a six-sided one, and so on. <b>2d6</b> means roll two six-siders and add them. <b>1d8+1</b>: roll an eight-sider and add 1. <b>d100</b> (percent) is rolled for thief skills.</p>
+    <h3>Three kinds of rolls</h3><ul><li><b>An ability check</b>: d20, you need the ability's score or less.</li><li><b>An attack or a saving throw</b>: d20 (plus bonuses), you need the given number or more. A 20 always succeeds, a 1 always fails.</li><li><b>A thief skill</b>: d100, you need the percentage or less.</li></ul>
+    <h3>The campaign</h3><p>One party (1 to 4 heroes) plays the whole campaign: missions on the map of Aldmere; gold, items, artefacts and experience carry over. <b>Story</b>: nobody dies. <b>Hardcore</b>: heroes die for good, and there's no going back to a saved moment.</p>`) },
+  { id: 'abil', t: L('2. Vlastnosti', '2. Abilities'), html: () => L(`<p>Každý hrdina má šest vlastností. Hází se <b>4k6, nejnižší kostka se škrtne</b>; šest hodů se rozdělí podle povolání (nejvyšší do hlavní vlastnosti). Rasa pak některé o 1 zvedne nebo sníží (nejvýš 18, nejmíň 3).</p>`, `<p>Every hero has six abilities. Roll <b>4d6 and drop the lowest die</b>; the six rolls go where the class needs them (the highest into its prime ability). The race then raises or lowers some by 1 (18 at most, 3 at least).</p>`) +
+    tbl([L('Vlastnost', 'Ability'), L('K čemu je', 'What it does')], [
+      [STAT_NAME.str, L('útok a zranění zblízka; hlavní pro válečníka', 'melee to hit and damage; the fighter\'s prime')],
+      [STAT_NAME.dex, L('obrana, střelba a házení; hlavní pro zloděje', 'armour class, shooting and throwing; the thief\'s prime')],
+      [STAT_NAME.con, L('životy navíc', 'extra hit points')],
+      [STAT_NAME.int, L('hlavní pro čaroděje', 'the mage\'s prime')],
+      [STAT_NAME.wis, L('hlavní pro kněze; 13+ dá knězi kouzlo navíc', 'the cleric\'s prime; 13+ gives a cleric an extra spell')],
+      [STAT_NAME.cha, L('přesvědčování a vyjednávání', 'persuading and bargaining')]]) +
+    tbl([L('Hodnota', 'Score'), L('Síla: útok / zranění', 'STR: hit / damage'), L('Obratnost: obrana / střelba', 'DEX: AC / missiles'), L('Odolnost: životy', 'CON: HP')],
+      [3, 5, 7, 9, 13, 15, 16, 17, 18].map(v => [v, `${sign(strHit(v))} / ${sign(strDmg(v))}`, `${sign(-dexAC(v))} / ${sign(dexMissile(v))}`, `${sign(conHP(v, false))}${conHP(v, true) !== conHP(v, false) ? L(` (válečník ${sign(conHP(v, true))})`, ` (fighter ${sign(conHP(v, true))})`) : ''}`])) +
+    L('<p class="muted">Obrana: záporné číslo je lepší (sníží obranu, viz Boj).</p>', '<p class="muted">AC: a minus is better (it lowers the armour class, see Combat).</p>') },
+  { id: 'races', t: L('3. Rasy', '3. Races'), html: () => tbl([L('Rasa', 'Race'), L('Vlastnosti', 'Abilities'), L('Dar', 'Gift'), L('Povolání', 'Classes')],
+      RACE_IDS.map(r => { const R0 = RACES[r]; return [`<b>${R0.name[0]}</b>`, Object.entries(R0.mod).map(([k, d]) => `${STAT_SHORT[k]} ${sign(d)}`).join(', ') || '–', R0.info, R0.cls.length === 4 ? L('všechna', 'all') : R0.cls.map(c => CLASSES[c].name[0]).join(', ')]; })) +
+    L('<p>Trpaslíci a půlčíci nemají cit pro magii, a tak nemohou být čaroději. Trpasličí válečník bojuje obří sekerou (stejné zranění jako meč) a štít nosí na zádech.</p>', '<p>Dwarves and halflings have no feel for magic, so they can\'t be mages. A dwarf fighter fights with a great axe (the same damage as a sword) and carries the shield on the back.</p>') },
+  { id: 'classes', t: L('4. Povolání', '4. Classes'), html: () => CLASS_IDS.map(c => { const C = CLASSES[c]; return `<h3 style="color:${C.col}">${C.name[0]}</h3><p>${C.about}</p>` +
+      tbl([L('Životy', 'Hit die'), L('Zbroj', 'Armour'), L('Zbraň', 'Weapon'), L('Pohyb', 'Move'), L('Hlavní', 'Prime')],
+        [[`k${C.hd}`, `${C.armourName} (${C.armour})`, `${C.weapon.name} ${C.weapon.n}${L('k', 'd')}${C.weapon.s}${C.weapon.b ? '+' + C.weapon.b : ''}`, `${C.move} ${L('polí', 'hexes')}`, STAT_NAME[C.prime]]]) +
+      `<p>${{ fighter: L('V boji: <b>dva útoky</b>, když v tahu nešel. Nejlepší útok a nejvíc životů.', 'In a fight: <b>two attacks</b> if they didn\'t move that turn. The best attacks and the most HP.'),
+              cleric: L('Kouzla: Léčení a Požehnání. <b>Zahnat nemrtvé</b> jednou za boj: k20 proti číslu nemrtvého, při úspěchu 2k6 nemrtvých uteče. Zbraně jen tupé (palcát, prak).', 'Spells: Cure Wounds and Bless. <b>Turn undead</b> once a fight: d20 against the undead\'s number; on a success 2d6 undead flee. Blunt weapons only (mace, sling).'),
+              mage: L('Kouzla: Magická střela a Spánek. Nejkřehčí, bez zbroje; drží se vzadu, hází šipky.', 'Spells: Magic Missile and Sleep. The most fragile, no armour; stays at the back, throws darts.'),
+              thief: L('Dovednosti v %: otevírání zámků, hledání pastí, tiché plížení, schovat se ve stínu. Ze stínu <b>útok zezadu</b>: +4 k zásahu, dvojnásobné zranění. V boji smí jít i po útoku a od nepřítele se vysmekne.', 'Skills in %: open locks, find traps, move silently, hide in shadows. From hiding a <b>backstab</b>: +4 to hit, double damage. In a fight may move after attacking and slips away from enemies.') }[c]}</p>`; }).join('') +
+    `<h3>${L('Zlodějské dovednosti na 1. úrovni', 'Thief skills at level 1')}</h3>` + tbl(SKILL_NAMES, [[35, 25, 35, 25].map(x => x + ' %')]) + L('<p class="muted">+5 % za každou další úroveň; vysoká obratnost přidá.</p>', '<p class="muted">+5% for every level after the first; high DEX adds more.</p>') },
+  { id: 'levels', t: L('5. Úrovně a zkušenosti', '5. Levels and experience'), html: () => L('<p>Zkušenosti se dělí rovným dílem mezi žijící hrdiny: za poražené příšery (i ty, co utečou: polovina) a za splněné mise. Opakovaná mise dává polovinu. Lidé dostávají o 10 % víc.</p>', '<p>Experience is shared equally among the living heroes: for monsters beaten (those that run away: half) and for missions done. A replayed mission gives half. Humans get 10% more.</p>') +
+    tbl([L('Úroveň', 'Level'), L('Zkušenosti', 'Experience'), L('Válečník THAC0', 'Fighter THAC0'), L('Kněz/zloděj', 'Cleric/thief'), L('Čaroděj', 'Mage'), L('Kouzla', 'Spells')],
+      XP_LEVEL.map((x, i) => { const k = i; return [i + 1, x, 20 - k, 20 - 2 * Math.floor(k / 2), 20 - Math.floor(k / 2), Math.min(i + 1, 4)]; })) +
+    L('<p>S každou úrovní: hod na životy (kostka povolání + odolnost), lepší útok, záchranné hody o 1 lepší každé dvě úrovně, víc kouzel (kněz s moudrostí 13+ o jedno víc), lepší zlodějské dovednosti.</p>', '<p>Every level: roll for HP (the class die + CON), better attacks, saving throws 1 better every two levels, more spells (a cleric with WIS 13+ one more), better thief skills.</p>') },
+  { id: 'equip', t: L('6. Výbava', '6. Equipment'), html: () => L('<p>Každý hrdina má <b>zbraň na blízko</b> (podle povolání) a nanejvýš <b>jednu zbraň na dálku</b>. Kněz a zloděj začínají s prakem, čaroděj se šipkami; válečník si koupí luk nebo nože. Střelivo patří celé družině.</p>', '<p>Every hero has a <b>melee weapon</b> (by class) and at most <b>one ranged weapon</b>. A cleric and a thief start with a sling, a mage with darts; a fighter buys a bow or knives. Ammunition belongs to the whole party.</p>') +
+    tbl([L('Zbraň na dálku', 'Ranged weapon'), L('Zranění', 'Damage'), L('Dostřel', 'Range'), L('Kdo', 'Who'), L('Cena', 'Price')],
+      Object.values(RANGED).map(w => [`${w.ic} <b>${w.name}</b><br><span class="muted">${w.info}</span>`, dtxt(w.dmg) + (w.str ? L(' + síla', ' + STR') : ''), `${w.short}/${w.long}`, w.cls.map(c => CLASSES[c].name[0]).join(', '), `${w.price} ${L('zl.', 'gold')}`])) +
+    tbl([L('Zboží', 'Goods'), L('Cena', 'Price')], [...SHOP.map(it => [`${it.ic} ${it.name}`, `${it.price} ${L('zl.', 'gold')}`]), ...UPGRADES.map(u => [`${u.ic} ${u.name} <span class="muted">(${u.info}; ${L('jednou na hrdinu', 'once a hero')})</span>`, `${u.price} ${L('zl.', 'gold')}`])]) +
+    L('<p>Ostré a hrotité zbraně (meče, šípy, nože, šipky) dávají kostlivcům jen poloviční zranění; tupé (palcát, hůl, prak, kladivo) plné. Léčivý lektvar vyléčí 2k4+2, svěcená voda pálí nemrtvé za 2k4.</p>', '<p>Edged and pointed weapons (swords, arrows, knives, darts) do only half damage to skeletons; blunt ones (mace, staff, sling, hammer) do full. A healing potion heals 2d4+2; holy water burns the undead for 2d4.</p>') },
+  { id: 'time', t: L('7. Čas, jídlo, odpočinek', '7. Time, food, rest'), html: () => tbl([L('Činnost', 'Doing'), L('Čas', 'Time')], [
+      [L('cesta mezi místy', 'walking between places'), `${TIME_COST.walk} min`], [L('z vesnice na kopec', 'the village to the hill'), `${TIME_COST.hill} min`], [L('hledání, prohledávání', 'searching'), `${TIME_COST.search} min`],
+      [L('rozhovor v hostinci', 'a chat at the inn'), `${TIME_COST.chat} min`], [L('boj', 'a fight'), L('1 min za kolo', '1 min a round')], [L('odpočinek venku', 'a rest outdoors'), '8 h'], [L('noc v hostinci', 'a night at the inn'), '9 h']]) +
+    L(`<p>Každé ráno v 6:00 sní každý živý hrdina jednu dávku jídla. Bez jídla je družina <b>hladová</b>: odpočinek neléčí a útoky jsou o 1 horší, dokud se nenají.</p><p><b>Odpočinek</b> vrátí všechna kouzla. V hostinci (1 zl. za hrdinu) vyléčí polovinu životů, venku 1k3, a venku se v noci hází na hlídku (na 1 z k6 něco přijde). Mise nikoho neléčí zadarmo a některé mají opravdový čas.</p>`,
+      `<p>Every morning at 6:00 each living hero eats one ration. Without food the party is <b>hungry</b>: resting doesn't heal and attacks are 1 worse until they eat.</p><p>A <b>rest</b> brings back all spells. At the inn (1 gold a hero) it heals half the HP, outdoors 1d3, and outdoors a night watch is rolled (on a 1 on a d6 something comes). Missions heal nobody for free, and some have a real deadline.</p>`) },
+  { id: 'combat', t: L('8. Boj', '8. Combat'), html: () => L(`
+    <h3>Bojiště</h3><p>Boj se hraje na šestiúhelníkových polích. Vzdálenost se počítá v krocích z pole na pole. Některá pole jsou zablokovaná (sloupy, sarkofág).</p>
+    <h3>Rozestavení a překvapení</h3><p>Před bojem se hodí k10 za každou stranu: 1–3 znamená, že ta strana byla překvapena a druhá má kolo zdarma. Když družina není překvapena, rozestaví se do dvou řad (přední a zadní); rozestavení si hra pamatuje.</p>
+    <h3>Iniciativa</h3><p>Každé kolo hodí obě strany k10, nižší hod začíná. Pomalé příšery (utopenci) jdou vždy poslední.</p>
+    <h3>Tah hrdiny</h3><p><b>Pohyb</b> (tolik polí, kolik má) a <b>jedna akce</b>, v libovolném pořadí, ale pohyb se nedá rozdělit kolem akce (kromě zloděje). Akce: útok zblízka, výstřel nebo hod, kouzlo, zahnat nemrtvé, schovat se, předmět. <b>Běh</b>: místo akce druhý pohyb.</p>
+    <ul><li><b>Válečník</b>, který v tahu nešel: dva útoky.</li><li><b>Luk</b>: dva šípy, když střelec nešel.</li><li><b>Zloděj</b>: smí jít i po akci a nikdy neprovokuje útok příležitosti.</li></ul>
+    <h3>Útok příležitosti</h3><p>Kdo odejde z pole vedle bdělé příšery (a neskončí vedle ní), toho příšera jednou sekne.</p>
+    <h3>Útok</h3><p>k20 + bonusy musí dát aspoň <b>THAC0 útočníka mínus obrana cíle</b>. (Obrana: čím menší, tím lepší; THAC0 = co je potřeba hodit na obranu 0.) Zblízka se přičítá síla, na dálku obratnost. Požehnání +1, hlad -1, útok ze stínu +4, střelba za krátký dostřel -2. Na dálku se nedá střílet, když stojí nepřítel hned vedle.</p>
+    <h3>Zranění a pád</h3><p>Zásah ubere zranění podle zbraně (zblízka + síla). Při 0 životech hrdina padá. <b>Příběh</b>: po vyhraném boji vstane s 1 životem. <b>Hardcore</b>: padlý ztrácí 1 život za kolo a při -10 umírá; lektvar nebo léčení ho zachrání.</p>
+    <h3>Morálka</h3><p>Když padne první příšera ze skupiny a když padne polovina, hodí se 2k10: víc než morálka příšer a zbytek uteče. Nemrtví neutíkají nikdy.</p>
+    <h3>Útěk</h3><p>Družina smí z některých bojů utéct; příšery, které stojí hned vedle, ještě jednou seknou.</p>`, `
+    <h3>The battlefield</h3><p>Fights are played on hexes. Distance is counted in steps from hex to hex. Some hexes are blocked (pillars, the sarcophagus).</p>
+    <h3>Formation and surprise</h3><p>Before a fight each side rolls a d10: 1–3 means that side was surprised and the other gets a free round. If the party isn't surprised, it sets up in two rows (front and back); the game remembers the formation.</p>
+    <h3>Initiative</h3><p>Every round both sides roll a d10, lower goes first. Slow monsters (the drowned) always go last.</p>
+    <h3>A hero's turn</h3><p>A <b>move</b> (as many hexes as they have) and <b>one action</b>, in either order, but the move can't be split around the action (except by a thief). Actions: a melee attack, a shot or throw, a spell, turn undead, hide, an item. <b>Sprint</b>: a second move instead of the action.</p>
+    <ul><li>A <b>fighter</b> who didn't move this turn: two attacks.</li><li>A <b>bow</b>: two arrows if the archer didn't move.</li><li>A <b>thief</b> may move after the action and never provokes an opportunity attack.</li></ul>
+    <h3>Opportunity attacks</h3><p>Whoever leaves a hex next to an awake monster (and doesn't end next to it) gets struck once by that monster.</p>
+    <h3>Attacking</h3><p>d20 + bonuses must reach at least <b>the attacker's THAC0 minus the target's AC</b>. (AC: lower is better; THAC0 = what you need to hit AC 0.) Melee adds Strength, missiles Dexterity. Bless +1, hunger -1, a backstab +4, shooting beyond short range -2. You can't shoot with an enemy right next to you.</p>
+    <h3>Damage and falling</h3><p>A hit does the weapon's damage (melee + Strength). At 0 HP a hero falls. <b>Story</b>: after a won fight they get up with 1 HP. <b>Hardcore</b>: the fallen lose 1 HP a round and die at -10; a potion or a cure saves them.</p>
+    <h3>Morale</h3><p>When the first monster of a group falls and when half have fallen, roll 2d10: over the monsters' morale and the rest run. The undead never run.</p>
+    <h3>Running away</h3><p>The party may run from some fights; monsters standing right next to someone get one more swing.</p>`) },
+  { id: 'magic', t: L('9. Kouzla', '9. Magic'), html: () => L('<p>Kouzla na den: čaroděj tolik, kolik má úroveň (nejvýš 4), kněz také a s moudrostí 13+ o jedno víc. Vrátí je odpočinek.</p>', '<p>Spells a day: a mage as many as their level (4 at most), a cleric too, plus one with WIS 13+. A rest brings them back.</p>') +
+    tbl([L('Kouzlo', 'Spell'), L('Kdo', 'Who'), L('Co dělá', 'What it does')], Object.entries(SPELLS).map(([id, sp]) => [`${sp.ic} <b>${sp.name}</b>`, CLASS_IDS.filter(c => (CLASSES[c].spells || []).includes(id)).map(c => CLASSES[c].name[0]).join(', '),
+      sp.info + ({ missile: L('; dostřel 8 polí', '; range 8 hexes'), sleep: L('; 2k4 „síly“ příšer (podle kostek životů), nejslabší první', '; 2d4 of monster "strength" (by hit dice), the weakest first'), cure: '', bless: L('; do konce boje', '; until the fight ends') }[id] || '')])) +
+    `<h3>${L('Zahnat nemrtvé', 'Turning the undead')}</h3>` + tbl([L('Nemrtvý', 'Undead'), L('Kněz 1. úrovně potřebuje (k20)', 'A level 1 cleric needs (d20)')], Object.values(MON).filter(m => m.undead).map(m => [m.name, `${m.turn}+`])) },
+  { id: 'adv', t: L('10. Dobrodružství', '10. Adventuring'), html: () => L(`
+    <h3>Hody na vlastnost</h3><p>Vyrazit dveře (síla), přeskočit propast (obratnost), vydržet (odolnost), vyluštit (inteligence), všimnout si (moudrost), přesvědčit (charisma): k20, potřeba hodnota nebo méně. Hra ukáže šanci každého hrdiny; vyberete, kdo to zkusí. Kdo to jednou zkusil, napodruhé už ne.</p>
+    <h3>Záchranné hody</h3><p>Proti jedu, hůlkám, ztuhnutí, dechu a kouzlům: k20, číslo podle povolání nebo víc. Trpaslíci mají proti jedu, hůlkám a kouzlům o 2 lepší.</p>
+    <h3>Rozhovory</h3><p>S některými postavami se dá opravdu mluvit: napíšete, co hrdina říká, a postava odpoví. Čím lepší argumenty, tím větší bonus (-2 až +6) k hodu na charisma; kostky rozhodnou. Postavy znají jen svůj kousek světa a důležité věci si nevymýšlejí.</p>
+    <h3>Mise</h3><p>Mise se otevře, jen když se dá dokončit (úroveň, klíčové artefakty, splněné mise). Misi lze opustit z nabídky pauzy.</p>`, `
+    <h3>Ability checks</h3><p>Force a door (STR), jump a gap (DEX), endure (CON), puzzle it out (INT), notice (WIS), persuade (CHA): d20, you need the score or less. The game shows each hero's chance; you pick who tries. Whoever tried once can't try again.</p>
+    <h3>Saving throws</h3><p>Against poison, wands, paralysis, breath and spells: d20, the class's number or more. Dwarves are 2 better against poison, wands and spells.</p>
+    <h3>Conversations</h3><p>Some characters can really be talked to: type what the hero says and the character answers. The better the arguments, the bigger the bonus (-2 to +6) to the Charisma roll; the dice decide. Characters know only their own corner of the world and don't make up important things.</p>
+    <h3>Missions</h3><p>A mission opens only when it can be finished (level, key artefacts, missions done). A mission can be left from the pause menu.</p>`) },
+  { id: 'arts', t: L('11. Artefakty', '11. Artefacts'), html: () => L('<p>Artefakty jsou vzácné předměty z misí. <b>Klíčové</b> se musí najít, aby mise skončila; <b>bonusové</b> jsou schované a dají se minout. Každý hrdina nosí nanejvýš jeden (vyměníte ho na kartě hrdiny). Kniha tažení ukazuje nalezené i chybějící (jako „?“ s nápovědou).</p>', '<p>Artefacts are rare things found in missions. <b>Key</b> artefacts must be found to finish a mission; <b>bonus</b> ones are hidden and can be missed. Every hero carries one at most (swap them on the hero\'s sheet). The campaign book shows those found and those missing (as "?" with a hint).</p>') +
+    tbl([L('Artefakt', 'Artefact'), L('Co dělá', 'What it does')], Object.values(ART).map(a => [`${a.ic} <b>${a.name}</b>`, G && G.arts && G.arts[Object.keys(ART).find(k => ART[k] === a)] !== undefined ? a.info : `<span class="muted">? ${a.hint}</span>`])) },
+];
+function libBeasts() {
+  const seen = (G && G.seen) || {};
+  return L('<p>Co o tvorech Aldmeru víme. Některé zápisy se objeví, až je družina potká.</p>', '<p>What is known of the creatures of Aldmere. Some entries appear only once the party has met them.</p>') +
+    Object.entries(MON).map(([id, m]) => {
+      if (m.boss && !seen[id]) return `<div class="beast"><div class="bimg q">?</div><div><h3>???</h3><p class="muted">${L('Tohohle tvora jste ještě nepotkali.', 'You haven\'t met this one yet.')}</p></div></div>`;
+      const sp = [m.undead && L('nemrtvý', 'undead'), m.turn && L(`zahnat: ${m.turn}+`, `turned on ${m.turn}+`), m.halfEdged && L('ostří: poloviční zranění', 'edges: half damage'), m.slow && L('pomalý (táhne poslední)', 'slow (acts last)'), (m.undead || m.noSleep) && L('Spánek nepůsobí', 'immune to Sleep'), m.morale >= 99 && L('nikdy neuteče', 'never runs')].filter(Boolean);
+      return `<div class="beast"><img class="bimg" src="${portrait({ cls: id, g: 'm', name: m.name })}" alt=""><div><h3>${m.name}${seen[id] ? '' : ` <span class="muted" style="font-size:13px">${L('(nepotkán)', '(not met)')}</span>`}</h3>
+        <div class="chips"><span>${L('Kostky životů', 'Hit dice')} <b>${m.hd}</b></span><span>${L('Životy', 'HP')} <b>${dtxt(m.hp)}</b></span><span>${L('Obrana', 'AC')} <b>${m.ac}</b></span><span>THAC0 <b>${m.thac0}</b></span><span>${L('Zranění', 'Damage')} <b>${dtxt(m.dmg)}</b></span><span>${L('Pohyb', 'Move')} <b>${m.move}</b></span><span>${L('Morálka', 'Morale')} <b>${m.morale >= 99 ? '–' : m.morale}</b></span><span>XP <b>${m.xp}</b></span></div>
+        ${sp.length ? `<p class="muted">${sp.join(' · ')}</p>` : ''}<p>${MON_LORE[id] || ''}</p></div></div>`;
+    }).join('');
+}
+function openLib(tab = 'how', ch = 0) {
+  lib = { tab, ch };
+  const tabs = [['how', L('Jak se hraje', 'How to play')], ['hb', L('📜 Příručka hráče', '📜 Player\'s Handbook')], ['beasts', L('🐀 Bestiář', '🐀 Bestiary')]];
+  let body = '';
+  if (tab === 'how') body = libHow();
+  if (tab === 'beasts') body = libBeasts();
+  if (tab === 'hb') body = `<div class="toc">${HB.map((c, i) => `<button class="pill${i === ch ? ' on' : ''}" data-ch="${i}">${c.t}</button>`).join('')}</div><h2 class="cht">${HB[ch].t}</h2>${HB[ch].html()}
+    <div class="btns">${ch > 0 ? `<button class="ch dim" data-ch="${ch - 1}">‹ ${HB[ch - 1].t}</button>` : ''}${ch < HB.length - 1 ? `<button class="ch" data-ch="${ch + 1}">${HB[ch + 1].t} ›</button>` : ''}</div>`;
+  $('lib').innerHTML = `<div class="card libc"><div class="ltabs">${tabs.map(([k, n]) => `<button class="pill${k === tab ? ' on' : ''}" data-tab="${k}">${n}</button>`).join('')}<button class="pill" data-x="1" aria-label="${L('Zavřít', 'Close')}">✕</button></div><div class="lbody">${body}</div></div>`;
+  $('lib').hidden = false;
+  const b = $('lib').querySelector('.lbody'); if (b) b.scrollTop = 0;
+}
+function closeLib() { lib = null; $('lib').hidden = true; }
+$('lib').addEventListener('click', e => {
+  if (e.target === $('lib')) { closeLib(); return; }
+  const b = e.target.closest('button'); if (!b) return;
+  sfx('click');
+  if (b.dataset.x) closeLib();
+  else if (b.dataset.tab) openLib(b.dataset.tab, 0);
+  else if (b.dataset.ch) openLib('hb', +b.dataset.ch);
+});
+
 function openMenu() {
   menu = true;
   $('menu').innerHTML = `<div class="card small"><h2>${L('Pauza', 'Paused')}</h2>
     <button class="ch" data-m="resume">${L('Pokračovat', 'Continue')}</button>
     <button class="ch" data-m="sfx">${L('Zvuk', 'Sound')}: ${save.sfx ? L('zapnutý', 'on') : L('vypnutý', 'off')}</button>
     <button class="ch" data-m="mus">${L('Hudba', 'Music')}: ${save.music !== false ? L('zapnutá', 'on') : L('vypnutá', 'off')}</button>
-    <button class="ch" data-m="book">📖 ${L('Kniha', 'Book')}</button>
+    <button class="ch" data-m="book">📖 ${L('Kniha tažení', 'Campaign book')}</button>
+    <button class="ch" data-m="hb">📜 ${L('Příručka hráče', 'Player\'s Handbook')}</button>
+    <button class="ch" data-m="beasts">🐀 ${L('Bestiář', 'Bestiary')}</button>
     ${G && !hardcore() && !G.test ? `<button class="ch" data-m="saveas">💾 ${L('Uložit jako…', 'Save as...')}</button>` : ''}
     ${G && G.mission ? `<button class="ch" data-m="leave">🗺 ${L('Opustit misi', 'Leave the mission')}</button>` : ''}
     <button class="ch dim" data-m="quit">${L('Uložit a odejít', 'Save and quit')}</button></div>`;
@@ -3665,6 +3829,7 @@ $('menu').addEventListener('click', e => {
   sfx('click');
   if (b.dataset.m === 'resume') closeMenu();
   if (b.dataset.m === 'book') { closeMenu(); openBook(); }
+  if (b.dataset.m === 'hb' || b.dataset.m === 'beasts') { closeMenu(); openLib(b.dataset.m); }
   if (b.dataset.m === 'sfx') { save.sfx = !save.sfx; store(); openMenu(); }
   if (b.dataset.m === 'mus') { save.music = save.music === false; store(); openMenu(); }
   if (b.dataset.m === 'quit') { closeMenu(); if (F) endBattle(); store2(); setState('title'); }
@@ -4151,7 +4316,7 @@ worldEl.addEventListener('pointercancel', e => { lift(e); drag = null; });
 worldEl.addEventListener('pointerup', e => { lift(e); const d = drag; drag = null; if (state === 'intro') return; if (d && !d.moved && !touches.size) tapWorld(e.clientX, e.clientY); });
 worldEl.addEventListener('wheel', e => { orbit.uzoom = clamp(orbit.uzoom * (e.deltaY > 0 ? 1.1 : 0.9), state === 'map' ? 0.25 : 0.55, state === 'map' ? 1.5 : 1.6); }, { passive: true });
 function tapWorld(x, y) {
-  if (state !== 'play' || sheet || menu) return;
+  if (state !== 'play' || sheet || menu || lib) return;
   if (film) return;                                   // (a film is skipped only with its Skip button)
   if (busy()) { if (cur && cur.k === 'wait') tapped = true; else skip = true; return; }
   if (!F || !(F.actor || F.deploy) || !choices.length) return;
@@ -4181,7 +4346,7 @@ window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (state === 'intro') { if (['Space', 'Enter', 'Escape'].includes(e.code)) { e.preventDefault(); endIntro(); } return; }
   if (state === 'play' && G) {
-    if (e.code === 'Escape') { if (sheet === 'talk') return; if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
+    if (e.code === 'Escape') { if (lib) { closeLib(); return; } if (sheet === 'talk') return; if (sheet) closeSheet(); else if (menu) closeMenu(); else openMenu(); return; }
     if (sheet || menu) return;
     if (film && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { e.preventDefault(); endFilm(); return; }
     if (/^(Digit|Numpad)[1-9]$/.test(e.code)) { choose1(+e.code.slice(-1) - 1); return; }
@@ -4196,7 +4361,7 @@ function frame(now) {
   checkLayout();
   if (shownRect && ['x', 'y', 'w', 'h'].some(p => Math.abs(shownRect[p] - viewRect[p]) > 0.5)) applyView(1 - Math.exp(-dt * 8));
   if (state === 'play' && G) {
-    if (!menu && !sheet) pump(dt);
+    if (!menu && !sheet && !lib) pump(dt);
     if (G) {
       renderParty(); renderInv(); renderChoices(); renderBanner(); renderDie(dt); refreshMarks();
     }

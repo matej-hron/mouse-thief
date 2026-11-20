@@ -1485,6 +1485,11 @@ or model files).
   STR, +1 with missiles, AC 1 better, 1 hex slower). Dwarves and halflings can't be mages. Each race has its own
   figure (the dwarf's wild beard and horned helm, the elf's ears, the halfling's curls and bare feet) and the party
   cards show a portrait medallion with a face, torchlight and a painted ground.
+- **The library** (0.11): the title's "Rules, handbook, bestiary" and the pause menu open three books: How to play;
+  the **Player's Handbook** in 11 chapters (introduction and dice, abilities with their modifier table, races,
+  classes, levels with THAC0 and spells, equipment and prices, time and food, combat, magic and turning, adventuring,
+  artefacts); the **Bestiary** (each creature's medallion, numbers and lore; a boss appears only once met). The
+  tables are built from the game's own data, so the books always match the rules.
 - Saved after every step (POKRAČOVAT on the title). Winning a mission gives ★10 the first time, ★2 after.
   For tests: `PQ.quick(4, 'crypt')` jumps a party of 4 into a scene without films.
 
