@@ -3,7 +3,7 @@
 // lets it keep pages for 10 minutes), so new releases show up right away when online.
 // Everything else is served from the cache.
 // CACHE is the arcade's VERSION (index.html): bump both together on every release (of any game) so old files get cleaned up.
-const CACHE = 'pixel-arcade-v2.74.0';
+const CACHE = 'pixel-arcade-v2.74.1';
 const ASSETS = [
   './',
   './index.html',
