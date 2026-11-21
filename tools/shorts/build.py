@@ -8,6 +8,27 @@ ROOT = pathlib.Path(__file__).resolve().parents[2] / "shorts"
 
 SHORTS = [
     {
+        "slug": "shortest-war", "title": "The Shortest War in History", "year": "1896", "place": "Zanzibar, East Africa",
+        "teaser": "A war that lasted about 38 minutes. Short, but not harmless.",
+        "body": [
+            ("p", "Zanzibar is an island off the coast of East Africa, today part of Tanzania. In 1896 it was ruled by a sultan, but Britain had great influence there and expected to approve who the sultan would be."),
+            ("p", "On 25 August 1896 Sultan Hamad bin Thuwaini died suddenly. Within hours Khalid bin Barghash, a relative who was suspected by some of having poisoned him, moved into the palace and declared himself sultan. Britain wanted a different candidate, Hamud bin Muhammed, and ordered Khalid to step down. Around 3,000 defenders gathered at the palace, and British warships anchored in the harbour."),
+            ("p", "The British gave Khalid until 9 a.m. on 27 August to leave. He refused. Shortly after nine the ships opened fire on the palace, which was largely made of wood. About 38 to 45 minutes later the shooting stopped and the sultan's flag came down. It is generally counted as the shortest war in recorded history."),
+            ("h", "Short, but not harmless"),
+            ("p", "Around 500 of Khalid's fighters were killed or wounded, many when shells hit the wooden palace. On the British side, one sailor was badly wounded and recovered. By the afternoon Britain's choice, Hamud, was proclaimed sultan."),
+            ("p", "Khalid fled to the German consulate. The Germans refused to hand him over and smuggled him by boat to German East Africa on the mainland. Britain then made Khalid's supporters pay for the cost of the war, including the shells that had been fired at them."),
+            ("p", "Some historians point out that calling it a 38-minute war depends on how you count: the crisis lasted two days, and the bombardment was the part that took well under an hour."),
+        ],
+        "sources": [
+            ("Anglo-Zanzibar War (Britannica)", "https://www.britannica.com/event/Anglo-Zanzibar-War"),
+            ("The Anglo-Zanzibar War (History Today)", "https://www.historytoday.com/archive/months-past/anglo-zanzibar-war"),
+            ("The shortest war in history (The Historical Association)", "https://www.history.org.uk/student/categories/107/resource/7950"),
+            ("The world's shortest war lasted just 38 minutes (HowStuffWorks)", "https://history.howstuffworks.com/historical-events/worlds-shortest-war.htm"),
+            ("The world's shortest war (Atlas Obscura)", "https://www.atlasobscura.com/articles/worlds-shortest-war"),
+            ("Anglo-Zanzibar War (Wikipedia)", "https://en.wikipedia.org/wiki/Anglo-Zanzibar_War"),
+        ],
+    },
+    {
         "slug": "pig-war", "title": "The Pig War", "year": "1859", "place": "San Juan Island, Pacific Northwest",
         "teaser": "America and Britain nearly went to war over a pig that ate some potatoes.",
         "body": [
