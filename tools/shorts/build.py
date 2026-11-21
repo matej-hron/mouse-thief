@@ -8,6 +8,26 @@ ROOT = pathlib.Path(__file__).resolve().parents[2] / "shorts"
 
 SHORTS = [
     {
+        "slug": "pig-war", "title": "The Pig War", "year": "1859", "place": "San Juan Island, Pacific Northwest",
+        "teaser": "America and Britain nearly went to war over a pig that ate some potatoes.",
+        "body": [
+            ("p", "In 1859 nobody was sure who owned San Juan Island, between Vancouver Island and what is now Washington State. A treaty had set the border along the water channel between the US and British territory, but there were two channels, one on each side of the island, and the US and Britain each claimed the one that gave them the island. British sheep farmers and a few dozen American settlers lived there side by side."),
+            ("p", "On 15 June 1859 an American farmer, Lyman Cutlar, found a pig digging up his potato patch, and shot it. The pig belonged to the Hudson's Bay Company, a British company whose farm on the island was run by Charles Griffin. Cutlar offered to pay for the pig, but the two men argued, and British officials threatened to arrest him."),
+            ("h", "Soldiers, warships... and no war"),
+            ("p", "The American settlers asked for protection, and the US Army sent Captain George Pickett with 64 soldiers. The British answered with warships; soon there were three of them in the bay, with far more men and guns than the Americans had. But the British commander was under orders to avoid a fight, and nobody wanted to start a war over a pig. Officials in Washington and London were shocked to hear what had grown out of it."),
+            ("p", "The US sent General Winfield Scott to calm things down. Both sides agreed to share the island, each keeping a small camp of about 100 soldiers at opposite ends. The joint occupation lasted 12 years, and the two camps got on well: they visited each other, celebrated holidays together and held sports competitions."),
+            ("p", "In 1871 the two countries asked the German Kaiser, Wilhelm I, to decide. In 1872 he chose the channel that gave the San Juan Islands to the United States. The British marines left that year and the last American troops left in 1874. The only casualty of the Pig War was the pig."),
+        ],
+        "sources": [
+            ("The Pig War (US National Park Service, San Juan Island National Historical Park)", "https://www.nps.gov/sajh/learn/historyculture/the-pig-war.htm"),
+            ("Lyman Cutlar Homestead (US National Park Service)", "https://www.nps.gov/places/lyman-cutlar-homestead.htm"),
+            ("Lyman Cutlar touches off the Pig War, 15 June 1859 (HistoryLink)", "https://www.historylink.org/File/5037"),
+            ("The Pig War (The Canadian Encyclopedia)", "https://www.thecanadianencyclopedia.ca/en/article/pig-war"),
+            ("Boar war (Smithsonian Magazine)", "https://www.smithsonianmag.com/history/boar-war-75236932/"),
+            ("Pig War (1859) (Wikipedia)", "https://en.wikipedia.org/wiki/Pig_War_(1859)"),
+        ],
+    },
+    {
         "slug": "pea-escape", "title": "The Prisoner Who Escaped With Peas", "year": "Legend", "place": "Somewhere, sometime",
         "teaser": "Dry peas, a crack in the wall, a cup of water, and guards who laughed. A legend, and the real science behind it.",
         "body": [
