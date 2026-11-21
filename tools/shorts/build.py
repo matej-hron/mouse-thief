@@ -100,16 +100,27 @@ CSS = """
   .sub { color: var(--dim); margin: 6px 0 0; }
   .back { display: inline-block; margin: 0 0 12px; font: bold 14px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; text-decoration: none; }
   main { max-width: 1100px; margin: 0 auto; padding: 12px 20px 48px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-  .card { display: block; background: var(--card); border: 3px solid #111; box-shadow: 5px 5px 0 #000; color: var(--ink); text-decoration: none; transition: transform .12s; }
-  .card:hover, .card:focus { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 #000; }
-  .card img { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-bottom: 3px solid #111; }
-  .card div { padding: 10px 12px 14px; }
-  .card h2 { font: 800 18px/1.25 system-ui, sans-serif; margin: 0 0 4px; }
-  .meta { font: bold 13px ui-monospace, Menlo, monospace; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
-  .card p { color: var(--dim); font-size: 15px; line-height: 1.4; margin: 6px 0 0; }
-  .story { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 36px; align-items: start; }
-  .story video { width: 100%; aspect-ratio: 9 / 16; background: #000; border: 3px solid #111; box-shadow: 6px 6px 0 #000; position: sticky; top: 16px; }
+  .count { font: bold 13px ui-monospace, Menlo, monospace; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+  .card { position: relative; display: block; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 12px; background: var(--card);
+          border: 2px solid #000; box-shadow: 4px 4px 0 #000; color: #fff; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+  .card:hover, .card:focus-visible { transform: translate(-2px, -3px); box-shadow: 6px 7px 0 #000; outline: none; }
+  .card:focus-visible { border-color: var(--accent); }
+  .card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .3s; }
+  .card:hover img { transform: scale(1.05); }
+  .card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.92) 0%, rgba(0,0,0,.55) 30%, rgba(0,0,0,0) 55%); }
+  .card .play { position: absolute; z-index: 1; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,.55);
+                display: grid; place-items: center; font-size: 12px; padding-left: 2px; color: #fff; transition: background .15s, color .15s; }
+  .card:hover .play { background: var(--accent); color: #000; }
+  .card .info { position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; padding: 10px 10px 11px; }
+  .card h2 { font: 800 15px/1.2 system-ui, sans-serif; margin: 3px 0 0; text-shadow: 0 1px 3px #000; }
+  .meta { font: bold 12px ui-monospace, Menlo, monospace; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .card .meta { display: block; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .more { max-width: 1100px; margin: 0 auto; padding: 8px 20px 40px; }
+  .more > h2 { color: var(--dim); font: bold 14px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 12px; }
+  .story { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 36px; align-items: start; }
+  .story video { display: block; width: 100%; max-height: calc(100vh - 32px); aspect-ratio: 9 / 16; object-fit: contain; background: #000; border: 2px solid #000;
+                 border-radius: 12px; box-shadow: 5px 5px 0 #000; position: sticky; top: 16px; }
   article h1 { font: 900 34px/1.15 system-ui, sans-serif; margin: 4px 0 14px; }
   article h2 { font: 800 22px/1.2 system-ui, sans-serif; margin: 28px 0 8px; color: var(--pink); }
   article p { margin: 0 0 14px; max-width: 64ch; }
@@ -117,7 +128,12 @@ CSS = """
   .sources h2 { color: var(--dim); font-size: 16px; text-transform: uppercase; letter-spacing: .08em; }
   .sources li { margin: 4px 0; }
   footer { text-align: center; color: var(--dim); font-size: 14px; padding: 24px; }
-  @media (max-width: 760px) { .story { grid-template-columns: 1fr; } .story video { position: static; max-width: 420px; margin: 0 auto; } .logo { font-size: 26px; } article h1 { font-size: 28px; } }
+  @media (max-width: 760px) {
+    header { padding-top: 18px; } .logo { font-size: 24px; } .sub { font-size: 16px; } article h1 { font-size: 26px; }
+    .story { grid-template-columns: 1fr; gap: 20px; }
+    .story video { position: static; width: auto; height: min(70vh, 560px); max-width: 100%; margin: 0 auto; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  }
 """
 
 
@@ -152,12 +168,15 @@ def header(back):
 
 
 def build():
+    def card(s):
+        return f"""<a class="card" href="{s['slug']}.html" title="{E(s['teaser'])}">
+<img src="media/{s['slug']}.jpg" alt="" loading="lazy" width="540" height="960"><span class="play" aria-hidden="true">&#9654;</span>
+<div class="info"><span class="meta">{E(s['year'])} &middot; {E(s['place'].split(',')[-1].strip())}</span><h2>{E(s['title'])}</h2></div>
+</a>"""
     cards = []
     for s in SHORTS:
-        cards.append(f"""<a class="card" href="{s['slug']}.html">
-<img src="media/{s['slug']}.jpg" alt="" loading="lazy" width="540" height="960">
-<div><span class="meta">{E(s['year'])} &middot; {E(s['place'])}</span><h2>{E(s['title'])}</h2><p>{E(s['teaser'])}</p></div>
-</a>""")
+        cards.append(card(s))
+        others = "\n".join(card(o) for o in SHORTS if o is not s)
         parts = []
         for kind, text in s["body"]:
             parts.append(f"<h2>{E(text)}</h2>" if kind == "h" else f"<p>{E(text)}</p>")
@@ -173,10 +192,13 @@ def build():
 {srcs}
 </ul></section>
 </article>
-</main>"""
+</main>
+<section class="more"><h2>More shorts</h2><div class="grid">
+{others}
+</div></section>"""
         (ROOT / f"{s['slug']}.html").write_text(page(f"{s['title']} | Weird History Toons", s["teaser"], body, f"media/{s['slug']}.jpg"))
     body = f"""{header('<a class="back" href="../">&larr; Pixel Games</a>')}
-<main><div class="grid">
+<main><p class="count">{len(SHORTS)} shorts</p><div class="grid">
 {chr(10).join(cards)}
 </div></main>"""
     (ROOT / "index.html").write_text(page("Weird History Toons | Pixel Games", "Short cartoons about strange true stories, with the facts behind them.", body, f"media/{SHORTS[0]['slug']}.jpg"))
